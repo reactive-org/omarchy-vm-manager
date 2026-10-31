@@ -148,4 +148,10 @@ Build 0.5.0 (7) packages a signed `omarchy-vm` executable and repository `bin/om
 
 The app/CLI is 0.5.1 (8); exact runtime provenance is recorded in `Config/TryOmarchyRuntime.lock.json`. Packaged CLI version and registry checks pass with all four retained guests stopped. The idle manager was restarted for this app update. No factory image download, guest launch, permission grant, retained-disk change or personal Try Omarchy action occurred.
 
-**TO PROVE:** consuming this cache with a new real VM and reusing it for a second. See [factory cache](FactoryCache.md).
+The subsequently approved real two-guest cache check is recorded below and in [factory cache](FactoryCache.md).
+
+## Real two-guest CLI cache check — 31 October 2026
+
+**VERIFIED — explicitly approved real run:** two fresh CLI guests used saved unattended defaults and reached authenticated, pinned SSH on distinct loopback ports. With an initially empty shared cache, A downloaded the 3,172,067,004-byte image. B followed the cached-image verifier path with no download events. The cache file retained its device/inode, size and birth time; its last-use timestamp advanced only through the pinned helper's successful full-checksum reuse branch. Both new UUID roots prepared their own disks. A separate direct cache-content read by the test process was blocked by Downloads privacy; external digest verification is not claimed and no permission was granted.
+
+Both guests then stopped with matching `Exited (0)`. Their disk handles were closed and their QEMU/launcher processes absent before the CLI moved each whole root to recoverable Trash. Both profiles/active roots are gone, while the shared cache remains. All four retained profiles match their baseline digests; all recorded retained-tree stat entries and marker/settings hashes are unchanged. All four remain stopped. No personal VM or retained disk was launched or modified, and no UI, clipboard, Super-key, graphics or sleep/wake validation is claimed by this cache-specific run. Full evidence and limits are in [factory cache](FactoryCache.md).
