@@ -95,8 +95,18 @@ struct ManagerView: View {
 
     private var library: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Virtual Machines").font(.largeTitle.bold())
-            Text("\(active.count) running or starting · \(active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024) GiB allocated").foregroundStyle(.secondary)
+            GroupedPanel {
+                HStack(spacing: 24) {
+                    ManagerArtwork(size: 144)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Omarchy VM Manager").font(.system(size: 32, weight: .bold))
+                        Text("Your Omarchy virtual machines").font(.title3).foregroundStyle(.secondary)
+                        Text("\(active.count) running or starting · \(active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024) GiB allocated").foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }.padding(24)
+            }
+            Text("Virtual Machines").font(.title2.bold())
             if model.snapshots.isEmpty, model.registryError == nil {
                 ContentUnavailableView {
                     Label("Your Omarchy machines", systemImage: "desktopcomputer")
