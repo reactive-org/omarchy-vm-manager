@@ -216,7 +216,7 @@ struct ManagerView: View {
                     Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
                 Divider().padding(.horizontal, 20)
-                SettingsRow("Disk", subtitle: "Factory: \(snapshot.profile.factory?.name ?? "Original recorded disk"). Existing disks are preserved.", icon: "internaldrive", color: .orange) {
+                SettingsRow("Disk", subtitle: "Factory: \(snapshot.profile.factory?.displayName ?? "Original recorded disk"). Existing disks are preserved.", icon: "internaldrive", color: .orange) {
                     Text(ByteCountFormatter.string(fromByteCount: model.storageBytes[snapshot.id] ?? 0, countStyle: .file)).foregroundStyle(.secondary)
                 }
             }
@@ -410,9 +410,9 @@ private struct VMEditor: View {
                 TextField("Name", text: $name)
                 if profile == nil {
                     Picker("Factory image", selection: $factory) {
-                        ForEach(model.factories, id: \.selector) { image in Text(image.name).tag(image.selector) }
+                        ForEach(model.factories, id: \.selector) { image in Text(image.displayName).tag(image.selector) }
                     }
-                } else { Text("Factory: \(profile?.factory?.name ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
+                } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
                 Stepper("Memory: \(memory) GiB", value: $memory, in: 4...maximumMemory)
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
                 Stepper("Disk capacity: \(disk) GiB", value: $disk, in: max(64, profile?.diskGiB ?? 64)...8192, step: 16)

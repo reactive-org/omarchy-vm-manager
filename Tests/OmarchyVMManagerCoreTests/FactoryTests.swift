@@ -57,6 +57,23 @@ private struct FactoryFixture {
 
 @Suite("Reviewed custom factories — no VMs")
 struct FactoryTests {
+    @Test("renaming the official label preserves legacy recorded factory identities")
+    func officialLabelCompatibility() throws {
+        let files = try RegistryFixture(); defer { files.cleanup() }
+        let legacy = FactoryIdentity(kind: .official, name: "Official Omarchy", manifestSHA256: FactoryIdentity.official.manifestSHA256, diskSHA256: FactoryIdentity.official.diskSHA256)
+        var profile = files.profile(); profile.factory = legacy
+        let encoded = try JSONEncoder().encode(profile)
+        let restored = try JSONDecoder().decode(VMProfile.self, from: encoded)
+        try RegistryStore.validate(restored)
+        _ = try files.storage.prepare(restored)
+        try files.storage.validate(restored)
+        let marker = try JSONDecoder().decode(FactoryIdentity.self, from: PrivateFiles.read(files.storage.root(for: restored).appendingPathComponent(".omarchy-factory.json")))
+        #expect(marker == legacy && restored.factory == legacy)
+        #expect(legacy.displayName == "Offical Try Omarchy")
+        try FactoryIdentity.official.validate()
+        let altered = FactoryIdentity(kind: .official, name: legacy.name, manifestSHA256: String(repeating: "a", count: 64), diskSHA256: legacy.diskSHA256)
+        #expect(throws: VMFailure.self) { try altered.validate() }
+    }
     @Test("factory review bytes must match their compiled pin and contain unique valid digests")
     func reviewPin() throws {
         let original = Data("[]\n".utf8)
