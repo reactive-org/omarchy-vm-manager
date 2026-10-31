@@ -1,3 +1,31 @@
+diff --git a/Makefile b/Makefile
+index e768c5e..44c992f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -121,6 +121,7 @@ test-contracts:
+ 
+ test-guest:
+ 	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_package.py"
++	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_managed_ssh.py"
+ 
+ # The package's contracts with the Omarchy the factory installs today.
+ test-upstream:
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 02d9082..999a6b8 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -418,3 +418,11 @@ strip beside the housing included, and the guest describes the housing to
+ Omarchy's bar through Omarchy's own `display-cutouts.json`, so the bar sits
+ beside the camera and windows start below it. See
+ [camera notch](camera-notch.md).
++
++## Managed SSH capability 1
++
++A private embedding-manager capability enrolls new UUID roots without changing the public run protocol. The helper validates private `.omarchy-managed-ssh.json` metadata, the matching per-launch provisioning manifest and the exact stored TCP mapping to guest port 22. It sets the internal provisioning-share environment itself; a caller-supplied value is removed. The launch script attaches only that share, read-only, and signals opt-in through `tryomarchy.managed_ssh=1`.
++
++The embedding manager creates an independent client identity and guest host identity per VM. Only the guest host key and authorized public keys are shared. The guest timer waits for normal non-root owner provisioning, preserves the bound owner and host key across boots, and configures the vendor SSH service through a runtime drop-in. Password, interactive and root login are disabled for this opt-in mode. The ordinary authorized-keys file remains supported and untouched.
++
++Guest status carries the VM UUID, launch nonce, provisioning state and owner in an optional schema-1 field. The host validates bounded reports but treats them as advisory. Authenticated SSH must confirm the expected owner and VM/session identity before the manager reports readiness. Initial trust comes from the per-VM provisioning channel, never an unverified network key scan. Changed host identities require explicit recovery.
 diff --git a/docs/vm-kit.md b/docs/vm-kit.md
 index fac6182..71095b1 100644
 --- a/docs/vm-kit.md
@@ -14,6 +42,512 @@ index fac6182..71095b1 100644
 +The global Mac clipboard still transfers content intentionally when the user switches guests. The change prevents background broadcast and background writes; it does not create private host clipboards. The client configuration and run protocol remain at version 1. Deterministic two-route tests cover shared pasteboard isolation, rapid activation, focus loss during reads and immediately before side effects. Real two-guest focus behaviour remains to be validated on Apple Silicon.
 +
 +The headless clipboard helper keeps the main run loop running and performs its blocking guest-channel read on a worker queue. Every foreground lookup runs synchronously on the main thread, including lookups requested by the serial routing queue. The real POC found that an otherwise idle main loop could leave worker-only AppKit foreground polling stuck on an old app; main-thread lookups tracked the same focus cycle correctly. Tests exercise the actual focus adapter from both threads, matching and mismatching foreground PIDs, unavailable focus and stale process identities, alongside reader completion and error propagation. The correction does not change protocol 1 or any bridge/configuration fields.
+diff --git a/guest/package/README.md b/guest/package/README.md
+index 2cc716c..ebfa640 100644
+--- a/guest/package/README.md
++++ b/guest/package/README.md
+@@ -182,3 +182,9 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
+ window closes, since Omarchy's screensaver shows it as it exits. It also keeps
+ the mode in sync with the window through EDID, and applies the pinch and Apple
+ keyboard input rules.
++
++## Managed SSH enrollment
++
++An embedding manager can opt an explicitly rooted NAT guest into managed SSH. The private capability version 1 uses a separate read-only `tryomarchy-managed-ssh` share, with the guest host identity and authorized public keys. No client private key crosses into the guest. The package waits for normal owner provisioning, then configures the vendor `sshd.service` for that owner with key authentication and the existing gateway-only firewall rule. It preserves the user's ordinary authorized keys and keeps its own enrollment separate. There is no extra bootstrap account or password.
++
++The protocol-1 guest status report has an optional versioned `managedSSH` field. Its owner/VM/session values are advisory until the manager verifies an authenticated connection against its pinned host identity. Unmanaged Try Omarchy boots keep their existing SSH behavior.
+diff --git a/guest/package/tests/test_managed_ssh.py b/guest/package/tests/test_managed_ssh.py
+new file mode 100644
+index 0000000..e544a4b
+--- /dev/null
++++ b/guest/package/tests/test_managed_ssh.py
+@@ -0,0 +1,104 @@
++#!/usr/bin/env python3
++import hashlib
++import importlib.machinery
++import importlib.util
++import json
++import os
++from pathlib import Path
++import subprocess
++import tempfile
++from types import SimpleNamespace
++import unittest
++from unittest import mock
++import uuid
++
++SOURCE = Path(__file__).resolve().parents[1] / "try-omarchy/files/usr/lib/try-omarchy/managed-ssh"
++
++
++class ManagedSSH(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory(prefix="managed-ssh-test-")
++        self.addCleanup(self.temp.cleanup)
++        root = Path(self.temp.name)
++        loader = importlib.machinery.SourceFileLoader("managed_ssh_test", str(SOURCE))
++        spec = importlib.util.spec_from_loader(loader.name, loader)
++        self.module = importlib.util.module_from_spec(spec)
++        loader.exec_module(self.module)
++        m = self.module
++        m.BASE = root / "state"; m.RUN = root / "run"; m.SHARE = root / "share"
++        m.CMDLINE = root / "cmdline"; m.PENDING = root / "pending"; m.ROOT = root / "system"
++        m.SYSTEMCTL = "/test-systemctl"
++        m.SHARE.mkdir(mode=0o700)
++        m.CMDLINE.write_text("tryomarchy.ssh_access=1 tryomarchy.managed_ssh=1\n")
++        self.manifest = {"schemaVersion": 1, "vmID": str(uuid.uuid4()), "sessionToken": str(uuid.uuid4()), "publicKeys": []}
++        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "fixture", "-f", str(m.SHARE / "host_ed25519")], check=True)
++        key = m.public_key((m.SHARE / "host_ed25519.pub").read_text().strip())
++        self.manifest["publicKeys"] = [key]
++        self.write_manifest()
++        self.commands = []
++        run = subprocess.run
++        def execute(args, **kwargs):
++            if args[0] == "/usr/bin/ssh-keygen":
++                return run(args, **kwargs)
++            self.commands.append(args)
++            return subprocess.CompletedProcess(args, 0, stdout=b"", stderr=b"")
++        self.addCleanup(mock.patch.stopall)
++        mock.patch.object(m.subprocess, "run", side_effect=execute).start()
++        mock.patch.dict(os.environ, {"TRY_OMARCHY_MANAGED_SHARE": str(m.SHARE)}).start()
++        mock.patch.object(m.pwd, "getpwall", return_value=[SimpleNamespace(pw_name="owner", pw_uid=1000, pw_shell="/bin/bash")]).start()
++
++    def write_manifest(self):
++        (self.module.SHARE / "manifest.json").write_text(json.dumps(self.manifest))
++
++    def test_waits_for_normal_owner_setup_without_starting_ssh(self):
++        m = self.module
++        m.PENDING.touch()
++        m.main()
++        status = json.loads((m.RUN / "status.json").read_text())
++        self.assertEqual(status["state"], "waiting-owner")
++        self.assertFalse(any("sshd.service" in x for x in self.commands))
++
++    def test_enrolls_only_managed_key_files_and_uses_vendor_service(self):
++        m = self.module
++        m.main()
++        keys = (m.BASE / "authorized/owner").read_text()
++        self.assertEqual(keys.strip(), self.manifest["publicKeys"][0])
++        config = (m.RUN / "sshd_config").read_text()
++        self.assertIn("AuthorizedKeysFile .ssh/authorized_keys ", config)
++        self.assertIn("PermitRootLogin no", config)
++        self.assertIn("PasswordAuthentication no", config)
++        self.assertIn("AllowUsers owner", config)
++        self.assertTrue(any(x[1:] == ["restart", "sshd.service"] for x in self.commands))
++        self.assertEqual(json.loads((m.RUN / "status.json").read_text())["owner"], "owner")
++        self.assertEqual((m.BASE / "host_ed25519").stat().st_mode & 0o777, 0o600)
++        self.assertEqual(m.RUN.stat().st_mode & 0o777, 0o755)
++
++    def test_restart_preserves_host_identity_and_updates_only_session_status(self):
++        m = self.module; m.main()
++        before = hashlib.sha256((m.BASE / "host_ed25519").read_bytes()).hexdigest()
++        self.manifest["sessionToken"] = str(uuid.uuid4()); self.write_manifest(); m.main()
++        self.assertEqual(hashlib.sha256((m.BASE / "host_ed25519").read_bytes()).hexdigest(), before)
++        self.assertEqual(json.loads((m.RUN / "status.json").read_text())["sessionToken"], self.manifest["sessionToken"])
++
++    def test_vm_identity_changes_are_refused_without_overwriting_keys(self):
++        m = self.module; m.main()
++        before = hashlib.sha256((m.BASE / "host_ed25519").read_bytes()).hexdigest()
++        self.manifest["vmID"] = str(uuid.uuid4()); self.write_manifest()
++        with self.assertRaises(ValueError): m.main()
++        self.assertEqual(hashlib.sha256((m.BASE / "host_ed25519").read_bytes()).hexdigest(), before)
++
++    def test_newer_schema_options_and_private_material_are_refused(self):
++        m = self.module
++        for key in ("command=bad ssh-ed25519 AAAA", "-----BEGIN OPENSSH PRIVATE KEY-----", "ssh-ed25519 !bad"):
++            with self.assertRaises(ValueError): m.public_key(key)
++        self.manifest["schemaVersion"] = 2; self.write_manifest()
++        with self.assertRaises(ValueError): m.main()
++        self.assertFalse((m.BASE / "host_ed25519").exists())
++
++    def test_no_managed_token_is_a_noop(self):
++        m = self.module; m.CMDLINE.write_text("tryomarchy.ssh_access=1\n"); m.main()
++        self.assertFalse(m.BASE.exists())
++        self.assertFalse(self.commands)
++
++
++if __name__ == "__main__": unittest.main()
+diff --git a/guest/package/try-omarchy/PKGBUILD b/guest/package/try-omarchy/PKGBUILD
+index 8426f5d..200ac7c 100644
+--- a/guest/package/try-omarchy/PKGBUILD
++++ b/guest/package/try-omarchy/PKGBUILD
+@@ -8,7 +8,7 @@
+ 
+ pkgname=try-omarchy
+ pkgver=0.1.0
+-pkgrel=36
++pkgrel=37
+ pkgdesc='Mac host integration for Omarchy running in Try Omarchy'
+ arch=('aarch64')
+ url='https://github.com/omacom/try-omarchy'
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset b/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
+index 55119a0..8e850ee 100644
+--- a/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
+@@ -8,3 +8,4 @@ enable try-omarchy-locale.service
+ enable try-omarchy-timezone.service
+ enable try-omarchy-clock-recovery.timer
+ enable try-omarchy-grow-root.service
++enable try-omarchy-managed-ssh.timer
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service
+new file mode 100644
+index 0000000..7f75637
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service
+@@ -0,0 +1,9 @@
++[Unit]
++Description=Enroll manager-owned SSH credentials for this guest
++After=try-omarchy-host-config.service try-omarchy-package-install.service try-omarchy-ssh-access.service
++ConditionPathExists=/run/try-omarchy/managed-ssh.enabled
++
++[Service]
++Type=oneshot
++ExecStart=/usr/lib/try-omarchy/managed-ssh
++TimeoutStartSec=30
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer
+new file mode 100644
+index 0000000..092a0bb
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer
+@@ -0,0 +1,12 @@
++[Unit]
++Description=Wait for the owner account before enrolling managed SSH
++After=try-omarchy-host-config.service try-omarchy-package-install.service
++ConditionPathExists=/run/try-omarchy/managed-ssh.enabled
++
++[Timer]
++OnBootSec=2s
++OnUnitInactiveSec=5s
++AccuracySec=1s
++
++[Install]
++WantedBy=timers.target
+diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status b/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status
+index f74190d..5641916 100755
+--- a/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status
++++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status
+@@ -51,6 +51,12 @@ def report():
+         "channel": channel(),
+         "kernel": {"running": os.uname().release, "installed": package_version("linux-omarchy")},
+     }
++    try:
++        managed = json.loads(Path("/run/try-omarchy/managed-ssh/status.json").read_text())
++        if len(json.dumps(managed)) <= 1024:
++            value["managedSSH"] = managed
++    except (OSError, ValueError):
++        pass
+     try:
+         value["install"] = json.loads(INSTALL_STATE.read_text())
+     except (OSError, ValueError):
+diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config b/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config
+index 1ee48ee..7a7e2e1 100755
+--- a/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config
++++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config
+@@ -67,3 +67,11 @@ if ((${#panels[@]})); then
+ else
+   rm -f "$cutouts"
+ fi
++
++managed=${TRY_OMARCHY_MANAGED_ENABLED_OUTPUT:-${output%/*}/managed-ssh.enabled}
++if [[ " $value " == *" tryomarchy.managed_ssh=1 "* ]]; then
++  : >"$managed"
++  chmod 0644 "$managed"
++else
++  rm -f "$managed"
++fi
+diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh
+new file mode 100755
+index 0000000..7c299d1
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh
+@@ -0,0 +1,165 @@
++#!/usr/bin/python3 -I
++"""Enroll managed SSH through a per-VM read-only host provisioning share."""
++import json
++import os
++from pathlib import Path
++import pwd
++import re
++import stat
++import subprocess
++import tempfile
++import uuid
++
++BASE = Path(os.environ.get("TRY_OMARCHY_MANAGED_STATE", "/var/lib/try-omarchy/managed-ssh"))
++RUN = Path(os.environ.get("TRY_OMARCHY_MANAGED_RUN", "/run/try-omarchy/managed-ssh"))
++SHARE = Path(os.environ.get("TRY_OMARCHY_MANAGED_SHARE", "/run/try-omarchy/managed-ssh-share"))
++CMDLINE = Path(os.environ.get("TRY_OMARCHY_HOST_CMDLINE", "/run/try-omarchy/cmdline"))
++PENDING = Path(os.environ.get("TRY_OMARCHY_OWNER_PENDING", "/var/lib/omarchy/provisioning/pending"))
++SYSTEMCTL = os.environ.get("TRY_OMARCHY_SYSTEMCTL", "/usr/bin/systemctl")
++ROOT = Path(os.environ.get("TRY_OMARCHY_SYSTEM_ROOT", "/"))
++
++
++def private_directory(path, mode=0o700):
++    path.mkdir(mode=mode, parents=True, exist_ok=True)
++    s = path.lstat()
++    if not stat.S_ISDIR(s.st_mode) or s.st_uid != os.geteuid() or s.st_mode & 0o022:
++        raise ValueError("unsafe directory")
++
++
++def read(path, limit=16384):
++    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
++    try:
++        s = os.fstat(fd)
++        if not stat.S_ISREG(s.st_mode) or s.st_nlink != 1 or s.st_size > limit:
++            raise ValueError("unsafe provisioning file")
++        with os.fdopen(fd, "rb", closefd=False) as stream:
++            data = stream.read(limit + 1)
++        if len(data) > limit:
++            raise ValueError("oversized provisioning file")
++        return data
++    finally:
++        os.close(fd)
++
++
++def write(path, data, mode=0o600):
++    if path.exists() and read(path) == data:
++        return
++    fd, temporary = tempfile.mkstemp(prefix=".managed-ssh-", dir=path.parent)
++    try:
++        os.fchmod(fd, mode)
++        with os.fdopen(fd, "wb", closefd=False) as stream:
++            stream.write(data)
++            stream.flush()
++            os.fsync(fd)
++        os.replace(temporary, path)
++    finally:
++        os.close(fd)
++        if os.path.exists(temporary):
++            os.unlink(temporary)
++
++
++def public_key(value):
++    import base64
++    if not isinstance(value, str) or len(value) > 16384 or "\n" in value or "\r" in value:
++        raise ValueError("invalid public key")
++    fields = value.split()
++    if len(fields) < 2 or fields[0] not in ("ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521", "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com"):
++        raise ValueError("unsupported public key")
++    blob = base64.b64decode(fields[1], validate=True)
++    if len(blob) < 16 or int.from_bytes(blob[:4], "big") != len(fields[0]) or blob[4:4 + len(fields[0])].decode() != fields[0]:
++        raise ValueError("invalid public key")
++    return " ".join(fields[:2])
++
++
++def status(manifest, state, owner=None):
++    value = {"schemaVersion": 1, "vmID": manifest["vmID"], "sessionToken": manifest["sessionToken"], "state": state}
++    if owner:
++        value["owner"] = owner
++    write(RUN / "status.json", (json.dumps(value, separators=(",", ":")) + "\n").encode(), 0o644)
++
++
++def owner_account(binding):
++    candidates = [p for p in pwd.getpwall() if 1000 <= p.pw_uid < 60000 and re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", p.pw_name) and p.pw_shell not in ("/bin/false", "/usr/bin/false", "/usr/sbin/nologin", "/usr/bin/nologin")]
++    if binding.get("owner"):
++        candidates = [p for p in candidates if p.pw_name == binding["owner"]]
++    return candidates[0] if len(candidates) == 1 else None
++
++
++def main():
++    if "tryomarchy.managed_ssh=1" not in CMDLINE.read_text().split():
++        return
++    private_directory(RUN, 0o755)
++    if "TRY_OMARCHY_MANAGED_SHARE" not in os.environ:
++        private_directory(SHARE)
++        if not os.path.ismount(SHARE):
++            subprocess.run(["/usr/bin/mount", "-t", "9p", "-o", "trans=virtio,version=9p2000.L,ro,access=any", "tryomarchy-managed-ssh", str(SHARE)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
++    manifest = json.loads(read(SHARE / "manifest.json"))
++    if set(manifest) != {"schemaVersion", "vmID", "sessionToken", "publicKeys"} or type(manifest["schemaVersion"]) is not int or manifest["schemaVersion"] != 1:
++        raise ValueError("unknown provisioning schema")
++    uuid.UUID(manifest["vmID"]); uuid.UUID(manifest["sessionToken"])
++    if not isinstance(manifest["publicKeys"], list) or not 1 <= len(manifest["publicKeys"]) <= 2:
++        raise ValueError("invalid authorized key list")
++    keys = [public_key(k) for k in manifest["publicKeys"]]
++    private_directory(BASE, 0o755)
++    identity_path = BASE / "identity.json"
++    binding = json.loads(read(identity_path)) if identity_path.exists() else {"vmID": manifest["vmID"]}
++    if binding.get("vmID") != manifest["vmID"]:
++        raise ValueError("VM identity changed")
++    host_key = BASE / "host_ed25519"
++    offered = read(SHARE / "host_ed25519", 8192)
++    expected = public_key(read(SHARE / "host_ed25519.pub").decode().strip())
++    if host_key.exists():
++        result = subprocess.run(["/usr/bin/ssh-keygen", "-y", "-P", "", "-f", str(host_key)], check=True, capture_output=True, timeout=5)
++        if result.stdout.decode().strip().split()[:2] != expected.split():
++            raise ValueError("SSH host identity changed")
++    else:
++        write(host_key, offered)
++        result = subprocess.run(["/usr/bin/ssh-keygen", "-y", "-P", "", "-f", str(host_key)], check=True, capture_output=True, timeout=5)
++        if result.stdout.decode().strip().split()[:2] != expected.split():
++            raise ValueError("SSH host identity mismatch")
++    write(identity_path, (json.dumps(binding) + "\n").encode())
++    owner = None if PENDING.exists() else owner_account(binding)
++    if owner is None:
++        status(manifest, "waiting-owner")
++        return
++    binding["owner"] = owner.pw_name
++    write(identity_path, (json.dumps(binding) + "\n").encode())
++    authorized = BASE / "authorized"
++    private_directory(authorized, 0o755)
++    write(authorized / owner.pw_name, ("\n".join(keys) + "\n").encode(), 0o644)
++    config = f"""Port 22
++HostKey {host_key}
++AuthorizedKeysFile .ssh/authorized_keys {authorized}/%u
++PubkeyAuthentication yes
++PasswordAuthentication no
++KbdInteractiveAuthentication no
++PermitRootLogin no
++UsePAM yes
++AllowUsers {owner.pw_name}
++Subsystem sftp internal-sftp
++"""
++    write(RUN / "sshd_config", config.encode())
++    override = ROOT / "run/systemd/system/sshd.service.d"
++    private_directory(override, 0o755)
++    unit = f"[Service]\nExecStart=\nExecStart=/usr/bin/sshd -D -f {RUN}/sshd_config\n"
++    previous = read(override / "90-try-omarchy-managed.conf") if (override / "90-try-omarchy-managed.conf").exists() else b""
++    write(override / "90-try-omarchy-managed.conf", unit.encode(), 0o644)
++    subprocess.run(["/usr/bin/sshd", "-t", "-f", str(RUN / "sshd_config")], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
++    if previous != unit.encode():
++        subprocess.run([SYSTEMCTL, "daemon-reload"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
++        subprocess.run([SYSTEMCTL, "restart", "sshd.service"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
++    else:
++        subprocess.run([SYSTEMCTL, "start", "sshd.service"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
++    status(manifest, "configured", owner.pw_name)
++
++
++if __name__ == "__main__":
++    try:
++        main()
++    except Exception:
++        try:
++            manifest = json.loads(read(SHARE / "manifest.json"))
++            status(manifest, "error")
++        except Exception:
++            pass
++        raise SystemExit("try-omarchy-managed-ssh: provisioning failed; identities were preserved")
+diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh-identity b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh-identity
+new file mode 100755
+index 0000000..12bbba4
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh-identity
+@@ -0,0 +1,8 @@
++#!/usr/bin/python3 -I
++import json
++import os
++from pathlib import Path
++import pwd
++
++status = json.loads(Path("/run/try-omarchy/managed-ssh/status.json").read_text())
++print(json.dumps({"vmID": status["vmID"], "sessionToken": status["sessionToken"], "user": pwd.getpwuid(os.getuid()).pw_name, "uid": os.getuid()}, separators=(",", ":")))
+diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/ssh-access b/guest/package/try-omarchy/files/usr/lib/try-omarchy/ssh-access
+index b788d81..2cdc4cd 100755
+--- a/guest/package/try-omarchy/files/usr/lib/try-omarchy/ssh-access
++++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/ssh-access
+@@ -31,4 +31,7 @@ if command -v "$ufw" >/dev/null; then
+   fi
+ fi
+ ((enabled)) || exit 0
++for option in ${options[@]+"${options[@]}"}; do
++  [[ $option != tryomarchy.managed_ssh=1 ]] || exit 0
++done
+ exec $systemctl start --no-block sshd.service
+diff --git a/guest/package/try-omarchy/try-omarchy.install b/guest/package/try-omarchy/try-omarchy.install
+index 3b5b72d..72ca3cf 100644
+--- a/guest/package/try-omarchy/try-omarchy.install
++++ b/guest/package/try-omarchy/try-omarchy.install
+@@ -2,7 +2,7 @@
+ # administrator's choices. systemd and udev reload through their own pacman hooks.
+ _units='try-omarchy-host-config.service try-omarchy-grow-root.service try-omarchy-ssh-access.service try-omarchy-guest-status.service
+ try-omarchy-package-install.service omarchy-native-battery-bridge.service omarchy-native-mac-share.service
+-try-omarchy-locale.service try-omarchy-timezone.service try-omarchy-clock-recovery.timer'
++try-omarchy-locale.service try-omarchy-timezone.service try-omarchy-clock-recovery.timer try-omarchy-managed-ssh.timer'
+ _user_units='omarchy-native-audio-bridge.service omarchy-native-camera-bridge.service
+ omarchy-native-clipboard-bridge.service omarchy-native-mac-share-link.service try-omarchy-session.service'
+ 
+@@ -33,6 +33,7 @@ post_install() {
+   systemctl preset $_units >/dev/null 2>&1 || true
+   _enable_ntp
+   systemctl --global preset $_user_units >/dev/null 2>&1 || true
++  systemctl start --no-block try-omarchy-managed-ssh.timer >/dev/null 2>&1 || true
+   _reload_logind
+ }
+ 
+@@ -66,5 +67,14 @@ post_upgrade() {
+   if [ "$(vercmp "$2" 0.1.0-28)" -lt 0 ]; then
+     systemctl try-restart try-omarchy-host-config.service >/dev/null 2>&1 || true
+   fi
++  if [ "$(vercmp "$2" 0.1.0-37)" -lt 0 ]; then
++    systemctl preset try-omarchy-managed-ssh.timer >/dev/null 2>&1 || true
++    cmdline=${TRY_OMARCHY_HOST_CMDLINE:-/run/try-omarchy/cmdline}
++    if [ -r "$cmdline" ] && grep -Eq '(^|[[:space:]])tryomarchy[.]managed_ssh=1($|[[:space:]])' "$cmdline"; then
++      systemctl try-restart try-omarchy-host-config.service >/dev/null 2>&1 || true
++      systemctl stop sshd.service >/dev/null 2>&1 || true
++      systemctl start --no-block try-omarchy-managed-ssh.timer >/dev/null 2>&1 || true
++    fi
++  fi
+   _reload_logind
+ }
+diff --git a/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift b/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift
+new file mode 100644
+index 0000000..5d5c554
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift
+@@ -0,0 +1,55 @@
++import Darwin
++import Foundation
++
++struct ManagedSSHLaunch {
++    struct Manifest: Decodable { let schemaVersion: Int; let vmID: UUID; let sessionToken: UUID; let hostPort: Int }
++    static let environmentKey = "OMARCHY_MANAGED_SSH_ROOT"
++
++    static func environment(root: URL, mappings: [PortForwardMapping], base: [String: String]) throws -> [String: String] {
++        var environment = base
++        environment.removeValue(forKey: environmentKey)
++        let manifest = root.appendingPathComponent(".omarchy-managed-ssh.json")
++        var info = stat()
++        guard lstat(manifest.path, &info) == 0 else {
++            if errno == ENOENT { return environment }
++            throw HelperError.io("Cannot inspect managed SSH configuration")
++        }
++        try directory(root)
++        let value = try JSONDecoder().decode(Manifest.self, from: read(manifest))
++        guard value.schemaVersion == 1, UUID(uuidString: root.lastPathComponent) == value.vmID,
++              (1024...65535).contains(value.hostPort),
++              mappings == [PortForwardMapping(hostPort: value.hostPort, guestPort: 22, protocol: .tcp)] else {
++            throw HelperError.io("Managed SSH requires its registered loopback forwarding and UUID root")
++        }
++        let credentials = root.appendingPathComponent(".manager-ssh")
++        let bootstrap = credentials.appendingPathComponent("bootstrap")
++        try directory(credentials); try directory(bootstrap)
++        for name in ["manifest.json", "host_ed25519", "host_ed25519.pub"] { _ = try read(bootstrap.appendingPathComponent(name)) }
++        struct Bootstrap: Decodable { let schemaVersion: Int; let vmID: UUID; let sessionToken: UUID; let publicKeys: [String] }
++        let provision = try JSONDecoder().decode(Bootstrap.self, from: read(bootstrap.appendingPathComponent("manifest.json")))
++        guard provision.schemaVersion == 1, provision.vmID == value.vmID, provision.sessionToken == value.sessionToken,
++              (1...2).contains(provision.publicKeys.count), provision.publicKeys.allSatisfy({ $0.count <= 16384 && !$0.contains(where: \.isNewline) }) else {
++            throw HelperError.io("Managed SSH provisioning identity does not match this launch")
++        }
++        environment[environmentKey] = bootstrap.path
++        return environment
++    }
++
++    private static func directory(_ url: URL) throws {
++        var info = stat()
++        guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid(), info.st_mode & 0o7777 == 0o700 else {
++            throw HelperError.io("Managed SSH requires private owned directories")
++        }
++    }
++    private static func read(_ url: URL) throws -> Data {
++        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
++        guard fd >= 0 else { throw HelperError.io("Cannot read managed SSH provisioning") }
++        defer { close(fd) }
++        var info = stat()
++        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(), info.st_nlink == 1,
++              info.st_mode & 0o7777 == 0o600, info.st_size <= 16384 else { throw HelperError.io("Unsafe managed SSH provisioning file") }
++        let data = try FileHandle(fileDescriptor: fd, closeOnDealloc: false).read(upToCount: 16385) ?? Data()
++        guard data.count <= 16384 else { throw HelperError.io("Oversized managed SSH provisioning") }
++        return data
++    }
++}
 diff --git a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
 index 39b07ba..127de5a 100644
 --- a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
@@ -268,8 +802,40 @@ index 39b07ba..127de5a 100644
          }
      }
  }
+diff --git a/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift b/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift
+index 273876f..c89c7e0 100644
+--- a/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift
++++ b/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift
+@@ -22,6 +22,14 @@ struct ShellGuestReport: Codable, Equatable {
+     let channel: String?
+     let kernel: Kernel?
+     let install: Install?
++    struct ManagedSSH: Codable, Equatable {
++        let schemaVersion: Int
++        let vmID: UUID
++        let sessionToken: UUID
++        let state: String
++        let owner: String?
++    }
++    var managedSSH: ManagedSSH? = nil
+ 
+     /// The newest guest protocol this app understands. A guest that reports a
+     /// newer one still works; the app only reads the fields it knows.
+@@ -37,6 +45,12 @@ struct ShellGuestReport: Codable, Equatable {
+               texts.allSatisfy({ $0.count <= 512 && !$0.contains(where: { $0.isNewline }) }) else {
+             throw HelperError.io("invalid guest status")
+         }
++        if let ssh = value.managedSSH {
++            guard ssh.schemaVersion == 1, ["waiting-owner", "configured", "error"].contains(ssh.state),
++                  ssh.owner == nil || (ssh.owner != "root" && ssh.owner!.range(of: "^[a-z_][a-z0-9_-]{0,31}$", options: .regularExpression) != nil) else {
++                throw HelperError.io("invalid managed SSH guest status")
++            }
++        }
+         return value
+     }
+ }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..c44adf4 100644
+index c959f32..0fb2f76 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -278,7 +844,32 @@ index c959f32..c44adf4 100644
  import Darwin
  import Foundation
  import TryOmarchyKitClient
-@@ -154,6 +155,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -70,7 +71,7 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+ 
+     private func resolveSettings(bridgedNetwork: () -> BridgedNetworkAvailability)
+         -> Result<VMRunLaunchSettings, VMRunError> {
+-        VMRunLaunchSettings.make(
++        let result = VMRunLaunchSettings.make(
+             baseEnvironment: launchEnvironment(),
+             configuration: configuration,
+             storageLocation: storageLocationStore.load(),
+@@ -79,6 +80,15 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+             bridgedNetwork: bridgedNetwork,
+             metrics: QEMUGPUStorageSpaceEstimate.bundledMetrics(bundle: bundle)
+         )
++        switch result {
++        case .failure: return result
++        case .success(let settings):
++            do {
++                let environment = try ManagedSSHLaunch.environment(root: settings.stateRoot, mappings: settings.portForwardMappings, base: settings.environment)
++                return .success(VMRunLaunchSettings(environment: environment, stateRoot: settings.stateRoot,
++                    portForwardMappings: settings.portForwardMappings, bridgedNetwork: settings.bridgedNetwork, notice: settings.notice))
++            } catch { return .failure(VMRunError(code: .storageUnavailable, message: "Managed SSH provisioning is invalid or changed. Its files were preserved.")) }
++        }
+     }
+ 
+     private func launch(networkLayout: NetworkServiceLayout, bridgedNetwork availability: BridgedNetworkAvailability?) {
+@@ -154,6 +164,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
          environment[VMRunBridges.environmentKey] = VMRunBridges.names(configuration.bridges)
          environment[ProductName.environmentKey] = configuration.productName
          environment[ProductName.iconEnvironmentKey] = configuration.iconPath
@@ -289,7 +880,7 @@ index c959f32..c44adf4 100644
          return environment
      }
  
-@@ -407,3 +412,30 @@ enum VMRunFailure {
+@@ -407,3 +421,30 @@ enum VMRunFailure {
          return VMRunError(code: code, message: message)
      }
  }
@@ -356,6 +947,60 @@ index 0000000..b2a45c9
 +        #expect(id.hasPrefix("dev.tryomarchy.guest."))
 +        #expect(!id.contains("/"))
 +        #expect(id == GuestApplicationIdentity.identifier(for: a.appendingPathComponent("child/..")))
++    }
++}
+diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedSSHLaunchTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedSSHLaunchTests.swift
+new file mode 100644
+index 0000000..c01e0e6
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/ManagedSSHLaunchTests.swift
+@@ -0,0 +1,48 @@
++import Darwin
++import Foundation
++import Testing
++@testable import OmarchyVMHelper
++
++@Suite("Managed SSH launch boundary")
++struct ManagedSSHLaunchTests {
++    @Test("public environment cannot supply a provisioning share")
++    func ignoresEnvironment() throws {
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        #expect(try ManagedSSHLaunch.environment(root: root, mappings: [], base: [ManagedSSHLaunch.environmentKey: "/unsafe"]) == [:])
++    }
++    @Test("private UUID metadata requires the exact SSH mapping and matching session")
++    func validatesProvisioning() throws {
++        let id = UUID(), session = UUID()
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(id.uuidString)
++        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
++        defer { try? FileManager.default.removeItem(at: root) }
++        let bootstrap = root.appendingPathComponent(".manager-ssh/bootstrap")
++        try FileManager.default.createDirectory(at: bootstrap, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
++        chmod(root.appendingPathComponent(".manager-ssh").path, 0o700)
++        func write(_ value: Any, _ path: URL) throws {
++            try JSONSerialization.data(withJSONObject: value).write(to: path)
++            chmod(path.path, 0o600)
++        }
++        try write(["schemaVersion": 1, "vmID": id.uuidString, "sessionToken": session.uuidString, "hostPort": 2223], root.appendingPathComponent(".omarchy-managed-ssh.json"))
++        func manifest(_ token: UUID) throws {
++            try write(["schemaVersion": 1, "vmID": id.uuidString, "sessionToken": token.uuidString, "publicKeys": ["synthetic-public-key"]], bootstrap.appendingPathComponent("manifest.json"))
++        }
++        try manifest(session)
++        for name in ["host_ed25519", "host_ed25519.pub"] {
++            let path = bootstrap.appendingPathComponent(name)
++            try Data("synthetic".utf8).write(to: path); chmod(path.path, 0o600)
++        }
++        let mappings = [PortForwardMapping(hostPort: 2223, guestPort: 22, protocol: .tcp)]
++        #expect(try ManagedSSHLaunch.environment(root: root, mappings: mappings, base: [:])[ManagedSSHLaunch.environmentKey] == bootstrap.path)
++        #expect(throws: (any Error).self) { try ManagedSSHLaunch.environment(root: root, mappings: [], base: [:]) }
++        try manifest(UUID())
++        #expect(throws: (any Error).self) { try ManagedSSHLaunch.environment(root: root, mappings: mappings, base: [:]) }
++        try manifest(session); chmod(bootstrap.appendingPathComponent("host_ed25519").path, 0o644)
++        #expect(throws: (any Error).self) { try ManagedSSHLaunch.environment(root: root, mappings: mappings, base: [:]) }
++    }
++    @Test("untrusted guest SSH status rejects unknown versions and privileged owners", arguments: ["root", "owner;command", "owner\\nnext"])
++    func rejectsGuestOwners(_ owner: String) throws {
++        let object: [String: Any] = ["protocol": 1, "managedSSH": ["schemaVersion": 1, "vmID": UUID().uuidString, "sessionToken": UUID().uuidString, "state": "configured", "owner": owner]]
++        #expect(throws: (any Error).self) { try ShellGuestReport.decode(JSONSerialization.data(withJSONObject: object)) }
 +    }
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
@@ -675,10 +1320,22 @@ index b496be7..d93a979 100755
          builder = BUILDER.read_text(encoding="utf-8")
          expected = re.search(r"^identity_patch_sha256=([a-f0-9]{64})$", builder, re.M)
 diff --git a/macos/run-qemu-gpu.sh b/macos/run-qemu-gpu.sh
-index cf3bb8f..274fad7 100755
+index cf3bb8f..ec983fd 100755
 --- a/macos/run-qemu-gpu.sh
 +++ b/macos/run-qemu-gpu.sh
-@@ -595,7 +595,11 @@ make_product_app() { # app
+@@ -290,6 +290,11 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
+   host_options+=" tryomarchy.ssh_access=1 tryomarchy.ssh_from=any"
+ fi
+ [[ $QEMU_NETWORK_MODE == nat ]] || port_forwarding_summary='inactive in bridged mode'
++managed_ssh=${OMARCHY_MANAGED_SSH_ROOT:-}
++if [[ -n $managed_ssh ]]; then
++  [[ $QEMU_NETWORK_MODE == nat && $QEMU_PORT_FORWARDING_ENABLES_SSH == 1 && -d $managed_ssh && ! -L $managed_ssh ]] || fail "managed SSH requires NAT and its validated provisioning share"
++  host_options+=" tryomarchy.managed_ssh=1"
++fi
+ 
+ keyboard=$("$native_bridge" --host-keyboard-geometry) || fail "cannot detect the Mac keyboard geometry"
+ case $keyboard in ansi | iso | jis) host_options+=" tryomarchy.keyboard=$keyboard" ;; *) fail "invalid keyboard geometry" ;; esac
+@@ -595,7 +600,11 @@ make_product_app() { # app
      /usr/bin/plutil -insert CFBundleExecutable -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleName -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleDisplayName -string "$product_name" "$plist" &&
@@ -691,3 +1348,29 @@ index cf3bb8f..274fad7 100755
  }
  qemu_exec=$qemu_bin
  case $product_name in
+@@ -758,6 +767,13 @@ if bridge_enabled settings; then
+   )
+ fi
+ 
++if [[ -n $managed_ssh ]]; then
++  qemu_args+=(
++    -fsdev "local,id=omarchy-managed-ssh,path=${managed_ssh//,/,,},security_model=none,readonly=on"
++    -device 'virtio-9p-pci,fsdev=omarchy-managed-ssh,mount_tag=tryomarchy-managed-ssh,romfile='
++  )
++fi
++
+ if [[ -n $package_to_install ]]; then
+   qemu_args+=(
+     -smbios "type=11,value=$(credential tryomarchy.package "${package_to_install##*/}")"
+diff --git a/manual/files-network-devices.md b/manual/files-network-devices.md
+index dd68ab0..434a5c1 100644
+--- a/manual/files-network-devices.md
++++ b/manual/files-network-devices.md
+@@ -48,3 +48,7 @@ Choose one USB device in the launcher's **Sharing** pane, and Omarchy gets it at
+ - **Hubs can't be passed through.**
+ - **The device is tied to its port.** If you move it to another port, choose it again.
+ - **Keep it plugged in while Omarchy runs.** Unplugging it can freeze the window for up to 30 seconds.
++
++## SSH in an embedding manager
++
++Omarchy VM Manager offers **Enable SSH from this Mac** when creating a guest. Once normal owner-account setup finishes, its SSH page verifies the connection and offers **Copy SSH Command**. Each guest has a separate localhost port and pinned identity. An optional public key selected during creation can also log in; the manager never copies your private key. A host-key mismatch stops verification and requires reviewed recovery. The normal Try Omarchy app's manual SSH setup above is unchanged.

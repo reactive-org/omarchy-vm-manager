@@ -4,10 +4,13 @@ import TryOmarchyKitClient
 public struct VMStartRequest: Sendable {
     public let profile: VMProfile
     public let storageRoot: URL
+    public let sessionID: UUID
+    public let startedAt: Date
 
-    public init(profile: VMProfile, storageRoot: URL) {
+    public init(profile: VMProfile, storageRoot: URL, sessionID: UUID = UUID(), startedAt: Date = Date()) {
         self.profile = profile
         self.storageRoot = storageRoot
+        self.sessionID = sessionID; self.startedAt = startedAt
     }
 }
 
@@ -66,7 +69,11 @@ public struct TryOmarchyRuntime: VMRuntime {
         }
         if let storage = managedStorage, let admission = pocAdmission {
             try admission.validateKit()
-            guard request.storageRoot.standardizedFileURL == storage.root(for: request.profile).standardizedFileURL else {
+            if request.profile.ssh != nil {
+                let provenance = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
+                guard provenance.managedSSHVersion == 1 else { throw VMFailure(code: "unproven-ssh-runtime", message: "Managed SSH requires the exact kit with provisioning capability version 1.") }
+            }
+            guard storage.matchesRoot(request.storageRoot, profile: request.profile) else {
                 throw VMFailure(code: "invalid-storage-root", message: "Only this profile’s manager-owned root may launch.")
             }
             try RegistryStore.validate(request.profile)
@@ -77,7 +84,7 @@ public struct TryOmarchyRuntime: VMRuntime {
             guard let free = TryOmarchyStorage.freeBytes(at: request.storageRoot), free >= required else {
                 throw VMFailure(code: "not-enough-space", message: "Free at least \(ByteCountFormatter.string(fromByteCount: required, countStyle: .file)) before starting this VM.")
             }
-            _ = try storage.prepare(request.profile)
+            _ = try storage.prepare(request.profile, sessionID: request.sessionID)
         } else { try pocAdmission?.admit(request) }
         let configuration = try Self.configuration(for: request)
         let client = VMRunClient(kit: kit)

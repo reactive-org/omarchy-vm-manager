@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-10-31T14:32:09+11:00",
+  "authorDate": "2026-10-31T15:11:22+11:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-10-31T14:32:09+11:00",
-  "subject": "Route focused clipboards and give explicit guest roots stable application identities",
-  "commit": "449cc3fad78ffc2b3b60a20c8d6e0aff396f41c1",
-  "patchSHA256": "135989ac3c6a05cc31ed267037c51dd36e3ff48f516a03693aaaa0bcb41b7654"
+  "committerDate": "2026-10-31T15:11:22+11:00",
+  "subject": "Give managed guests isolated SSH enrollment and preserve focused native integrations",
+  "commit": "06a8843b6aa392d29f2d702d3a6a60bef8388910",
+  "patchSHA256": "da2e996ce0f4d90150057646b6a1bb652f7c94a83deb6c96488a11eddf783f77"
 }

@@ -14,3 +14,13 @@ jobs:
         run: make test
       - name: Exact patched upstream suite
         run: make test-upstream
+
+  managed-ssh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Real SSH with synthetic credentials and isolated containers
+        run: make test-ssh

@@ -1,0 +1,10 @@
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE}
+RUN if command -v apt-get >/dev/null; then \
+      apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server python3 passwd && \
+      if [ ! -e /usr/bin/sshd ]; then ln -s /usr/sbin/sshd /usr/bin/sshd; fi && \
+      rm -rf /var/lib/apt/lists/*; \
+    else pacman -S --needed --noconfirm openssh && pacman -Scc --noconfirm; fi
+RUN if getent passwd 1000 >/dev/null; then userdel -r "$(getent passwd 1000 | cut -d: -f1)"; fi && \
+    useradd -m -u 1000 -s /bin/bash -p x owner && mkdir -p /run/sshd
+ENTRYPOINT ["/bin/bash"]

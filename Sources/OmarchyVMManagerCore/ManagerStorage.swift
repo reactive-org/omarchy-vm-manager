@@ -7,11 +7,29 @@ public struct ManagerStorage: Sendable {
     public var directory: URL { applicationSupport.appendingPathComponent("Omarchy VM Manager") }
     public var vms: URL { directory.appendingPathComponent("VMs") }
     public func root(for profile: VMProfile) -> URL { vms.appendingPathComponent(profile.id.uuidString) }
+    func matchesRoot(_ url: URL, profile: VMProfile) -> Bool {
+        guard url.isFileURL, let requested = canonicalPath(url), let expected = canonicalPath(root(for: profile)) else { return false }
+        return requested == expected
+    }
+    private func canonicalPath(_ url: URL) -> String? {
+        var ancestor = url.standardizedFileURL
+        var components: [String] = []
+        while !PrivateFiles.exists(ancestor) {
+            let parent = ancestor.deletingLastPathComponent()
+            guard parent.path != ancestor.path else { return nil }
+            components.insert(ancestor.lastPathComponent, at: 0)
+            ancestor = parent
+        }
+        guard let resolved = realpath(ancestor.path, nil) else { return nil }
+        defer { free(resolved) }
+        return components.reduce(URL(fileURLWithPath: String(cString: resolved))) { $0.appendingPathComponent($1) }.path
+    }
     private struct Marker: Codable { let schemaVersion: Int; let id: UUID }
     private struct Schema: Decodable { let schemaVersion: Int }
+    private struct Forwarding: Decodable { struct Mapping: Decodable { let hostPort: Int; let guestPort: Int; let `protocol`: String }; let schemaVersion: Int; let mappings: [Mapping] }
     private struct Fullscreen: Decodable { let schemaVersion: Int; let isImmersive: Bool; let usesNotch: Bool? }
 
-    public func prepare(_ profile: VMProfile) throws -> URL {
+    public func prepare(_ profile: VMProfile, sessionID: UUID = UUID()) throws -> URL {
         try RegistryStore.validate(profile)
         try PrivateFiles.directory(directory, create: true)
         try PrivateFiles.directory(vms, create: true)
@@ -23,7 +41,9 @@ public struct ManagerStorage: Sendable {
             try PrivateFiles.directory(root)
             try PrivateFiles.write(JSONEncoder().encode(Marker(schemaVersion: 1, id: profile.id)), name: ".omarchy-vm-manager.json", in: root, exclusively: true)
             try PrivateFiles.write(Data("omarchy-qemu-storage-root-v1\n".utf8), name: ".omarchy-qemu-storage", in: root, exclusively: true)
-            let settings: [String: Any] = ["schemaVersion": 1, "settings": Dictionary(uniqueKeysWithValues: POCStorage.inheritedKeys.map { ($0, NSNull()) })]
+            var values: [String: Any] = Dictionary(uniqueKeysWithValues: POCStorage.inheritedKeys.map { ($0, NSNull()) })
+            if let ssh = profile.ssh { values["portForwardingPreferences"] = ["schemaVersion": 1, "mappings": [["hostPort": ssh.hostPort, "guestPort": 22, "protocol": "tcp"]]] }
+            let settings: [String: Any] = ["schemaVersion": 1, "settings": values]
             try PrivateFiles.write(JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys]), name: "settings.json", in: root, exclusively: true)
             created = true
         }
@@ -42,6 +62,11 @@ public struct ManagerStorage: Sendable {
                 settings["settings"] = values
                 try PrivateFiles.write(JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys]), name: "settings.json", in: root)
             }
+        }
+        if profile.ssh != nil {
+            try withLock(profile) { try ManagedSSHStorage(root: root).prepare(profile: profile, sessionID: sessionID, applicationSupport: applicationSupport, newRoot: created) }
+        } else if PrivateFiles.exists(root.appendingPathComponent(ManagedSSHStorage.manifestName)) {
+            throw PrivateFiles.failure("Unexpected managed SSH metadata is present. No existing access was changed.")
         }
         return root
     }
@@ -77,7 +102,16 @@ public struct ManagerStorage: Sendable {
               let values = object["settings"] as? [String: Any], Set(values.keys) == POCStorage.inheritedKeys else {
             throw PrivateFiles.failure("Unknown or damaged VM settings. The file was preserved.")
         }
+        if let ssh = profile.ssh {
+            guard let value = values["portForwardingPreferences"], !(value is NSNull),
+                  let forwarding = try? JSONDecoder().decode(Forwarding.self, from: JSONSerialization.data(withJSONObject: value)),
+                  forwarding.schemaVersion == 1, forwarding.mappings.count == 1,
+                  forwarding.mappings[0].hostPort == ssh.hostPort, forwarding.mappings[0].guestPort == 22, forwarding.mappings[0].protocol == "tcp" else {
+                throw PrivateFiles.failure("The managed SSH forwarding setting changed. It was preserved; this endpoint will not be silently redirected.")
+            }
+        }
         for (key, value) in values where !(value is NSNull) {
+            if key == "portForwardingPreferences", profile.ssh != nil { continue }
             guard key == "fullscreenPreferences", let fullscreen = value as? [String: Any],
                   Set(fullscreen.keys).isSubset(of: ["schemaVersion", "isImmersive", "usesNotch"]),
                   fullscreen["schemaVersion"] as? Int == 1, fullscreen["isImmersive"] is Bool,

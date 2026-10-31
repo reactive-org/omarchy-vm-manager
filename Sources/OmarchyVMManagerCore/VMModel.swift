@@ -10,6 +10,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public let createdAt: Date
     public var immersiveMode: Bool?
     public var settingsFingerprint: String? = nil
+    public var ssh: SSHOptions? = nil
 
     public var isRetainedPOC: Bool { POCProfiles.ids.contains(id) }
 
@@ -79,6 +80,7 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
     public let sessionID: UUID?
     public let lastFailure: VMFailure?
     public let notice: String?
+    public var sshReadiness: SSHReadiness = .disabled
 }
 
 public enum POCProfiles {

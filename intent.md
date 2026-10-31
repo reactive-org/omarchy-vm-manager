@@ -460,7 +460,7 @@ Rules:
 - Never bind to a non-loopback address in the manager. The v1.3 NAT runtime forwards on `127.0.0.1`.
 - Do not use the public `environment:` argument to inject `OMARCHY_QEMU_GPU_PORT_FORWARDS`; upstream documents those variables as development overrides and the default client deliberately cleans them.
 
-### Managed host SSH — required future MVP capability
+### Managed host SSH — next implementation milestone
 
 **DESIGN DECISION — user requirement, 31 October 2026:** new manager-owned guests should become ready for SSH from the host automatically. SSH provisioning must not depend on a working graphical shell, clipboard, Accessibility permission or a manually pasted command. The temporary SSH bootstrap used to investigate Phase 1 is a diagnostic exception, not the product implementation.
 
@@ -473,7 +473,7 @@ Requirements:
 - With no existing public key selected, provision the per-VM manager key automatically and supply a working **Copy SSH Command** using the matching protected host identity. Selecting a personal public key is optional convenience, not a prerequisite for passwordless manager access.
 - Automatically register the guest's initial public host key only after associating it with the expected VM through the trusted per-VM provisioning channel, then pin it for later connections. Ordinary connections should not need a first-use host-key prompt. A changed key requires explicit recovery; do not disable host-key checking. Keep manager-owned known-hosts/configuration separate from the user's global SSH files unless they choose an explicit integration action.
 - Provision a dedicated manager-side SSH client key pair per VM for an intended non-root guest account. Install only its public key through a supported upstream first-boot/guest-integration mechanism. Do not bake shared keys into the factory image, copy another VM's credentials, patch Omarchy-owned files or depend on an embedded terminal.
-- Keep the private credential in an appropriate protected host store, with only a reference in profile metadata. Never request, store or log the guest's password as the SSH bootstrap mechanism. The exact credential-store design remains to be specified before implementation.
+- Keep the private credential in an appropriate protected host store, with only a reference in profile metadata. Never request, store or log the guest's password as the SSH bootstrap mechanism. The private implementation uses per-VM 0700 directories and 0600 files under the owned root, with separate known-hosts/configuration; unattended client keys are not encrypted. See `Docs/ManagedSSH.md`.
 - Use key authentication for the manager's access, an explicitly selected identity and pinned guest SSH host keys. Disable agent forwarding and password fallback for manager-initiated connections. Generate/preserve distinct guest host identities per VM; unexpected changes fail closed and require an explicit recovery action.
 - Allocate a distinct unprivileged `127.0.0.1:<hostPort>` endpoint per managed VM, coordinate it through the port ledger, and verify the actual runtime mapping. Preserve endpoint metadata across ordinary restarts; external conflicts must be actionable rather than silently redirecting to another guest. No LAN or bridged exposure is introduced by this feature.
 - Keep SSH readiness separate from VM lifecycle. `.ready` still indicates the upstream runtime boundary; it does not prove that a guest account, SSH daemon or authorized key is usable. Show provisioning/waiting/ready/failure separately, retaining the client and reservations through `.exited` even when SSH fails.
@@ -714,7 +714,7 @@ Exit criteria:
 
 ### Phase 3A — Automatically SSH-ready guests
 
-Required before private MVP acceptance, after registry/lifecycle and port safeguards exist.
+Required before private MVP acceptance. User authorized this as the next milestone after Phase 2. The implementation adds narrowly scoped SSH port safeguards; full Phase 3 effective-settings/general-port work remains separate. Code and no-VM checks are implemented; real guest exit criteria remain TO PROVE. See `Docs/ManagedSSH.md`.
 
 Deliver:
 

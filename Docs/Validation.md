@@ -52,3 +52,17 @@ The completed real POC run subsequently validated basic concurrent clipboard, ba
 ## Phase 2 follow-up
 
 The persistent native manager now passes 53 Swift and 9 artifact tests. The updated private runtime passes 526 upstream Swift tests plus its broader no-VM suites. App assembly, exact inventories, signatures, compatibility and host preflight pass. Real native UI create/configure/rename/relaunch and a synthetic actual Trash transaction pass, and both retained POC storage trees compare unchanged. See [Phase 2 results and real-guest limitations](Phase2.md). The changed guest app identity has not been validated with a running guest.
+
+## Managed SSH implementation — private build 0.3.0
+
+- `make test`: 66 Swift tests in 12 suites and 9 artifact tests pass. The live-probe test is gated without its explicit container fixture.
+- `make -C /private/tmp/omarchy-managed-ssh-source test`: 529 upstream Swift tests in 102 suites, 92 existing guest tests, 6 new managed-SSH guest tests, and the broader run-mode/shell/compatibility/relocation suites pass.
+- `python3 Scripts/test_managed_ssh.py --source /private/tmp/omarchy-managed-ssh-source --base-image omarchy-manager-ssh-builder --swift-probe`: two Arch containers pass real key authentication, optional-key login, localhost-only bindings, cross-guest rejection, changed-host-key rejection and production Swift readiness verification.
+- `python3 Scripts/test_managed_ssh.py --swift-probe`: the Ubuntu CI container path passes the same checks. Containers are removed afterward.
+- `GUEST_BUILDER_IMAGE=omarchy-manager-ssh-builder make patched-kit`: upstream guest-package build, helper build and `test-kit` pass. Exact reconstructed source `06a8843b6aa392d29f2d702d3a6a60bef8388910`, kit SHA-256 `217a628e5299ebd6696092235c4c2555920ff4388bf9651d35898ae1478a6bfd`, guest package `0.1.0-37`, managed SSH capability 1.
+- `make app verify-app`: private app 0.3.0 builds, exact inventory/signatures/layout/compatibility/preflight pass. Ad-hoc signing only.
+- Native UI: default-on SSH, optional synthetic public-key selection/fingerprint, saved localhost endpoint and stopped-state display pass. Creating the synthetic profile creates no VM root/private key. Removing it removes its staged public key and leaves both retained POCs alone.
+- Fresh-root admission regression: real launch exposed Foundation directory-URL and `/tmp` alias differences before any guest storage was created. Existing-ancestor canonicalization now passes file/directory URL forms and rejects unrelated/non-file roots; the full manager suite and app checks pass after the fix.
+- Retained POC storage matches `.build/phase2/poc-storage-before.json`: complete entry sets, inodes/devices, modes, sizes, modification/change times and marker/settings digests. Personal Try Omarchy remains untouched.
+
+The user approved two fresh disposable real SSH guests on 31 October 2026. Their first-boot, restart, sleep/wake and shutdown checks are in progress. These remain **TO PROVE**, not inferred from the container results. See [managed SSH](ManagedSSH.md).

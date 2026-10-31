@@ -3,7 +3,7 @@ import OmarchyVMManagerCore
 import SwiftUI
 
 private enum Destination: Hashable { case library, guest(UUID), permissions, runtime }
-private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", spaces = "Spaces" }
+private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces" }
 
 struct ManagerView: View {
     @ObservedObject var model: AppModel
@@ -35,7 +35,7 @@ struct ManagerView: View {
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Omarchy VM Manager").font(.caption.bold())
-                    Text("Private build · 0.2.0").font(.caption).foregroundStyle(.secondary)
+                    Text("Private build · 0.3.0").font(.caption).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
             }.navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
         } detail: {
@@ -135,8 +135,9 @@ struct ManagerView: View {
             switch page {
             case .home: guestHome(snapshot)
             case .resources: resources(snapshot)
-            case .network: network
+            case .network: network(snapshot)
             case .startup: startup(snapshot)
+            case .ssh: ssh(snapshot)
             case .spaces: spaces(snapshot)
             }
             if let notice = snapshot.notice { Label(notice, systemImage: "info.circle").font(.callout) }
@@ -209,16 +210,16 @@ struct ManagerView: View {
         }
     }
 
-    private var network: some View {
+    private func network(_ snapshot: VMSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             GroupedPanel {
                 SettingsRow("Network", subtitle: "Shared (NAT) · Uses your Mac’s connection", icon: "network", color: .blue) { Text("NAT").foregroundStyle(.secondary) }
                 Divider().padding(.horizontal, 20)
-                SettingsRow("Port Forwarding", subtitle: "This guest starts without host port forwards.", icon: "arrow.left.arrow.right", color: .indigo) { Text("Off").foregroundStyle(.secondary) }
+                SettingsRow("Port Forwarding", subtitle: snapshot.profile.ssh.map { "SSH · 127.0.0.1:\($0.hostPort) → guest TCP 22" } ?? "This guest starts without host port forwards.", icon: "arrow.left.arrow.right", color: .indigo) { Text(snapshot.profile.ssh == nil ? "Off" : "SSH").foregroundStyle(.secondary) }
                 Divider().padding(.horizontal, 20)
                 SettingsRow("Host Sharing", subtitle: "Shared folders, USB, camera and authentication are disabled.", icon: "folder.fill", color: .cyan) { Text("Off").foregroundStyle(.secondary) }
             }
-            Text("Port forwarding and host sharing are unavailable in this build. SSH setup is not automatic yet.").font(.callout).foregroundStyle(.secondary)
+            Text("Managed SSH uses a guest-specific Mac loopback port. General port forwarding and host sharing remain unavailable.").font(.callout).foregroundStyle(.secondary)
         }
     }
 
@@ -233,6 +234,35 @@ struct ManagerView: View {
                 SettingsRow("Launch at Startup", subtitle: "Guests start only when you choose Launch. Reopening the manager restores the list.", icon: "power", color: .gray) { Text("Manual").foregroundStyle(.secondary) }
             }
             Text("Windowed mode is recommended when assigning guests to existing Mission Control desktops.").font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    private func ssh(_ snapshot: VMSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            GroupedPanel {
+                SettingsRow("SSH from this Mac", subtitle: snapshot.profile.ssh.map { "127.0.0.1:\($0.hostPort) → guest port 22" } ?? "SSH is off for this profile.", icon: "terminal", color: .indigo) {
+                    Text(snapshot.sshReadiness.label).foregroundStyle(.secondary)
+                }
+                if let options = snapshot.profile.ssh {
+                    Divider().padding(.horizontal, 20)
+                    SettingsRow("Login key", subtitle: "An independent managed key is kept on this Mac. Only its public key is enrolled in the guest.", icon: "key.fill", color: .orange) { EmptyView() }
+                    if let fingerprint = options.publicKeyFingerprint {
+                        Divider().padding(.horizontal, 20)
+                        SettingsRow("Your public key", subtitle: fingerprint, icon: "person.badge.key.fill", color: .green) { EmptyView() }
+                    }
+                }
+            }
+            if case .ready(let user, let command) = snapshot.sshReadiness {
+                Text("Authenticated as \(user). The guest’s host identity is pinned.").foregroundStyle(.secondary)
+                Button("Copy SSH Command") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string) }.buttonStyle(.borderedProminent)
+            } else if snapshot.profile.ssh != nil {
+                Text("Complete the guest’s normal owner-account setup. The manager then verifies key-based SSH independently of its desktop and clipboard. Guest host keys are provisioned once and checked on every connection.").foregroundStyle(.secondary)
+                if snapshot.sessionID != nil {
+                    Button("Retry SSH Check") { Task { await model.retrySSH(snapshot.id) } }.disabled(snapshot.state == .stopping)
+                }
+            } else {
+                Text("SSH is enabled by default when creating a new VM. Existing profiles are unchanged; retained POC disks stay protected.").foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -342,6 +372,9 @@ private struct VMEditor: View {
     @State private var clipboard: Bool
     @State private var immersive: Bool
     @State private var saving = false
+    @State private var sshEnabled: Bool
+    @State private var selectedPublicKey: String?
+    @State private var keyError: String?
     init(model: AppModel, profile: VMProfile?, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = saved
         _name = State(initialValue: profile?.name ?? "")
@@ -349,6 +382,7 @@ private struct VMEditor: View {
         _cpus = State(initialValue: profile?.cpus ?? 4)
         _clipboard = State(initialValue: profile?.clipboardEnabled ?? true)
         _immersive = State(initialValue: profile?.immersiveMode ?? false)
+        _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
     }
     private var maximumMemory: Int { max(4, Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) * 3 / 4) }
     var body: some View {
@@ -360,7 +394,22 @@ private struct VMEditor: View {
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
                 Toggle("Clipboard integration", isOn: $clipboard)
                 Toggle("Immersive Mode", isOn: $immersive)
+                Toggle("Enable SSH from this Mac", isOn: $sshEnabled).disabled(profile != nil)
+                if profile == nil { Text("SSH uses a separate localhost port and automatic per-guest keys after account setup.").font(.caption).foregroundStyle(.secondary) }
+                if sshEnabled, profile == nil {
+                    HStack {
+                        Text("Personal public key (optional)")
+                        Spacer()
+                        Button("Choose .pub…") { choosePublicKey() }
+                    }
+                    if let key = selectedPublicKey, let fingerprint = try? SSHPublicKey.fingerprint(key) {
+                        Text(fingerprint).font(.caption).textSelection(.enabled)
+                        Button("Remove Selected Key") { selectedPublicKey = nil }
+                    }
+                }
+                if profile != nil { Text("SSH enrollment is chosen at creation. Existing access is preserved.").font(.caption).foregroundStyle(.secondary) }
             }.formStyle(.grouped)
+            if let error = keyError { Text(error).foregroundStyle(.red).font(.callout) }
             if let error = model.configurationError { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }
             Text(profile == nil ? "The official factory image downloads on first launch. Each guest has independent storage. Networking uses NAT; shared folders, USB, camera and authentication are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.callout).foregroundStyle(.secondary)
             HStack {
@@ -368,11 +417,27 @@ private struct VMEditor: View {
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     saving = true
                     Task {
-                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, clipboard: clipboard, immersive: immersive) { saved(id) }
+                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil) { saved(id) }
                         saving = false
                     }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
             }
         }.padding(26).frame(width: 520).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }
     }
+    private func choosePublicKey() {
+        let panel = NSOpenPanel(); panel.title = "Choose an SSH public key (.pub)"
+        panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            guard url.pathExtension.lowercased() == "pub" else { throw VMFailure(code: "public-key-required", message: "Choose a .pub file; private keys are never imported.") }
+            let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
+            defer { close(fd) }
+            var info = stat()
+            guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= 16_384 else { throw CocoaError(.fileReadCorruptFile) }
+            let data = try FileHandle(fileDescriptor: fd, closeOnDealloc: false).read(upToCount: 16_385) ?? Data()
+            selectedPublicKey = try SSHPublicKey.canonical(String(decoding: data, as: UTF8.self)); keyError = nil
+        } catch { keyError = error.localizedDescription }
+    }
+
 }

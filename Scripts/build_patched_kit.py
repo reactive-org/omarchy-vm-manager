@@ -44,6 +44,7 @@ def build():
         return
     run("make", "-C", source, "test-swift")
     env = dict(os.environ, MACOSX_DEPLOYMENT_TARGET="15.0")
+    run("make", "-C", source, "guest-package", env=env)
     run("swift", "build", "--disable-sandbox", "--package-path", source / "macos", "-c", "release",
         "-debug-info-format", "none", env=env)
     stage = source / "dist/manager-staging/Try Omarchy.app"
@@ -53,6 +54,12 @@ def build():
     contents = stage / "Contents"
     shutil.rmtree(contents / "_CodeSignature")
     shutil.copy2(source / "macos/.build/release/omarchy-vm-helper", contents / "MacOS/omarchy-vm-helper")
+    packages = list((source / "dist/guest/packages").glob("try-omarchy-*.pkg.tar.zst"))
+    assert len(packages) == 1 and packages[0].name == "try-omarchy-0.1.0-37-aarch64.pkg.tar.zst"
+    for old in (contents / "Resources/guest-packages").iterdir():
+        assert old.is_file() and not old.is_symlink()
+        old.unlink()
+    shutil.copy2(packages[0], contents / "Resources/guest-packages" / packages[0].name)
     info = plistlib.loads((source / "macos/Info.plist").read_bytes())
     info["TryOmarchyBuildDescribe"] = "development"
     (contents / "Info.plist").write_bytes(plistlib.dumps(info))
@@ -67,8 +74,9 @@ def build():
         "patchSHA256": patch["patchSHA256"], "referenceKitSHA256": baseline["kitSHA256"],
         "kitSHA256": digest(destination / "TryOmarchyKit.zip"),
         "kitVersion": value["version"], "runProtocolVersion": value["runProtocolVersion"],
-        "buildDate": value["buildDate"], "focusAwareClipboard": True,
-        "composition": "Source-built patched helper and networking; verified v1.3.0 QEMU, firmware, guest package and factory download metadata; upstream build-kit.sh ad-hoc signing",
+        "buildDate": value["buildDate"], "focusAwareClipboard": True, "managedSSHVersion": 1,
+        "guestPackageVersion": "0.1.0-37",
+        "composition": "Source-built patched helper, guest integration package 0.1.0-37 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
         "files": inventory(destination / "TryOmarchyKit.bundle")
     }
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"

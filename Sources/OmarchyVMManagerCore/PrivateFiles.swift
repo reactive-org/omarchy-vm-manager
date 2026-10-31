@@ -62,6 +62,7 @@ public final class RegistryStore: @unchecked Sendable {
     private let lockFD: Int32
     private var revision: Data?
     private var loaded = false
+    private var schemaVersion = 1
     private var cachedProfiles: [VMProfile] = []
     private var pending: Set<UUID> = []
     private let access = NSRecursiveLock()
@@ -106,11 +107,11 @@ public final class RegistryStore: @unchecked Sendable {
         if PrivateFiles.exists(file) {
             let data = try PrivateFiles.read(file, maximum: 1_048_576)
             let registry = try JSONDecoder().decode(Registry.self, from: data)
-            guard registry.schemaVersion == 1 else { throw PrivateFiles.failure("Unknown registry version. The original file was preserved.") }
+            guard (1...2).contains(registry.schemaVersion) else { throw PrivateFiles.failure("Unknown registry version. The original file was preserved.") }
             try Self.validate(registry.profiles)
             let pending = registry.pendingDeletions ?? []
             guard pending.isSubset(of: Set(registry.profiles.map(\.id))), pending.isDisjoint(with: POCProfiles.ids) else { throw PrivateFiles.failure("Invalid pending deletion metadata; the registry was preserved.") }
-            self.pending = pending; cachedProfiles = registry.profiles
+            self.pending = pending; cachedProfiles = registry.profiles; schemaVersion = registry.schemaVersion
             revision = data; loaded = true
             return registry.profiles
         }
@@ -146,15 +147,17 @@ public final class RegistryStore: @unchecked Sendable {
         } else if PrivateFiles.exists(file) { throw PrivateFiles.failure("A registry appeared during initialization. It was preserved.") }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let nextPending = pending.intersection(Set(profiles.map(\.id)))
-        let data = try encoder.encode(Registry(schemaVersion: 1, profiles: profiles, pendingDeletions: nextPending))
+        let nextSchema = max(schemaVersion, profiles.contains(where: { $0.ssh != nil }) ? 2 : 1)
+        let data = try encoder.encode(Registry(schemaVersion: nextSchema, profiles: profiles, pendingDeletions: nextPending))
         guard data.count <= 1_048_576 else { throw PrivateFiles.failure("The registry is too large.") }
         try PrivateFiles.write(data, name: "registry.json", in: directory, exclusively: revision == nil)
-        revision = data; cachedProfiles = profiles; pending = nextPending
+        revision = data; cachedProfiles = profiles; pending = nextPending; schemaVersion = nextSchema
     }
 
     static func validate(_ profiles: [VMProfile]) throws {
         guard profiles.count <= 1000, Set(profiles.map(\.id)).count == profiles.count,
-              Set(profiles.map { $0.name.lowercased() }).count == profiles.count else {
+              Set(profiles.map { $0.name.lowercased() }).count == profiles.count,
+              Set(profiles.compactMap { $0.ssh?.hostPort }).count == profiles.compactMap({ $0.ssh?.hostPort }).count else {
             throw PrivateFiles.failure("The registry contains duplicate profiles or too many entries.")
         }
         for profile in profiles { try validate(profile) }
@@ -163,8 +166,13 @@ public final class RegistryStore: @unchecked Sendable {
     public static func validate(_ profile: VMProfile) throws {
         if let poc = POCProfiles.all.first(where: { $0.id == profile.id }) {
             guard profile.name == poc.name, profile.memoryMiB == poc.memoryMiB, profile.cpus == poc.cpus,
-                  profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil, profile.settingsFingerprint == nil else {
+                  profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil, profile.settingsFingerprint == nil, profile.ssh == nil else {
                 throw PrivateFiles.failure("Retained POC metadata is protected. Restore its original profile; its disk was preserved.")
+            }
+        }
+        if let ssh = profile.ssh {
+            guard (1024...65535).contains(ssh.hostPort), ssh.publicKeyFingerprint == nil || ssh.publicKeyFingerprint!.range(of: "^SHA256:[A-Za-z0-9+/]{43}$", options: .regularExpression) != nil else {
+                throw PrivateFiles.failure("Invalid managed SSH endpoint or public-key reference.")
             }
         }
         if let fingerprint = profile.settingsFingerprint {

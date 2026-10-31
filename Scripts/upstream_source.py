@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 if sys.flags.optimize:
     raise RuntimeError("Optimized Python execution is refused; source validation assertions are required")
@@ -26,7 +27,8 @@ def prepare():
     metadata = json.loads((ROOT / "Config/TryOmarchyClipboardPatch.json").read_bytes())
     patch = ROOT / "Patches/0001-focus-aware-clipboard.patch"
     assert hashlib.sha256(patch.read_bytes()).hexdigest() == metadata["patchSHA256"]
-    destination = Path("/private/tmp") / ("omarchy-vm-manager-source-" + metadata["commit"][:12])
+    build_root = Path("/private/tmp") if sys.platform == "darwin" else Path(tempfile.gettempdir())
+    destination = build_root / ("omarchy-vm-manager-source-" + metadata["commit"][:12])
     if destination.exists():
         assert not destination.is_symlink() and destination.stat().st_uid == os.getuid()
         assert git(destination, "rev-parse", "HEAD") == metadata["commit"], "unexpected build source"

@@ -11,6 +11,7 @@ public actor VMManager {
         var forceRequested = false
         var coldStart = false
         var reachedReady = false
+        var sshTask: Task<Void, Never>?
     }
 
     private let runtime: any VMRuntime
@@ -26,6 +27,9 @@ public actor VMManager {
     private var records: [VMLifecycleRecord] = []
     private let registry: RegistryStore?
     private let trashService: (any VMTrashService)?
+    private let sshProbe: (any SSHReadinessChecking)?
+    private let portProbe: any HostPortProbing
+    private var sshStates: [UUID: SSHReadiness] = [:]
     private var storageTransactions: Set<UUID> = []
     private var quitting = false
     private var interruptedDeletions: Set<UUID> = []
@@ -41,7 +45,8 @@ public actor VMManager {
     public init(runtime: any VMRuntime, profiles: [VMProfile], applicationSupport: URL, enforcePOCPolicy: Bool = false,
                 hostMemoryMiB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 logicalCPUs: Int = ProcessInfo.processInfo.processorCount,
-                registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil) {
+                registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil,
+                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe()) {
         self.runtime = runtime
         self.profiles = profiles
         self.applicationSupport = applicationSupport
@@ -50,6 +55,7 @@ public actor VMManager {
         self.logicalCPUs = logicalCPUs
         self.registry = registry
         self.trashService = trashService
+        self.sshProbe = sshProbe; self.portProbe = portProbe
         interruptedDeletions = registry?.pendingDeletions ?? []
         for id in interruptedDeletions {
             let failure = VMFailure(code: "interrupted-deletion", message: "A previous deletion was interrupted. The disk may already be in Trash. Review Delete VM again to finish removing the profile; restore files manually before recovery.")
@@ -61,13 +67,21 @@ public actor VMManager {
         let registry = try RegistryStore(applicationSupport: applicationSupport)
         let profiles = try registry.load()
         return VMManager(runtime: runtime, profiles: profiles, applicationSupport: applicationSupport,
-                         enforcePOCPolicy: true, registry: registry, trashService: trashService)
+                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe())
     }
 
-    public func create(name: String, memoryMiB: Int, cpus: Int, clipboardEnabled: Bool, immersiveMode: Bool) throws -> UUID {
+    public func create(name: String, memoryMiB: Int, cpus: Int, clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true, publicKey: String? = nil) throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
-        let profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus,
+        var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
+        if sshEnabled {
+            let occupied = Set(profiles.compactMap { $0.ssh?.hostPort })
+            guard let port = (2222...49151).first(where: { !occupied.contains($0) && portProbe.isAvailable($0) }) else {
+                throw VMFailure(code: "ssh-port-unavailable", message: "No unprivileged loopback port is available for SSH.")
+            }
+            let fingerprint = try publicKey.map { try SelectedPublicKeyStore(applicationSupport: applicationSupport).save($0, id: profile.id) }
+            profile.ssh = SSHOptions(hostPort: port, publicKeyFingerprint: fingerprint)
+        }
         try validateResources(profile)
         try registry.save(profiles + [profile])
         profiles.append(profile)
@@ -79,6 +93,7 @@ public actor VMManager {
         guard !interruptedDeletions.contains(profile.id) else { throw VMFailure(code: "interrupted-deletion", message: "Finish reviewing the interrupted deletion before configuring this profile.") }
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }), let registry,
               profiles[index].createdAt == profile.createdAt else { throw VMFailure(code: "unknown-vm", message: "The VM profile changed or is missing.") }
+        guard profile.ssh == profiles[index].ssh else { throw VMFailure(code: "ssh-migration-required", message: "SSH enrollment is chosen at creation. Changing existing access needs a separate stopped-VM migration.") }
         try validateResources(profile)
         var edited = profile
         let storage = ManagerStorage(applicationSupport: applicationSupport)
@@ -121,7 +136,7 @@ public actor VMManager {
             else if PrivateFiles.exists(storage.root(for: profile)) { throw VMFailure(code: "storage-changed", message: "VM storage appeared since confirmation.") }
             let next = profiles.filter { $0.id != id }
             try registry.save(next)
-            profiles = next; interruptedDeletions.remove(id); states[id] = nil; failures[id] = nil; notices[id] = nil
+            profiles = next; SelectedPublicKeyStore(applicationSupport: applicationSupport).remove(id); interruptedDeletions.remove(id); states[id] = nil; failures[id] = nil; notices[id] = nil
         } catch {
             if PrivateFiles.exists(storage.root(for: profile)), (try? registry.clearDeletion(id)) != nil { interruptedDeletions.remove(id) }
             let failure = Self.failure(error); states[id] = .failed(failure); failures[id] = failure
@@ -146,7 +161,8 @@ public actor VMManager {
     public func snapshots() -> [VMSnapshot] {
         profiles.map {
             VMSnapshot(profile: $0, state: states[$0.id] ?? .stopped,
-                       sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: notices[$0.id])
+                       sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: notices[$0.id],
+                       sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped))
         }
     }
 
@@ -179,6 +195,11 @@ public actor VMManager {
                                        cpus: activeProfiles.reduce(0) { $0 + $1.cpus },
                                        physicalMemoryMiB: hostMemoryMiB, logicalCPUs: logicalCPUs)
         }
+        if let port = profile.ssh?.hostPort {
+            guard !profiles.contains(where: { $0.id != vmID && sessions[$0.id] != nil && $0.ssh?.hostPort == port }), portProbe.isAvailable(port) else {
+                throw VMFailure(code: "ssh-port-in-use", message: "Mac loopback TCP port \(port) is in use. Stop its other owner before starting this VM; the endpoint was not changed.")
+            }
+        }
         states[vmID] = .validating
         failures[vmID] = nil
         notices[vmID] = nil
@@ -189,9 +210,10 @@ public actor VMManager {
         record("Start requested", vmID: vmID, sessionID: sessionID)
         do {
             if let error = runtime.preflight() { throw error }
-            let request = VMStartRequest(profile: profile, storageRoot: root)
+            let request = VMStartRequest(profile: profile, storageRoot: root, sessionID: sessionID)
             let handle = try runtime.start(request) { continuation.yield($0) }
             sessions[vmID]?.handle = handle
+            beginSSHProbe(request)
             Task {
                 for await event in events {
                     receive(event, vmID: vmID, sessionID: sessionID)
@@ -206,6 +228,27 @@ public actor VMManager {
             record("Start refused: " + failure.message, vmID: vmID, sessionID: sessionID)
             throw failure
         }
+    }
+
+    private func beginSSHProbe(_ request: VMStartRequest) {
+        guard request.profile.ssh != nil, let sshProbe else { return }
+        sessions[request.profile.id]?.sshTask?.cancel()
+        sshStates[request.profile.id] = .provisioning
+        sessions[request.profile.id]?.sshTask = Task { [weak self] in
+            await sshProbe.monitor(request) { [weak self] status in
+                await self?.receiveSSH(status, vmID: request.profile.id, sessionID: request.sessionID)
+            }
+        }
+    }
+
+    func receiveSSH(_ status: SSHReadiness, vmID: UUID, sessionID: UUID) {
+        guard sessions[vmID]?.id == sessionID else { return }
+        sshStates[vmID] = status
+    }
+
+    public func retrySSH(_ id: UUID) {
+        guard let session = sessions[id], let profile = profiles.first(where: { $0.id == id }) else { return }
+        beginSSHProbe(VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id))
     }
 
     public func shutDown(_ vmID: UUID) {
@@ -261,6 +304,8 @@ public actor VMManager {
         case .error(let error):
             failures[vmID] = VMFailure(code: error.reportedCode, message: error.message)
         case .exited(let status):
+            session.sshTask?.cancel()
+            sshStates[vmID] = profiles.first(where: { $0.id == vmID })?.ssh == nil ? .disabled : .stopped
             if failures[vmID] == nil, status != 0, !session.forceRequested {
                 failures[vmID] = VMFailure(code: "helper-exit-\(status)", message: "The helper exited with status \(status).")
             }

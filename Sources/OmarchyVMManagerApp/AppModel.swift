@@ -30,6 +30,7 @@ final class AppModel: ObservableObject {
     private let support: URL
     private var lastReportID: UUID?
     private var lastAccessibilityTrusted: Bool?
+    private var lastSSHStates: [UUID: SSHReadiness] = [:]
     private var storageRefreshed = Date.distantPast
 
     init() {
@@ -75,7 +76,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, clipboard: Bool, immersive: Bool) async -> UUID? {
+    func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?) async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
         do {
@@ -85,7 +86,7 @@ final class AppModel: ObservableObject {
                 profile.clipboardEnabled = clipboard; profile.immersiveMode = immersive
                 try await manager.configure(profile); id = profile.id
             } else {
-                id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, clipboardEnabled: clipboard, immersiveMode: immersive)
+                id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, clipboardEnabled: clipboard, immersiveMode: immersive, sshEnabled: sshEnabled, publicKey: publicKey)
             }
             storageRefreshed = .distantPast
             await update(); return id
@@ -97,6 +98,7 @@ final class AppModel: ObservableObject {
         do { try await manager.start(id) } catch { actionError = error.localizedDescription }
         await update()
     }
+    func retrySSH(_ id: UUID) async { await manager.retrySSH(id); await update() }
     func stop(_ id: UUID) async { await manager.shutDown(id); await update() }
     func forceStop(_ id: UUID) async {
         do { try await manager.forceStop(id, confirmed: true) } catch { actionError = error.localizedDescription }
@@ -137,7 +139,9 @@ final class AppModel: ObservableObject {
                 Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, TryOmarchyStorage.allocatedBytes(at: POCProfiles.root(for: $0, applicationSupport: support))) })
             }.value
         }
-        guard registryError == nil, records.last?.id != lastReportID || accessibilityTrusted != lastAccessibilityTrusted else { return }
+        let sshStates = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.id, $0.sshReadiness) })
+        guard registryError == nil, records.last?.id != lastReportID || accessibilityTrusted != lastAccessibilityTrusted || sshStates != lastSSHStates else { return }
+        lastSSHStates = sshStates
         lastReportID = records.last?.id; lastAccessibilityTrusted = accessibilityTrusted
         do { try writeReport() } catch { actionError = "Cannot save session evidence: " + error.localizedDescription }
     }
@@ -153,6 +157,7 @@ final class AppModel: ObservableObject {
                 var row: [String: Any] = ["id": s.id.uuidString, "name": s.profile.name, "state": s.state.label,
                     "root": POCProfiles.root(for: s.profile, applicationSupport: support).path,
                     "active": s.sessionID != nil, "memoryMiB": s.profile.memoryMiB, "cpus": s.profile.cpus]
+                row["sshStatus"] = s.sshReadiness.label
                 row["sessionID"] = s.sessionID?.uuidString; row["error"] = s.lastFailure?.message
                 row["stderr"] = s.lastFailure?.diagnostics
                 return row
