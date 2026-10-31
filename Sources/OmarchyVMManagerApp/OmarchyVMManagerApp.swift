@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Darwin
 import Foundation
 import OmarchyVMManagerCore
@@ -19,6 +20,7 @@ final class AppModel: ObservableObject {
     let manager: VMManager
     private let support: URL
     private var lastReportID: UUID?
+    private var lastAccessibilityTrusted: Bool?
 
     init() {
         approved = CommandLine.arguments.contains("--poc-approved")
@@ -82,12 +84,16 @@ final class AppModel: ObservableObject {
         let observation = await manager.observation()
         snapshots = observation.snapshots
         records = observation.records
-        guard approved, let last = records.last, last.id != lastReportID else { return }
-        lastReportID = last.id
-        do { try writeReport() } catch { actionError = "Cannot save POC evidence: " + error.localizedDescription }
+        let accessibilityTrusted = AXIsProcessTrusted()
+        guard approved,
+              records.last?.id != lastReportID || accessibilityTrusted != lastAccessibilityTrusted else { return }
+        lastReportID = records.last?.id
+        lastAccessibilityTrusted = accessibilityTrusted
+        do { try writeReport(accessibilityTrusted: accessibilityTrusted) }
+        catch { actionError = "Cannot save POC evidence: " + error.localizedDescription }
     }
 
-    private func writeReport() throws {
+    private func writeReport(accessibilityTrusted: Bool) throws {
         let logs = support.appendingPathComponent("Omarchy VM Manager/Logs")
         if mkdir(logs.path, 0o700) != 0, errno != EEXIST { return }
         var info = stat()
@@ -95,6 +101,7 @@ final class AppModel: ObservableObject {
               info.st_uid == getuid(), info.st_mode & 0o777 == 0o700 else { return }
         let object: [String: Any] = [
             "format": 1, "processID": ProcessInfo.processInfo.processIdentifier,
+            "accessibilityTrusted": accessibilityTrusted,
             "updated": ISO8601DateFormatter().string(from: Date()),
             "vms": snapshots.map { snapshot -> [String: Any] in
                 var row: [String: Any] = ["id": snapshot.id.uuidString, "name": snapshot.profile.name,

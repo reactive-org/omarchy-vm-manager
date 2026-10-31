@@ -1,17 +1,17 @@
-From 53093243ea809c0ff75f619a184a3a8a952cc1af Mon Sep 17 00:00:00 2001
+From 9341b7a35f8d90eb76eae8478c0f641dfe386009 Mon Sep 17 00:00:00 2001
 From: Omarchy VM Manager <build@localhost>
-Date: Sat, 31 Oct 2026 12:13:33 +1100
-Subject: [PATCH] Route clipboard through focused guests with live headless
- focus updates
+Date: Sat, 31 Oct 2026 12:51:37 +1100
+Subject: [PATCH] Route clipboard through focused guests using main-thread
+ focus reads
 
 ---
  docs/vm-kit.md                                |   8 +
- .../NativeClipboardBridge.swift               | 186 ++++++++++++---
- .../NativeClipboardBridgeTests.swift          | 217 ++++++++++++++++++
- 3 files changed, 377 insertions(+), 34 deletions(-)
+ .../NativeClipboardBridge.swift               | 200 +++++++++++---
+ .../NativeClipboardBridgeTests.swift          | 247 ++++++++++++++++++
+ 3 files changed, 421 insertions(+), 34 deletions(-)
 
 diff --git a/docs/vm-kit.md b/docs/vm-kit.md
-index fac6182..8ab87b6 100644
+index fac6182..71095b1 100644
 --- a/docs/vm-kit.md
 +++ b/docs/vm-kit.md
 @@ -159,3 +159,11 @@ A fetched kit lives outside the embedding app's bundle, and the registered daemo
@@ -25,9 +25,9 @@ index fac6182..8ab87b6 100644
 +
 +The global Mac clipboard still transfers content intentionally when the user switches guests. The change prevents background broadcast and background writes; it does not create private host clipboards. The client configuration and run protocol remain at version 1. Deterministic two-route tests cover shared pasteboard isolation, rapid activation, focus loss during reads and immediately before side effects. Real two-guest focus behaviour remains to be validated on Apple Silicon.
 +
-+The headless clipboard helper keeps the main run loop running and performs its blocking guest-channel read on a worker queue. AppKit caches foreground application state until the main run loop advances. Blocking the main thread would leave the focus gate stuck on an old app and silently disable clipboard traffic. Tests verify that main-queue updates remain responsive while the reader waits, and that reader completion and errors return cleanly. The POC exposed this flaw in the first focus-gated build; the correction does not change protocol 1 or any bridge/configuration fields.
++The headless clipboard helper keeps the main run loop running and performs its blocking guest-channel read on a worker queue. Every foreground lookup runs synchronously on the main thread, including lookups requested by the serial routing queue. The real POC found that an otherwise idle main loop could leave worker-only AppKit foreground polling stuck on an old app; main-thread lookups tracked the same focus cycle correctly. Tests exercise the actual focus adapter from both threads, matching and mismatching foreground PIDs, unavailable focus and stale process identities, alongside reader completion and error propagation. The correction does not change protocol 1 or any bridge/configuration fields.
 diff --git a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
-index 39b07ba..e0b2b75 100644
+index 39b07ba..127de5a 100644
 --- a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
 +++ b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
 @@ -1,4 +1,5 @@
@@ -36,7 +36,7 @@ index 39b07ba..e0b2b75 100644
  import CryptoKit
  import Darwin
  import Foundation
-@@ -197,29 +198,164 @@ final class GeneralPasteboard: HostPasteboardProviding {
+@@ -197,29 +198,178 @@ final class GeneralPasteboard: HostPasteboardProviding {
      }
  }
  
@@ -49,6 +49,11 @@ index 39b07ba..e0b2b75 100644
 +}
 +
 +enum ClipboardMainRunLoop {
++    static func readOnMain<T>(_ read: () -> T) -> T {
++        if Thread.isMainThread { return read() }
++        return DispatchQueue.main.sync(execute: read)
++    }
++
 +    static func run(_ operation: @escaping () throws -> Void) throws {
 +        guard Thread.isMainThread else {
 +            throw HelperError.io("the clipboard bridge must own the main run loop")
@@ -87,14 +92,23 @@ index 39b07ba..e0b2b75 100644
 +
 +final class QEMUClipboardFocus: ClipboardFocusProviding {
 +    private let processIdentity: KernelProcessIdentity
++    private let frontmostProcessIdentifier: () -> pid_t?
 +
-+    init(processIdentity: KernelProcessIdentity) {
++    init(
++        processIdentity: KernelProcessIdentity,
++        frontmostProcessIdentifier: @escaping () -> pid_t? = {
++            NSWorkspace.shared.frontmostApplication?.processIdentifier
++        }
++    ) {
 +        self.processIdentity = processIdentity
++        self.frontmostProcessIdentifier = frontmostProcessIdentifier
 +    }
 +
 +    func isFocused() -> Bool {
-+        processIdentity.isStillRunning &&
-+            NSWorkspace.shared.frontmostApplication?.processIdentifier == processIdentity.processIdentifier
++        ClipboardMainRunLoop.readOnMain {
++            processIdentity.isStillRunning &&
++                frontmostProcessIdentifier() == processIdentity.processIdentifier
++        }
 +    }
 +}
 +
@@ -208,7 +222,7 @@ index 39b07ba..e0b2b75 100644
      }
  
      deinit {
-@@ -227,7 +363,13 @@ final class NativeClipboardBridge {
+@@ -227,7 +377,13 @@ final class NativeClipboardBridge {
      }
  
      func run() throws {
@@ -223,7 +237,7 @@ index 39b07ba..e0b2b75 100644
          var line = Data()
          var chunk = [UInt8](repeating: 0, count: 64 * 1024)
          while true {
-@@ -287,12 +429,8 @@ final class NativeClipboardBridge {
+@@ -287,12 +443,8 @@ final class NativeClipboardBridge {
      }
  
      private func pollPasteboard() {
@@ -237,7 +251,7 @@ index 39b07ba..e0b2b75 100644
          } catch {
              fputs("[clipboard-bridge] \(error.localizedDescription)\n", stderr)
              stop()
-@@ -301,27 +439,7 @@ final class NativeClipboardBridge {
+@@ -301,27 +453,7 @@ final class NativeClipboardBridge {
  
      private func handle(_ data: Data) throws {
          try stateQueue.sync {
@@ -267,10 +281,10 @@ index 39b07ba..e0b2b75 100644
      }
  }
 diff --git a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
-index 814cebc..e60cf82 100644
+index 814cebc..13363bb 100644
 --- a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
 +++ b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
-@@ -108,3 +108,220 @@ struct NativeClipboardBridgeTests {
+@@ -108,3 +108,250 @@ struct NativeClipboardBridgeTests {
          #expect(guest(b, at: window + 1))
      }
  }
@@ -436,6 +450,8 @@ index 814cebc..e60cf82 100644
 +        let start = try #require(source.range(of: "private final class ClipboardRunCompletion"))
 +        let end = try #require(source.range(of: "protocol ClipboardFocusProviding"))
 +        let runner = String(source[start.lowerBound..<end.lowerBound])
++        let focusEnd = try #require(source.range(of: "final class FocusedClipboardRouting"))
++        let focusAdapter = String(source[end.lowerBound..<focusEnd.lowerBound])
 +        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard-runloop-" + UUID().uuidString)
 +        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false)
 +        defer { try? FileManager.default.removeItem(at: temporary) }
@@ -446,9 +462,37 @@ index 814cebc..e60cf82 100644
 +        import CoreFoundation
 +        import Foundation
 +        enum HelperError: Error { case io(String) }
++        struct KernelProcessIdentity {
++            let processIdentifier: pid_t
++            let isStillRunning: Bool
++        }
 +        \(runner)
++        \(focusAdapter)
 +        do {
 +            switch CommandLine.arguments[1] {
++            case "focus":
++                var foreground: pid_t? = 42
++                let focus = QEMUClipboardFocus(
++                    processIdentity: KernelProcessIdentity(processIdentifier: 42, isStillRunning: true),
++                    frontmostProcessIdentifier: {
++                        guard Thread.isMainThread else { exit(4) }
++                        return foreground
++                    }
++                )
++                guard focus.isFocused() else { exit(5) }
++                let stale = QEMUClipboardFocus(
++                    processIdentity: KernelProcessIdentity(processIdentifier: 42, isStillRunning: false),
++                    frontmostProcessIdentifier: { exit(6) }
++                )
++                try ClipboardMainRunLoop.run {
++                    guard focus.isFocused(), !stale.isFocused() else { exit(7) }
++                    ClipboardMainRunLoop.readOnMain { foreground = 43 }
++                    guard !focus.isFocused() else { exit(8) }
++                    ClipboardMainRunLoop.readOnMain { foreground = nil }
++                    guard !focus.isFocused() else { exit(9) }
++                    ClipboardMainRunLoop.readOnMain { foreground = 42 }
++                    guard focus.isFocused() else { exit(10) }
++                }
 +            case "mainqueue":
 +                try ClipboardMainRunLoop.run { @Sendable in
 +                    let delivered = DispatchSemaphore(value: 0)
@@ -481,7 +525,7 @@ index 814cebc..e60cf82 100644
 +        try compiler.run()
 +        compiler.waitUntilExit()
 +        try #require(compiler.terminationStatus == 0)
-+        for mode in ["mainqueue", "completed", "error"] {
++        for mode in ["focus", "mainqueue", "completed", "error"] {
 +            let child = Process()
 +            child.executableURL = executable
 +            child.arguments = [mode]
@@ -491,6 +535,3 @@ index 814cebc..e60cf82 100644
 +        }
 +    }
 +}
--- 
-2.54.0 (Apple Git-157)
-

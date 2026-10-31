@@ -1,11 +1,11 @@
 {
-  "buildDate": "2026-10-31T01:14:11Z",
+  "buildDate": "2026-10-31T01:52:26Z",
   "composition": "Source-built patched helper and networking; verified v1.3.0 QEMU, firmware, guest package and factory download metadata; upstream build-kit.sh ad-hoc signing",
   "files": {
     "Contents/CodeResources": "8056fe4a5f8b7ac96d7ca7de4f0be6360130b7c34e1893893570177e77cfd9af",
     "Contents/Info.plist": "5bdb58ffab7fca20c1e58388e4ae8b7bd588a9dc896bbe8398f184189b7111ae",
     "Contents/MacOS/omarchy-network-daemon": "dd17ded4cf2a3f365ec704bdb39de997484d17427e31f1ac5649aabba6bdd44f",
-    "Contents/MacOS/omarchy-vm-helper": "182da8e74c1556fd6d28b3eefcf189cea8eeaefc88a16e5f35a64902091eb4e1",
+    "Contents/MacOS/omarchy-vm-helper": "0bd37da4ef762530be2b02ef0983e890ea1ee0a632d83193ea7a62d218723cd1",
     "Contents/Resources/Credits.rtf": "11450456a67ddd8d73ecea355b17d491b21cbcc4361e58825287b5578e43537e",
     "Contents/Resources/LICENSE": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481",
     "Contents/Resources/TryOmarchy.icns": "ee76463021736f1b6e1695dda78db42e89e0a002bc3f500813844b2cf284f599",
@@ -16,7 +16,7 @@
     "Contents/Resources/guest/download.json": "0fe80ffc442d9897c04c3febe490428199ae48f3f7ed47e8137ee3af1673137c",
     "Contents/Resources/guest/factory.json": "1c202c4d9c4087b87d40138d812835a765ff736ff7cf1b9dc233b4fa8945a8cf",
     "Contents/Resources/guest/packages.txt": "36be93efbc8430a877256dccfb93223e88cb0a7fceb447ee381c9ea7d3aded4a",
-    "Contents/Resources/kit.json": "b6f6a5a4b705c8eb4685bbe2733bab8bf736932609db27d37799a3a56eadf295",
+    "Contents/Resources/kit.json": "d2256ff155347a33eb58f1b8a437500d7ce71072632f67ec4e84781453b02bb0",
     "Contents/Resources/network/LICENSE.socket_vmnet": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "Contents/Resources/network/launchd.plist": "37961351551b1166d3e7e8648719a8c414f6d46a217990f9c3f5b91ba8c27e32",
     "Contents/Resources/network/omarchy-network-client": "50d2efba33054a274f3ec00ae7a06cf75e95a53ff8a4f4ef8943600289da72cc",
@@ -43,14 +43,14 @@
     "Contents/Resources/scripts/qemu-networking.sh": "83adcc67be1f5f9ac070574921b7526ed80e810dd0d69ab830dba09b94ef2248",
     "Contents/Resources/scripts/qemu-port-forwarding.sh": "97f839ff43067dae4168acda3b4dc95a0f075a44c5fe09d8f3821f2ad6d05cf5",
     "Contents/Resources/scripts/run-qemu-gpu.sh": "95fa9253d670d2b92bfa4750cbd4ca501b14f189d6cf1727a1e67ec58a1e6537",
-    "Contents/_CodeSignature/CodeResources": "0c260f5ccfb2a39ef5a0767ef6c725a094a75382d9abc8814841f8baa9cddd87"
+    "Contents/_CodeSignature/CodeResources": "df697d0c3c96ea07300f7e2a770132daa0af76cc8cef46585695315220e6ad0d"
   },
   "focusAwareClipboard": true,
   "format": 1,
-  "kitSHA256": "2cc5692339aecaf3f6dbc37653b18d27fbca78be9ea2ec7ecd1d663b585a486e",
+  "kitSHA256": "f5e097993ad396b27e34a729cf080e5b364f4d1d9290d3dd1a46f950c01cae24",
   "kitVersion": "development",
-  "patchCommit": "53093243ea809c0ff75f619a184a3a8a952cc1af",
-  "patchSHA256": "001a0aa107d3ad0cf7a1c04d042897b8d1fd59e8ed7b88883882929d33e97386",
+  "patchCommit": "9341b7a35f8d90eb76eae8478c0f641dfe386009",
+  "patchSHA256": "b8612c6635a122ee2478b800117d6d1c97ada7aeb8ee3d1f945b9d3a4ad71de8",
   "referenceKitSHA256": "3ad65381b34ced2ebe3f5f19b95d58ec1a2c51a77a6edf7599666a939b6991a6",
   "runProtocolVersion": 1,
   "upstreamBase": "13d63df8da2947f833c04025ff5ade187d39ba81"

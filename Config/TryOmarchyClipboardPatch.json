@@ -1,11 +1,11 @@
 {
-  "commit": "53093243ea809c0ff75f619a184a3a8a952cc1af",
+  "commit": "9341b7a35f8d90eb76eae8478c0f641dfe386009",
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-10-31T12:13:33+11:00",
+  "authorDate": "2026-10-31T12:51:37+11:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-10-31T12:13:33+11:00",
-  "subject": "Route clipboard through focused guests with live headless focus updates",
-  "patchSHA256": "001a0aa107d3ad0cf7a1c04d042897b8d1fd59e8ed7b88883882929d33e97386"
+  "committerDate": "2026-10-31T12:51:37+11:00",
+  "subject": "Route clipboard through focused guests using main-thread focus reads",
+  "patchSHA256": "b8612c6635a122ee2478b800117d6d1c97ada7aeb8ee3d1f945b9d3a4ad71de8"
 }
