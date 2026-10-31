@@ -1,6 +1,6 @@
 # Omarchy VM Manager
 
-A native macOS 15+ SwiftUI manager around Try Omarchy's official kit architecture. Phase 0 and Phase 0A are implemented as a private debug build. The two-VM POC is prepared but **real VM launch is disabled**. The app does not create VM storage or download the factory image.
+A native macOS 15+ SwiftUI manager around Try Omarchy's official kit architecture. Phases 0, 0A and the Phase 1 POC launcher are implemented as a private debug build. Real VM launch remains disabled by default. After explicit POC approval, `--poc-approved` enables only the two fixed disposable manager-owned profiles.
 
 ## Build and check
 
@@ -34,8 +34,16 @@ The app verifies the compiled lock pin, manifest, helper, protocol and every emb
 
 ## Prepared POC
 
-Two in-memory profiles have distinct stable UUIDs, names, 4096 MiB RAM and two CPUs. Their future paths derive from `~/Library/Application Support/Omarchy VM Manager/VMs/<UUID>`. No root exists just because a profile is displayed. The intended bridge list is explicitly clipboard, battery and timezone, with shared/NAT networking.
+Two in-memory profiles have distinct stable UUIDs, names, 4096 MiB RAM and two CPUs. Their future paths derive from `~/Library/Application Support/Omarchy VM Manager/VMs/<UUID>`. Roots are created only on an approved start, and an existing root must pass ownership and settings checks. The intended bridge list is explicitly clipboard, battery and timezone, with shared/NAT networking.
 
-The actor and production adapter are testable with fake runtimes and executable protocol stubs. Callbacks enter one ordered event stream; session IDs reject stale events. Errors retain handles and allocations until terminal exit. The production adapter's `start` refuses real launch in this milestone. The storage helper is a refusal-only executable until Phase 2 implements the locked Trash transaction. Registry persistence, real storage initialization, resource/port admission and user management actions are later phases.
+After approval, start the private app with:
+
+```sh
+open -n "dist/Omarchy VM Manager.app" --args --poc-approved
+```
+
+Add `--poc-start-a` to start A automatically. Start B after A is ready and its first-boot desktop is usable. The manager refuses overlapping cold starts, reserves the configured aggregate memory/CPUs through exit, checks free space and exact kit provenance/signatures at every start, and initializes private UUID roots with both ownership markers and explicit null inherited settings. The POC refuses changed or unknown settings instead of decoding arbitrary user configurations: this enforces NAT, no forwards, no shared folder, no USB, 4 GiB and two CPUs. Full effective-settings/resource/port policies belong to Phase 3.
+
+The actor and production adapter are testable with fake runtimes and executable protocol stubs. Callbacks enter one ordered event stream; session IDs reject stale events. Errors retain handles and allocations until terminal exit. The production adapter requires explicit debug POC admission to launch. The app offers independent shutdown, confirmed force stop, a bounded event log, live state/progress and quit coordination with a pre-shutdown Cancel action. POC evidence is written privately to the manager’s `Logs/POC-status.json`. The storage helper is a refusal-only executable until Phase 2 implements the locked Trash transaction. Registry persistence, general settings/resource/port admission and user management actions are later phases.
 
 See `Docs/POC.md` for the approval gate and real test matrix, `Docs/ClipboardPatch.md` for the upstream-ready change explanation, and `Docs/Validation.md` for exact results and remaining evidence gaps.

@@ -83,3 +83,11 @@ public enum POCProfiles {
             .appendingPathComponent(profile.id.uuidString, isDirectory: true)
     }
 }
+
+public struct VMLifecycleRecord: Identifiable, Sendable {
+    public let id = UUID()
+    public let date: Date
+    public let vmID: UUID
+    public let sessionID: UUID
+    public let text: String
+}

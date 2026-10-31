@@ -29,24 +29,34 @@ public protocol VMRuntimeHandle: AnyObject, Sendable {
 public struct TryOmarchyRuntime: VMRuntime {
     private let kit: TryOmarchyKit
     private let protocolTestMode: Bool
+    private let pocAdmission: POCLaunchAdmission?
 
     public init(kit: TryOmarchyKit) {
         self.kit = kit
         protocolTestMode = false
+        pocAdmission = nil
     }
 
     init(protocolTestKit: TryOmarchyKit) {
         kit = protocolTestKit
         protocolTestMode = true
+        pocAdmission = nil
     }
+    public init(approvedPOCKit: TryOmarchyKit, lockData: Data, applicationSupport: URL) {
+        kit = approvedPOCKit
+        protocolTestMode = false
+        pocAdmission = POCLaunchAdmission(kit: approvedPOCKit, lockData: lockData, applicationSupport: applicationSupport)
+    }
+
     public func preflight() -> VMRunError? { VMRunClient.preflight() }
 
     public func start(_ request: VMStartRequest,
                       onEvent: @escaping @Sendable (VMRuntimeEvent) -> Void) throws -> any VMRuntimeHandle {
-        guard protocolTestMode else {
+        guard protocolTestMode || pocAdmission != nil else {
             throw VMFailure(code: "poc-approval-required",
-                            message: "Real VM launch is disabled in Phase 0/0A. Approve the two-VM POC before enabling launch.")
+                            message: "Launch the private manager with --poc-approved after approval for its disposable VM run.")
         }
+        try pocAdmission?.admit(request)
         let configuration = try Self.configuration(for: request)
         let client = VMRunClient(kit: kit)
         try client.start(configuration, onEvent: onEvent)
