@@ -15,7 +15,7 @@ The initial run used the kit from Docs/Validation.md: patch commit `a135f003c2ff
 
 ## Implementation checks
 
-`make test` passes 35 Swift tests (including the new storage/admission suite) and 9 Python artifact tests. `make app` and `make verify-app` pass, including exact kit inventory, nested signatures, 24 Mach-O compatibility checks and host preflight. The app remains disabled by default; `--poc-approved` enables the fixed disposable profiles.
+`make test` passes 38 Swift tests (including the storage/admission and scoped Accessibility-repair suites) and 9 Python artifact tests. `make app` and `make verify-app` pass, including exact kit inventory, nested signatures, 24 Mach-O compatibility checks and host preflight. The app remains disabled by default; `--poc-approved` enables the fixed disposable profiles.
 
 ## Observations
 
@@ -33,13 +33,13 @@ The initial run used the kit from Docs/Validation.md: patch commit `a135f003c2ff
 | B desktop while A usable | User-reported: both warm guests are usable and render normally after the isolated A restart and warm B reintroduction. The earlier A visual corruption remains an open finding, so this is not an unconditional gate pass. |
 | Independent disks/settings/window identities | PASS, host-observed: two QEMU PIDs, distinct disk and settings inodes, separate UUID roots and uniquely named temporary app bundles. Both actual commands select the correct disk, four CPUs and 4096 MiB, without port forwards. Guest file isolation and visible window checks remain pending. |
 | Same-root lock/duplicate refusal | Unit duplicate guard passes. Live nonblocking POSIX lock probes failed with the expected busy condition for both running roots, proving each runtime held its own `shell/lock`. |
-| Host/guest clipboard and background suppression | The main-thread lookup repair passes Mac↔A and Mac↔B concurrently after the rendering-related restarts (user-reported). Background suppression and rapid switching remain pending. Earlier artifacts failed; see the investigations below. |
-| Independent graceful shutdown/restart/persistence | B was gracefully shut down for isolation at approximately 11:57:37 AEDT and emitted `.exited(0)` at 11:57:38; A remained running. Restart/persistence checks remain pending. |
-| Confirmed force stop | Pending |
-| Cancelled/normal app quit | Pending |
-| Manager force quit / no orphan guest | Pending |
-| User-initiated sleep/wake | Pending |
-| Final shutdown and process cleanup | Pending |
+| Host/guest clipboard and background suppression | The main-thread lookup repair passes Mac↔A and Mac↔B concurrently after the rendering-related restarts (user-reported). Both background suppression trials PASS: each guest retained its local clipboard while backgrounded, and its delayed guest copy did not replace the Mac clipboard (user-reported). Focus switching between guests works; a dedicated rapid-switch stress trial remains unverified. Earlier artifacts failed; see the investigations below. |
+| Independent graceful shutdown/restart/persistence | PASS for independent lifecycle and retained disks: each guest has been shut down/restarted while the other remained running; both original disk inodes survived all restarts and final cleanup. Explicit guest-file marker persistence/isolation remains unverified. |
+| Confirmed force stop | PASS: A confirmed Force Stop emitted Stopping then `.exited(143)`, released its session/resources and removed its QEMU. B retained its exact session and QMP running state. A subsequently reached `.ready` from its retained disk. The UI labels the expected nonzero forced exit Failed. |
+| Cancelled/normal app quit | Cancel Quit PASS: real confirmation cancelled, both live sessions and QEMU processes retained. Normal Quit PASS: both current sessions emitted matching `.exited(0)` before the manager exited; no owned runtime process remained. |
+| Manager force quit / no orphan guest | PASS: SIGKILL targeted only the verified manager executable/PID with both guests running. Both helpers/QEMU and all owned runtime processes exited within 2.08 seconds. A scoped postcheck found no remaining runtime processes. |
+| User-initiated sleep/wake | PASS, user-reported: both guests, Command+Space menus and all four clipboard paths work after the user slept/woke/unlocked the Mac. Same manager, client session IDs and QEMU PIDs retained; both QMP states running. |
+| Final shutdown and process cleanup | PASS: normal Quit stopped both sessions with `.exited(0)`; no manager-owned helper/QEMU remained, both POSIX locks were available, and both original disks/roots were retained. |
 
 No clipboard contents, guest passwords or personal host identifiers belong in this report. Preserve a minimal reproduction and stop further feature work if the real gate exposes a runtime singleton or lifecycle/focus failure.
 
@@ -136,3 +136,29 @@ Quickshell's own log has portal, module-name and Bluetooth warnings but no sampl
 The user explicitly approved one reduced-size guest-only frame capture over SSH. That request stalled without producing image data. The graphical VT was active and the shell reported the session unlocked, so this was not an attempted lock-screen bypass. The kernel journal contains `virtio_gpu` error response `0x1200` for command `0x106` at boot time 3.75409 seconds, before the screenshot attempt. The installed Linux UAPI header identifies these as an unspecified error for `RESOURCE_ATTACH_BACKING`. This is relevant virtual-GPU evidence, not a proven root cause for every visual symptom. Only the exact stalled capture process was stopped.
 
 One controlled recovery then ran the guest's installed `omarchy-restart-shell` command over SSH, preserving the VM session, packages, image and user configuration. Quickshell changed from PID 828 to 18347, its IPC answered `ok`, and the retry of the approved single-frame capture completed. The captured frame shows the wallpaper and bar normally. No second image was captured. This is a shell-only recovery, not a permanent launch fix; host-visible wallpaper/menu confirmation remains pending. No software-rendering override or package-file patch was applied.
+
+### Recovered two-guest comparison and remaining lifecycle checks
+
+The user confirmed that A's wallpaper is visible on the Mac and Command+Space opens the guest menu after the shell-only recovery. B then started from its retained disk alongside A, reaching `.ready` at approximately 13:54:07 AEDT. The user confirmed both desktops and both menus work, and all four Mac↔A/Mac↔B clipboard paths work concurrently. This is a successful recovered comparison; the original launch-time graphical failure remains open.
+
+The temporary guest SSH service acknowledged its stop-marker request. The Mac loopback forward was removed, its listener absence verified, and the generated disposable client key pair deleted. The bootstrap HTTP server had already been stopped. No persistent VM settings, default guest SSH service, installed package or personal SSH credential was changed by the diagnostic setup.
+
+The real manager Quit confirmation was opened and cancelled. Both exact session IDs remained active and both QEMU processes remained running; this passes the cancelled-quit check. A baseline for user-initiated Mac sleep/wake is saved under `.build/poc/before-user-sleep.json`. The user has been prompted to initiate sleep and wake/unlock the Mac themselves, then check both guests and integrations. The agent has issued no Mac sleep command.
+
+The user performed Mac sleep/wake and confirmed both guests remain usable, both Command+Space menus work and all four clipboard paths work. Host verification retained the exact manager PID, client session IDs and QEMU PIDs; both QMP queries report running. Private evidence is `.build/poc/after-user-sleep.json`. The filtered power-log query returned no matching power events, so the sleep/wake occurrence is user-reported rather than independently established by that query. Background clipboard suppression is the next manual check; no exit test has begun while that timed check is pending.
+
+### Background clipboard suppression and exit checks
+
+The user identified the guests using their Mac application menu names, then tested one guest at a time while the other remained running. Each guest seeded its local clipboard, waited 20 seconds in the background, checked that it had not received a newly copied Mac selection, and published a synthetic guest selection. The user stayed in a Mac app for 30 seconds, verified the Mac selection had not been overwritten, then returned to read the guest's printed result. Both A and B passed both checks. No clipboard payload was recorded by diagnostics.
+
+The manager crash check verified the manager's kernel executable path, both QEMU executable identities, profile names and selected UUID disk paths before signalling only the manager with SIGKILL. Both helpers and guests exited without further signals from the agent; no tracked process or process referencing either private runtime namespace remained after 2.08 seconds. Private evidence is `.build/poc/manager-crash-result.json`. A preliminary safety check refused before any signal because it expected a QEMU executable basename rather than the kit's actual `Try Omarchy` kernel path; the check was corrected to require that exact path plus each profile-specific command path.
+
+The unchanged manager reopened with both profiles stopped and Accessibility still allowed. A reached `.ready` at approximately 14:09:20 AEDT and B at 14:09:26. The real Force Stop warning for A was inspected and confirmed. A emitted Stopping then `.exited(143)` at approximately 14:09:35; the manager presented its expected nonzero forced exit as Failed. B retained the same session and answered QMP running; only B's QEMU remained. A restarted from its retained disk and reached `.ready` at approximately 14:09:45. These final restarts are lifecycle observations, not fresh graphical-health acceptance claims. Normal confirmed quit and final process cleanup follow.
+
+Normal **Shut Down and Quit** was then confirmed with both guests running. The report contains matching `.exited(0)` events for both current session IDs before the manager exited. A scoped process scan found no remaining kit/helper/QEMU process or either private QEMU namespace. Both runtime-compatible POSIX locks could be acquired and released. Both original disk inodes remain intact. Private evidence is `.build/poc/before-normal-quit.json` and `.build/poc/final-cleanup.json`. The roots have not been moved or deleted; they are retained for the unresolved graphical-startup investigation, with Trash offered to the user.
+
+## Decision gate status
+
+Phase 1 implementation and the recorded clipboard/lifecycle experiments are complete for this run, but **the full acceptance gate has not passed**. The intermittent graphical-startup failure has a shell-only recovery and a one-guest observation, not a proven root cause or permanent fix. Preserve the evidence and stop further product phases pending that investigation. See [the reduced graphics report](Phase1-Graphics-Repro.md).
+
+Observed passes include two simultaneous independent runtimes, four focused clipboard paths, background receive/publish suppression for each guest, user-initiated Mac sleep/wake with both guests usable, ordinary Super and Command+Space menus after effective Accessibility repair, cancelled Quit, independent Force Stop, manager force-quit cleanup and final normal Quit. Guest-file marker isolation/persistence, a dedicated rapid-focus stress trial and simultaneous audio/load remain unverified; retained disk identities and repeated setup-preserving warm boots do not substitute for an explicit guest-file check. Permanent automatic SSH provisioning is planned Phase 3A, not implemented by the temporary debug setup.

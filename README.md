@@ -32,9 +32,9 @@ The app verifies the compiled lock pin, manifest, helper, protocol and every emb
 
 `make app` produces `dist/Omarchy VM Manager.app` with the verified kit under `Contents/Helpers/TryOmarchyKit.bundle`. It reuses upstream's signing order and leaves the three networking binaries pinned by the daemon untouched. Only ad-hoc signing is implemented. No signing identity, keychain credential, notarization or permission grant is used. The app registers no networking daemon and enables no camera/authentication bridge.
 
-## Prepared POC
+## Private POC
 
-Two in-memory profiles have distinct stable UUIDs, names, 4096 MiB RAM and four CPUs. Their future paths derive from `~/Library/Application Support/Omarchy VM Manager/VMs/<UUID>`. Roots are created only on an approved start, and an existing root must pass ownership and settings checks. The intended bridge list is explicitly clipboard, battery and timezone, with shared/NAT networking.
+Two in-memory profiles have distinct stable UUIDs, names, 4096 MiB RAM and four CPUs. Their paths derive from `~/Library/Application Support/Omarchy VM Manager/VMs/<UUID>`. Roots are created only on an approved start, and an existing root must pass ownership and settings checks. The intended bridge list is explicitly clipboard, battery and timezone, with shared/NAT networking.
 
 After approval, start the private app with:
 
@@ -49,5 +49,7 @@ The actor and production adapter are testable with fake runtimes and executable 
 With the VMs stopped, **Enable Super shortcuts…** runs the full Try Omarchy launcher's permission-repair flow for `dev.omarchy.vm-manager` only, then opens macOS Accessibility settings. The user invokes this action and enables the grant themselves. It never resets the installed Try Omarchy app's entry. The manager reports its own permission status; that alone does not prove QEMU installed its keyboard event tap. Start a guest after granting access and verify Command+Space is kept in the guest. Ad-hoc rebuilds can require a fresh grant.
 
 Future MVP requirement: new manager-created guests should automatically accept authenticated SSH connections from the host, using per-VM credentials and verified loopback endpoints, with readiness reported separately from QEMU startup. This is planned as Phase 3A in `intent.md`; it is not implemented by the current POC's temporary debug SSH bootstrap.
+
+The real two-VM run passed focused clipboard transfers, background clipboard suppression for both guests, user-initiated sleep/wake, independent Force Stop, cancelled/normal Quit and manager crash cleanup. Both test guests are stopped, with disks retained. The full Phase 1 gate remains open because of intermittent graphical startup failure; further product phases are paused. See [the run report](Docs/Phase1-POC.md) and [reduced graphics observation](Docs/Phase1-Graphics-Repro.md).
 
 See `Docs/POC.md` for the approval gate and real test matrix, `Docs/ClipboardPatch.md` for the upstream-ready change explanation, and `Docs/Validation.md` for exact results and remaining evidence gaps.

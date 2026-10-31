@@ -37,7 +37,7 @@ Initial sandboxed upstream tests could not bind local sockets or register macOS 
 
 CI is configured for the manager and exact patched upstream no-VM suites. No remote CI run, PR, signing identity, credential, notarization or permission request was used.
 
-## Remaining evidence and work
+## Original Phase 0/0A evidence boundary
 
 The two-VM run is intentionally unperformed. Real foreground-PID behaviour, clipboard in both directions across two guests, rapid focus changes, independent disks/shutdown, sleep/wake, normal/cancelled/forced app quit and orphan prevention remain TO PROVE. No public multi-VM support claim is made.
 
@@ -46,3 +46,5 @@ The production adapter refuses real launch in this milestone. Before an approved
 ## Phase 1 follow-up
 
 These Phase 0/0A results describe the original `a135f003...` artifact. The first real POC found that its headless helper did not pump the main run loop, leaving the AppKit foreground-app cache stale and disabling clipboard transfers. It is superseded by the repaired patch and kit identified in the current runtime lock. See Docs/Phase1-POC.md and Docs/ClipboardPatch.md for the failure, repair and real validation status. The earlier fake-focus test pass was not a real clipboard success.
+
+The completed real POC run subsequently validated basic concurrent clipboard, background receive/publish suppression for each guest, user-initiated sleep/wake, effective Super shortcuts, independent Force Stop, cancelled/normal Quit and manager force-quit cleanup. Final normal Quit recorded both matching `.exited(0)` events and no owned runtime processes; both disks remain intact and unlocked. The full decision gate remains open for intermittent graphical startup failure and the explicitly unverified checks in [the run report](Phase1-POC.md). See [the reduced graphics observation](Phase1-Graphics-Repro.md). No later product phase is accepted by these partial passes.

@@ -29,12 +29,18 @@ Gracefully shut down both guests. Confirm both `.exited` and no helper/QEMU rema
 
 ## Manual background clipboard check
 
-Use only throwaway clipboard text. The user operates the guest UI. Run this in A's Foot terminal:
+Use only throwaway clipboard text. The user operates the guest UI. Identify a guest by clicking it and reading its application name beside the Apple menu: **Omarchy POC A** or **Omarchy POC B**. Perform one guest's trial at a time; the other guest stays running.
 
-```sh
-printf poc-local | wl-copy; (sleep 20; if [ "$(wl-paste -n)" = poc-local ]; then echo RECEIVE-PASS; else echo RECEIVE-FAIL; fi; printf poc-background | wl-copy) &
-```
+1. In A's Foot terminal, paste and run:
 
-Immediately switch to a Mac text field, copy `poc-host`, then focus B and confirm B can paste that host text. Keep B focused for at least 30 seconds after starting A's command. Switch to the Mac and paste: its selection must still be `poc-host`. Then return to A and read only its printed PASS/FAIL result. `RECEIVE-PASS` proves the host update did not reach A while it was in the background; an unchanged Mac selection proves A's later background copy was suppressed. Returning to A intentionally synchronizes the current Mac selection, so inspect the printed result rather than A's clipboard after returning.
+   ```sh
+   bash -c 'printf poc-local | wl-copy; sleep 20; if [ "$(wl-paste -n)" = poc-local ]; then echo RECEIVE-PASS; else echo RECEIVE-FAIL; fi; printf poc-background | wl-copy'
+   ```
 
-Repeat with B running the command and A remaining focused. Record only pass/fail, never clipboard contents. A delayed switch, an early return to the background guest or other copying during the check invalidates that trial.
+2. Immediately switch to a Mac text field, type and copy `poc-host`, then stay in that Mac app for 30 seconds.
+3. Paste into the Mac text field. It must still paste `poc-host`.
+4. Return to A and read its terminal output. It must show `RECEIVE-PASS`.
+
+`RECEIVE-PASS` proves the host update did not reach A while A was in the background. The unchanged Mac selection proves A's later background copy was suppressed. Returning to A intentionally synchronizes the current Mac selection, so inspect the printed result rather than A's clipboard after returning.
+
+Repeat with B running the command. Record only pass/fail, never clipboard contents. A delayed switch, an early return to the background guest or other copying during the check invalidates that trial. Focused Mac↔A/Mac↔B transfers and switching between guests are separate checks.
