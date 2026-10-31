@@ -15,13 +15,14 @@ assert info["CFBundleExecutable"] == "OmarchyVMManager"
 contract = contents / "Resources/OmarchyVMManager_OmarchyVMManagerCore.bundle/Contents/Resources/OwnerSetupContract.json"
 assert contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json").read_bytes()
 assert json.loads(contract.read_bytes())["schemaVersion"] == 1
-assert info["CFBundleIdentifier"] == "dev.omarchy.vm-manager"
+assert info["CFBundleIdentifier"] == ("dev.omarchy.vm-manager.layout-preview" if info.get("OmarchyLayoutPreview") is True else "dev.omarchy.vm-manager")
 assert info["LSMinimumSystemVersion"] == "15.0"
 assert info["CFBundleIconFile"] == "OmarchyVMManager"
-for extension in ("icns", "png"):
-    name = "OmarchyVMManager." + extension
-    assert (contents / "Resources" / name).read_bytes() == (ROOT / "App/Assets" / name).read_bytes()
-assert (contents / "Resources/OmarchyVMManager.icns").read_bytes().startswith(b"icns")
+for stem in ("OmarchyVMManager", "OmarchyGuest"):
+    for extension in ("icns", "png"):
+        name = stem + "." + extension
+        assert (contents / "Resources" / name).read_bytes() == (ROOT / "App/Assets" / name).read_bytes()
+    assert (contents / "Resources" / (stem + ".icns")).read_bytes().startswith(b"icns")
 assert not (contents / "Library/LaunchDaemons").exists(), "NAT-only app must not register networking"
 assert (contents / "Resources/TryOmarchy-THIRD_PARTY_NOTICES.md").is_file()
 for name in ("OmarchyVMManager", "OmarchyVMStorageHelper"):

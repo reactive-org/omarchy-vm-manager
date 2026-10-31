@@ -151,7 +151,11 @@ struct LifecycleTests {
     @Test("prepared configuration is explicit, NAT and restricted")
     func configuration() throws {
         let request = VMStartRequest(profile: profile, storageRoot: POCProfiles.root(for: profile, applicationSupport: root))
-        let config = try TryOmarchyRuntime.configuration(for: request)
+        let fixture = try RegistryFixture(); defer { fixture.cleanup() }
+        let icon = fixture.support.appendingPathComponent("OmarchyGuest.png")
+        try Data("synthetic-icon-file".utf8).write(to: icon)
+        let config = try TryOmarchyRuntime.configuration(for: request, guestIcon: icon)
+        #expect(config.iconPath == icon.path)
         #expect(config.bridges == [.clipboard, .battery, .timezone])
         #expect(config.network == .shared)
         #expect(config.storageRoot?.hasSuffix(profile.id.uuidString) == true)

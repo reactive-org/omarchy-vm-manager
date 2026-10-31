@@ -4,9 +4,9 @@ export SWIFT_MODULECACHE_PATH := $(CURDIR)/.build/module-cache/swift
 export CLANG_MODULE_CACHE_PATH := $(CURDIR)/.build/module-cache/clang
 export MACOSX_DEPLOYMENT_TARGET := 15.0
 
-.PHONY: help build icon test test-ssh app app-preview verify-app verify-preview run fetch-kit patched-kit test-upstream
+.PHONY: help build icon test test-ssh app app-preview verify-app verify-preview run fetch-kit patched-kit test-upstream layout-preview verify-layout-preview
 help:
-	@echo 'make test | test-ssh | build | icon | fetch-kit | patched-kit | app | verify-app | run | test-upstream'
+	@echo 'make test | test-ssh | build | icon | fetch-kit | patched-kit | app | verify-app | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 build:
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
@@ -46,3 +46,9 @@ app-preview: build icon
 
 verify-preview:
 	Scripts/verify-app.sh "$(CURDIR)/dist/Omarchy VM Manager Preview.app"
+
+layout-preview: build icon
+	Scripts/build-app.sh --layout-preview
+
+verify-layout-preview:
+	Scripts/verify-app.sh "$(CURDIR)/dist/Omarchy VM Manager Layout Preview.app"

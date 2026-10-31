@@ -35,7 +35,7 @@ struct OmarchyVMManagerApp: App {
                     "kitPath": value.kitPath, "version": value.version, "runProtocolVersion": value.runProtocolVersion,
                     "supported": value.supported, "patchCommit": value.patchCommit, "kitSHA256": value.archiveSHA256,
                     "focusAwareClipboard": value.focusAwareClipboard, "preflight": value.preflightFailure ?? "passed",
-                    "vmLaunchEnabled": true, "launchScope": "registered-manager-owned-private-build"
+                    "vmLaunchEnabled": !AppModel.layoutPreview, "launchScope": AppModel.layoutPreview ? "synthetic-layout-preview" : "registered-manager-owned-private-build"
                 ]
                 FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]))
                 FileHandle.standardOutput.write(Data("\n".utf8))
@@ -48,7 +48,8 @@ struct OmarchyVMManagerApp: App {
 
     var body: some Scene {
         WindowGroup("Omarchy VM Manager") {
-            ManagerView(model: model).task { delegate.model = model; await model.observe() }
+            if AppModel.layoutPreview { LifecycleLayoutPreview() }
+            else { ManagerView(model: model).task { delegate.model = model; await model.observe() } }
         }
         .defaultSize(width: 1120, height: 780)
         .windowResizability(.contentMinSize)

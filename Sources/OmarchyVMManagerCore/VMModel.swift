@@ -83,6 +83,13 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
     public let notice: String?
     public var sshReadiness: SSHReadiness = .disabled
     public var ownerSetupReadiness: OwnerSetupReadiness = .manual
+
+    public init(profile: VMProfile, state: VMState, sessionID: UUID? = nil, lastFailure: VMFailure? = nil,
+                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual) {
+        self.profile = profile; self.state = state; self.sessionID = sessionID
+        self.lastFailure = lastFailure; self.notice = notice
+        self.sshReadiness = sshReadiness; self.ownerSetupReadiness = ownerSetupReadiness
+    }
 }
 
 public enum POCProfiles {

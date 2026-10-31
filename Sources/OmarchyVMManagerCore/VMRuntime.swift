@@ -106,7 +106,7 @@ public struct TryOmarchyRuntime: VMRuntime {
         return TryOmarchyRuntimeHandle(client: client)
     }
 
-    public static func configuration(for request: VMStartRequest) throws -> VMRunConfiguration {
+    public static func configuration(for request: VMStartRequest, guestIcon: URL? = Bundle.main.url(forResource: "OmarchyGuest", withExtension: "icns")) throws -> VMRunConfiguration {
         guard request.storageRoot.isFileURL, request.storageRoot.path.hasPrefix("/"),
               request.storageRoot.lastPathComponent == request.profile.id.uuidString else {
             throw VMFailure(code: "invalid-storage-root", message: "A manager-owned UUID root is required.")
@@ -114,7 +114,7 @@ public struct TryOmarchyRuntime: VMRuntime {
         var bridges: [VMRunBridge] = [.battery, .timezone]
         if request.profile.clipboardEnabled { bridges.insert(.clipboard, at: 0) }
         let configuration = VMRunConfiguration(
-            productName: request.profile.name, storageRoot: request.storageRoot.path,
+            productName: request.profile.name, iconPath: guestIcon?.path, storageRoot: request.storageRoot.path,
             bridges: bridges, memoryMiB: request.profile.memoryMiB, cpus: request.profile.cpus, network: .shared
         )
         try configuration.validate()

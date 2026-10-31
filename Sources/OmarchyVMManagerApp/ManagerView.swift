@@ -20,10 +20,10 @@ struct ManagerView: View {
                     Section("Guests") {
                         ForEach(model.snapshots) { snapshot in
                             HStack(spacing: 9) {
-                                Image(systemName: "desktopcomputer").foregroundStyle(snapshot.sessionID == nil ? Color.secondary : Color.green)
+                                GuestArtwork(size: 26, state: snapshot.state)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(snapshot.profile.name).lineLimit(1)
-                                    Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(.caption).foregroundStyle(.secondary)
+                                    Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                 }
                             }.padding(.vertical, 5).tag(Destination.guest(snapshot.id))
                         }
@@ -38,7 +38,12 @@ struct ManagerView: View {
                     ManagerArtwork(size: 42)
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Omarchy VM Manager").font(.caption.bold())
-                        Text("Private build · " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")).font(.caption).foregroundStyle(.secondary)
+                        Text("Private build · " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")").font(.caption).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("A project of").foregroundStyle(.secondary)
+                            Link("reactive.org enterprises", destination: URL(string: "https://www.reactive.org/")!)
+                                .lineLimit(1).minimumScaleFactor(0.85)
+                        }.font(.caption).padding(.top, 5)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
             }.navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
@@ -98,14 +103,17 @@ struct ManagerView: View {
     private var library: some View {
         VStack(alignment: .leading, spacing: 24) {
             GroupedPanel {
-                HStack(spacing: 24) {
-                    ManagerArtwork(size: 144)
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Omarchy VM Manager").font(.system(size: 32, weight: .bold))
-                        Text("Your Omarchy virtual machines").font(.title3).foregroundStyle(.secondary)
-                        Text("\(active.count) running or starting · \(active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024) GiB allocated").foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 24) {
+                        ManagerArtwork(size: 144)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Omarchy VM Manager").font(.system(size: 32, weight: .bold))
+                            Text("Your Omarchy virtual machines").font(.title3).foregroundStyle(.secondary)
+                            Text("\(active.count) running or starting · \(active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024) GiB allocated").foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    OmarchyAttribution()
                 }.padding(24)
             }
             Text("Virtual Machines").font(.title2.bold())
@@ -116,20 +124,7 @@ struct ManagerView: View {
                 actions: { Button("New VM") { editor = EditorSelection(profile: nil) }.buttonStyle(.borderedProminent) }
             }
             ForEach(model.snapshots) { snapshot in
-                GroupedPanel {
-                    HStack(alignment: .top, spacing: 18) {
-                        TileIcon(symbol: "desktopcomputer", color: .green, size: 46)
-                        VStack(alignment: .leading, spacing: 7) {
-                            Button(snapshot.profile.name) { destination = .guest(snapshot.id) }.buttonStyle(.plain).font(.title2.bold())
-                            Text("\(snapshot.state.label) · \(snapshot.profile.cpus) cores · \(snapshot.profile.memoryMiB / 1024) GiB memory").foregroundStyle(.secondary)
-                            if snapshot.profile.isRetainedPOC { Label("Retained POC disk", systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary) }
-                            if let failure = snapshot.lastFailure { Text(failure.message).foregroundStyle(.red).font(.callout) }
-                            progress(snapshot)
-                        }
-                        Spacer()
-                        controls(snapshot)
-                    }.padding(20)
-                }
+                GuestLibraryRow(snapshot: snapshot, open: { destination = .guest(snapshot.id) }) { controls(snapshot) }
             }
         }
     }
@@ -138,11 +133,11 @@ struct ManagerView: View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(snapshot.profile.name).font(.largeTitle.bold())
+                    Text(snapshot.profile.name).font(.largeTitle.bold()).lineLimit(1).help(snapshot.profile.name)
                     Text(snapshot.state.label).foregroundStyle(snapshot.sessionID == nil ? Color.secondary : Color.green)
                 }
                 Spacer(); controls(snapshot)
-            }
+            }.frame(height: 64, alignment: .top)
             Picker("Guest settings", selection: $page) { ForEach(GuestPage.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
             if snapshot.profile.isRetainedPOC {
                 Label("This POC disk is retained. Configuration changes and deletion are disabled.", systemImage: "lock.shield").font(.callout).foregroundStyle(.secondary)
@@ -155,7 +150,10 @@ struct ManagerView: View {
             case .ssh: ssh(snapshot)
             case .spaces: spaces(snapshot)
             }
-            if let notice = snapshot.notice { Label(notice, systemImage: "info.circle").font(.callout) }
+            Group {
+                if let notice = snapshot.notice { Label(notice, systemImage: "info.circle").font(.callout).lineLimit(2).help(notice) }
+                else { Color.clear }
+            }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 38, alignment: .top)
             if let failure = snapshot.lastFailure {
                 GroupedPanel { VStack(alignment: .leading, spacing: 10) {
                     Label("\(failure.code)", systemImage: "exclamationmark.triangle").font(.headline)
@@ -164,13 +162,11 @@ struct ManagerView: View {
                 }.padding(20) }
             }
             let events = model.records.filter { $0.vmID == snapshot.id }
-            if !events.isEmpty {
-                DisclosureGroup("Session activity") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(events.suffix(30).reversed())) { Text("\($0.date.formatted(date: .omitted, time: .standard))  \($0.text)").font(.system(.caption, design: .monospaced)).textSelection(.enabled) }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
-                }
-            }
+            DisclosureGroup("Session activity") {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(events.suffix(30).reversed())) { Text("\($0.date.formatted(date: .omitted, time: .standard))  \($0.text)").font(.system(.caption, design: .monospaced)).textSelection(.enabled) }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+            }.disabled(events.isEmpty)
             if !snapshot.profile.isRetainedPOC {
                 HStack {
                     Button("Rename or Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
@@ -183,18 +179,8 @@ struct ManagerView: View {
 
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 22) {
-            GroupedPanel {
-                HStack(spacing: 24) {
-                    ManagerArtwork(size: 96)
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Omarchy").font(.system(size: 34, weight: .bold))
-                        Text(snapshot.state == .stopped ? "Ready to launch" : snapshot.state.label).font(.title3).foregroundStyle(.secondary)
-                        Text("Independent disk · Shared (NAT) network").foregroundStyle(.secondary)
-                        progress(snapshot)
-                    }
-                    Spacer()
-                }.padding(26)
-            }
+            GuestHomeHero(snapshot: snapshot)
+            OmarchyAttribution()
             Text("Quick Settings").font(.title2.bold())
             GroupedPanel {
                 SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory", icon: "cpu", color: .purple) {
@@ -332,25 +318,10 @@ struct ManagerView: View {
         }
     }
 
-    @ViewBuilder private func controls(_ snapshot: VMSnapshot) -> some View {
-        if snapshot.state.canStart {
-            Button { Task { await model.start(snapshot.id) } } label: { Label("Launch", systemImage: "play.fill") }
-                .buttonStyle(.borderedProminent).disabled(model.checking || model.diagnostics == nil || model.registryError != nil || model.shuttingDown)
-        } else if snapshot.sessionID != nil {
-            HStack {
-                Button("Shut Down") { Task { await model.stop(snapshot.id) } }.disabled(snapshot.state == .stopping)
-                Menu { Button("Force Stop…", role: .destructive) { model.forceStopID = snapshot.id } } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 24)
-            }
-        } else { ProgressView().controlSize(.small) }
-    }
-    @ViewBuilder private func progress(_ snapshot: VMSnapshot) -> some View {
-        switch snapshot.state {
-        case .downloading(let phase, let percent), .starting(let phase, let percent):
-            if let percent { ProgressView(value: Double(percent), total: 100).frame(maxWidth: 320); Text("\(phase.rawValue) · \(percent)%").font(.caption) }
-            else { ProgressView(phase.rawValue).controlSize(.small) }
-        case .validating: ProgressView("Validating…").controlSize(.small)
-        default: EmptyView()
-        }
+    private func controls(_ snapshot: VMSnapshot) -> some View {
+        GuestControls(snapshot: snapshot, launchEnabled: !model.checking && model.diagnostics != nil && model.registryError == nil && !model.shuttingDown,
+                      start: { Task { await model.start(snapshot.id) } }, stop: { Task { await model.stop(snapshot.id) } },
+                      forceStop: { model.forceStopID = snapshot.id })
     }
     private func editable(_ snapshot: VMSnapshot) -> Bool { snapshot.sessionID == nil && snapshot.state.canStart && !snapshot.profile.isRetainedPOC && !model.shuttingDown }
 }
@@ -364,7 +335,7 @@ private struct TileIcon: View {
             .frame(width: size, height: size).background(color.gradient, in: RoundedRectangle(cornerRadius: size * 0.23))
     }
 }
-private struct GroupedPanel<Content: View>: View {
+struct GroupedPanel<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View { VStack(spacing: 0) { content }.frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)) }
 }

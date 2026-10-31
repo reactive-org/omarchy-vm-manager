@@ -36,7 +36,21 @@ final class AppModel: ObservableObject {
     private var lastSSHStates: [UUID: SSHReadiness] = [:]
     private var storageRefreshed = Date.distantPast
 
+    static var layoutPreview: Bool {
+        #if DEBUG
+        Bundle.main.object(forInfoDictionaryKey: "OmarchyLayoutPreview") as? Bool == true
+        #else
+        false
+        #endif
+    }
+
     init() {
+        if Self.layoutPreview {
+            support = FileManager.default.temporaryDirectory.appendingPathComponent("omarchy-layout-preview")
+            manager = VMManager(runtime: FakeRuntime(), profiles: [], applicationSupport: support)
+            checking = false
+            return
+        }
         support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
         let kit = TryOmarchyKit.embedded()
         do {

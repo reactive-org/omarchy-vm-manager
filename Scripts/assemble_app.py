@@ -2,6 +2,7 @@
 """Assemble only a private debug app with exact kit content and ad-hoc signing."""
 import argparse
 import json
+import plistlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,7 +18,9 @@ def run(*args, **kwargs):
 def assemble():
     parser = argparse.ArgumentParser()
     parser.add_argument("--preview", action="store_true", help="Build a sibling app without replacing the running manager")
+    parser.add_argument("--layout-preview", action="store_true", help="Build an isolated no-VM lifecycle layout gallery")
     args = parser.parse_args()
+    assert not (args.preview and args.layout_preview)
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"
     lock = json.loads(lock_path.read_bytes())
     assert lock["kitVersion"] == "development" and lock["focusAwareClipboard"] is True
@@ -26,7 +29,7 @@ def assemble():
     assert digest(source / "TryOmarchyKit.zip") == lock["kitSHA256"], "private archive mismatch"
     assert inventory(source / "TryOmarchyKit.bundle") == lock["files"], "private kit content mismatch"
     binaries = Path(subprocess.check_output(["swift", "build", "--disable-sandbox", "--show-bin-path"], cwd=ROOT, text=True).strip())
-    name = "Omarchy VM Manager Preview" if args.preview else "Omarchy VM Manager"
+    name = "Omarchy VM Manager Layout Preview" if args.layout_preview else ("Omarchy VM Manager Preview" if args.preview else "Omarchy VM Manager")
     app = ROOT / "dist" / (name + ".app")
     stage = ROOT / "dist" / ("." + name + ".staging.app")
     assert not stage.exists(), "existing assembly stage; inspect before retrying"
@@ -39,9 +42,15 @@ def assemble():
         assert resources.is_dir() and not resources.is_symlink(), "missing core resource bundle"
         assert all(not entry.is_symlink() for entry in resources.rglob("*")), "linked core resource entry"
         shutil.copytree(resources, stage / "Contents/Resources" / resources.name)
-        shutil.copy2(ROOT / "App/Info.plist", stage / "Contents/Info.plist")
-        for extension in ("icns", "png"):
-            shutil.copy2(ROOT / "App/Assets" / ("OmarchyVMManager." + extension), stage / "Contents/Resources" / ("OmarchyVMManager." + extension))
+        info = plistlib.loads((ROOT / "App/Info.plist").read_bytes())
+        if args.layout_preview:
+            info["CFBundleIdentifier"] = "dev.omarchy.vm-manager.layout-preview"
+            info["CFBundleName"] = info["CFBundleDisplayName"] = "Omarchy VM Manager Layout Preview"
+            info["OmarchyLayoutPreview"] = True
+        (stage / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+        for stem in ("OmarchyVMManager", "OmarchyGuest"):
+            for extension in ("icns", "png"):
+                shutil.copy2(ROOT / "App/Assets" / (stem + "." + extension), stage / "Contents/Resources" / (stem + "." + extension))
         shutil.copy2(lock_path, stage / "Contents/Resources" / lock_path.name)
         for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, stage / "Contents/Resources" / name)
@@ -54,7 +63,7 @@ def assemble():
         run("python3", signature, "verify", "--signature-only", kit)
         assert inventory(kit) == lock["files"], "embedding changed pinned kit bytes"
         run("codesign", "--force", "--sign", "-", "--identifier", "dev.omarchy.vm-manager.storage", stage / "Contents/MacOS/OmarchyVMStorageHelper")
-        run("codesign", "--force", "--sign", "-", "--identifier", "dev.omarchy.vm-manager",
+        run("codesign", "--force", "--sign", "-", "--identifier", info["CFBundleIdentifier"],
             "--entitlements", ROOT / "App/OmarchyVMManager.entitlements", stage)
         run("codesign", "--verify", "--deep", "--strict", stage)
         run(stage / "Contents/MacOS/OmarchyVMManager", "--diagnostics-json")
