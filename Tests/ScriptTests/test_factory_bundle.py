@@ -97,3 +97,29 @@ class FactoryReviewPinTests(unittest.TestCase):
                 reviews.write_text(json.dumps(values))
                 with self.assertRaises(ValueError): prepare_runtime_source.update_factory_review_pin(root)
                 self.assertEqual(pin.read_bytes(), original)
+
+class LeanPreparationTests(unittest.TestCase):
+    fixture = FactoryPreparationTests.fixture
+    def test_explicit_lean_selection_requires_reviewed_program_set_package_and_source(self):
+        for case in ('success', 'unknown', 'mixed', 'old-package', 'wrong-source', 'capability'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                bundle, lock_path = self.fixture(Path(directory))
+                lock = json.loads(lock_path.read_bytes())
+                lock.update(ownerSetupContractsVersion=1, patchCommit='e' * 40)
+                lock['files']['Contents/Resources/owner-setup-provenance.json'] = 'f' * 64
+                expected = json.loads((ROOT / 'Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json').read_bytes())['programs']
+                del expected['/usr/share/omarchy/install/provisioning/progress-icon.sh']
+                if case == 'mixed': expected['/usr/bin/omarchy-provision-owner'] = 'a' * 64
+                (bundle / 'compatibility.json').write_text(json.dumps({'owner_programs': expected, 'packages': {'try-omarchy': '0.1.0-36.1' if case == 'old-package' else '0.1.0-41.1'}}))
+                (bundle / 'image-build.json').write_text(json.dumps({'try_commit': 'f' * 40 if case == 'wrong-source' else lock['patchCommit']}))
+                if case == 'capability': del lock['ownerSetupContractsVersion']
+                lock_path.write_text(json.dumps(lock))
+                kwargs = dict(runtime_lock=lock_path, owner_contract='unknown' if case == 'unknown' else 'lean-e4fffc6', compatibility='compatibility.json', image_build='image-build.json')
+                if case == 'success':
+                    module.prepare(bundle, 'Lean fixture', ['compatibility.json','image-build.json'], **kwargs)
+                    value = json.loads((bundle / 'reviewed-factory.json').read_bytes())
+                    self.assertEqual(value['imageIntegrationVersion'], '0.1.0-41.1')
+                    self.assertEqual(value['ownerSetupContractSHA256'], module.digest(ROOT / 'Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json'))
+                else:
+                    with self.assertRaises(ValueError): module.prepare(bundle, 'Lean fixture', ['compatibility.json','image-build.json'], **kwargs)
+                    self.assertFalse((bundle / 'reviewed-factory.json').exists())

@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-01T12:00:00+11:00",
+  "authorDate": "2026-11-01T14:00:00+11:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-01T12:00:00+11:00",
-  "subject": "Add cancellable verified factory selection to the managed run mode",
-  "commit": "eda42dd2add4cc3fe465bcd0e60db593ed29c3a0",
-  "patchSHA256": "40ebe457514ca80f6b193ed20b1aa95a15cc342b1d30a10810c3ad1058a98ad9"
+  "committerDate": "2026-11-01T14:00:00+11:00",
+  "subject": "Add reviewed official and lean owner provisioning contracts",
+  "commit": "2f4edb784dc9e0d58a35f1d31558ef72bbe2df37",
+  "patchSHA256": "7a3b339a616fd6062a23f1d018765ba440fac6d575aa90eeaeb2545cd8f89163"
 }

@@ -16,6 +16,8 @@ Status: implemented and verified through an approved fresh first boot, saved own
 
 The user's request authorizes storing a password for unattended owner creation. It does not enable password-based manager SSH, capture passwords from guest prompts, or change the policy for existing disks. ISO disk selection/encryption and Tailscale enrollment remain outside this prepared-image implementation.
 
+**DESIGN DECISION — reviewed contract extension, 1 November 2026:** package 41 preserves the official contract and adds explicitly selected `lean-e4fffc6` support bound to verified factory/runtime provenance. It checks complete program sets and their private snapshots before managed functions, preserves saved full-name/email fields for lean, and prevents finalization warnings from removing retry markers or enabling SSH. Opted-in errors stop with a bounded failure code; they no longer execute an interactive fallback after contract failure. Unseeded guests retain normal interactive setup. See [lean source review, rebuild and commands](LeanOwnerSetup.md). This extension has synthetic validation only; the earlier real-guest results below apply to the official factory and historical build.
+
 ## Required checks
 
 - Defaults off until saved; optional opt-out per new guest.
@@ -36,7 +38,7 @@ The user's request authorizes storing a password for unattended owner creation. 
 
 A matching advisory report may remove only that VM's temporary seed; it cannot release lifecycle resources or mark SSH authenticated. Completed profiles need no password read on later launches. A failed/aborted setup can recreate its seed from the original Keychain reference. Both the helper's terminal path and the next stopped-manager admission remove abandoned seeds. No claim of secure physical erasure is made.
 
-**TO PROVE:** real interruption recovery while first-boot provisioning is incomplete; cleanup after an abruptly killed helper rather than a normal exit; changed-binary Keychain access; and visible fallback with a future unsupported factory image. Synthetic tests cover matching identities, terminal cleanup, changed contracts, encryption refusal and retry boundaries. The real run below proves the normal first-boot/restart path. All four earlier disks remain stopped and retained.
+**TO PROVE:** real interruption recovery while first-boot provisioning is incomplete; cleanup after an abruptly killed helper rather than a normal exit; changed-binary Keychain access; and visible error reporting with a future unsupported factory image. Synthetic tests cover matching identities, terminal cleanup, changed contracts, encryption refusal and retry boundaries. The real run below proves the normal first-boot/restart path. All four earlier disks remain stopped and retained.
 
 **VERIFIED — packaged native UI:** build 0.4.0 (5) opens Guest Defaults with the native grouped settings form, secure password fields, time zone/keyboard selectors, optional public-key chooser and Save Defaults. New VM shows manual setup while defaults are off and keeps SSH on by default. Canceling the sheet creates no profile or disk. The original POC trees match every recorded stat/hash field; both SSH test disks are present without setup metadata. App layout, pinned payload, ad-hoc signatures and host preflight pass.
 

@@ -102,7 +102,7 @@ public struct TryOmarchyRuntime: VMRuntime {
             if let setup = request.profile.ownerSetup, try !owner.completed(request.profile) {
                 password = try ownerSecrets.read(reference: setup.credentialReference)
             } else { password = nil }
-            _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password)
+            _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password, ownerContract: try catalog.ownerSetupContract(for: request.profile.factory))
         } else { try pocAdmission?.admit(request) }
         var configuration = try Self.configuration(for: request)
         guard managedStorage != nil || request.profile.factory?.kind != .custom else { throw FactoryCatalog.invalid("Custom factories require the verified managed runtime.") }

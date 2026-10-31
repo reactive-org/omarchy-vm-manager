@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "programs": {
+    "/usr/bin/omarchy-provision-owner": "b81202f7b6f58f4e670c8f3509e1eb952807b92ad24d0c0e87b75bd03004d0ca",
+    "/usr/share/omarchy/install/provisioning/setup-form.sh": "b3ae7c22c8c8de91590d3a0e7d037b75734b7d886c8dceb012a3bbdf546045c5",
+    "/usr/share/omarchy/install/provisioning/luks-rekey.sh": "29ce96e714ad76eda9c42f9d82b3f0e87e7a8f22e3edd17e6fa73074dc2e0189",
+    "/usr/share/omarchy/install/provisioning/progress-icon.sh": "d512ac504813a4eb4833dfd939fd274ad3b7f39c4b15641c15fdbad5abde77f5",
+    "/usr/bin/omarchy-provision-user": "69bacb9c2e9e52806793a59304291beb60ee27be194afb7a0fe02d50b8600b25"
+  },
+  "keyboards": [
+    {
+      "id": "English (US)",
+      "keymap": "us",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "English (UK)",
+      "keymap": "uk",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "English (US, Dvorak)",
+      "keymap": "dvorak",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "English (US, Colemak)",
+      "keymap": "colemak",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Belarusian",
+      "keymap": "by",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Belgian",
+      "keymap": "be-latin1",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Bulgarian",
+      "keymap": "bg-cp1251",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Chinese (Simplified, Pinyin)",
+      "keymap": "us",
+      "inputMethod": "pinyin",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Croatian",
+      "keymap": "croat",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Czech",
+      "keymap": "cz",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Danish",
+      "keymap": "dk-latin1",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Dutch",
+      "keymap": "nl",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Estonian",
+      "keymap": "et",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Finnish",
+      "keymap": "fi",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "French",
+      "keymap": "fr",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "French (Canada)",
+      "keymap": "cf",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "French (Switzerland)",
+      "keymap": "fr_CH",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Georgian",
+      "keymap": "ge",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "German",
+      "keymap": "de",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "German (Switzerland)",
+      "keymap": "de_CH-latin1",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Greek",
+      "keymap": "gr",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Hebrew",
+      "keymap": "il",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Hong Kong (Cangjie)",
+      "keymap": "us",
+      "inputMethod": "cangjie5",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Hungarian",
+      "keymap": "hu",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Icelandic",
+      "keymap": "is-latin1",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Irish",
+      "keymap": "ie",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Italian",
+      "keymap": "it",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Japanese",
+      "keymap": "jp106",
+      "inputMethod": "mozc",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Japanese (US keyboard)",
+      "keymap": "us",
+      "inputMethod": "mozc",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Kazakh",
+      "keymap": "kazakh",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Korean",
+      "keymap": "us",
+      "inputMethod": "hangul",
+      "xkbLayout": "kr:kr104"
+    },
+    {
+      "id": "Kyrgyz",
+      "keymap": "kyrgyz",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Lao",
+      "keymap": "us",
+      "inputMethod": "none",
+      "xkbLayout": "la"
+    },
+    {
+      "id": "Latvian",
+      "keymap": "lv",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Lithuanian",
+      "keymap": "lt",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Macedonian",
+      "keymap": "mk-utf",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Norwegian",
+      "keymap": "no-latin1",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Polish",
+      "keymap": "pl",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Portuguese",
+      "keymap": "pt-latin1",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Portuguese (Brazil)",
+      "keymap": "br-abnt2",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Romanian",
+      "keymap": "ro",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Russian",
+      "keymap": "ru",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Serbian",
+      "keymap": "sr-latin",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Slovak",
+      "keymap": "sk-qwertz",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Slovenian",
+      "keymap": "slovene",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Spanish",
+      "keymap": "es",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Spanish (Latin American)",
+      "keymap": "la-latin1",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Swedish",
+      "keymap": "sv-latin1",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Taiwan (Zhuyin)",
+      "keymap": "us",
+      "inputMethod": "chewing",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Tajik",
+      "keymap": "tj_alt-UTF8",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Turkish",
+      "keymap": "trq",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    },
+    {
+      "id": "Ukrainian",
+      "keymap": "ua",
+      "inputMethod": "none",
+      "xkbLayout": ""
+    }
+  ]
+}

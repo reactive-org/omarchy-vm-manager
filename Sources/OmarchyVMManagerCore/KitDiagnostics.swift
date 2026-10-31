@@ -20,6 +20,7 @@ public struct RuntimeProvenance: Codable, Equatable, Sendable {
     public var manualPauseVersion: Int? = nil
     public var customFactoryVersion: Int? = nil
     public var managedSetupVersion: Int? = nil
+    public var ownerSetupContractsVersion: Int? = nil
     public let composition: String
     public let files: [String: String]
 }
@@ -93,6 +94,9 @@ public enum KitVerifier {
               lock.files.values.allSatisfy({ hex($0, count: 64) }) else {
             throw invalid("The runtime provenance or focus-aware clipboard capability is unproven.")
         }
+        if let version = lock.ownerSetupContractsVersion {
+            guard version == VMOwnerSetupContract.capabilityVersion, lock.files[VMOwnerSetupContract.provenancePath] != nil else { throw invalid("Reviewed owner contract selection is unproven.") }
+        }
         if let version = lock.customFactoryVersion, version != VMFactorySelection.capabilityVersion {
             throw invalid("Custom factory selection capability is unknown.")
         }
@@ -100,12 +104,12 @@ public enum KitVerifier {
             throw invalid("Manual execution control capability is unknown.")
         }
         if let version = lock.managedSSHVersion {
-            guard version == 1, lock.files.keys.contains("Contents/Resources/guest-packages/try-omarchy-0.1.0-40-aarch64.pkg.tar.zst") else {
+            guard version == 1, lock.files.keys.contains(VMFactorySelection.packagePath) else {
                 throw invalid("Managed SSH provisioning capability is unknown or its guest package is missing.")
             }
         }
         if let version = lock.managedSetupVersion {
-            guard version == 1, lock.files.keys.contains("Contents/Resources/guest-packages/try-omarchy-0.1.0-40-aarch64.pkg.tar.zst") else {
+            guard version == 1, lock.files.keys.contains(VMFactorySelection.packagePath) else {
                 throw invalid("Unattended owner provisioning capability is unknown or its guest package is missing.")
             }
         }

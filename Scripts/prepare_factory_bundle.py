@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-40-aarch64.pkg.tar.zst'
+PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-41-aarch64.pkg.tar.zst'
 
 
 def read_regular(path, maximum=None):
@@ -50,7 +50,7 @@ def is_digest(value):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
 
 
-def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRuntime.lock.json'):
+def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRuntime.lock.json', owner_contract='official', compatibility=None, image_build=None):
     bundle = Path(bundle).absolute()
     if bundle.resolve() != bundle or not bundle.is_dir():
         raise ValueError('Use a real prepared bundle directory without symbolic links')
@@ -87,13 +87,34 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
             or any(not isinstance(path, str) or not path.startswith('Contents/') or any(part in ('', '.', '..') for part in path.split('/'))
                    or not is_digest(value) for path, value in runtime_files.items())):
         raise ValueError('The runtime inventory is missing, unsafe or incompatible')
+    contracts = {'official': ROOT / 'Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json',
+                 'lean-e4fffc6': ROOT / 'Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json'}
+    if owner_contract not in contracts:
+        raise ValueError('Unknown reviewed owner contract')
+    selected = contracts[owner_contract]
+    extra = {}
+    if owner_contract == 'lean-e4fffc6':
+        if (type(lock.get('ownerSetupContractsVersion')) is not int or lock['ownerSetupContractsVersion'] != 1
+                or 'Contents/Resources/owner-setup-provenance.json' not in runtime_files):
+            raise ValueError('Build the reviewed owner-contract capable kit first')
+        if compatibility not in provisioning or image_build not in provisioning:
+            raise ValueError('Include compatibility and image-build evidence for the lean contract')
+        evidence = metadata(bundle / compatibility)
+        build = metadata(bundle / image_build)
+        expected = metadata(selected)['programs'].copy()
+        del expected['/usr/share/omarchy/install/provisioning/progress-icon.sh']
+        if (evidence.get('owner_programs') != expected or evidence.get('packages', {}).get('try-omarchy') != '0.1.0-41.1'
+                or build.get('try_commit') != lock.get('patchCommit') or not re.fullmatch('[0-9a-f]{40}', str(build.get('try_commit', '')))):
+            raise ValueError('Rebuild the lean disk from this reviewed manager integration source; owner programs, package or source differ')
+        extra = {'ownerSetupEvidence': compatibility, 'imageBuildEvidence': image_build,
+                 'imageIntegrationVersion': '0.1.0-41.1', 'imageIntegrationSourceCommit': build['try_commit']}
     value = {
         'format': 1, 'name': name, 'architecture': 'aarch64', 'boot': 'uefi-limine',
         'customFactoryVersion': 1, 'managedSSHVersion': 1, 'managedSetupVersion': 1,
         'integrationPackageSHA256': lock['files'][PACKAGE],
-        'ownerSetupContractSHA256': digest(ROOT / 'Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json'),
+        'ownerSetupContractSHA256': digest(selected),
         'runtimeFiles': lock['files'], 'files': files,
-        'provisioning': {path: files[path] for path in provisioning},
+        'provisioning': {path: files[path] for path in provisioning}, **extra,
     }
     with destination.open('x') as output:
         json.dump(value, output, indent=2, sort_keys=True)
@@ -105,9 +126,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bundle', type=Path)
     parser.add_argument('--name', required=True)
+    parser.add_argument('--owner-contract', choices=['official', 'lean-e4fffc6'], default='official')
+    parser.add_argument('--compatibility', help='Included compatibility evidence filename for lean')
+    parser.add_argument('--image-build', help='Included integration source evidence filename for lean')
     parser.add_argument('--provisioning', required=True, action='append', help='Included basename; repeat for every provisioning evidence file')
     args = parser.parse_args()
-    print(prepare(args.bundle, args.name, args.provisioning))
+    print(prepare(args.bundle, args.name, args.provisioning, owner_contract=args.owner_contract, compatibility=args.compatibility, image_build=args.image_build))
 
 
 if __name__ == '__main__':

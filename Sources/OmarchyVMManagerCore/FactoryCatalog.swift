@@ -123,10 +123,10 @@ public struct FactoryCatalog: Sendable {
         catch is CancellationError { throw CancellationError() }
         catch { throw Self.invalid("The factory payload, image metadata or runtime hashes failed verification.") }
         try Task.checkCancellation()
-        let contract = Bundle.module.url(forResource: "OwnerSetupContract", withExtension: "json")!
         guard manifest.runtimeFiles == lock.files,
               manifest.integrationPackageSHA256 == lock.files[VMFactorySelection.packagePath],
-              manifest.ownerSetupContractSHA256 == (try VMFactorySelection.digest(contract)) else { throw Self.invalid("Factory runtime, integration package or provisioning contract provenance differs from this kit.") }
+              VMOwnerSetupContract.isSupported(manifest.ownerSetupContractSHA256),
+              manifest.ownerSetupContractSHA256 != VMOwnerSetupContract.lean || (lock.ownerSetupContractsVersion == 1 && manifest.imageIntegrationSourceCommit == lock.patchCommit) else { throw Self.invalid("Factory runtime, integration package or provisioning contract provenance differs from this kit.") }
         let image = try Self.decodeImage(VMFactorySelection.readMetadata(url.appendingPathComponent("factory.json")), expectedSHA256: manifest.files["factory.json"])
         return FactoryIdentity(kind: .custom, name: manifest.name, manifestSHA256: digest, diskSHA256: image.disk.sha256)
     }
@@ -245,6 +245,15 @@ public struct FactoryCatalog: Sendable {
         guard image.disk.sha256 == identity.diskSHA256, image.disk.bytes > 0 else { throw Self.invalid("Factory image metadata differs from its recorded identity.") }
         guard (64...8192).contains(diskGiB), Int64(diskGiB) * 1_073_741_824 >= image.disk.bytes else { throw Self.invalid("Choose a disk capacity at least as large as the prepared factory disk.") }
     }
+    func ownerSetupContract(for identity: FactoryIdentity?) throws -> String {
+        guard let identity, identity.kind == .custom else { return VMOwnerSetupContract.official }
+        let data = try VMFactorySelection.readMetadata(root(identity.manifestSHA256).appendingPathComponent("reviewed-factory.json"))
+        guard KitVerifier.sha256(data) == identity.manifestSHA256 else { throw Self.invalid("The factory contract changed.") }
+        let manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: data)
+        try manifest.validate()
+        return manifest.ownerSetupContractSHA256
+    }
+
     public func selection(for identity: FactoryIdentity?) throws -> VMFactorySelection? {
         guard let identity else { return nil }
         try identity.validate()

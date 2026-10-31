@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import TryOmarchyKitClient
 
 struct ManagedOwnerStorage: Sendable {
     let root: URL
@@ -10,6 +11,7 @@ struct ManagedOwnerStorage: Sendable {
         let schemaVersion: Int
         let vmID: UUID
         let sessionToken: UUID
+        var ownerSetupContractSHA256: String? = nil
         let fingerprint: String
         let configuration: OwnerConfiguration
         let hostname: String
@@ -25,8 +27,9 @@ struct ManagedOwnerStorage: Sendable {
         guard value == Identity(vmID: profile.id, fingerprint: try setup.fingerprint()) else { throw PrivateFiles.failure("Owner setup completion belongs to another configuration.") }
         return true
     }
-    func prepare(_ profile: VMProfile, sessionID: UUID, password: Data?, newRoot: Bool) throws {
+    func prepare(_ profile: VMProfile, sessionID: UUID, password: Data?, newRoot: Bool, contract: String = VMOwnerSetupContract.official) throws {
         guard let setup = profile.ownerSetup else { return }
+        guard VMOwnerSetupContract.isSupported(contract) else { throw FactoryCatalog.invalid("Unknown owner setup contract.") }
         try setup.validate(for: profile.id)
         let expected = Identity(vmID: profile.id, fingerprint: try setup.fingerprint())
         if !PrivateFiles.exists(directory) {
@@ -40,7 +43,7 @@ struct ManagedOwnerStorage: Sendable {
         guard let password else { throw OwnerConfiguration.invalid("The saved setup password is unavailable. Unlock the login Keychain and retry.") }
         try OwnerConfiguration.validatePassword(password)
         try PrivateFiles.directory(bootstrap, create: true)
-        let value = Manifest(schemaVersion: 1, vmID: profile.id, sessionToken: sessionID, fingerprint: expected.fingerprint, configuration: setup.configuration, hostname: setup.hostname)
+        let value = Manifest(schemaVersion: 1, vmID: profile.id, sessionToken: sessionID, ownerSetupContractSHA256: contract == VMOwnerSetupContract.official ? nil : contract, fingerprint: expected.fingerprint, configuration: setup.configuration, hostname: setup.hostname)
         let encoded = try JSONEncoder().encode(value)
         try PrivateFiles.write(encoded, name: "manifest.json", in: bootstrap)
         try PrivateFiles.write(JSONEncoder().encode(Seed(password: String(decoding: password, as: UTF8.self))), name: "owner-setup.json", in: bootstrap)

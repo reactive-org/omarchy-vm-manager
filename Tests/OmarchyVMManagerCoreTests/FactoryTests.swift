@@ -19,13 +19,16 @@ struct FactoryFixture {
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data(path.utf8).write(to: target)
         }
+        let contractProvenance: [String: Any] = ["version": 1, "sourceCommit": kit.lock.patchCommit,
+            "contracts": ["official": VMOwnerSetupContract.official, "lean-e4fffc6": VMOwnerSetupContract.lean]]
+        try JSONSerialization.data(withJSONObject: contractProvenance, options: .sortedKeys).write(to: kit.kit.bundleURL.appendingPathComponent(VMOwnerSetupContract.provenancePath))
         var provenance = kit.lock
         provenance.customFactoryVersion = 1; provenance.managedSSHVersion = 1; provenance.managedSetupVersion = 1
         // The synthetic package has no executable guest and is used only for file verification.
         provenance = RuntimeProvenance(format: provenance.format, upstreamBase: provenance.upstreamBase, patchCommit: provenance.patchCommit,
             patchSHA256: provenance.patchSHA256, referenceKitSHA256: provenance.referenceKitSHA256, kitSHA256: provenance.kitSHA256,
             kitVersion: provenance.kitVersion, runProtocolVersion: provenance.runProtocolVersion, buildDate: provenance.buildDate,
-            focusAwareClipboard: true, managedSSHVersion: 1, manualPauseVersion: 1, customFactoryVersion: 1, managedSetupVersion: 1,
+            focusAwareClipboard: true, managedSSHVersion: 1, manualPauseVersion: 1, customFactoryVersion: 1, managedSetupVersion: 1, ownerSetupContractsVersion: 1,
             composition: "synthetic no-VM factory fixture", files: try KitVerifier.inventory(at: kit.kit.bundleURL))
         lock = provenance
         let compressed = Data("synthetic compressed image; never booted".utf8)

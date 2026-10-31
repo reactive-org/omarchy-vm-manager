@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import TryOmarchyKitClient
 
 public struct ManagerStorage: Sendable {
     public let applicationSupport: URL
@@ -34,7 +35,7 @@ public struct ManagerStorage: Sendable {
         let resources: Resources
     }
 
-    public func prepare(_ profile: VMProfile, sessionID: UUID = UUID(), ownerPassword: Data? = nil) throws -> URL {
+    public func prepare(_ profile: VMProfile, sessionID: UUID = UUID(), ownerPassword: Data? = nil, ownerContract: String = VMOwnerSetupContract.official) throws -> URL {
         try RegistryStore.validate(profile)
         try PrivateFiles.directory(directory, create: true)
         try PrivateFiles.directory(vms, create: true)
@@ -86,7 +87,7 @@ public struct ManagerStorage: Sendable {
             throw PrivateFiles.failure("Unexpected managed SSH metadata is present. No existing access was changed.")
         }
         if profile.ownerSetup != nil {
-            try withLock(profile) { try ManagedOwnerStorage(root: root).prepare(profile, sessionID: sessionID, password: ownerPassword, newRoot: created) }
+            try withLock(profile) { try ManagedOwnerStorage(root: root).prepare(profile, sessionID: sessionID, password: ownerPassword, newRoot: created, contract: ownerContract) }
         } else if PrivateFiles.exists(root.appendingPathComponent(".manager-setup")) || PrivateFiles.exists(root.appendingPathComponent(ManagedOwnerStorage.launchName)) {
             throw PrivateFiles.failure("Unexpected unattended setup metadata is present. Existing storage was preserved.")
         }

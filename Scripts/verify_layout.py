@@ -15,6 +15,9 @@ assert info["CFBundleExecutable"] == "OmarchyVMManager"
 contract = contents / "Resources/OmarchyVMManager_OmarchyVMManagerCore.bundle/Contents/Resources/OwnerSetupContract.json"
 assert contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json").read_bytes()
 assert json.loads(contract.read_bytes())["schemaVersion"] == 1
+lean_contract = contract.with_name("LeanOwnerSetupContract.json")
+assert lean_contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json").read_bytes()
+assert json.loads(lean_contract.read_bytes())["keyboards"] == json.loads(contract.read_bytes())["keyboards"]
 assert info["CFBundleIdentifier"] == ("dev.omarchy.vm-manager.layout-preview" if info.get("OmarchyLayoutPreview") is True else "dev.omarchy.vm-manager")
 assert info["LSMinimumSystemVersion"] == "15.0"
 assert info["CFBundleIconFile"] == "OmarchyVMManager"
