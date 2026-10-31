@@ -10,6 +10,7 @@ Build with `make app verify-app`. Run `./bin/omarchy-vm` from this repository, o
 ./bin/omarchy-vm update dev --memory 5GiB --cpus 6
 ./bin/omarchy-vm start dev --wait ssh
 ./bin/omarchy-vm restart dev --wait ssh
+./bin/omarchy-vm stop dev --wait
 ./bin/omarchy-vm delete dev
 ```
 
