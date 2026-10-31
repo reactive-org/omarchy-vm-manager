@@ -1,6 +1,6 @@
 # Omarchy VM Manager
 
-A high-fidelity, security-focused sandbox for AI-assisted development on Apple Silicon Macs. Give your coding agents a complete Omarchy Linux environment in a dedicated virtual machine, with its own filesystem, resources and lifecycle.
+[Omarchy VM Manager](https://www.reactive.org/omarchy-vm) is a high-fidelity, security-focused sandbox for AI-assisted development on Apple Silicon Macs. Give your coding agents a complete Omarchy Linux environment in a dedicated virtual machine, with its own filesystem, resources and lifecycle.
 
 This project is based heavily on the work of the [Try Omarchy team](https://github.com/omacom/try-omarchy). Their kit provides the VM runtime, official guest image and native Mac integrations; Omarchy VM Manager adds a native macOS app and orchestration for multiple independent guests.
 
