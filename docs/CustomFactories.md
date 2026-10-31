@@ -1,5 +1,8 @@
 # Custom factories
 
+For a step-by-step build, customisation and import walkthrough, start with
+[Preparing and customising a factory image](preparing-factory-images.md).
+
 Click **Import Factory** in the toolbar, or **Import Factory…** beside the image picker in **New VM**, and select a prepared factory bundle. The app verifies it, copies it into its private factory library and saves a local import record. No catalog JSON edit or app rebuild is required. Importing from New VM automatically selects the successfully imported image for that new profile.
 
 The sheet shows verification/copy progress, supports cancellation before publication and displays validation errors for retry. After success, the factory is available in **New VM → Factory image** and remains available when the app reopens. Cancelling the folder picker changes nothing. Import creates no VM root and never starts a guest.

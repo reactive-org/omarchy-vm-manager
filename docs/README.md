@@ -8,6 +8,7 @@ Create independent Omarchy guests, configure their resources, and connect from y
 
 - [Getting started](getting-started.md): open the app, set up reusable defaults, create a guest and launch it.
 - [Manage your guests](managing-guests.md): change resources, use SSH, assign a Space, shut down and delete guests.
+- [Prepare a factory image](preparing-factory-images.md): customise a lean build, prepare a compatible bundle and select it for a new guest.
 - [Use the CLI](cli-quickstart.md): create, wait for SSH, inspect, stop and reconfigure from a terminal.
 - [Troubleshooting](troubleshooting.md): Super shortcuts, clipboard, startup and SSH readiness.
 
@@ -28,13 +29,14 @@ Screenshots were captured on 31 October 2026. Guest names and the illustrated SS
 | Connect | NAT networking and a separate localhost SSH port for each enabled guest |
 | Organize windows | Native Dock assignment to Mission Control Spaces |
 | Remove a guest | Move its stopped guest folder to macOS Trash |
+| Choose a factory | Official image or a verified compatible custom bundle, selected when creating a guest |
 | Reuse downloads | Shared verified factory-image cache in Downloads |
 
 Shared folders, USB, camera, authentication bridges, general port-forward editing, snapshots and importing existing VMs are unavailable in this build. The library's retained POC entries are protected from editing and deletion.
 
 ## Further reference
 
-[CLI reference](CLI.md) · [Factory image cache](FactoryCache.md) · [Guest Defaults details](UnattendedDefaults.md) · [Managed SSH](ManagedSSH.md) · [Validation record](Validation.md)
+[CLI reference](CLI.md) · [Factory images](../README.md#factory-images) · [Factory image cache](FactoryCache.md) · [Guest Defaults details](UnattendedDefaults.md) · [Managed SSH](ManagedSSH.md) · [Validation record](Validation.md)
 
 This is a project of [reactive.org enterprises](https://www.reactive.org/). Omarchy is a pending trademark of the [Omacom Foundation](https://omarchy.org/foundation/).
 

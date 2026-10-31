@@ -7,10 +7,10 @@ This project is based heavily on the work of the [Try Omarchy team](https://gith
 ## Why use it?
 
 - **Multiple concurrent Omarchy guests.** Run one guest per project, one per client, or separate environments for experiments and AI agents. Each guest has independent storage and configuration.
-- **Official, verified factory image.** New guests use the official **Try Omarchy v1.3.0 ARM64 edge factory image**. Downloaded parts and the complete image are verified against the pinned SHA-256 checksums, and cached images are verified again before reuse.
+- **Official or custom factory images.** Use the official **Try Omarchy v1.3.0 ARM64 edge factory image**, or import a compatible custom factory and select it when creating a guest. Official downloads are checked against pinned SHA-256 checksums; custom bundles are checked against their recorded image, provisioning and runtime hashes. See [Factory images](#factory-images) and the [preparation and customisation guide](docs/preparing-factory-images.md).
 - **Automatic setup, ready in minutes.** Save your owner and system defaults once, then create guests that set themselves up with a usable desktop and SSH access. The shared image cache speeds up subsequent guests; first-download and setup time depend on your connection and Mac.
 - **Your developer environment, configured your way.** Pair with [reactive.org/dev-vm](https://reactive.org/dev-vm) for a declarative, fully configured developer environment inside the guest. Get each environment set up just the way you like it.
-- **A CLI for automation.** Create guests with custom resources, start, pause, resume and stop them individually, wait for authenticated SSH, inspect connection details, and update stopped guests through concise JSON responses.
+- **A CLI for automation.** Import and select factory images, create guests with custom resources, start, pause, resume and stop them individually, wait for authenticated SSH, inspect connection details, and update stopped guests through concise JSON responses.
 
 The native SwiftUI app requires macOS 15 or later. The current private debug build provides a persistent guest library, configuration and safe deletion through macOS Trash. Guests start when you choose **Launch** or issue a CLI start command. The two retained POC profiles are protected from edits and deletion.
 
@@ -48,7 +48,7 @@ The app verifies the compiled lock pin, manifest, helper, protocol and every emb
 
 ## Use the manager
 
-Open `dist/Omarchy VM Manager.app` and choose **New VM**. The native sidebar lists independent guests; each has Home, Virtual Machine, Network, Startup, SSH and Spaces pages. Configure name, CPU, memory, grow-only disk capacity, clipboard and immersive mode while stopped. New guests default to a 64 GiB sparse disk. Creation saves only profile metadata; the official factory image downloads on the first launch when it is not already cached. Each app or CLI launch selects the guest’s Home card and scrolls it to the top so preparation progress is visible.
+Open `dist/Omarchy VM Manager.app` and choose **New VM**. The native sidebar lists independent guests; each has Home, Virtual Machine, Network, Startup, SSH and Spaces pages. Configure name, CPU, memory, grow-only disk capacity, clipboard and immersive mode while stopped. New guests default to a 64 GiB sparse disk. Choose the official factory or an imported custom image in **New VM → Factory image**. Creation saves only profile metadata; the official image downloads on the first launch when it is not already cached, while a custom selection uses its imported bundle. Each app or CLI launch selects the guest’s Home card and scrolls it to the top so preparation progress is visible.
 
 **Guest Defaults** saves owner setup for future guests: username, password, optional name/Git email, keyboard, timezone, hostname prefix and optional public key. Enable and save it once, then leave **Use saved owner setup defaults** checked in New VM. Passwords stay in the login Keychain; profiles hold immutable snapshots and credential references. Each hostname gets a unique suffix. Existing guests are unchanged. The prepared image uses a reviewed adapter to Omarchy's owner setup, rather than the ISO disk/encryption installer. See [unattended defaults and validation](docs/UnattendedDefaults.md). A fresh unattended guest passed owner/settings, pinned SSH and restart checks; the known intermittent graphics issue remains open.
 
@@ -80,16 +80,38 @@ Guest artwork uses the official Omarchy mark in monochrome, with pending-tradema
 `make app verify-app` also packages `omarchy-vm`. Use `./bin/omarchy-vm` or add this repository's `bin` directory to `PATH`:
 
 ```sh
-./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --disk 64GiB --start --wait ssh --timeout 1800
+./bin/omarchy-vm factories
+./bin/omarchy-vm list
+./bin/omarchy-vm create dev --factory official --memory 4GiB --cpus 4 --disk 64GiB --start --wait ssh --timeout 1800
 ./bin/omarchy-vm get dev
 ./bin/omarchy-vm pause dev
 ./bin/omarchy-vm resume dev
 ./bin/omarchy-vm stop dev --wait
 ./bin/omarchy-vm update dev --memory 5GiB --cpus 6 --disk 128GiB
 ./bin/omarchy-vm start dev --wait ssh
+./bin/omarchy-vm restart dev --wait ssh
 ./bin/omarchy-vm stop dev --wait
 ./bin/omarchy-vm delete dev
 ```
+
+Import a prepared custom factory, then copy its exact manifest SHA-256 from the
+`factories` response into the creation command:
+
+```sh
+./bin/omarchy-vm factory-import /absolute/path/Prepared.factory
+./bin/omarchy-vm factories
+./bin/omarchy-vm create custom-dev --factory MANIFEST_SHA256 --memory 4GiB --cpus 4 --disk 64GiB
+```
+
+This custom example creates metadata only. Start it when ready with
+`./bin/omarchy-vm start custom-dev --wait ssh --timeout 1800`. Factory selection
+is fixed at creation; `update` cannot change it. Omitting `--factory` selects
+`official`. The JSON configuration equivalent is `"factory":"official"` or
+`"factory":"MANIFEST_SHA256"` in a file passed with `--config FILE.json`.
+Remove an unused imported image with
+`./bin/omarchy-vm factory-delete MANIFEST_SHA256`; any guest profile referencing
+it blocks removal, even while stopped. Removal moves the imported bundle and
+receipt to recoverable Trash. The official factory is protected.
 
 The CLI opens the manager in the background when needed and shares its existing lifecycle owner. Replies are concise JSON, including state/config and an authenticated SSH endpoint plus guest IPs when ready. NAT guests can share a private IP; use the returned localhost SSH port and generated `ssh.command`. Configuration updates refuse running guests and apply next start; delete uses guarded recoverable Trash. Saved Guest Defaults apply to new guests unless disabled. See [the full CLI contract and validation](docs/CLI.md).
 
@@ -101,9 +123,43 @@ Use a running guest’s ellipsis menu → **Pause**. Its main button becomes **R
 
 Pause keeps the live process, memory allocation, disk lock and SSH port reserved. It does not save state to disk or free RAM. A manually paused guest stays paused across Mac sleep/wake. **Shut Down**, restart and manager Quit resume an owned pause before asking Linux to shut down; **Force Stop…** remains available. Resume before using SSH or editing work inside the guest. Configuration and deletion still require a stopped guest. See [Pause/Resume behavior and validation](docs/PauseResume.md).
 
-## Factory image cache
+## Factory images
 
-New guests share a verified download in `~/Downloads/Omarchy VM Manager/Factory Images/`, including guests created through the CLI. The current pinned image stays cached; obsolete image downloads are pruned after seven days without use. Interrupted downloads resume and cached images are checksum-verified before reuse. Guest disks remain independent. See [factory cache](docs/FactoryCache.md).
+### Official factory
 
+The default is the pinned **Try Omarchy v1.3.0 ARM64 edge factory image**.
+Downloaded parts and the assembled compressed image are verified against pinned
+SHA-256 checksums. Every guest receives an independent writable disk.
 
-Use **Import Factory** in the toolbar or **New VM** to select and verify a prepared custom factory bundle. Imported factories are recorded locally and remain selectable after reopening the app; no catalog JSON edit or app rebuild is needed. See [custom factories](docs/CustomFactories.md) for the prepared-bundle contract and validation limits.
+### Custom factories
+
+Use **Import Factory** in the toolbar or **New VM** to select a prepared custom
+factory bundle. The manager verifies the bundle, copies it into its private
+library and records the import. Imported images remain selectable after reopening
+the app; no catalog JSON edit or app rebuild is needed. Select an image in
+**New VM → Factory image**, or use the [JSON CLI](#json-cli).
+
+A custom factory must be an ARM64 Omarchy UEFI/Limine image compatible with the
+manager's exact pinned runtime, integration package and supported owner-setup
+contract. Verification establishes integrity and declared compatibility; a
+successful boot, owner setup and hardware rendering still need live validation.
+Selection is fixed when a guest is created and never replaces an existing disk.
+
+Follow [Preparing and customising a factory image](docs/preparing-factory-images.md)
+to build a lean foundation, choose packages and preferences, prepare a bundle,
+import it and validate a new guest. See [Custom factories](docs/CustomFactories.md)
+for the bundle contract, verification and removal details.
+
+### Cache
+
+Official downloads are shared at
+`~/Downloads/Omarchy VM Manager/Factory Images/`, including guests created through
+the CLI. Interrupted downloads resume, and cached images are checksum-verified
+before reuse. The current pinned image stays cached; obsolete downloads are
+pruned after seven days without use. See [factory cache](docs/FactoryCache.md).
+
+Custom imports live separately at
+`~/Library/Application Support/Omarchy VM Manager/Factories/<manifest SHA-256>/`.
+They have verified local receipts and are not automatically pruned. The original
+prepared bundle stays independent of the imported copy. Delete an unused import
+with `factory-delete`; deleting a guest leaves its factory available for reuse.
