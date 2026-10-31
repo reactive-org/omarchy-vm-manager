@@ -634,6 +634,8 @@ This phase is mandatory. Do not proceed to the two-VM product POC with two stock
 
 ### Phase 1 — Two-VM proof of concept
 
+**DESIGN DECISION — user acceptance, 31 October 2026:** Phase 1 is complete. The user accepted the recorded POC results with the intermittent graphics startup failure carried forward for further investigation. That finding remains open and is not considered fixed or a blocker to completing this phase. Preserve both stopped disposable VM disks at the user's request. See [the POC results and remaining evidence gaps](Docs/Phase1-POC.md) and [the graphics investigation](Docs/Phase1-Graphics-Repro.md). Unverified checks retain their evidence status; milestone acceptance does not turn them into observed passes.
+
 Deliver:
 
 - two hard-coded or fixture profiles with distinct UUID roots and names;

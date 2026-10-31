@@ -1,6 +1,6 @@
 # Intermittent guest graphical startup failure
 
-Status: open; observed on 31 October 2026. This is a reduced observation report, not a deterministic reproduction or a proven upstream defect. Do not proceed to manager MVP work on the assumption that restarting the guest or shell fixes launch reliability.
+Status: open follow-up; observed on 31 October 2026. The user accepted Phase 1 as complete with this issue carried forward for further investigation. This is a reduced observation report, not a deterministic reproduction or a proven upstream defect. Restarting the guest or shell has not been shown to fix launch reliability.
 
 ## Smallest observed configuration
 
@@ -29,4 +29,4 @@ Earlier observations included Foot/pointer-hover corruption with two guests, per
 
 Private ignored evidence includes `.build/poc/isolated-A-black*`, `.build/poc/A-event-tap-after-manager-repair.json`, `.build/poc/qemu-executable-text-comparison.json`, and `.build/poc/ssh-A-debug/`. The guest frame and raw private diagnostics are not committed or published. Temporary SSH service shutdown was requested and acknowledged; the loopback listener and disposable client key pair were removed. Final shutdown left no guest/helper process running.
 
-The recovered two-guest comparison passed both desktops/menus, all four focused clipboard paths, background clipboard suppression for each guest, user-initiated sleep/wake and lifecycle cleanup. Those passes do not close this intermittent startup finding. Both stopped disks are retained unless the user chooses Trash. Further investigation should distinguish shell scene initialization from virtio GPU resource allocation using a reviewed, controlled experiment; do not add automatic restart loops or silently change guest packages/rendering settings.
+The recovered two-guest comparison passed both desktops/menus, all four focused clipboard paths, background clipboard suppression for each guest, user-initiated sleep/wake and lifecycle cleanup. Those passes do not close this intermittent startup finding. Both stopped disks are retained at the user’s explicit request to keep them for now. Further investigation should distinguish shell scene initialization from virtio GPU resource allocation using a reviewed, controlled experiment; do not add automatic restart loops or silently change guest packages/rendering settings.

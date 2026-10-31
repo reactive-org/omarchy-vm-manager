@@ -1,6 +1,6 @@
 # Phase 1 two-VM POC
 
-Run date: 31 October 2026 (Australia/Melbourne). This file records observations; pending checks are not acceptance claims.
+Run date: 31 October 2026 (Australia/Melbourne). **Status: Phase 1 complete by user acceptance, with the intermittent graphics startup failure carried forward for investigation.** This file records observations; unverified checks are not claimed as passes.
 
 ## Scope and provenance
 
@@ -155,10 +155,10 @@ The manager crash check verified the manager's kernel executable path, both QEMU
 
 The unchanged manager reopened with both profiles stopped and Accessibility still allowed. A reached `.ready` at approximately 14:09:20 AEDT and B at 14:09:26. The real Force Stop warning for A was inspected and confirmed. A emitted Stopping then `.exited(143)` at approximately 14:09:35; the manager presented its expected nonzero forced exit as Failed. B retained the same session and answered QMP running; only B's QEMU remained. A restarted from its retained disk and reached `.ready` at approximately 14:09:45. These final restarts are lifecycle observations, not fresh graphical-health acceptance claims. Normal confirmed quit and final process cleanup follow.
 
-Normal **Shut Down and Quit** was then confirmed with both guests running. The report contains matching `.exited(0)` events for both current session IDs before the manager exited. A scoped process scan found no remaining kit/helper/QEMU process or either private QEMU namespace. Both runtime-compatible POSIX locks could be acquired and released. Both original disk inodes remain intact. Private evidence is `.build/poc/before-normal-quit.json` and `.build/poc/final-cleanup.json`. The roots have not been moved or deleted; they are retained for the unresolved graphical-startup investigation, with Trash offered to the user.
+Normal **Shut Down and Quit** was then confirmed with both guests running. The report contains matching `.exited(0)` events for both current session IDs before the manager exited. A scoped process scan found no remaining kit/helper/QEMU process or either private QEMU namespace. Both runtime-compatible POSIX locks could be acquired and released. Both original disk inodes remain intact. Private evidence is `.build/poc/before-normal-quit.json` and `.build/poc/final-cleanup.json`. The roots have not been moved or deleted; the user explicitly chose to keep both disks for now after Trash was offered.
 
 ## Decision gate status
 
-Phase 1 implementation and the recorded clipboard/lifecycle experiments are complete for this run, but **the full acceptance gate has not passed**. The intermittent graphical-startup failure has a shell-only recovery and a one-guest observation, not a proven root cause or permanent fix. Preserve the evidence and stop further product phases pending that investigation. See [the reduced graphics report](Phase1-Graphics-Repro.md).
+**Phase 1 is complete by explicit user acceptance on 31 October 2026.** The user accepted the recorded results with the intermittent graphics startup failure carried forward for further investigation, and requested that both disks be kept for now. The issue has a shell-only recovery and a one-guest observation, but no proven root cause or permanent fix. It remains an open follow-up rather than a blocker to this milestone. Preserve the evidence and the unverified checks below. See [the reduced graphics report](Phase1-Graphics-Repro.md).
 
 Observed passes include two simultaneous independent runtimes, four focused clipboard paths, background receive/publish suppression for each guest, user-initiated Mac sleep/wake with both guests usable, ordinary Super and Command+Space menus after effective Accessibility repair, cancelled Quit, independent Force Stop, manager force-quit cleanup and final normal Quit. Guest-file marker isolation/persistence, a dedicated rapid-focus stress trial and simultaneous audio/load remain unverified; retained disk identities and repeated setup-preserving warm boots do not substitute for an explicit guest-file check. Permanent automatic SSH provisioning is planned Phase 3A, not implemented by the temporary debug setup.
