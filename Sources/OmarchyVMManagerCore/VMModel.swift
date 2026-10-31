@@ -13,6 +13,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public var settingsFingerprint: String? = nil
     public var ssh: SSHOptions? = nil
     public var ownerSetup: OwnerSetupOptions? = nil
+    public var factory: FactoryIdentity? = nil
 
     public var isRetainedPOC: Bool { POCProfiles.ids.contains(id) }
 
@@ -30,7 +31,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, memoryMiB, cpus, diskGiB, clipboardEnabled, createdAt, immersiveMode
-        case settingsFingerprint, ssh, ownerSetup
+        case settingsFingerprint, ssh, ownerSetup, factory
     }
 
     public init(from decoder: any Decoder) throws {
@@ -46,6 +47,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
         settingsFingerprint = try values.decodeIfPresent(String.self, forKey: .settingsFingerprint)
         ssh = try values.decodeIfPresent(SSHOptions.self, forKey: .ssh)
         ownerSetup = try values.decodeIfPresent(OwnerSetupOptions.self, forKey: .ownerSetup)
+        factory = try values.decodeIfPresent(FactoryIdentity.self, forKey: .factory)
     }
 }
 

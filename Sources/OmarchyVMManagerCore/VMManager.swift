@@ -41,7 +41,6 @@ public actor VMManager {
     private var powerCapabilities: [UUID: GuestHibernationCapability] = [:]
     private var suspensions: [UUID: ExperimentalSuspension] = [:]
     private var unsafeSuspensions: Set<UUID> = []
-    private var restoringSuspension: Set<UUID> = []
     private let portProbe: any HostPortProbing
     private let ownerDefaults: OwnerDefaultsStore?
     private var ownerStates: [UUID: OwnerSetupReadiness] = [:]
@@ -96,12 +95,40 @@ public actor VMManager {
                          enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation())
     }
 
+    private var factoryCatalog: FactoryCatalog? = nil
+
+    public func installFactoryCatalog(_ catalog: FactoryCatalog) { factoryCatalog = catalog }
+    private var importingFactory = false
+    public func factoryListing() async throws -> FactoryCatalogListing {
+        guard let factoryCatalog else { return FactoryCatalogListing(factories: [.official], issues: []) }
+        return try await Task.detached(priority: .utility) { try factoryCatalog.listing() }.value
+    }
+    public func factories() async throws -> [FactoryIdentity] { try await factoryListing().factories }
+    public func importFactory(_ source: URL) async throws -> FactoryIdentity {
+        guard !quitting, registry != nil, let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
+        guard !importingFactory else { throw FactoryCatalog.invalid("A factory import is already in progress.") }
+        importingFactory = true
+        defer { importingFactory = false }
+        return try await Task.detached(priority: .utility) { try factoryCatalog.importBundle(source) }.value
+    }
+
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
                        clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true,
-                       publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true) throws -> UUID {
+                       publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true, factory: String = "official") async throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
         var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus, diskGiB: diskGiB,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
+        if factory == "official" { profile.factory = .official }
+        else {
+            guard let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
+            profile.factory = try await Task.detached(priority: .utility) {
+                let identity = try factoryCatalog.identity(for: factory)
+                try factoryCatalog.validateCapacity(identity, diskGiB: diskGiB)
+                return identity
+            }.value
+        }
+        try Task.checkCancellation()
+        guard !quitting else { throw VMFailure(code: "registry-unavailable", message: "The manager is quitting.") }
         try validateResources(profile)
         var chosenPublicKey = publicKey
         if useOwnerDefaults != false, let ownerDefaults {
@@ -138,7 +165,7 @@ public actor VMManager {
 
     public func update(_ id: UUID, configuration: GuestConfigurationPatch) throws {
         guard var profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.") }
-        guard configuration.ssh == nil, configuration.ownerDefaults == nil, configuration.publicKey == nil else { throw VMFailure(code: "creation-only", message: "SSH and owner enrollment are chosen at creation.") }
+        guard configuration.ssh == nil, configuration.ownerDefaults == nil, configuration.publicKey == nil, configuration.factory == nil else { throw VMFailure(code: "creation-only", message: "SSH and owner enrollment are chosen at creation.") }
         if let value = configuration.name { profile.name = value }
         if let value = configuration.memoryMiB { profile.memoryMiB = value }
         if let value = configuration.cpus { profile.cpus = value }
@@ -153,6 +180,7 @@ public actor VMManager {
         guard !interruptedDeletions.contains(profile.id) else { throw VMFailure(code: "interrupted-deletion", message: "Finish reviewing the interrupted deletion before configuring this profile.") }
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }), let registry,
               profiles[index].createdAt == profile.createdAt else { throw VMFailure(code: "unknown-vm", message: "The VM profile changed or is missing.") }
+        guard profile.factory == profiles[index].factory else { throw FactoryCatalog.invalid("The factory is fixed at creation. Existing disks and recorded identities are preserved.") }
         guard profile.ownerSetup == profiles[index].ownerSetup else { throw OwnerConfiguration.invalid("Owner setup is fixed at guest creation. Existing disks need a separate reviewed migration.") }
         guard profile.ssh == profiles[index].ssh else { throw VMFailure(code: "ssh-migration-required", message: "SSH enrollment is chosen at creation. Changing existing access needs a separate stopped-VM migration.") }
         if let current = profiles[index].diskGiB {
@@ -255,8 +283,10 @@ public actor VMManager {
         profiles.filter { sessions[$0.id] != nil }.reduce(0) { $0 + $1.memoryMiB }
     }
 
-    public func start(_ vmID: UUID) throws {
-        guard !unsafeSuspensions.contains(vmID), suspensions[vmID] == nil || restoringSuspension.contains(vmID) else {
+    public func start(_ vmID: UUID) async throws { try await start(vmID, restoreVerificationTimeout: nil) }
+
+    private func start(_ vmID: UUID, restoreVerificationTimeout: Duration?) async throws {
+        guard !unsafeSuspensions.contains(vmID), suspensions[vmID] == nil || restoreVerificationTimeout != nil else {
             throw VMFailure(code: "suspended-disk-protected", message: "Use Restore Experimental Session. Ordinary launch is blocked while a saved session may exist.")
         }
         try registry?.checkRevision()
@@ -294,14 +324,19 @@ public actor VMManager {
         let (events, continuation) = AsyncStream<VMRuntimeEvent>.makeStream()
         sessions[vmID] = Session(id: sessionID, root: root, events: continuation,
                                  coldStart: !TryOmarchyStorage.hasVM(at: root))
+        if let restoreVerificationTimeout { sessions[vmID]?.restoreVerificationTimeout = restoreVerificationTimeout }
         record("Start requested", vmID: vmID, sessionID: sessionID)
         do {
             if let error = runtime.preflight() { throw error }
             let request = VMStartRequest(profile: profile, storageRoot: root, sessionID: sessionID)
-            let handle = try runtime.start(request) { continuation.yield($0) }
+            let runtime = self.runtime
+            let handle = try await Task.detached(priority: .userInitiated) {
+                try runtime.start(request) { continuation.yield($0) }
+            }.value
             sessions[vmID]?.handle = handle
-            beginSSHProbe(request)
-            beginOwnerProbe(request)
+            if sessions[vmID]?.forceRequested == true { handle.terminate() }
+            else if sessions[vmID]?.shutdownRequested == true { handle.shutDown() }
+            else { beginSSHProbe(request); beginOwnerProbe(request) }
             Task {
                 for await event in events {
                     receive(event, vmID: vmID, sessionID: sessionID)
@@ -671,7 +706,7 @@ extension VMManager {
             persistSuspension(record)
         } catch { unsafeSuspensions.insert(id); notices[id] = "The stopped suspension disk could not be identified safely. Ordinary launch and edits remain blocked." }
     }
-    public func restoreExperimentalSuspension(_ id: UUID, confirmed: Bool, verificationTimeout: Duration = .seconds(180)) throws {
+    public func restoreExperimentalSuspension(_ id: UUID, confirmed: Bool, verificationTimeout: Duration = .seconds(180)) async throws {
         guard confirmed, hibernation != nil, var record = suspensions[id], !unsafeSuspensions.contains(id),
               sessions[id] == nil, let profile = profiles.first(where: { $0.id == id }) else {
             throw VMFailure(code: "restore-not-ready", message: "Confirm recovery of one stopped experimental suspension.")
@@ -691,8 +726,7 @@ extension VMManager {
         }
         record.stage = .restoring; record.restoreAttempted = true
         try ExperimentalSuspendStore(root: storage.root(for: profile)).save(record); suspensions[id] = record
-        restoringSuspension.insert(id); defer { restoringSuspension.remove(id) }
-        do { try start(id); sessions[id]?.restoreVerificationTimeout = verificationTimeout }
+        do { try await start(id, restoreVerificationTimeout: verificationTimeout) }
         catch { record.stage = .recoveryRequired; record.restoreAttempted = false; persistSuspension(record); throw error }
     }
     public func retryExperimentalRestoreVerification(_ id: UUID) throws {

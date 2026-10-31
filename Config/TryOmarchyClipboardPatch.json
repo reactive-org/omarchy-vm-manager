@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-10-31T23:40:00+11:00",
+  "authorDate": "2026-11-01T12:00:00+11:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-10-31T23:40:00+11:00",
-  "subject": "Add acknowledged manual pause with sleep ownership and safe shutdown",
-  "commit": "3fa8fad119b2a3269f957e18eca2b6c12d06b66e",
-  "patchSHA256": "3a4202fc18b1e64d2ee380458c36b3c1cefec25641b0e39c3cb4f3eae2f3050e"
+  "committerDate": "2026-11-01T12:00:00+11:00",
+  "subject": "Add reviewed custom factory selection to the managed run mode",
+  "commit": "368940636a648d8ac29fe36ba3e1e44f360cb894",
+  "patchSHA256": "59f4131142230c7e0a328382aade50e612b62e125ddb2d6b0197028897628078"
 }

@@ -6,7 +6,7 @@ export MACOSX_DEPLOYMENT_TARGET := 15.0
 
 .PHONY: prepare-source help build icon test test-ssh app app-preview verify-app verify-preview run fetch-kit patched-kit test-upstream layout-preview verify-layout-preview
 help:
-	@echo 'make prepare-source | test | test-ssh | build | icon | fetch-kit | patched-kit | app | verify-app | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-factories | test-ssh | build | icon | fetch-kit | patched-kit | app | verify-app | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -55,3 +55,7 @@ layout-preview: build icon
 
 verify-layout-preview:
 	Scripts/verify-app.sh "$(CURDIR)/dist/Omarchy VM Manager Layout Preview.app"
+
+.PHONY: test-factories
+test-factories: prepare-source
+	Scripts/upstream-make.sh test-shell-run-mode

@@ -51,6 +51,9 @@ public struct ManagerStorage: Sendable {
             if profile.diskGiB != nil { values["vmResourcePreferences"] = resourcePreferences(profile) }
             let settings: [String: Any] = ["schemaVersion": 1, "settings": values]
             try PrivateFiles.write(JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys]), name: "settings.json", in: root, exclusively: true)
+            if let factory = profile.factory {
+                try PrivateFiles.write(JSONEncoder().encode(factory), name: ".omarchy-factory.json", in: root, exclusively: true)
+            }
             created = true
         }
         try validate(profile)
@@ -100,6 +103,10 @@ public struct ManagerStorage: Sendable {
               try PrivateFiles.read(root.appendingPathComponent(".omarchy-qemu-storage")) == Data("omarchy-qemu-storage-root-v1\n".utf8) else {
             throw PrivateFiles.failure("The VM ownership markers are invalid. Storage was preserved.")
         }
+        let factoryMarker = root.appendingPathComponent(".omarchy-factory.json")
+        if let factory = profile.factory {
+            guard try JSONDecoder().decode(FactoryIdentity.self, from: PrivateFiles.read(factoryMarker)) == factory else { throw FactoryCatalog.invalid("The disk’s recorded factory differs from its profile. Storage was preserved.") }
+        } else if PrivateFiles.exists(factoryMarker) { throw FactoryCatalog.invalid("The disk has a factory identity missing from its profile. Storage was preserved.") }
         _ = try settings(profile)
         for name in ["shell", "shell-factory"] {
             let path = root.appendingPathComponent(name)

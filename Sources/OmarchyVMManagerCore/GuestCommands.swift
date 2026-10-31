@@ -1,4 +1,5 @@
 import Foundation
+import TryOmarchyKitClient
 
 public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     public var name: String?
@@ -9,23 +10,25 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     public var immersive: Bool?
     public var ssh: Bool?
     public var ownerDefaults: Bool?
+    public var factory: String?
     public var publicKey: String?
     public init(name: String? = nil, memoryMiB: Int? = nil, cpus: Int? = nil, diskGiB: Int? = nil,
                 clipboard: Bool? = nil, immersive: Bool? = nil,
-                ssh: Bool? = nil, ownerDefaults: Bool? = nil, publicKey: String? = nil) {
+                ssh: Bool? = nil, ownerDefaults: Bool? = nil, publicKey: String? = nil, factory: String? = nil) {
         self.name = name; self.memoryMiB = memoryMiB; self.cpus = cpus; self.diskGiB = diskGiB
         self.clipboard = clipboard; self.immersive = immersive
-        self.ssh = ssh; self.ownerDefaults = ownerDefaults; self.publicKey = publicKey
+        self.ssh = ssh; self.ownerDefaults = ownerDefaults; self.publicKey = publicKey; self.factory = factory
     }
     public static func decodeStrict(_ data: Data) throws -> Self {
         guard data.count <= 32768, let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              Set(object.keys).isSubset(of: ["name", "memoryMiB", "cpus", "diskGiB", "clipboard", "immersive", "ssh", "ownerDefaults", "publicKey"]),
+              Set(object.keys).isSubset(of: ["name", "memoryMiB", "cpus", "diskGiB", "clipboard", "immersive", "ssh", "ownerDefaults", "publicKey", "factory"]),
               !object.values.contains(where: { $0 is NSNull }) else { throw commandFailure("invalid-config", "Configuration must contain only supported, non-null guest settings.") }
         return try JSONDecoder().decode(Self.self, from: data)
     }
 }
 
-public enum GuestCommand: String, Codable, Sendable { case list, get, create, update, delete, start, stop, restart, pause, resume, wait }
+public enum GuestCommand: String, Codable, Sendable { case list, get, create, update, delete, start, stop, restart, pause, resume, wait, factories
+    case importFactory = "factory-import" }
 public enum GuestWaitCondition: String, Codable, Sendable { case running, ssh, stopped, paused }
 
 public struct GuestCommandRequest: Codable, Sendable {
@@ -44,10 +47,10 @@ public struct GuestCommandRequest: Codable, Sendable {
     }
     public func validate() throws {
         guard version == 1, (1...3600).contains(timeoutSeconds),
-              selector == nil || (!selector!.isEmpty && selector!.utf8.count <= 255 && !selector!.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })) else {
+              selector == nil || (!selector!.isEmpty && selector!.utf8.count <= (command == .importFactory ? 1024 : 255) && !selector!.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })) else {
             throw commandFailure("invalid-request", "Unsupported command version, selector or timeout.")
         }
-        guard (command == .list || command == .create) == (selector == nil),
+        guard (command == .list || command == .create || command == .factories) == (selector == nil),
               (command == .create || command == .update) == (config != nil),
               !start || command == .create, !force || command == .stop,
               command != .wait || waitFor != nil,
@@ -57,10 +60,13 @@ public struct GuestCommandRequest: Codable, Sendable {
               ![.start, .restart].contains(command) || waitFor != .stopped else {
             throw commandFailure("invalid-request", "Options do not apply to this command.")
         }
+        if command == .importFactory, selector?.hasPrefix("/") != true { throw FactoryCatalog.invalid("A prepared factory bundle requires an absolute path.") }
         if command == .create, config?.name == nil { throw commandFailure("invalid-config", "A guest name is required.") }
+        if command == .update, config?.factory != nil { throw commandFailure("creation-only", "Factory selection is fixed at creation.") }
+        if command == .create, let factory = config?.factory, factory != "official", !VMFactorySelection.isDigest(factory) { throw FactoryCatalog.invalid("Select official or an imported manifest SHA-256.") }
         if command == .update, let config {
             guard config.name != nil || config.memoryMiB != nil || config.cpus != nil || config.diskGiB != nil || config.clipboard != nil || config.immersive != nil else { throw commandFailure("invalid-config", "Supply at least one setting to update.") }
-            guard config.ssh == nil, config.ownerDefaults == nil, config.publicKey == nil else { throw commandFailure("creation-only", "SSH and owner enrollment are chosen at guest creation.") }
+            guard config.ssh == nil, config.ownerDefaults == nil, config.publicKey == nil, config.factory == nil else { throw commandFailure("creation-only", "SSH and owner enrollment are chosen at guest creation.") }
         }
     }
     static func decodeStrict(_ data: Data) throws -> Self {
@@ -99,6 +105,7 @@ public struct GuestCommandRecord: Codable, Sendable {
     public let diskGiB: Int?
     public let clipboard: Bool
     public let immersive: Bool?
+    public let factory: FactoryIdentity?
     public let unattended: Bool
     public let state: String
     public let active: Bool
@@ -120,9 +127,11 @@ public struct GuestCommandResponse: Codable, Sendable {
     public var ok: Bool
     public var guest: GuestCommandRecord?
     public var guests: [GuestCommandRecord]?
+    public var factories: [FactoryIdentity]?
+    public var factoryIssues: [FactoryCatalogIssue]?
     public var error: GuestCommandFailure?
-    public init(requestID: UUID, ok: Bool, guest: GuestCommandRecord? = nil, guests: [GuestCommandRecord]? = nil, error: GuestCommandFailure? = nil) {
-        self.requestID = requestID; self.ok = ok; self.guest = guest; self.guests = guests; self.error = error
+    public init(requestID: UUID, ok: Bool, guest: GuestCommandRecord? = nil, guests: [GuestCommandRecord]? = nil, error: GuestCommandFailure? = nil, factories: [FactoryIdentity]? = nil, factoryIssues: [FactoryCatalogIssue]? = nil) {
+        self.requestID = requestID; self.ok = ok; self.guest = guest; self.guests = guests; self.error = error; self.factories = factories; self.factoryIssues = factoryIssues
     }
 }
 
@@ -142,6 +151,14 @@ public actor GuestCommandService {
             try Task.checkCancellation()
             try request.validate()
             let deadline = ContinuousClock.now.advanced(by: .seconds(request.timeoutSeconds))
+            if request.command == .factories {
+                let listing = try await manager.factoryListing()
+                return GuestCommandResponse(requestID: request.requestID, ok: true, factories: listing.factories, factoryIssues: listing.issues.isEmpty ? nil : listing.issues)
+            }
+            if request.command == .importFactory {
+                let url = URL(fileURLWithPath: request.selector!)
+                return GuestCommandResponse(requestID: request.requestID, ok: true, factories: [try await manager.importFactory(url)])
+            }
             if request.command == .list {
                 let records = await manager.snapshots().map { record($0) }
                 return GuestCommandResponse(requestID: request.requestID, ok: true, guests: records)
@@ -151,7 +168,7 @@ public actor GuestCommandService {
                 target = try await manager.create(name: c.name!, memoryMiB: c.memoryMiB ?? 4096, cpus: c.cpus ?? 4,
                     diskGiB: c.diskGiB ?? 64,
                     clipboardEnabled: c.clipboard ?? true, immersiveMode: c.immersive ?? false, sshEnabled: c.ssh ?? true,
-                    publicKey: c.publicKey, useOwnerDefaults: c.ownerDefaults)
+                    publicKey: c.publicKey, useOwnerDefaults: c.ownerDefaults, factory: c.factory ?? "official")
                 if request.start { try await manager.start(target!) }
             } else {
                 target = try await resolve(request.selector!)
@@ -276,7 +293,7 @@ public actor GuestCommandService {
         return GuestCommandRecord(id: value.id, name: value.profile.name, protected: value.profile.isRetainedPOC,
             memoryMiB: value.profile.memoryMiB, cpus: value.profile.cpus, diskGiB: value.profile.diskGiB,
             clipboard: value.profile.clipboardEnabled,
-            immersive: value.profile.immersiveMode, unattended: value.profile.ownerSetup != nil, state: state, active: value.sessionID != nil,
+            immersive: value.profile.immersiveMode, factory: value.profile.factory, unattended: value.profile.ownerSetup != nil, state: state, active: value.sessionID != nil,
             sessionID: value.sessionID, phase: phase, percent: percent,
             ssh: GuestSSHRecord(enabled: value.profile.ssh != nil, status: sshState, host: value.profile.ssh == nil ? nil : "127.0.0.1", port: value.profile.ssh?.hostPort, user: user, command: command),
             network: GuestNetworkRecord(mode: "nat", guestIPs: connection?.addresses ?? [], hostAddress: "127.0.0.1", addressesVerified: connection != nil),

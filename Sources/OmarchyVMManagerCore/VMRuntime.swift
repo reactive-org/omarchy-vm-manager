@@ -70,8 +70,12 @@ public struct TryOmarchyRuntime: VMRuntime {
             throw VMFailure(code: "poc-approval-required",
                             message: "Launch the private manager with --poc-approved after approval for its disposable VM run.")
         }
+        var factorySelection: VMFactorySelection?
         if let storage = managedStorage, let admission = pocAdmission {
             try admission.validateKit()
+            let catalog = try FactoryCatalog(applicationSupport: storage.applicationSupport, kit: kit, lockData: admission.lockData)
+            factorySelection = try catalog.selection(for: request.profile.factory)
+            if let factory = request.profile.factory { try catalog.validateCapacity(factory, diskGiB: request.profile.diskGiB ?? 64) }
             let execution = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
             guard execution.manualPauseVersion == 1 else { throw VMFailure(code: "unproven-execution-runtime", message: "Manual execution control requires the exact reviewed runtime.") }
             if request.profile.ssh != nil {
@@ -100,7 +104,9 @@ public struct TryOmarchyRuntime: VMRuntime {
             } else { password = nil }
             _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password)
         } else { try pocAdmission?.admit(request) }
-        let configuration = try Self.configuration(for: request)
+        var configuration = try Self.configuration(for: request)
+        guard managedStorage != nil || request.profile.factory?.kind != .custom else { throw FactoryCatalog.invalid("Custom factories require the verified managed runtime.") }
+        configuration.factory = factorySelection
         let client = VMRunClient(kit: kit)
         do { try client.start(configuration, onEvent: onEvent) }
         catch {

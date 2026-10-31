@@ -216,7 +216,7 @@ struct ManagerView: View {
                     Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
                 Divider().padding(.horizontal, 20)
-                SettingsRow("Disk", subtitle: "Created from the official factory image on first start. Existing disks are preserved.", icon: "internaldrive", color: .orange) {
+                SettingsRow("Disk", subtitle: "Factory: \(snapshot.profile.factory?.name ?? "Original recorded disk"). Existing disks are preserved.", icon: "internaldrive", color: .orange) {
                     Text(ByteCountFormatter.string(fromByteCount: model.storageBytes[snapshot.id] ?? 0, countStyle: .file)).foregroundStyle(.secondary)
                 }
             }
@@ -388,6 +388,7 @@ private struct VMEditor: View {
     @State private var sshEnabled: Bool
     @State private var selectedPublicKey: String?
     @State private var keyError: String?
+    @State private var factory = "official"
     @State private var useOwnerDefaults: Bool
     init(model: AppModel, profile: VMProfile?, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = saved
@@ -407,6 +408,11 @@ private struct VMEditor: View {
             Text(profile == nil ? "New Virtual Machine" : "Configure Virtual Machine").font(.title2.bold())
             Form {
                 TextField("Name", text: $name)
+                if profile == nil {
+                    Picker("Factory image", selection: $factory) {
+                        ForEach(model.factories, id: \.selector) { image in Text(image.name).tag(image.selector) }
+                    }
+                } else { Text("Factory: \(profile?.factory?.name ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
                 Stepper("Memory: \(memory) GiB", value: $memory, in: 4...maximumMemory)
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
                 Stepper("Disk capacity: \(disk) GiB", value: $disk, in: max(64, profile?.diskGiB ?? 64)...8192, step: 16)
@@ -441,18 +447,18 @@ private struct VMEditor: View {
             }.formStyle(.grouped)
             if let error = keyError { Text(error).foregroundStyle(.red).font(.callout) }
             if let error = model.configurationError { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }
-            Text(profile == nil ? "The official factory image downloads on first launch. Each guest has independent storage. Networking uses NAT; shared folders, USB, camera and authentication are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.callout).foregroundStyle(.secondary)
+            Text(profile == nil ? "The selected factory prepares on first launch. Each guest has independent storage. Networking uses NAT; shared folders, USB, camera and authentication are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.callout).foregroundStyle(.secondary)
             HStack {
                 Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     saving = true
                     Task {
-                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults) { saved(id) }
+                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory) { saved(id) }
                         saving = false
                     }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
             }
-        }.padding(26).frame(width: 520).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }
+        }.padding(26).frame(width: 520).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }.task { await model.loadFactories() }
     }
     private func choosePublicKey() {
         do { if let key = try PublicKeyPicker.choose() { selectedPublicKey = key; keyError = nil } }

@@ -75,9 +75,9 @@ def build():
         "patchSHA256": patch["patchSHA256"], "referenceKitSHA256": baseline["kitSHA256"],
         "kitSHA256": digest(destination / "TryOmarchyKit.zip"),
         "kitVersion": value["version"], "runProtocolVersion": value["runProtocolVersion"],
-        "buildDate": value["buildDate"], "focusAwareClipboard": True, "managedSSHVersion": 1, "managedSetupVersion": 1, "manualPauseVersion": 1,
+        "buildDate": value["buildDate"], "focusAwareClipboard": True, "managedSSHVersion": 1, "managedSetupVersion": 1, "manualPauseVersion": 1, "customFactoryVersion": 1,
         "guestPackageVersion": "0.1.0-40",
-        "composition": "Source-built patched helper with manual Pause/Resume and manager Downloads cache, guest integration package 0.1.0-40 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
+        "composition": "Source-built patched helper with reviewed custom factory selection, manual Pause/Resume and manager Downloads cache, guest integration package 0.1.0-40 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
         "files": inventory(destination / "TryOmarchyKit.bundle")
     }
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"

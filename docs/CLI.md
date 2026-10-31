@@ -22,7 +22,7 @@ Replies are one compact JSON object on stdout. `--help` prints human-readable us
 
 ## Configuration
 
-Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `clipboard`, `immersive`, `ssh`, `ownerDefaults` and `publicKey`. Unknown keys and nulls are rejected. For example:
+Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `clipboard`, `immersive`, `ssh`, `ownerDefaults`, `publicKey` and creation-only `factory`. Unknown keys and nulls are rejected. For example:
 
 ```json
 {"memoryMiB":8192,"cpus":8,"diskGiB":64,"clipboard":true,"immersive":false}
@@ -30,7 +30,7 @@ Use flags or `--config FILE.json`. Explicit flags override file settings. Suppor
 
 The current policy requires at least 4 CPU cores and 4 GiB RAM, with RAM in whole GiB, within the Mac's existing guest budget. New guests use a 64 GiB sparse disk. `--disk 64GiB` and `--disk-gib 64` set capacity from 64 through 8192 GiB; an existing disk can only grow. `--memory` accepts MiB or GiB suffixes; a plain integer means MiB. `--memory-mib` is also available. Boolean flags take `on`/`off` or `true`/`false`.
 
-SSH and owner setup are creation-only. New guests inherit saved Guest Defaults and enable managed SSH by default. `--owner-defaults off` selects the normal guest owner wizard. `--ssh off` disables SSH enrollment. `--public-key FILE.pub` imports only an explicitly selected public key; no personal credentials are scanned. Configure reusable passwords locally in the app's Guest Defaults page; no CLI password argument or secret field is supported.
+Factory selection, SSH and owner setup are creation-only. New guests inherit saved Guest Defaults and enable managed SSH by default. `--owner-defaults off` selects the normal guest owner wizard. `--ssh off` disables SSH enrollment. `--public-key FILE.pub` imports only an explicitly selected public key; no personal credentials are scanned. Configure reusable passwords locally in the app's Guest Defaults page; no CLI password argument or secret field is supported.
 
 `update` refuses active, stopping or otherwise busy guests and retained POC profiles. An external runtime-compatible storage lock also prevents edits. Changes apply on the next start. Disk capacity can grow but never shrink; growth uses the official runtime and guest root-growth service on the next boot. SSH enrollment, owner snapshots, disk paths and general port forwarding cannot be changed by update.
 
@@ -87,3 +87,9 @@ New guests share the factory image in `~/Downloads/Omarchy VM Manager/Factory Im
 Guest replies additionally expose `hibernation` when the current authenticated guest check is available, `experimentalSuspendAvailable`, `experimentalRestoreAvailable`, `suspension` and `suspensionMetadataUnsafe`. Kernel support is `supported`, `unsupported` or `unknown`; readiness also requires disk sleep state, persistent swap, resume setup and non-interactive guest permission. No marker token or boot identity is returned. Stopped or unverified capability never enables an attempt.
 
 Experimental suspend/restore is an opt-in **UI** workflow. Ordinary CLI `start`, `restart`, update and delete refuse a protected saved-session disk. Use **Restore / Recover…** in the manager; a verified cold boot requires administrator cleanup of any stale resume image and explicit acknowledgement before protection is released. An unresolved restore cannot automatically boot again. CLI `resume` continues to mean in-memory resume. See [Suspend](Suspend.md).
+
+## Reviewed factory selection
+
+`factory-import /absolute/path/Prepared.factory` imports a prepared bundle only when its review-manifest digest is in the signed app's reviewed catalog. `factories` lists verified imported images and the official factory; damaged entries appear separately in `factoryIssues` and cannot be selected. `create NAME --factory official|MANIFEST_SHA256` (or the creation config key `factory`) records that immutable selection in the profile; the New VM sheet offers the same choices. The default is `official`. Replies include the recorded `factory` when present. Existing profiles retain their original disks and metadata, including an absent factory field. Update refuses image changes.
+
+Import starts no VM and downloads no image. The complete runtime, integration package, provisioning evidence and image hashes must match the review. No custom image is preapproved. See [Custom factories](CustomFactories.md) for preparation, review, cache location and the helper capability contract.

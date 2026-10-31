@@ -167,10 +167,11 @@ public final class RegistryStore: @unchecked Sendable {
         if let poc = POCProfiles.all.first(where: { $0.id == profile.id }) {
             guard profile.name == poc.name, profile.memoryMiB == poc.memoryMiB, profile.cpus == poc.cpus,
                   profile.diskGiB == nil, profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil,
-                  profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil else {
+                  profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil, profile.factory == nil else {
                 throw PrivateFiles.failure("Retained POC metadata is protected. Restore its original profile; its disk was preserved.")
             }
         }
+        try profile.factory?.validate()
         try profile.ownerSetup?.validate(for: profile.id)
         if let ssh = profile.ssh {
             guard (1024...65535).contains(ssh.hostPort), ssh.publicKeyFingerprint == nil || ssh.publicKeyFingerprint!.range(of: "^SHA256:[A-Za-z0-9+/]{43}$", options: .regularExpression) != nil else {

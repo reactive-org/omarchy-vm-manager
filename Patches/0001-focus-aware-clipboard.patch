@@ -2121,7 +2121,7 @@ index e5bb493..c38983b 100644
          }
      }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..6a8379a 100644
+index c959f32..cad0218 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -2138,7 +2138,30 @@ index c959f32..6a8379a 100644
      private var stateRoot: URL?
      private var bridgedNetwork: BridgedNetworkAvailability?
      private var currentBridgedNetwork: BridgedNetworkAvailability?
-@@ -70,7 +72,7 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -35,9 +37,9 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+         session = VMRunSession(
+             launcherURL: launcherURL,
+             supervisor: QEMUGPUProcessSupervisor(standardInput: .nullDevice, standardOutput: .standardError),
+-            factoryManifest: FactoryDownloadManifest.bundled(bundle: bundle),
+-            bundlesFactoryImage: QEMUGPUStorageSpaceEstimate.bundlesFactoryImage(bundle: bundle),
+-            bundledMetrics: QEMUGPUStorageSpaceEstimate.bundledMetrics(bundle: bundle),
++            factoryManifest: configuration.factory == nil ? FactoryDownloadManifest.bundled(bundle: bundle) : nil,
++            bundlesFactoryImage: configuration.factory != nil || QEMUGPUStorageSpaceEstimate.bundlesFactoryImage(bundle: bundle),
++            bundledMetrics: configuration.factory == nil ? QEMUGPUStorageSpaceEstimate.bundledMetrics(bundle: bundle) : nil,
+             downloadNetworkPolicy: .unmetered
+         )
+     }
+@@ -47,6 +49,9 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+         session.observeHost()
+         guard !shutdownRequested else { return finish(status: 0) }
+         if let failure = Self.preflight(environment: baseEnvironment) { return fail(failure) }
++        do {
++            if let factory = configuration.factory { _ = try factory.verified(runtimeBundle: bundle.bundleURL) }
++        } catch { return fail(VMRunError(code: .invalidConfiguration, message: "The selected factory failed verification or runtime compatibility.")) }
+         presentAsProduct()
+         let networkLayout = NetworkServiceLayout(bundle: bundle)
+         var asksForBridged = false
+@@ -70,15 +75,25 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
  
      private func resolveSettings(bridgedNetwork: () -> BridgedNetworkAvailability)
          -> Result<VMRunLaunchSettings, VMRunError> {
@@ -2147,9 +2170,11 @@ index c959f32..6a8379a 100644
              baseEnvironment: launchEnvironment(),
              configuration: configuration,
              storageLocation: storageLocationStore.load(),
-@@ -79,6 +81,16 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+             storageLocationProblem: storageLocationStore.problem(),
+             settings: { [unowned self] root in self.vmSettings(root: root) },
              bridgedNetwork: bridgedNetwork,
-             metrics: QEMUGPUStorageSpaceEstimate.bundledMetrics(bundle: bundle)
+-            metrics: QEMUGPUStorageSpaceEstimate.bundledMetrics(bundle: bundle)
++            metrics: configuration.factory == nil ? QEMUGPUStorageSpaceEstimate.bundledMetrics(bundle: bundle) : nil
          )
 +        switch result {
 +        case .failure: return result
@@ -2164,7 +2189,7 @@ index c959f32..6a8379a 100644
      }
  
      private func launch(networkLayout: NetworkServiceLayout, bridgedNetwork availability: BridgedNetworkAvailability?) {
-@@ -87,6 +99,9 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -87,6 +102,9 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
          case .success(let resolved): settings = resolved
          case .failure(let error): return fail(error)
          }
@@ -2174,7 +2199,17 @@ index c959f32..6a8379a 100644
          stateRoot = settings.stateRoot
          bridgedNetwork = settings.bridgedNetwork
          if let notice = settings.notice { emit(.notice(notice)) }
-@@ -134,6 +149,18 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -96,7 +114,8 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+             storageUnavailableReason: nil,
+             mayCreateFactoryRoot: true
+         )
+-        session.start(arguments: [], context: { context }, beforeLaunch: { context in
++        let arguments = configuration.factory.map { [$0.bundlePath] } ?? []
++        session.start(arguments: arguments, context: { context }, beforeLaunch: { context in
+             if networkLayout.registration == .thisApp,
+                context.environment[VMNetworkPolicy.modeKey] == VMNetworkMode.bridged.rawValue {
+                 try NetworkService.prepare()
+@@ -134,6 +153,18 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
          }
      }
  
@@ -2193,7 +2228,7 @@ index c959f32..6a8379a 100644
      /// A signal: shut down on the first, stop at once on the next.
      func handleTerminationSignal() {
          if shutdownRequested && session.isRunning {
-@@ -154,6 +181,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -154,6 +185,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
          environment[VMRunBridges.environmentKey] = VMRunBridges.names(configuration.bridges)
          environment[ProductName.environmentKey] = configuration.productName
          environment[ProductName.iconEnvironmentKey] = configuration.iconPath
@@ -2204,7 +2239,7 @@ index c959f32..6a8379a 100644
          return environment
      }
  
-@@ -244,6 +275,8 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -244,6 +279,8 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
              if let phase = VMRunPhase(rawValue: progress.phase.rawValue) {
                  emit(.progress(phase, percent: progress.percent))
              }
@@ -2213,7 +2248,7 @@ index c959f32..6a8379a 100644
          case .ready(let qmpSocketPath):
              startSettingsBridge(qmpSocketPath: qmpSocketPath)
              emit(.ready)
-@@ -275,6 +308,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -275,6 +312,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
      private func finish(status: Int32) {
          guard !finished else { return }
          finished = true
@@ -2224,7 +2259,7 @@ index c959f32..6a8379a 100644
          emit(.exited(status: min(255, max(0, status))))
          Darwin.exit(status == 0 ? 0 : 1)
      }
-@@ -337,12 +374,14 @@ enum VMRunInput {
+@@ -337,12 +378,14 @@ enum VMRunInput {
          return try VMRunConfiguration.decode(line: Data(line.utf8))
      }
  
@@ -2240,7 +2275,7 @@ index c959f32..6a8379a 100644
                  case .failure:
                      fputs("omarchy-vm-helper: ignoring an unknown run mode command\n", stderr)
                  }
-@@ -407,3 +446,30 @@ enum VMRunFailure {
+@@ -407,3 +450,30 @@ enum VMRunFailure {
          return VMRunError(code: code, message: message)
      }
  }
@@ -2469,6 +2504,125 @@ index f199020..961c03a 100644
              application.run()
          }
          exit(0)
+diff --git a/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
+new file mode 100644
+index 0000000..a8be7ad
+--- /dev/null
++++ b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
+@@ -0,0 +1,113 @@
++import CryptoKit
++import Darwin
++import Foundation
++
++public struct VMFactorySelection: Codable, Equatable, Sendable {
++    public static let capabilityVersion = 1
++    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-40-aarch64.pkg.tar.zst"
++    public let bundlePath: String
++    public let manifestSHA256: String
++    public init(bundlePath: String, manifestSHA256: String) {
++        self.bundlePath = bundlePath; self.manifestSHA256 = manifestSHA256
++    }
++    public func validate() throws {
++        guard bundlePath.hasPrefix("/"), bundlePath.utf8.count <= 1024,
++              !bundlePath.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
++              Self.isDigest(manifestSHA256) else { throw VMRunProtocolError.invalidConfiguration }
++    }
++    public static func isDigest(_ value: String) -> Bool {
++        value.count == 64 && value.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
++    }
++    public static func digest(_ url: URL) throws -> String {
++        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
++        guard fd >= 0 else { throw VMRunProtocolError.invalidConfiguration }
++        defer { close(fd) }
++        var info = stat()
++        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { throw VMRunProtocolError.invalidConfiguration }
++        let file = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
++        var hash = SHA256()
++        while let data = try file.read(upToCount: 1_048_576), !data.isEmpty { hash.update(data: data) }
++        return hash.finalize().map { String(format: "%02x", $0) }.joined()
++    }
++    public static func readMetadata(_ url: URL) throws -> Data {
++        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
++        guard fd >= 0 else { throw VMRunProtocolError.invalidConfiguration }
++        defer { close(fd) }
++        var info = stat()
++        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size > 0, info.st_size <= 65536 else { throw VMRunProtocolError.invalidConfiguration }
++        let data = try FileHandle(fileDescriptor: fd, closeOnDealloc: false).read(upToCount: 65537) ?? Data()
++        guard data.count <= 65536 else { throw VMRunProtocolError.invalidConfiguration }
++        return data
++    }
++    private static func dataDigest(_ data: Data) -> String {
++        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
++    }
++    public func verified(runtimeBundle: URL) throws -> VMFactoryManifest {
++        try validate()
++        let root = URL(fileURLWithPath: bundlePath)
++        var info = stat()
++        guard root.standardizedFileURL.path == root.resolvingSymlinksInPath().path,
++              lstat(root.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { throw VMRunProtocolError.invalidConfiguration }
++        let manifestURL = root.appendingPathComponent("reviewed-factory.json")
++        let manifestData = try Self.readMetadata(manifestURL)
++        guard Self.dataDigest(manifestData) == manifestSHA256 else { throw VMRunProtocolError.invalidConfiguration }
++        let manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: manifestData)
++        try manifest.validate()
++        guard Set(try FileManager.default.contentsOfDirectory(atPath: root.path)) == Set(manifest.files.keys).union(["reviewed-factory.json"]) else { throw VMRunProtocolError.invalidConfiguration }
++        for (name, hash) in manifest.files {
++            guard try Self.digest(root.appendingPathComponent(name)) == hash else { throw VMRunProtocolError.invalidConfiguration }
++        }
++        for (name, hash) in manifest.runtimeFiles {
++            let file = runtimeBundle.appendingPathComponent(name)
++            guard file.standardizedFileURL.path == file.resolvingSymlinksInPath().path,
++                  try Self.digest(file) == hash else { throw VMRunProtocolError.invalidConfiguration }
++        }
++        let factoryData = try Self.readMetadata(root.appendingPathComponent("factory.json"))
++        guard Self.dataDigest(factoryData) == manifest.files["factory.json"] else { throw VMRunProtocolError.invalidConfiguration }
++        let factory = try JSONDecoder().decode(VMFactoryManifest.Image.self, from: factoryData)
++        guard factory.format == 1, factory.kind == "upstream-shell-factory", factory.platform == "aarch64", factory.boot == "uefi-limine",
++              factory.disk.bytes > 0, factory.disk.bytes <= 8192 * 1_073_741_824,
++              Self.isDigest(factory.disk.sha256), Self.isDigest(factory.compressed.sha256),
++              factory.compressed.path.hasSuffix(".img.zst"), manifest.files[factory.compressed.path] == factory.compressed.sha256,
++              VMFactoryManifest.safeName(factory.disk.path), factory.disk.path.hasSuffix(".img") else { throw VMRunProtocolError.invalidConfiguration }
++        return manifest
++    }
++}
++
++public struct VMFactoryManifest: Codable, Equatable, Sendable {
++    public let format: Int
++    public let name: String
++    public let architecture: String
++    public let boot: String
++    public let customFactoryVersion: Int
++    public let managedSSHVersion: Int
++    public let managedSetupVersion: Int
++    public let integrationPackageSHA256: String
++    public let ownerSetupContractSHA256: String
++    public let files: [String: String]
++    public let provisioning: [String: String]
++    public let runtimeFiles: [String: String]
++    public struct Image: Decodable {
++        public struct Disk: Decodable { public let path: String; public let sha256: String; public let bytes: Int64 }
++        public struct Compressed: Decodable { public let path: String; public let sha256: String }
++        public let format: Int; public let kind: String; public let platform: String; public let boot: String
++        public let disk: Disk; public let compressed: Compressed
++    }
++    public static func safeName(_ name: String) -> Bool {
++        !name.isEmpty && name != "." && name != ".." && name.utf8.count <= 255 && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "._-".contains($0)) }
++    }
++    public func validate() throws {
++        let required: Set<String> = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy", "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", VMFactorySelection.packagePath]
++        guard format == 1, architecture == "aarch64", boot == "uefi-limine", customFactoryVersion == 1,
++              managedSSHVersion == 1, managedSetupVersion == 1,
++              !name.isEmpty, name.utf8.count <= 128, !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
++              (2...32).contains(files.count), files["factory.json"] != nil, files["reviewed-factory.json"] == nil,
++              files.keys.allSatisfy(Self.safeName), files.values.allSatisfy(VMFactorySelection.isDigest),
++              !provisioning.isEmpty, provisioning.allSatisfy({ files[$0.key] == $0.value }),
++              required.isSubset(of: Set(runtimeFiles.keys)), runtimeFiles.count <= 256,
++              runtimeFiles.keys.allSatisfy({ $0.hasPrefix("Contents/") && $0.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." } }),
++              runtimeFiles.values.allSatisfy(VMFactorySelection.isDigest),
++              VMFactorySelection.isDigest(ownerSetupContractSHA256),
++              runtimeFiles[VMFactorySelection.packagePath] == integrationPackageSHA256 else { throw VMRunProtocolError.invalidConfiguration }
++    }
++}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMRunClient.swift b/macos/Sources/TryOmarchyKitClient/VMRunClient.swift
 index 81aef76..5eb9717 100644
 --- a/macos/Sources/TryOmarchyKitClient/VMRunClient.swift
@@ -2492,10 +2646,52 @@ index 81aef76..5eb9717 100644
      /// Omarchy to shut down: unsaved work in Omarchy is lost. The helper reads
      /// a first signal as `shutDown()` and a second as stop now, so this sends
 diff --git a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
-index 4e1af8d..112f1ab 100644
+index 4e1af8d..ab777c9 100644
 --- a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
 +++ b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
-@@ -144,6 +144,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -37,6 +37,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+     /// The VM's storage folder, whatever folder Try Omarchy chose. Nil is the
+     /// folder chosen in Try Omarchy, else its default folder.
+     public var storageRoot: String?
++    public var factory: VMFactorySelection? = nil
+     public var bridges: [VMRunBridge]
+     /// Used when no resources are stored. Nil leaves the size to the
+     /// launcher's automatic choice.
+@@ -72,6 +73,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+             "bridges": bridges.map(\.rawValue),
+             "network": network.rawValue,
+         ]
++        if let factory { object["factory"] = ["bundlePath": factory.bundlePath, "manifestSHA256": factory.manifestSHA256] }
+         if let iconPath { object["iconPath"] = iconPath }
+         if let storageRoot { object["storageRoot"] = storageRoot }
+         if let memoryMiB { object["memoryMiB"] = memoryMiB }
+@@ -81,7 +83,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+ 
+     public static func decode(line: Data) throws -> Self {
+         let object = try VMRunLine.decode(line)
+-        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network"]
++        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network", "factory"]
+         guard Set(object.keys).isSubset(of: allowed),
+               VMRunLine.integer(object["version"]) == VMRunProtocol.version,
+               let productName = object["productName"] as? String,
+@@ -113,11 +115,16 @@ public struct VMRunConfiguration: Equatable, Sendable {
+             guard let cpus = VMRunLine.integer(value) else { throw VMRunProtocolError.invalidConfiguration }
+             configuration.cpus = cpus
+         }
++        if let value = object["factory"] {
++            guard let fields = value as? [String: String], Set(fields.keys) == ["bundlePath", "manifestSHA256"] else { throw VMRunProtocolError.invalidConfiguration }
++            configuration.factory = VMFactorySelection(bundlePath: fields["bundlePath"]!, manifestSHA256: fields["manifestSHA256"]!)
++        }
+         try configuration.validate()
+         return configuration
+     }
+ 
+     public func validate() throws {
++        try factory?.validate()
+         guard (1...64).contains(productName.count), productName.utf8.count <= 255,
+               productName == productName.trimmingCharacters(in: .whitespaces),
+               productName.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
+@@ -144,6 +151,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
  public enum VMRunCommand: String, Sendable {
      /// Ask Omarchy to shut down, then stop the VM if it has not within a minute.
      case shutdown
@@ -2504,7 +2700,7 @@ index 4e1af8d..112f1ab 100644
  
      public func encodedLine() throws -> Data {
          try VMRunLine.encode(["version": VMRunProtocol.version, "command": rawValue])
-@@ -229,11 +231,27 @@ public struct VMRunNotice: Equatable, Sendable {
+@@ -229,11 +238,27 @@ public struct VMRunNotice: Equatable, Sendable {
      }
  }
  
@@ -2532,7 +2728,7 @@ index 4e1af8d..112f1ab 100644
      case stopping
      case error(VMRunError)
      /// The last event. Status 0 is a clean shutdown.
-@@ -250,6 +268,14 @@ public enum VMRunEvent: Equatable, Sendable {
+@@ -250,6 +275,14 @@ public enum VMRunEvent: Equatable, Sendable {
              object["event"] = "notice"
              object["code"] = notice.code.rawValue
              object["message"] = String(notice.message.prefix(4_096))
@@ -2547,7 +2743,7 @@ index 4e1af8d..112f1ab 100644
          case .ready:
              object["event"] = "ready"
          case .stopping:
-@@ -295,6 +321,23 @@ public enum VMRunEvent: Equatable, Sendable {
+@@ -295,6 +328,23 @@ public enum VMRunEvent: Equatable, Sendable {
              guard let code = VMRunNoticeCode(rawValue: codeName) else { throw VMRunProtocolError.unknownEvent }
              try require(["code", "message"])
              return .notice(VMRunNotice(code: code, message: message))
@@ -3302,10 +3498,20 @@ index df1e815..b8f2824 100644
 +    }
 +}
 diff --git a/macos/Tests/run-mode.test.sh b/macos/Tests/run-mode.test.sh
-index fb2be66..1900e5a 100755
+index fb2be66..05cbf8c 100755
 --- a/macos/Tests/run-mode.test.sh
 +++ b/macos/Tests/run-mode.test.sh
-@@ -287,6 +287,8 @@ expected = {
+@@ -119,7 +119,8 @@ if not marker.exists():
+ (root / "shell").mkdir(mode=0o700, exist_ok=True)
+ disk = root / "shell/disk.img"
+ if not disk.exists():
+-    factory = Path(os.environ["OMARCHY_QEMU_GPU_FACTORY_IMAGE"])
++    factory = Path(sys.argv[1]) / "omarchy.img.zst" if len(sys.argv) == 2 else Path(os.environ["OMARCHY_QEMU_GPU_FACTORY_IMAGE"])
++    if len(sys.argv) == 2: record({"selectedFactory": sys.argv[1]})
+     record({"factory": hashlib.sha256(factory.read_bytes()).hexdigest()})
+     say("Launch phase: preparing")
+     disk.write_bytes(b"\0" * 4096)
+@@ -287,6 +288,8 @@ expected = {
  for key, value in expected.items():
      if environment.get(key) != value:
          fail(f"the launcher got {key}={environment.get(key)!r}, not {value!r}")
@@ -3314,7 +3520,7 @@ index fb2be66..1900e5a 100755
  if "OMARCHY_QEMU_GPU_DRY_RUN" in environment or "OMARCHY_QEMU_GPU_INSPECT_ONLY" in environment:
      fail("the run mode passed the launcher's test settings on")
  if {"factory": image_sha} not in entries:
-@@ -459,7 +461,11 @@ for permissions in (0o600, 0o644):
+@@ -459,7 +462,11 @@ for permissions in (0o600, 0o644):
      run.send("shutdown")
      run.until("exited")
      run.process.wait(timeout=10)
@@ -3327,6 +3533,63 @@ index fb2be66..1900e5a 100755
      if root != str(vm) or other.exists():
          fail(f"a named folder with a {permissions:o} pointer started in {root!r}; {run.diagnostics()}")
  run = RunMode(configuration, OMARCHY_QEMU_GPU_STATE_ROOT="")
+@@ -506,6 +513,55 @@ for line, code, status in [
+     if log.exists():
+         fail(f"{line} started the launcher")
+ 
++# A reviewed prepared factory reaches the same session without a download.
++import uuid
++custom = scratch / "prepared.factory"
++custom.mkdir(mode=0o700)
++factory = json.loads((contents / "Resources/guest/factory.json").read_bytes())
++factory["platform"] = "aarch64"
++(custom / "factory.json").write_text(json.dumps(factory))
++(custom / "omarchy.img.zst").write_bytes(image)
++(custom / "provisioning.json").write_text('{"fixture":"no VM"}')
++package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-40-aarch64.pkg.tar.zst"
++required = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy",
++            "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", package_path]
++for name in required:
++    path = kit / name
++    if not path.exists():
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_bytes(b"no VM fixture")
++def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
++manifest = {"format": 1, "name": "Custom fixture", "architecture": "aarch64", "boot": "uefi-limine",
++            "customFactoryVersion": 1, "managedSSHVersion": 1, "managedSetupVersion": 1,
++            "integrationPackageSHA256": sha(kit / package_path), "ownerSetupContractSHA256": "a" * 64,
++            "files": {p.name: sha(p) for p in custom.iterdir()},
++            "provisioning": {"provisioning.json": sha(custom / "provisioning.json")},
++            "runtimeFiles": {name: sha(kit / name) for name in required}}
++(custom / "reviewed-factory.json").write_text(json.dumps(manifest))
++selection = {"bundlePath": str(custom), "manifestSHA256": sha(custom / "reviewed-factory.json")}
++root = scratch / "manager-owned" / str(uuid.uuid4()).upper()
++root.mkdir(mode=0o700, parents=True)
++(root / ".omarchy-qemu-storage").write_text("omarchy-qemu-storage-root-v1\n")
++(root / ".omarchy-qemu-storage").chmod(0o600)
++custom_config = {**configuration, "storageRoot": str(root), "factory": selection}
++run = RunMode(custom_config, OMARCHY_QEMU_GPU_STATE_ROOT="")
++run.until("ready")
++if "downloading" in run.phases(): fail("a selected custom factory downloaded the official image")
++run.send("shutdown")
++run.until("exited")
++run.process.wait(timeout=10)
++entries = launcher_log()
++if {"selectedFactory": str(custom)} not in entries or {"factory": image_sha} not in entries:
++    fail(f"the selected custom factory did not reach the launcher: {entries}")
++for damaged in [custom / "omarchy.img.zst", custom / "provisioning.json", kit / package_path]:
++    original = damaged.read_bytes()
++    damaged.write_bytes(b"damaged")
++    run = RunMode(custom_config, OMARCHY_QEMU_GPU_STATE_ROOT="")
++    event = run.next()
++    if event.get("code") != "invalid-configuration": fail(f"damaged custom factory was admitted: {event}")
++    run.finish(1)
++    if launcher_log(): fail("damaged custom factory started the launcher")
++    damaged.write_bytes(original)
+ server.shutdown()
+-print("run-mode.test: PASS")
++print("run-mode.test: PASS (including reviewed custom factory selection)")
+ PY
 diff --git a/macos/Tests/test-cocoa-product-identity.py b/macos/Tests/test-cocoa-product-identity.py
 index b496be7..d93a979 100755
 --- a/macos/Tests/test-cocoa-product-identity.py
@@ -3363,7 +3626,7 @@ index b496be7..d93a979 100755
          builder = BUILDER.read_text(encoding="utf-8")
          expected = re.search(r"^identity_patch_sha256=([a-f0-9]{64})$", builder, re.M)
 diff --git a/macos/run-qemu-gpu.sh b/macos/run-qemu-gpu.sh
-index cf3bb8f..f66ac67 100755
+index cf3bb8f..efc60b4 100755
 --- a/macos/run-qemu-gpu.sh
 +++ b/macos/run-qemu-gpu.sh
 @@ -290,6 +290,17 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
@@ -3384,7 +3647,33 @@ index cf3bb8f..f66ac67 100755
  
  keyboard=$("$native_bridge" --host-keyboard-geometry) || fail "cannot detect the Mac keyboard geometry"
  case $keyboard in ansi | iso | jis) host_options+=" tryomarchy.keyboard=$keyboard" ;; *) fail "invalid keyboard geometry" ;; esac
-@@ -595,7 +606,11 @@ make_product_app() { # app
+@@ -450,8 +461,13 @@ shared_factory=${OMARCHY_QEMU_GPU_FACTORY_CACHE:-}
+ [[ -z $shared_factory || ($shared_factory == /* && $shared_factory != *$'\n'*) ]] ||
+   fail "OMARCHY_QEMU_GPU_FACTORY_CACHE must be an absolute path"
+ prepare_factory_disk() {
+-  [[ -f $factory_disk ]] && return 0
+-  if [[ -n $shared_factory ]]; then
++  if [[ -f $factory_disk ]]; then
++    if [[ -f $guest_dir/reviewed-factory.json ]]; then
++      [[ $(/usr/bin/shasum -a 256 "$factory_disk" | cut -d' ' -f1) == "$disk_sha" ]] || fail "the reviewed factory disk is damaged"
++    fi
++    return 0
++  fi
++  if [[ -n $shared_factory && ! -f $guest_dir/reviewed-factory.json ]]; then
+     local shared="$shared_factory/$factory_identity.img"
+     if [[ -f $shared && ! -L $shared ]] && cp -c "$shared" "$factory_disk.partial" 2>/dev/null; then
+       mv -f "$factory_disk.partial" "$factory_disk"
+@@ -482,6 +498,9 @@ prepare_factory_disk() {
+     fail "could not decompress the factory disk"
+   fi
+   [[ $(stat -f %z "$factory_disk.partial") == "$disk_bytes" ]] || fail "the factory disk has the wrong size"
++  if [[ -f $guest_dir/reviewed-factory.json ]]; then
++    [[ $(/usr/bin/shasum -a 256 "$factory_disk.partial" | cut -d' ' -f1) == "$disk_sha" ]] || fail "the decompressed reviewed factory digest differs"
++  fi
+   chmod 600 "$factory_disk.partial"
+   echo '[qemu-gpu] Launch phase: finishing' >&2
+   # zstd leaves much of the filesystem's free space allocated on APFS where
+@@ -595,7 +614,11 @@ make_product_app() { # app
      /usr/bin/plutil -insert CFBundleExecutable -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleName -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleDisplayName -string "$product_name" "$plist" &&
@@ -3397,7 +3686,7 @@ index cf3bb8f..f66ac67 100755
  }
  qemu_exec=$qemu_bin
  case $product_name in
-@@ -758,6 +773,20 @@ if bridge_enabled settings; then
+@@ -758,6 +781,20 @@ if bridge_enabled settings; then
    )
  fi
  

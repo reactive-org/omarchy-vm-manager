@@ -13,6 +13,7 @@ struct DeletionReview: Identifiable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    @Published var factories: [FactoryIdentity] = [.official]
     @Published var ownerDefaults: OwnerDefaults?
     @Published var defaultsError: String?
     @Published var diagnostics: KitDiagnostics?
@@ -84,6 +85,15 @@ final class AppModel: ObservableObject {
         case .failure(let error): diagnostics = nil; diagnosticError = error.localizedDescription
         }
         checking = false
+        if diagnostics != nil {
+            do {
+                let catalog = try FactoryCatalog(applicationSupport: support, kit: .embedded(), lockData: Data(contentsOf: Self.lockURL))
+                await manager.installFactoryCatalog(catalog)
+                let listing = try await manager.factoryListing()
+                factories = listing.factories
+                if !listing.issues.isEmpty { actionError = "Some imported factories failed verification and cannot be selected." }
+            } catch { actionError = error.localizedDescription }
+        }
         await loadDefaults()
         await update()
     }
@@ -109,7 +119,7 @@ final class AppModel: ObservableObject {
     func stopCommandServer() { commandServer?.stop(); commandServer = nil }
 
     func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, diskGiB: Int,
-              clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool) async -> UUID? {
+              clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official") async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
         do {
@@ -121,11 +131,19 @@ final class AppModel: ObservableObject {
             } else {
                 id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
                                               clipboardEnabled: clipboard, immersiveMode: immersive, sshEnabled: sshEnabled,
-                                              publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false)
+                                              publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false, factory: factory)
             }
             storageRefreshed = .distantPast
             await update(); return id
         } catch { configurationError = error.localizedDescription; return nil }
+    }
+
+    func loadFactories() async {
+        do {
+            let listing = try await manager.factoryListing()
+            factories = listing.factories
+            if !listing.issues.isEmpty { configurationError = "Some imported factories failed verification and cannot be selected." }
+        } catch { configurationError = error.localizedDescription }
     }
 
     func loadDefaults() async {
