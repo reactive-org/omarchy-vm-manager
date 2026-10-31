@@ -58,10 +58,10 @@ index 2cc716c..ebfa640 100644
 +The protocol-1 guest status report has an optional versioned `managedSSH` field. Its owner/VM/session values are advisory until the manager verifies an authenticated connection against its pinned host identity. Unmanaged Try Omarchy boots keep their existing SSH behavior.
 diff --git a/guest/package/tests/test_managed_ssh.py b/guest/package/tests/test_managed_ssh.py
 new file mode 100644
-index 0000000..e544a4b
+index 0000000..05e5686
 --- /dev/null
 +++ b/guest/package/tests/test_managed_ssh.py
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,119 @@
 +#!/usr/bin/env python3
 +import hashlib
 +import importlib.machinery
@@ -159,6 +159,21 @@ index 0000000..e544a4b
 +        with self.assertRaises(ValueError): m.main()
 +        self.assertFalse((m.BASE / "host_ed25519").exists())
 +
++    def test_timer_cannot_form_a_cycle_through_basic_target(self):
++        import configparser
++        units = SOURCE.parents[1] / "systemd/system"
++        timer = configparser.ConfigParser(interpolation=None, strict=False)
++        timer.read(units / "try-omarchy-managed-ssh.timer")
++        for dependency in timer["Unit"].get("After", "").split():
++            if not dependency.endswith(".service"):
++                continue
++            service = configparser.ConfigParser(interpolation=None, strict=False)
++            service.read(units / dependency)
++            self.assertEqual(service["Unit"].get("DefaultDependencies", "yes"), "no", "Timer → default service → basic.target → timers.target is a boot cycle")
++        service = configparser.ConfigParser(interpolation=None, strict=False)
++        service.read(units / "try-omarchy-managed-ssh.service")
++        self.assertIn("try-omarchy-package-install.service", service["Unit"]["After"].split())
++
 +    def test_no_managed_token_is_a_noop(self):
 +        m = self.module; m.CMDLINE.write_text("tryomarchy.ssh_access=1\n"); m.main()
 +        self.assertFalse(m.BASE.exists())
@@ -205,13 +220,13 @@ index 0000000..7f75637
 +TimeoutStartSec=30
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer
 new file mode 100644
-index 0000000..092a0bb
+index 0000000..1b8f669
 --- /dev/null
 +++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer
 @@ -0,0 +1,12 @@
 +[Unit]
 +Description=Wait for the owner account before enrolling managed SSH
-+After=try-omarchy-host-config.service try-omarchy-package-install.service
++After=try-omarchy-host-config.service
 +ConditionPathExists=/run/try-omarchy/managed-ssh.enabled
 +
 +[Timer]

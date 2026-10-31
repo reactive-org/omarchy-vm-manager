@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-10-31T15:11:22+11:00",
+  "authorDate": "2026-10-31T15:19:10+11:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-10-31T15:11:22+11:00",
+  "committerDate": "2026-10-31T15:19:10+11:00",
   "subject": "Give managed guests isolated SSH enrollment and preserve focused native integrations",
-  "commit": "06a8843b6aa392d29f2d702d3a6a60bef8388910",
-  "patchSHA256": "da2e996ce0f4d90150057646b6a1bb652f7c94a83deb6c96488a11eddf783f77"
+  "commit": "b6fc151c12c4afed4a40b4cfea2c14e8576d206d",
+  "patchSHA256": "87c6a922911466a5a09e92196c90f507cdc12fc2e9b8f52e3995e8b8933bc4be"
 }

@@ -52,6 +52,13 @@ def main():
     image = "omarchy-managed-ssh-integration:" + ("arch" if args.base_image != "ubuntu:24.04" else "ubuntu")
     run("docker", "build", "--build-arg", "BASE_IMAGE=" + args.base_image, "-t", image,
         "-f", ROOT / "Tests/SSHDIntegration/Containerfile", ROOT / "Tests/SSHDIntegration")
+    units = library.parent / "systemd/system"
+    run("docker", "run", "--rm", "--entrypoint", "/usr/bin/systemd-analyze",
+        "-v", f"{units}:/test-units:ro", "-v", f"{library}:/usr/lib/try-omarchy:ro", image,
+        "verify", "--man=no", *["/test-units/" + name for name in (
+            "try-omarchy-managed-ssh.timer", "try-omarchy-managed-ssh.service", "try-omarchy-host-config.service",
+            "try-omarchy-package-install.service", "try-omarchy-ssh-access.service")])
+    print("PASS: systemd timer/service boot graph", flush=True)
     names = []
     with tempfile.TemporaryDirectory(prefix="omarchy ssh integration ") as directory:
         work = Path(directory); work.chmod(0o700)
