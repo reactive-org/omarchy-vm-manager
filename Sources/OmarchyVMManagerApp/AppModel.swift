@@ -13,6 +13,8 @@ struct DeletionReview: Identifiable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    @Published var ownerDefaults: OwnerDefaults?
+    @Published var defaultsError: String?
     @Published var diagnostics: KitDiagnostics?
     @Published var diagnosticError: String?
     @Published var registryError: String?
@@ -30,6 +32,7 @@ final class AppModel: ObservableObject {
     private let support: URL
     private var lastReportID: UUID?
     private var lastAccessibilityTrusted: Bool?
+    private var lastOwnerStates: [UUID: OwnerSetupReadiness] = [:]
     private var lastSSHStates: [UUID: SSHReadiness] = [:]
     private var storageRefreshed = Date.distantPast
 
@@ -65,6 +68,7 @@ final class AppModel: ObservableObject {
         case .failure(let error): diagnostics = nil; diagnosticError = error.localizedDescription
         }
         checking = false
+        await loadDefaults()
         await update()
     }
 
@@ -76,7 +80,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?) async -> UUID? {
+    func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool) async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
         do {
@@ -86,11 +90,22 @@ final class AppModel: ObservableObject {
                 profile.clipboardEnabled = clipboard; profile.immersiveMode = immersive
                 try await manager.configure(profile); id = profile.id
             } else {
-                id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, clipboardEnabled: clipboard, immersiveMode: immersive, sshEnabled: sshEnabled, publicKey: publicKey)
+                id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, clipboardEnabled: clipboard, immersiveMode: immersive, sshEnabled: sshEnabled, publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false)
             }
             storageRefreshed = .distantPast
             await update(); return id
         } catch { configurationError = error.localizedDescription; return nil }
+    }
+
+    func loadDefaults() async {
+        do { ownerDefaults = try await manager.guestDefaults(); defaultsError = nil }
+        catch { defaultsError = error.localizedDescription }
+    }
+    func saveDefaults(enabled: Bool, configuration: OwnerConfiguration, password: Data?, publicKey: String?) async -> Bool {
+        do {
+            ownerDefaults = try await manager.saveGuestDefaults(enabled: enabled, configuration: configuration, password: password, sshPublicKey: publicKey)
+            defaultsError = nil; return true
+        } catch { defaultsError = error.localizedDescription; return false }
     }
 
     func start(_ id: UUID) async {
@@ -139,8 +154,10 @@ final class AppModel: ObservableObject {
                 Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, TryOmarchyStorage.allocatedBytes(at: POCProfiles.root(for: $0, applicationSupport: support))) })
             }.value
         }
+        let ownerStates = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.id, $0.ownerSetupReadiness) })
         let sshStates = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.id, $0.sshReadiness) })
-        guard registryError == nil, records.last?.id != lastReportID || accessibilityTrusted != lastAccessibilityTrusted || sshStates != lastSSHStates else { return }
+        guard registryError == nil, records.last?.id != lastReportID || accessibilityTrusted != lastAccessibilityTrusted || sshStates != lastSSHStates || ownerStates != lastOwnerStates else { return }
+        lastOwnerStates = ownerStates
         lastSSHStates = sshStates
         lastReportID = records.last?.id; lastAccessibilityTrusted = accessibilityTrusted
         do { try writeReport() } catch { actionError = "Cannot save session evidence: " + error.localizedDescription }
@@ -158,6 +175,7 @@ final class AppModel: ObservableObject {
                     "root": POCProfiles.root(for: s.profile, applicationSupport: support).path,
                     "active": s.sessionID != nil, "memoryMiB": s.profile.memoryMiB, "cpus": s.profile.cpus]
                 row["sshStatus"] = s.sshReadiness.label
+                row["ownerSetupStatus"] = s.ownerSetupReadiness.label
                 row["sessionID"] = s.sessionID?.uuidString; row["error"] = s.lastFailure?.message
                 row["stderr"] = s.lastFailure?.diagnostics
                 return row

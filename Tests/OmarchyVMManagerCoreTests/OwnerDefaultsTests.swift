@@ -94,3 +94,102 @@ struct OwnerDefaultsTests {
         #expect(OwnerSetupContract.current.programs.count == 3)
     }
 }
+
+@Suite("Owner defaults at guest creation")
+struct OwnerDefaultsCreationTests {
+    @Test("new profiles inherit snapshots; existing and opted-out guests stay unchanged")
+    func createsSnapshots() async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
+        let legacy = f.profile(name: "Existing"); try registry.save([legacy])
+        let vault = MemoryOwnerVault(), defaults = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
+        _ = try defaults.save(enabled: true, configuration: OwnerConfiguration(username: "first"), password: Data("synthetic-password".utf8))
+        let manager = VMManager(runtime: FakeRuntime(), profiles: [legacy], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: registry, ownerDefaults: defaults)
+        let id = try await manager.create(name: "New", memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false, sshEnabled: false)
+        _ = try await manager.create(name: "Manual", memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false, sshEnabled: false, useOwnerDefaults: false)
+        _ = try await manager.saveGuestDefaults(enabled: true, configuration: OwnerConfiguration(username: "second"), password: nil, sshPublicKey: nil)
+        _ = try await manager.create(name: "Later", memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false, sshEnabled: false)
+        let rows = await manager.snapshots()
+        #expect(rows[0].profile.ownerSetup == nil)
+        #expect(rows[1].profile.ownerSetup?.configuration.username == "first")
+        #expect(rows[2].profile.ownerSetup == nil)
+        #expect(rows[3].profile.ownerSetup?.configuration.username == "second")
+        #expect(rows[1].ownerSetupReadiness == .pending)
+        #expect(!FileManager.default.fileExists(atPath: f.storage.vms.path))
+        let data = try PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json"))
+        let document = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        #expect(document["schemaVersion"] as? Int == 3)
+        #expect(!String(decoding: data, as: UTF8.self).contains("synthetic-password"))
+        var changed = try #require(rows.first(where: { $0.id == id })?.profile)
+        changed.ownerSetup = rows[3].profile.ownerSetup
+        await #expect(throws: VMFailure.self) { try await manager.configure(changed) }
+    }
+}
+
+@Suite("One-shot owner setup seeds")
+struct OwnerSeedTests {
+    @Test("a setup snapshot is creation-only; seeds are private, session-bound and removed after completion")
+    func seedLifecycle() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        var profile = VMProfile(id: UUID(), name: "Synthetic setup", memoryMiB: 4096, cpus: 4)
+        let defaults = OwnerDefaults(enabled: true, configuration: OwnerConfiguration(username: "owner"), credentialReference: UUID())
+        profile.ownerSetup = try defaults.snapshot(for: profile.id)
+        let session = UUID(), secret = Data("synthetic'quote:$() password".utf8)
+        let root = try f.storage.prepare(profile, sessionID: session, ownerPassword: secret)
+        let owner = ManagedOwnerStorage(root: root)
+        let manifest = try JSONDecoder().decode(ManagedOwnerStorage.Manifest.self, from: PrivateFiles.read(root.appendingPathComponent(ManagedOwnerStorage.launchName)))
+        #expect(manifest.sessionToken == session)
+        #expect(manifest.fingerprint == (try profile.ownerSetup?.fingerprint()))
+        #expect(!String(decoding: try JSONEncoder().encode(manifest), as: UTF8.self).contains(String(decoding: secret, as: UTF8.self)))
+        #expect(try String(decoding: PrivateFiles.read(owner.bootstrap.appendingPathComponent("owner-setup.json")), as: UTF8.self).contains("synthetic"))
+        try owner.clearSeed()
+        #expect(!FileManager.default.fileExists(atPath: owner.bootstrap.appendingPathComponent("owner-setup.json").path))
+        let second = UUID()
+        _ = try f.storage.prepare(profile, sessionID: second, ownerPassword: secret)
+        #expect(try JSONDecoder().decode(ManagedOwnerStorage.Manifest.self, from: PrivateFiles.read(root.appendingPathComponent(ManagedOwnerStorage.launchName))).sessionToken == second)
+        var missingSnapshot = profile; missingSnapshot.ownerSetup = nil
+        #expect(throws: VMFailure.self) { try f.storage.prepare(missingSnapshot) }
+        try owner.finish(profile)
+        #expect(try owner.completed(profile))
+        _ = try f.storage.prepare(profile, ownerPassword: nil)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent(ManagedOwnerStorage.launchName).path))
+        var other = VMProfile(id: UUID(), name: "Manual", memoryMiB: 4096, cpus: 4)
+        _ = try f.storage.prepare(other)
+        other.ownerSetup = try defaults.snapshot(for: other.id)
+        #expect(throws: VMFailure.self) { try f.storage.prepare(other, ownerPassword: secret) }
+    }
+    @Test("cleanup refuses a redirected seed directory and preserves its target")
+    func redirectedSeed() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        var profile = VMProfile(id: UUID(), name: "Setup", memoryMiB: 4096, cpus: 4)
+        profile.ownerSetup = try OwnerDefaults(enabled: true, credentialReference: UUID()).snapshot(for: profile.id)
+        let root = try f.storage.prepare(profile, ownerPassword: Data("synthetic-password".utf8))
+        let owner = ManagedOwnerStorage(root: root)
+        let held = owner.directory.appendingPathComponent("held")
+        try FileManager.default.moveItem(at: owner.bootstrap, to: held)
+        try FileManager.default.createSymbolicLink(at: owner.bootstrap, withDestinationURL: held)
+        #expect(throws: VMFailure.self) { try owner.clearSeed() }
+        #expect(FileManager.default.fileExists(atPath: held.appendingPathComponent("owner-setup.json").path))
+    }
+
+    @Test("stale and mismatched guest reports cannot complete owner setup")
+    func reportIdentity() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        var profile = VMProfile(id: UUID(), name: "Setup", memoryMiB: 4096, cpus: 4)
+        profile.ownerSetup = try OwnerDefaults(enabled: true, credentialReference: UUID()).snapshot(for: profile.id)
+        let root = try f.storage.prepare(profile, ownerPassword: Data("synthetic-password".utf8))
+        let shell = root.appendingPathComponent("shell"); try PrivateFiles.directory(shell, create: true)
+        let request = VMStartRequest(profile: profile, storageRoot: root)
+        var value: [String: Any] = ["schemaVersion": 1, "vmID": profile.id.uuidString, "sessionToken": request.sessionID.uuidString, "fingerprint": try profile.ownerSetup!.fingerprint(), "state": "configured", "owner": "omarchy"]
+        func write(_ date: Date = Date()) throws {
+            try PrivateFiles.write(JSONSerialization.data(withJSONObject: ["receivedAt": ISO8601DateFormatter().string(from: date), "report": ["managedSetup": value]]), name: "guest-status.json", in: shell)
+        }
+        try write(); #expect(try OwnerSetupGuestReport.read(request)?.state == "configured")
+        value["sessionToken"] = UUID().uuidString; try write()
+        #expect(try OwnerSetupGuestReport.read(request) == nil)
+        value["sessionToken"] = request.sessionID.uuidString; value["owner"] = "root"; try write()
+        #expect(try OwnerSetupGuestReport.read(request) == nil)
+        value["owner"] = "omarchy"; try write(.distantPast)
+        #expect(try OwnerSetupGuestReport.read(request) == nil)
+    }
+}

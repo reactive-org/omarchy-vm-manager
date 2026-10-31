@@ -11,6 +11,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public var immersiveMode: Bool?
     public var settingsFingerprint: String? = nil
     public var ssh: SSHOptions? = nil
+    public var ownerSetup: OwnerSetupOptions? = nil
 
     public var isRetainedPOC: Bool { POCProfiles.ids.contains(id) }
 
@@ -81,6 +82,7 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
     public let lastFailure: VMFailure?
     public let notice: String?
     public var sshReadiness: SSHReadiness = .disabled
+    public var ownerSetupReadiness: OwnerSetupReadiness = .manual
 }
 
 public enum POCProfiles {

@@ -2,7 +2,7 @@ import AppKit
 import OmarchyVMManagerCore
 import SwiftUI
 
-private enum Destination: Hashable { case library, guest(UUID), permissions, runtime }
+private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults }
 private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces" }
 
 struct ManagerView: View {
@@ -29,6 +29,7 @@ struct ManagerView: View {
                         }
                     }
                     Section("Manager") {
+                        Label("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark").tag(Destination.defaults)
                         Label("Permissions", systemImage: "hand.raised.fill").tag(Destination.permissions)
                         Label("Runtime", systemImage: "checkmark.shield").tag(Destination.runtime)
                     }
@@ -37,7 +38,7 @@ struct ManagerView: View {
                     ManagerArtwork(size: 42)
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Omarchy VM Manager").font(.caption.bold())
-                        Text("Private build · 0.3.0").font(.caption).foregroundStyle(.secondary)
+                        Text("Private build · " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")).font(.caption).foregroundStyle(.secondary)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
             }.navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
@@ -53,6 +54,7 @@ struct ManagerView: View {
                     case .guest(let id):
                         if let snapshot = model.snapshots.first(where: { $0.id == id }) { guest(snapshot) }
                         else { library }
+                    case .defaults: OwnerDefaultsView(model: model)
                     case .permissions: permissions
                     case .runtime: runtime
                     default: library
@@ -265,6 +267,11 @@ struct ManagerView: View {
                     }
                 }
             }
+            if snapshot.profile.ownerSetup != nil {
+                GroupedPanel {
+                    SettingsRow("Owner setup", subtitle: snapshot.ownerSetupReadiness.label, icon: "person.crop.circle.badge.checkmark", color: .green) { EmptyView() }
+                }
+            }
             if case .ready(let user, let command) = snapshot.sshReadiness {
                 Text("Authenticated as \(user). The guest’s host identity is pinned.").foregroundStyle(.secondary)
                 Button("Copy SSH Command") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string) }.buttonStyle(.borderedProminent)
@@ -388,6 +395,7 @@ private struct VMEditor: View {
     @State private var sshEnabled: Bool
     @State private var selectedPublicKey: String?
     @State private var keyError: String?
+    @State private var useOwnerDefaults: Bool
     init(model: AppModel, profile: VMProfile?, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = saved
         _name = State(initialValue: profile?.name ?? "")
@@ -395,6 +403,8 @@ private struct VMEditor: View {
         _cpus = State(initialValue: profile?.cpus ?? 4)
         _clipboard = State(initialValue: profile?.clipboardEnabled ?? true)
         _immersive = State(initialValue: profile?.immersiveMode ?? false)
+        _useOwnerDefaults = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true)
+        _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true ? model.ownerDefaults?.sshPublicKey : nil)
         _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
     }
     private var maximumMemory: Int { max(4, Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) * 3 / 4) }
@@ -407,6 +417,18 @@ private struct VMEditor: View {
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
                 Toggle("Clipboard integration", isOn: $clipboard)
                 Toggle("Immersive Mode", isOn: $immersive)
+                if profile == nil {
+                    Toggle("Use saved owner setup defaults", isOn: $useOwnerDefaults).disabled(model.ownerDefaults?.enabled != true)
+                        .onChange(of: useOwnerDefaults) { _, value in
+                            if value { selectedPublicKey = model.ownerDefaults?.sshPublicKey }
+                            else if selectedPublicKey == model.ownerDefaults?.sshPublicKey { selectedPublicKey = nil }
+                        }
+                    if useOwnerDefaults, let config = model.ownerDefaults?.configuration {
+                        Text("Automatic setup as \(config.username) · \(config.keyboardID). A unique hostname is assigned.").font(.caption).foregroundStyle(.secondary)
+                    } else { Text("Normal Omarchy setup will run on first boot. Configure reusable settings in Guest Defaults.").font(.caption).foregroundStyle(.secondary) }
+                } else if let setup = profile?.ownerSetup {
+                    Text("Owner defaults snapshot: \(setup.configuration.username) · \(setup.hostname). First-boot answers cannot be changed here.").font(.caption).foregroundStyle(.secondary)
+                }
                 Toggle("Enable SSH from this Mac", isOn: $sshEnabled).disabled(profile != nil)
                 if profile == nil { Text("SSH uses a separate localhost port and automatic per-guest keys after account setup.").font(.caption).foregroundStyle(.secondary) }
                 if sshEnabled, profile == nil {
@@ -430,7 +452,7 @@ private struct VMEditor: View {
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     saving = true
                     Task {
-                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil) { saved(id) }
+                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults) { saved(id) }
                         saving = false
                     }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
@@ -438,19 +460,8 @@ private struct VMEditor: View {
         }.padding(26).frame(width: 520).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }
     }
     private func choosePublicKey() {
-        let panel = NSOpenPanel(); panel.title = "Choose an SSH public key (.pub)"
-        panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            guard url.pathExtension.lowercased() == "pub" else { throw VMFailure(code: "public-key-required", message: "Choose a .pub file; private keys are never imported.") }
-            let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-            guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
-            defer { close(fd) }
-            var info = stat()
-            guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= 16_384 else { throw CocoaError(.fileReadCorruptFile) }
-            let data = try FileHandle(fileDescriptor: fd, closeOnDealloc: false).read(upToCount: 16_385) ?? Data()
-            selectedPublicKey = try SSHPublicKey.canonical(String(decoding: data, as: UTF8.self)); keyError = nil
-        } catch { keyError = error.localizedDescription }
+        do { if let key = try PublicKeyPicker.choose() { selectedPublicKey = key; keyError = nil } }
+        catch { keyError = error.localizedDescription }
     }
 
 }

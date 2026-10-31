@@ -1,20 +1,21 @@
 diff --git a/Makefile b/Makefile
-index e768c5e..44c992f 100644
+index e768c5e..92ae300 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -121,6 +121,7 @@ test-contracts:
+@@ -121,6 +121,8 @@ test-contracts:
  
  test-guest:
  	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_package.py"
 +	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_managed_ssh.py"
++	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_managed_setup.py"
  
  # The package's contracts with the Omarchy the factory installs today.
  test-upstream:
 diff --git a/docs/architecture.md b/docs/architecture.md
-index 02d9082..7dcfec5 100644
+index 02d9082..dd8ed52 100644
 --- a/docs/architecture.md
 +++ b/docs/architecture.md
-@@ -418,3 +418,15 @@ strip beside the housing included, and the guest describes the housing to
+@@ -418,3 +418,22 @@ strip beside the housing included, and the guest describes the housing to
  Omarchy's bar through Omarchy's own `display-cutouts.json`, so the bar sits
  beside the camera and windows start below it. See
  [camera notch](camera-notch.md).
@@ -30,6 +31,13 @@ index 02d9082..7dcfec5 100644
 +Managed SSH failures report only a bounded provisioning-stage enum, failure-code enum and optional errno/exit status. Exception messages, command output, paths and key material are excluded. The host validates these optional protocol-1 fields before displaying them.
 +
 +After mounting the managed 9p share, its inode ownership comes from the Mac. Repeated enrollment verifies the exact mount point, 9p tag and read-only VFS mode under a root-owned guest parent. It does not mistake the Mac-owned mounted root for an ordinary guest-owned directory. Wrong sources, writable mounts and symlinks are refused.
++
++
++### Manager owner setup
++
++The private manager can opt a new UUID root into saved owner setup. Its separate read-only `tryomarchy-managed-setup` share carries a bounded session manifest and temporary password seed. `managed-owner-setup` uses Omarchy's reviewed OEM functions without changing an Omarchy-owned file. It verifies the installed program and helper hashes before sourcing the program without its final `main`, as the upstream desktop CI already does. Answers travel over stdin as NUL-delimited data. Encrypted images and existing owners are refused; a failure reports a fixed code and continues with normal interactive setup.
++
++The manager holds reusable passwords in Keychain. Metadata never contains them. The host removes the staging seed after a matching completion report and on exit; the helper also removes it when the manager is gone. A root-owned completion identity lets a later boot acknowledge a setup that finished while its manager was unavailable. This status is separate from runtime readiness and authenticated SSH readiness. Manual guests get the normal Omarchy owner wizard.
 diff --git a/docs/vm-kit.md b/docs/vm-kit.md
 index fac6182..71095b1 100644
 --- a/docs/vm-kit.md
@@ -47,10 +55,10 @@ index fac6182..71095b1 100644
 +
 +The headless clipboard helper keeps the main run loop running and performs its blocking guest-channel read on a worker queue. Every foreground lookup runs synchronously on the main thread, including lookups requested by the serial routing queue. The real POC found that an otherwise idle main loop could leave worker-only AppKit foreground polling stuck on an old app; main-thread lookups tracked the same focus cycle correctly. Tests exercise the actual focus adapter from both threads, matching and mismatching foreground PIDs, unavailable focus and stale process identities, alongside reader completion and error propagation. The correction does not change protocol 1 or any bridge/configuration fields.
 diff --git a/guest/package/README.md b/guest/package/README.md
-index 2cc716c..ebfa640 100644
+index 2cc716c..46fe376 100644
 --- a/guest/package/README.md
 +++ b/guest/package/README.md
-@@ -182,3 +182,9 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
+@@ -182,3 +182,11 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
  window closes, since Omarchy's screensaver shows it as it exits. It also keeps
  the mode in sync with the window through EDID, and applies the pinch and Apple
  keyboard input rules.
@@ -60,6 +68,168 @@ index 2cc716c..ebfa640 100644
 +An embedding manager can opt an explicitly rooted NAT guest into managed SSH. The private capability version 1 uses a separate read-only `tryomarchy-managed-ssh` share, with the guest host identity and authorized public keys. No client private key crosses into the guest. The package waits for normal owner provisioning, then configures the vendor `sshd.service` for that owner with key authentication and the existing gateway-only firewall rule. It preserves the user's ordinary authorized keys and keeps its own enrollment separate. There is no extra bootstrap account or password.
 +
 +The protocol-1 guest status report has an optional versioned `managedSSH` field. Its owner/VM/session values are advisory until the manager verifies an authenticated connection against its pinned host identity. Unmanaged Try Omarchy boots keep their existing SSH behavior.
++
++The private manager's optional unattended owner setup uses a separate read-only seed share and an OEM service wrapper. Unknown provisioning scripts, encrypted images, malformed seeds and previously configured owners fall back to normal setup. Package-owned files provide this integration; no Omarchy-owned file is modified.
+diff --git a/guest/package/tests/test_managed_setup.py b/guest/package/tests/test_managed_setup.py
+new file mode 100644
+index 0000000..584d717
+--- /dev/null
++++ b/guest/package/tests/test_managed_setup.py
+@@ -0,0 +1,154 @@
++import copy
++import hashlib
++import importlib.machinery
++import importlib.util
++import json
++import os
++from pathlib import Path
++import subprocess
++import tempfile
++import unittest
++from unittest.mock import patch
++import uuid
++
++ROOT = Path(__file__).resolve().parents[1]
++LIB = ROOT / 'try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup'
++loader = importlib.machinery.SourceFileLoader('managed_setup', str(LIB))
++spec = importlib.util.spec_from_loader(loader.name, loader)
++m = importlib.util.module_from_spec(spec); loader.exec_module(m)
++CONTRACT = json.loads((ROOT / 'try-omarchy/files/usr/share/try-omarchy/owner-setup-contract.json').read_bytes())
++
++
++class ManagedSetupTests(unittest.TestCase):
++    def fixture(self):
++        identity = str(uuid.uuid4()).upper()
++        return {'schemaVersion': 1, 'vmID': identity, 'sessionToken': str(uuid.uuid4()).upper(), 'fingerprint': 'a' * 64,
++                'hostname': 'work-' + identity[:8].lower(), 'configuration': {'username': 'owner', 'fullName': 'Synthetic Owner', 'email': 'owner@example.invalid', 'hostnamePrefix': 'work', 'timezone': 'UTC', 'keyboardID': 'English (US)'}}
++
++    def test_validates_inputs_and_keeps_shell_metacharacters_as_data(self):
++        manifest = self.fixture(); seed = {'password': "synthetic'$(touch /not-executed):password"}
++        self.assertEqual(m.validate(manifest, seed, CONTRACT)['keymap'], 'us')
++        with patch.object(m.subprocess, 'run') as run:
++            m.provision(manifest, seed, CONTRACT['keyboards'][0])
++            args, kwargs = run.call_args
++            self.assertNotIn(seed['password'], ' '.join(args[0]))
++            self.assertIn(seed['password'].encode() + b'\0', kwargs['input'])
++            self.assertNotIn('env', kwargs)
++        for key, value in [('username', 'root'), ('username', 'owner;eval'), ('hostnamePrefix', '../bad'), ('timezone', '../../etc/passwd'), ('keyboardID', 'unknown'), ('fullName', 'line\nbreak')]:
++            invalid = copy.deepcopy(manifest); invalid['configuration'][key] = value
++            with self.subTest(key=key), self.assertRaises(ValueError): m.validate(invalid, seed, CONTRACT)
++        for value in ['', 'short', 'password\nnext', 'password\0next', 'x' * 1025]:
++            with self.assertRaises(ValueError): m.validate(manifest, {'password': value}, CONTRACT)
++        for key, value in [('schemaVersion', 2), ('schemaVersion', True), ('vmID', 'bad'), ('fingerprint', 'bad'), ('hostname', 'other')]:
++            invalid = copy.deepcopy(manifest); invalid[key] = value
++            with self.assertRaises((ValueError, AttributeError)): m.validate(invalid, seed, CONTRACT)
++
++    def test_private_seed_reader_rejects_links_permissions_and_size(self):
++        with tempfile.TemporaryDirectory() as directory:
++            path = Path(directory) / 'seed'; path.write_text('synthetic'); path.chmod(0o600)
++            self.assertEqual(m.read(path), b'synthetic')
++            path.chmod(0o644)
++            with self.assertRaises(ValueError): m.read(path)
++            path.chmod(0o600)
++            with self.assertRaises(ValueError): m.read(path, 2)
++            link = path.parent / 'link'; link.symlink_to(path)
++            with self.assertRaises(OSError): m.read(link)
++            link.unlink(); os.link(path, link)
++            with self.assertRaises(ValueError): m.read(path)
++
++    def test_unknown_official_program_is_refused(self):
++        with tempfile.TemporaryDirectory() as directory:
++            program = Path(directory) / 'program'; program.write_text('#!/bin/bash\nmain\n'); program.chmod(0o755)
++            contract = {'schemaVersion': 1, 'programs': {str(program): hashlib.sha256(program.read_bytes()).hexdigest()}}
++            original = m.Path.stat
++            def owned(path, *args, **kwargs):
++                value = original(path, *args, **kwargs)
++                return type('Info', (), {'st_mode': value.st_mode, 'st_uid': 0})()
++            with patch.object(m, 'PROGRAM', program), patch.object(m.Path, 'stat', owned):
++                m.verified_program(contract)
++                program.write_text('#!/bin/bash\nchanged\n')
++                with self.assertRaises(ValueError): m.verified_program(contract)
++
++    def test_no_opt_in_uses_official_interactive_program(self):
++        with tempfile.TemporaryDirectory() as directory:
++            with patch.object(m, 'CMDLINE', Path(directory) / 'missing'), patch.object(m.os, 'execv', side_effect=SystemExit) as execute:
++                with self.assertRaises(SystemExit): m.main()
++                execute.assert_called_once_with(str(m.PROGRAM), [str(m.PROGRAM)])
++
++    def test_bash_reads_answers_without_evaluation_and_uses_official_steps(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory); program = root / 'owner'; result = root / 'result'
++            program.write_text('''set -euo pipefail
++PROVISIONING_DIR=$FIXTURE
++LOG_FILE=$FIXTURE/log
++STATE_FILE=$FIXTURE/state
++FINALIZE_WARNING_FLAG=$FIXTURE/warning
++apply_keyboard() { [[ $1 == us ]]; }
++omarchy_persist_input_selection() { [[ $keyboard_input_method == none ]]; }
++platform_ready() { :; }
++run_provisioning() { [[ $username == owner && $password == "$EXPECTED" ]]; printf configured > "$FIXTURE/result"; }
++:
++''')
++            script = m.BASH.replace("source <(sed '$d' /usr/bin/omarchy-provision-owner)", 'source "' + str(program) + '"')
++            secret = "synthetic'$(touch " + str(root / 'injected') + '):password'
++            values = ['owner', secret, 'Name', 'owner@example.invalid', 'work-12345678', 'UTC', 'English (US)', 'us', 'none', '']
++            run = subprocess.run(['/bin/bash', '-c', script], input=b''.join(v.encode() + b'\0' for v in values), env=dict(os.environ, FIXTURE=str(root), EXPECTED=secret), capture_output=True)
++            self.assertEqual(run.returncode, 0, run.stderr.decode())
++            self.assertEqual(result.read_text(), 'configured')
++            self.assertFalse((root / 'injected').exists())
++            self.assertNotIn(secret.encode(), run.stdout + run.stderr + (root / 'log').read_bytes())
++            (root / 'luks-device').touch()
++            run = subprocess.run(['/bin/bash', '-c', script], input=b''.join(v.encode() + b'\0' for v in values), env=dict(os.environ, FIXTURE=str(root), EXPECTED=secret), capture_output=True)
++            self.assertNotEqual(run.returncode, 0)
++
++    def test_contract_and_encryption_failures_use_visible_manual_fallback(self):
++        for mode in ('contract', 'encrypted', 'provision'):
++            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
++                root = Path(directory); (root / 'pending').touch()
++                manifest = self.fixture()
++                for name, value in [('manifest.json', manifest), ('owner-setup.json', {'password': 'synthetic-password'})]:
++                    path = root / name; path.write_text(json.dumps(value)); path.chmod(0o600)
++                cmdline = root / 'cmdline'; cmdline.write_text('tryomarchy.managed_setup=1')
++                contract = root / 'contract'; contract.write_text(json.dumps(CONTRACT))
++                result = type('Result', (), {'stdout': 'crypt' if mode == 'encrypted' else 'disk'})()
++                with patch.object(m, 'SHARE', root), patch.object(m, 'PENDING', root / 'pending'), patch.object(m, 'CMDLINE', cmdline), patch.object(m, 'CONTRACT', contract), patch.object(m, 'IDENTITY', root / 'identity'), patch.object(m, 'mount_share'), patch.object(m, 'verified_program', side_effect=ValueError if mode == 'contract' else None), patch.object(m.subprocess, 'run', return_value=result), patch.object(m.pwd, 'getpwall', return_value=[]), patch.object(m, 'status') as status, patch.object(m, 'provision', side_effect=ValueError) as provision, patch.object(m.os, 'execv', side_effect=SystemExit) as execute:
++                    with self.assertRaises(SystemExit): m.main()
++                    execute.assert_called_once_with(str(m.PROGRAM), [str(m.PROGRAM)])
++                    expected = {'contract': 'contract-mismatch', 'encrypted': 'encrypted-image', 'provision': 'provisioning-failed'}[mode]
++                    self.assertEqual(status.call_args.args[1:], ('error', expected))
++                    self.assertEqual(provision.call_count, int(mode == 'provision'))
++
++    def test_success_records_identity_before_acknowledging_and_never_reprovisions_it(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = Path(directory); (root / 'pending').touch()
++            manifest = self.fixture()
++            for name, value in [('manifest.json', manifest), ('owner-setup.json', {'password': 'synthetic-password'})]:
++                path = root / name; path.write_text(json.dumps(value)); path.chmod(0o600)
++            cmdline = root / 'cmdline'; cmdline.write_text('tryomarchy.managed_setup=1')
++            contract = root / 'contract'; contract.write_text(json.dumps(CONTRACT))
++            result = type('Result', (), {'stdout': 'disk'})()
++            with patch.object(m, 'SHARE', root), patch.object(m, 'PENDING', root / 'pending'), patch.object(m, 'CMDLINE', cmdline), patch.object(m, 'CONTRACT', contract), patch.object(m, 'IDENTITY', root / 'identity'), patch.object(m, 'mount_share'), patch.object(m, 'verified_program'), patch.object(m.subprocess, 'run', return_value=result), patch.object(m.pwd, 'getpwall', return_value=[]), patch.object(m, 'status') as status, patch.object(m, 'provision') as provision, patch.object(m, 'record_identity') as identity:
++                self.assertEqual(m.main(), 0)
++                provision.assert_called_once(); identity.assert_called_once_with(manifest)
++                self.assertEqual(status.call_args.args[1:], ('configured',))
++            path = root / 'identity'; path.write_text(json.dumps({'vmID': manifest['vmID'], 'fingerprint': manifest['fingerprint'], 'owner': 'owner'})); path.chmod(0o600)
++            (root / 'pending').unlink()
++            account = type('Account', (), {'pw_uid': 1000})()
++            with patch.object(m, 'SHARE', root), patch.object(m, 'PENDING', root / 'pending'), patch.object(m, 'CMDLINE', cmdline), patch.object(m, 'IDENTITY', path), patch.object(m, 'mount_share'), patch.object(m.pwd, 'getpwnam', return_value=account), patch.object(m, 'status') as status:
++                m.acknowledge()
++                self.assertEqual(status.call_args.args[1:], ('configured',))
++                manifest['fingerprint'] = 'b' * 64
++                (root / 'manifest.json').write_text(json.dumps(manifest))
++                with self.assertRaises(ValueError): m.acknowledge()
++
++
++    def test_status_has_only_nonsecret_identity_and_codes(self):
++        with tempfile.TemporaryDirectory() as directory:
++            with patch.object(m, 'RUN', Path(directory)), patch.object(m, 'directory'):
++                m.status(self.fixture(), 'error', 'contract-mismatch')
++                value = json.loads((Path(directory) / 'status.json').read_bytes())
++                self.assertEqual(set(value), {'schemaVersion', 'vmID', 'sessionToken', 'fingerprint', 'state', 'owner', 'failureCode'})
++                self.assertNotIn('password', json.dumps(value))
++
++
++if __name__ == '__main__': unittest.main()
 diff --git a/guest/package/tests/test_managed_ssh.py b/guest/package/tests/test_managed_ssh.py
 new file mode 100644
 index 0000000..76d3863
@@ -216,7 +386,7 @@ index 0000000..76d3863
 +
 +if __name__ == "__main__": unittest.main()
 diff --git a/guest/package/try-omarchy/PKGBUILD b/guest/package/try-omarchy/PKGBUILD
-index 8426f5d..5a8ba9c 100644
+index 8426f5d..31f3fa0 100644
 --- a/guest/package/try-omarchy/PKGBUILD
 +++ b/guest/package/try-omarchy/PKGBUILD
 @@ -8,7 +8,7 @@
@@ -224,19 +394,62 @@ index 8426f5d..5a8ba9c 100644
  pkgname=try-omarchy
  pkgver=0.1.0
 -pkgrel=36
-+pkgrel=39
++pkgrel=40
  pkgdesc='Mac host integration for Omarchy running in Try Omarchy'
  arch=('aarch64')
  url='https://github.com/omacom/try-omarchy'
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset b/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
-index 55119a0..8e850ee 100644
+index 55119a0..fbf9fa5 100644
 --- a/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
 +++ b/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
-@@ -8,3 +8,4 @@ enable try-omarchy-locale.service
+@@ -8,3 +8,5 @@ enable try-omarchy-locale.service
  enable try-omarchy-timezone.service
  enable try-omarchy-clock-recovery.timer
  enable try-omarchy-grow-root.service
 +enable try-omarchy-managed-ssh.timer
++enable try-omarchy-managed-setup.timer
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-provision-owner.service.d/20-try-omarchy-managed-setup.conf b/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-provision-owner.service.d/20-try-omarchy-managed-setup.conf
+new file mode 100644
+index 0000000..7497bbb
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-provision-owner.service.d/20-try-omarchy-managed-setup.conf
+@@ -0,0 +1,3 @@
++[Service]
++ExecStart=
++ExecStart=/usr/lib/try-omarchy/managed-owner-setup
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service
+new file mode 100644
+index 0000000..a88d97a
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service
+@@ -0,0 +1,9 @@
++[Unit]
++Description=Acknowledge previously completed manager owner setup
++After=try-omarchy-host-config.service try-omarchy-package-install.service
++ConditionPathExists=/run/try-omarchy/managed-setup.enabled
++
++[Service]
++Type=oneshot
++ExecStart=/usr/lib/try-omarchy/managed-owner-setup --report
++TimeoutStartSec=20
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.timer b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.timer
+new file mode 100644
+index 0000000..367780d
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.timer
+@@ -0,0 +1,12 @@
++[Unit]
++Description=Report completed owner setup for a matching manager session
++After=try-omarchy-host-config.service
++ConditionPathExists=/run/try-omarchy/managed-setup.enabled
++
++[Timer]
++OnBootSec=5s
++OnUnitInactiveSec=10s
++AccuracySec=1s
++
++[Install]
++WantedBy=timers.target
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service
 new file mode 100644
 index 0000000..7f75637
@@ -271,13 +484,19 @@ index 0000000..1b8f669
 +[Install]
 +WantedBy=timers.target
 diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status b/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status
-index f74190d..5641916 100755
+index f74190d..2df1e1c 100755
 --- a/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status
 +++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status
-@@ -51,6 +51,12 @@ def report():
+@@ -51,6 +51,18 @@ def report():
          "channel": channel(),
          "kernel": {"running": os.uname().release, "installed": package_version("linux-omarchy")},
      }
++    try:
++        setup = json.loads(Path("/run/try-omarchy/managed-setup/status.json").read_text())
++        if len(json.dumps(setup)) <= 1024:
++            value["managedSetup"] = setup
++    except (OSError, ValueError):
++        pass
 +    try:
 +        managed = json.loads(Path("/run/try-omarchy/managed-ssh/status.json").read_text())
 +        if len(json.dumps(managed)) <= 1024:
@@ -288,10 +507,10 @@ index f74190d..5641916 100755
          value["install"] = json.loads(INSTALL_STATE.read_text())
      except (OSError, ValueError):
 diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config b/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config
-index 1ee48ee..7a7e2e1 100755
+index 1ee48ee..6632cdd 100755
 --- a/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config
 +++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config
-@@ -67,3 +67,11 @@ if ((${#panels[@]})); then
+@@ -67,3 +67,19 @@ if ((${#panels[@]})); then
  else
    rm -f "$cutouts"
  fi
@@ -303,6 +522,244 @@ index 1ee48ee..7a7e2e1 100755
 +else
 +  rm -f "$managed"
 +fi
++
++setup=${output%/*}/managed-setup.enabled
++if [[ " $value " == *" tryomarchy.managed_setup=1 "* ]]; then
++  : >"$setup"
++  chmod 0644 "$setup"
++else
++  rm -f "$setup"
++fi
+diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup
+new file mode 100755
+index 0000000..5fe5869
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup
+@@ -0,0 +1,224 @@
++#!/usr/bin/python3 -I
++"""Use reviewed Omarchy OEM functions for an explicitly seeded new guest."""
++import hashlib
++import json
++import os
++from pathlib import Path
++import pwd
++import re
++import stat
++import subprocess
++import sys
++import tempfile
++import uuid
++
++PROGRAM = Path('/usr/bin/omarchy-provision-owner')
++CONTRACT = Path('/usr/share/try-omarchy/owner-setup-contract.json')
++SHARE = Path('/run/try-omarchy/managed-setup-share')
++RUN = Path('/run/try-omarchy/managed-setup')
++PENDING = Path('/var/lib/omarchy/provisioning/pending')
++CMDLINE = Path('/run/try-omarchy/cmdline')
++IDENTITY = Path('/var/lib/try-omarchy/managed-setup/identity.json')
++FAILURE = 'invalid-seed'
++
++
++def read(path, maximum=16384):
++    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
++    try:
++        info = os.fstat(fd)
++        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > maximum or info.st_mode & 0o077:
++            raise ValueError('private-file')
++        with os.fdopen(fd, 'rb', closefd=False) as stream:
++            value = stream.read(maximum + 1)
++        if len(value) > maximum:
++            raise ValueError('file-size')
++        return value
++    finally:
++        os.close(fd)
++
++
++def directory(path):
++    path.mkdir(mode=0o700, exist_ok=True)
++    info = path.lstat()
++    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
++        raise ValueError('directory')
++
++
++def mount_share():
++    directory(SHARE.parent)
++    if not os.path.ismount(SHARE):
++        directory(SHARE)
++        subprocess.run(['/usr/bin/mount', '-t', '9p', '-o', 'trans=virtio,version=9p2000.L,ro,access=any', 'tryomarchy-managed-setup', str(SHARE)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
++    info = SHARE.lstat()
++    if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022:
++        raise ValueError('share')
++    for line in Path('/proc/self/mountinfo').read_text().splitlines():
++        before, separator, after = line.partition(' - ')
++        fields, filesystem = before.split(), after.split()
++        if separator and len(fields) >= 6 and fields[4] == str(SHARE):
++            if filesystem[:2] == ['9p', 'tryomarchy-managed-setup'] and 'ro' in fields[5].split(','):
++                return
++            break
++    raise ValueError('share')
++
++
++def validate(manifest, seed, contract):
++    if set(manifest) != {'schemaVersion', 'vmID', 'sessionToken', 'fingerprint', 'configuration', 'hostname'} or type(manifest['schemaVersion']) is not int or manifest['schemaVersion'] != 1:
++        raise ValueError('schema')
++    uuid.UUID(manifest['vmID']); uuid.UUID(manifest['sessionToken'])
++    if not re.fullmatch('[0-9a-f]{64}', manifest['fingerprint']):
++        raise ValueError('fingerprint')
++    config = manifest['configuration']
++    if set(config) != {'username', 'fullName', 'email', 'hostnamePrefix', 'timezone', 'keyboardID'} or not all(isinstance(v, str) for v in config.values()):
++        raise ValueError('configuration')
++    if not re.fullmatch('[a-z_][a-z0-9_-]{0,31}', config['username']) or config['username'] == 'root':
++        raise ValueError('username')
++    if not re.fullmatch('[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?', config['hostnamePrefix']):
++        raise ValueError('hostname')
++    if manifest['hostname'] != config['hostnamePrefix'] + '-' + manifest['vmID'][:8].lower():
++        raise ValueError('hostname')
++    for value in (config['fullName'], config['email']):
++        if len(value.encode()) > 256 or any(ord(c) < 32 or ord(c) == 127 for c in value):
++            raise ValueError('single-line')
++    zone = config['timezone']
++    if zone not in ('Same as macOS', 'UTC') and (not re.fullmatch('[A-Za-z0-9_+./-]{1,128}', zone) or '..' in zone.split('/') or zone.startswith('/') or not (Path('/usr/share/zoneinfo') / zone).is_file()):
++        raise ValueError('timezone')
++    keyboards = [k for k in contract['keyboards'] if k['id'] == config['keyboardID']]
++    if len(keyboards) != 1:
++        raise ValueError('keyboard')
++    if set(seed) != {'password'} or not isinstance(seed['password'], str) or not 8 <= len(seed['password'].encode()) <= 1024 or any(c in seed['password'] for c in '\n\r\0'):
++        raise ValueError('password')
++    return keyboards[0]
++
++
++def verified_program(contract):
++    if contract.get('schemaVersion') != 1:
++        raise ValueError('contract')
++    for name, digest in contract['programs'].items():
++        path = Path(name).resolve(strict=True)
++        info = path.stat()
++        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
++            raise ValueError('contract')
++    if PROGRAM.read_text().splitlines()[-1] != 'main':
++        raise ValueError('entrypoint')
++
++
++def status(manifest, state, failure=None):
++    directory(RUN)
++    value = {k: manifest[k] for k in ('schemaVersion', 'vmID', 'sessionToken', 'fingerprint')}
++    value.update(state=state, owner=manifest['configuration']['username'])
++    if failure:
++        value['failureCode'] = failure
++    fd, temporary = tempfile.mkstemp(dir=RUN, prefix='.status-')
++    try:
++        os.fchmod(fd, 0o644)
++        with os.fdopen(fd, 'w', closefd=False) as stream:
++            json.dump(value, stream); stream.flush(); os.fsync(fd)
++        os.replace(temporary, RUN / 'status.json')
++    finally:
++        os.close(fd)
++        if os.path.exists(temporary):
++            os.unlink(temporary)
++
++
++BASH = r'''
++set +x
++set -euo pipefail
++source <(sed '$d' /usr/bin/omarchy-provision-owner)
++for variable in username password full_name email_address hostname timezone keyboard_label keyboard keyboard_input_method keyboard_xkb_layout; do
++    IFS= read -r -d '' "$variable"
++done
++[[ ! -e $PROVISIONING_DIR/luks-rekey.state && ! -e $PROVISIONING_DIR/luks-device ]] || exit 1
++apply_keyboard "$keyboard"
++omarchy_persist_input_selection
++platform_ready
++touch "$LOG_FILE"
++chmod 600 "$LOG_FILE"
++rm -f "$FINALIZE_WARNING_FLAG"
++echo account >"$STATE_FILE"
++run_provisioning >>"$LOG_FILE" 2>&1
++[[ ! -e $PROVISIONING_DIR/pending && ! -e $FINALIZE_WARNING_FLAG ]]
++'''
++
++
++def provision(manifest, seed, keyboard):
++    config = manifest['configuration']
++    values = [config['username'], seed['password'], config['fullName'], config['email'], manifest['hostname'], config['timezone'], keyboard['id'], keyboard['keymap'], keyboard['inputMethod'], keyboard['xkbLayout']]
++    data = b''.join(v.encode() + b'\0' for v in values)
++    subprocess.run(['/bin/bash', '-c', BASH], input=data, check=True)
++
++
++def record_identity(manifest):
++    directory(IDENTITY.parent)
++    value = {key: manifest[key] for key in ('vmID', 'fingerprint')}
++    value['owner'] = manifest['configuration']['username']
++    fd = os.open(IDENTITY, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
++    try:
++        with os.fdopen(fd, 'w', closefd=False) as stream:
++            json.dump(value, stream); stream.flush(); os.fsync(fd)
++    finally:
++        os.close(fd)
++
++
++def acknowledge():
++    if not CMDLINE.exists() or 'tryomarchy.managed_setup=1' not in CMDLINE.read_text().split() or PENDING.exists() or not IDENTITY.exists():
++        return
++    mount_share()
++    manifest = json.loads(read(SHARE / 'manifest.json'))
++    identity = json.loads(read(IDENTITY))
++    if manifest.get('schemaVersion') != 1 or any(identity.get(k) != manifest.get(k) for k in ('vmID', 'fingerprint')) or identity.get('owner') != manifest.get('configuration', {}).get('username'):
++        raise ValueError('identity')
++    owner = pwd.getpwnam(identity['owner'])
++    if not 1000 <= owner.pw_uid < 60000:
++        raise ValueError('owner')
++    status(manifest, 'configured')
++
++
++def main():
++    global FAILURE
++    if not CMDLINE.exists() or 'tryomarchy.managed_setup=1' not in CMDLINE.read_text().split() or not PENDING.exists():
++        os.execv(str(PROGRAM), [str(PROGRAM)])
++    manifest = None
++    try:
++        FAILURE = 'unsafe-share'; mount_share()
++        FAILURE = 'invalid-seed'
++        manifest = json.loads(read(SHARE / 'manifest.json'))
++        seed = json.loads(read(SHARE / 'owner-setup.json'))
++        contract = json.loads(CONTRACT.read_bytes())
++        keyboard = validate(manifest, seed, contract)
++        FAILURE = 'contract-mismatch'; verified_program(contract)
++        FAILURE = 'encrypted-image'
++        output = subprocess.run(['/usr/bin/lsblk', '-nr', '-o', 'TYPE'], check=True, capture_output=True, text=True).stdout
++        if 'crypt' in output.split() or (PENDING.parent / 'wipe-pending').exists():
++            raise ValueError('unsupported-image')
++        FAILURE = 'existing-owner'
++        if IDENTITY.exists():
++            raise ValueError('already-provisioned')
++        existing = [p.pw_name for p in pwd.getpwall() if 1000 <= p.pw_uid < 60000 and p.pw_shell not in ('/usr/bin/nologin', '/bin/false', '/usr/sbin/nologin', '/usr/bin/false')]
++        resume = PENDING.parent / 'setup-user'
++        if existing and (existing != [manifest['configuration']['username']] or not resume.exists() or resume.read_text().strip() != existing[0]):
++            raise ValueError('existing-account')
++        status(manifest, 'provisioning')
++        FAILURE = 'provisioning-failed'; provision(manifest, seed, keyboard)
++        if not IDENTITY.exists():
++            record_identity(manifest)
++        status(manifest, 'configured')
++        return 0
++    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
++        if manifest:
++            try:
++                status(manifest, 'error', FAILURE)
++            except (OSError, KeyError, TypeError):
++                pass
++        print('Saved owner setup could not finish (' + FAILURE + '). Continuing with normal Omarchy setup.', file=sys.stderr)
++        os.execv(str(PROGRAM), [str(PROGRAM)])
++
++
++if __name__ == '__main__':
++    if sys.argv[1:] == ['--report']:
++        try:
++            acknowledge()
++        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
++            sys.exit(1)
++    else:
++        sys.exit(main())
 diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh
 new file mode 100755
 index 0000000..0dbca16
@@ -565,8 +1022,336 @@ index b788d81..2cdc4cd 100755
 +  [[ $option != tryomarchy.managed_ssh=1 ]] || exit 0
 +done
  exec $systemctl start --no-block sshd.service
+diff --git a/guest/package/try-omarchy/files/usr/share/try-omarchy/owner-setup-contract.json b/guest/package/try-omarchy/files/usr/share/try-omarchy/owner-setup-contract.json
+new file mode 100644
+index 0000000..e89d41b
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/share/try-omarchy/owner-setup-contract.json
+@@ -0,0 +1,322 @@
++{
++  "schemaVersion": 1,
++  "programs": {
++    "/usr/bin/omarchy-provision-owner": "2b99154b4f5fa9ddd08b3236043bfdb621d70d57aff03d665d163c874c68930a",
++    "/usr/share/omarchy/install/provisioning/setup-form.sh": "188a2fe1284ef8a4579dca5be72a2fd83efb5063dc3c61a1442c7f88a5646812",
++    "/usr/share/omarchy/install/provisioning/luks-rekey.sh": "29ce96e714ad76eda9c42f9d82b3f0e87e7a8f22e3edd17e6fa73074dc2e0189"
++  },
++  "keyboards": [
++    {
++      "id": "English (US)",
++      "keymap": "us",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "English (UK)",
++      "keymap": "uk",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "English (US, Dvorak)",
++      "keymap": "dvorak",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "English (US, Colemak)",
++      "keymap": "colemak",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Belarusian",
++      "keymap": "by",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Belgian",
++      "keymap": "be-latin1",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Bulgarian",
++      "keymap": "bg-cp1251",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Chinese (Simplified, Pinyin)",
++      "keymap": "us",
++      "inputMethod": "pinyin",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Croatian",
++      "keymap": "croat",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Czech",
++      "keymap": "cz",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Danish",
++      "keymap": "dk-latin1",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Dutch",
++      "keymap": "nl",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Estonian",
++      "keymap": "et",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Finnish",
++      "keymap": "fi",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "French",
++      "keymap": "fr",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "French (Canada)",
++      "keymap": "cf",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "French (Switzerland)",
++      "keymap": "fr_CH",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Georgian",
++      "keymap": "ge",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "German",
++      "keymap": "de",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "German (Switzerland)",
++      "keymap": "de_CH-latin1",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Greek",
++      "keymap": "gr",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Hebrew",
++      "keymap": "il",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Hong Kong (Cangjie)",
++      "keymap": "us",
++      "inputMethod": "cangjie5",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Hungarian",
++      "keymap": "hu",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Icelandic",
++      "keymap": "is-latin1",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Irish",
++      "keymap": "ie",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Italian",
++      "keymap": "it",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Japanese",
++      "keymap": "jp106",
++      "inputMethod": "mozc",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Japanese (US keyboard)",
++      "keymap": "us",
++      "inputMethod": "mozc",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Kazakh",
++      "keymap": "kazakh",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Korean",
++      "keymap": "us",
++      "inputMethod": "hangul",
++      "xkbLayout": "kr:kr104"
++    },
++    {
++      "id": "Kyrgyz",
++      "keymap": "kyrgyz",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Lao",
++      "keymap": "us",
++      "inputMethod": "none",
++      "xkbLayout": "la"
++    },
++    {
++      "id": "Latvian",
++      "keymap": "lv",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Lithuanian",
++      "keymap": "lt",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Macedonian",
++      "keymap": "mk-utf",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Norwegian",
++      "keymap": "no-latin1",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Polish",
++      "keymap": "pl",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Portuguese",
++      "keymap": "pt-latin1",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Portuguese (Brazil)",
++      "keymap": "br-abnt2",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Romanian",
++      "keymap": "ro",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Russian",
++      "keymap": "ru",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Serbian",
++      "keymap": "sr-latin",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Slovak",
++      "keymap": "sk-qwertz",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Slovenian",
++      "keymap": "slovene",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Spanish",
++      "keymap": "es",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Spanish (Latin American)",
++      "keymap": "la-latin1",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Swedish",
++      "keymap": "sv-latin1",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Taiwan (Zhuyin)",
++      "keymap": "us",
++      "inputMethod": "chewing",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Tajik",
++      "keymap": "tj_alt-UTF8",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Turkish",
++      "keymap": "trq",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    },
++    {
++      "id": "Ukrainian",
++      "keymap": "ua",
++      "inputMethod": "none",
++      "xkbLayout": ""
++    }
++  ]
++}
 diff --git a/guest/package/try-omarchy/try-omarchy.install b/guest/package/try-omarchy/try-omarchy.install
-index 3b5b72d..72ca3cf 100644
+index 3b5b72d..dd9d95b 100644
 --- a/guest/package/try-omarchy/try-omarchy.install
 +++ b/guest/package/try-omarchy/try-omarchy.install
 @@ -2,7 +2,7 @@
@@ -574,7 +1359,7 @@ index 3b5b72d..72ca3cf 100644
  _units='try-omarchy-host-config.service try-omarchy-grow-root.service try-omarchy-ssh-access.service try-omarchy-guest-status.service
  try-omarchy-package-install.service omarchy-native-battery-bridge.service omarchy-native-mac-share.service
 -try-omarchy-locale.service try-omarchy-timezone.service try-omarchy-clock-recovery.timer'
-+try-omarchy-locale.service try-omarchy-timezone.service try-omarchy-clock-recovery.timer try-omarchy-managed-ssh.timer'
++try-omarchy-locale.service try-omarchy-timezone.service try-omarchy-clock-recovery.timer try-omarchy-managed-ssh.timer try-omarchy-managed-setup.timer'
  _user_units='omarchy-native-audio-bridge.service omarchy-native-camera-bridge.service
  omarchy-native-clipboard-bridge.service omarchy-native-mac-share-link.service try-omarchy-session.service'
  
@@ -582,7 +1367,7 @@ index 3b5b72d..72ca3cf 100644
    systemctl preset $_units >/dev/null 2>&1 || true
    _enable_ntp
    systemctl --global preset $_user_units >/dev/null 2>&1 || true
-+  systemctl start --no-block try-omarchy-managed-ssh.timer >/dev/null 2>&1 || true
++  systemctl start --no-block try-omarchy-managed-ssh.timer try-omarchy-managed-setup.timer >/dev/null 2>&1 || true
    _reload_logind
  }
  
@@ -591,19 +1376,19 @@ index 3b5b72d..72ca3cf 100644
      systemctl try-restart try-omarchy-host-config.service >/dev/null 2>&1 || true
    fi
 +  if [ "$(vercmp "$2" 0.1.0-37)" -lt 0 ]; then
-+    systemctl preset try-omarchy-managed-ssh.timer >/dev/null 2>&1 || true
++    systemctl preset try-omarchy-managed-ssh.timer try-omarchy-managed-setup.timer >/dev/null 2>&1 || true
 +    cmdline=${TRY_OMARCHY_HOST_CMDLINE:-/run/try-omarchy/cmdline}
 +    if [ -r "$cmdline" ] && grep -Eq '(^|[[:space:]])tryomarchy[.]managed_ssh=1($|[[:space:]])' "$cmdline"; then
 +      systemctl try-restart try-omarchy-host-config.service >/dev/null 2>&1 || true
 +      systemctl stop sshd.service >/dev/null 2>&1 || true
-+      systemctl start --no-block try-omarchy-managed-ssh.timer >/dev/null 2>&1 || true
++      systemctl start --no-block try-omarchy-managed-ssh.timer try-omarchy-managed-setup.timer >/dev/null 2>&1 || true
 +    fi
 +  fi
    _reload_logind
  }
 diff --git a/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift b/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift
 new file mode 100644
-index 0000000..5d5c554
+index 0000000..e798599
 --- /dev/null
 +++ b/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift
 @@ -0,0 +1,55 @@
@@ -644,13 +1429,13 @@ index 0000000..5d5c554
 +        return environment
 +    }
 +
-+    private static func directory(_ url: URL) throws {
++    static func directory(_ url: URL) throws {
 +        var info = stat()
 +        guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid(), info.st_mode & 0o7777 == 0o700 else {
 +            throw HelperError.io("Managed SSH requires private owned directories")
 +        }
 +    }
-+    private static func read(_ url: URL) throws -> Data {
++    static func read(_ url: URL) throws -> Data {
 +        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
 +        guard fd >= 0 else { throw HelperError.io("Cannot read managed SSH provisioning") }
 +        defer { close(fd) }
@@ -661,6 +1446,67 @@ index 0000000..5d5c554
 +        guard data.count <= 16384 else { throw HelperError.io("Oversized managed SSH provisioning") }
 +        return data
 +    }
++}
+diff --git a/macos/Sources/OmarchyVMHelper/ManagedSetupLaunch.swift b/macos/Sources/OmarchyVMHelper/ManagedSetupLaunch.swift
+new file mode 100644
+index 0000000..b12ecd5
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/ManagedSetupLaunch.swift
+@@ -0,0 +1,55 @@
++import Darwin
++import Foundation
++
++struct ManagedSetupLaunch {
++    struct Configuration: Codable, Equatable {
++        let username: String; let fullName: String; let email: String
++        let hostnamePrefix: String; let timezone: String; let keyboardID: String
++    }
++    struct Manifest: Codable, Equatable {
++        let schemaVersion: Int; let vmID: UUID; let sessionToken: UUID
++        let fingerprint: String; let configuration: Configuration; let hostname: String
++    }
++    static let environmentKey = "OMARCHY_MANAGED_SETUP_ROOT"
++    static func environment(root: URL, base: [String: String]) throws -> [String: String] {
++        var environment = base
++        environment.removeValue(forKey: environmentKey)
++        let path = root.appendingPathComponent(".omarchy-managed-setup.json")
++        var info = stat()
++        guard lstat(path.path, &info) == 0 else {
++            if errno == ENOENT { return environment }
++            throw HelperError.io("Cannot inspect owner setup")
++        }
++        try ManagedSSHLaunch.directory(root)
++        let value = try JSONDecoder().decode(Manifest.self, from: ManagedSSHLaunch.read(path))
++        guard value.schemaVersion == 1, UUID(uuidString: root.lastPathComponent) == value.vmID,
++              value.fingerprint.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
++              value.configuration.username != "root", value.configuration.username.range(of: "^[a-z_][a-z0-9_-]{0,31}$", options: .regularExpression) != nil,
++              value.hostname == value.configuration.hostnamePrefix + "-" + value.vmID.uuidString.prefix(8).lowercased() else { throw HelperError.io("Mismatched owner setup identity") }
++        let directory = root.appendingPathComponent(".manager-setup")
++        let bootstrap = directory.appendingPathComponent("bootstrap")
++        try ManagedSSHLaunch.directory(directory); try ManagedSSHLaunch.directory(bootstrap)
++        guard try JSONDecoder().decode(Manifest.self, from: ManagedSSHLaunch.read(bootstrap.appendingPathComponent("manifest.json"))) == value else { throw HelperError.io("Mismatched owner setup seed") }
++        struct Seed: Decodable { let password: String }
++        let seed = try JSONDecoder().decode(Seed.self, from: ManagedSSHLaunch.read(bootstrap.appendingPathComponent("owner-setup.json")))
++        guard (8...1024).contains(seed.password.utf8.count), !seed.password.contains(where: { $0 == "\n" || $0 == "\r" || $0 == "\0" }) else { throw HelperError.io("Invalid owner setup seed") }
++        environment[environmentKey] = bootstrap.path
++        return environment
++    }
++    static func clearSeed(root: URL, expected: Manifest) throws {
++        let marker = root.appendingPathComponent(".omarchy-managed-setup.json")
++        var info = stat()
++        if lstat(marker.path, &info) != 0, errno == ENOENT { return }
++        try ManagedSSHLaunch.directory(root)
++        let directory = root.appendingPathComponent(".manager-setup")
++        let bootstrap = directory.appendingPathComponent("bootstrap")
++        try ManagedSSHLaunch.directory(directory); try ManagedSSHLaunch.directory(bootstrap)
++        guard try JSONDecoder().decode(Manifest.self, from: ManagedSSHLaunch.read(marker)) == expected else { throw HelperError.io("Owner setup session changed during cleanup") }
++        for path in [bootstrap.appendingPathComponent("owner-setup.json"), bootstrap.appendingPathComponent("manifest.json"), marker] {
++            if lstat(path.path, &info) != 0, errno == ENOENT { continue }
++            _ = try ManagedSSHLaunch.read(path)
++            guard unlink(path.path) == 0 else { throw HelperError.io("Cannot remove owner setup seed") }
++        }
++    }
++
 +}
 diff --git a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
 index 39b07ba..127de5a 100644
@@ -917,10 +1763,10 @@ index 39b07ba..127de5a 100644
      }
  }
 diff --git a/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift b/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift
-index 273876f..6614c26 100644
+index 273876f..88ba7a6 100644
 --- a/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift
 +++ b/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift
-@@ -22,6 +22,17 @@ struct ShellGuestReport: Codable, Equatable {
+@@ -22,6 +22,22 @@ struct ShellGuestReport: Codable, Equatable {
      let channel: String?
      let kernel: Kernel?
      let install: Install?
@@ -935,10 +1781,15 @@ index 273876f..6614c26 100644
 +        var failureStatus: Int? = nil
 +    }
 +    var managedSSH: ManagedSSH? = nil
++    struct ManagedSetup: Codable, Equatable {
++        let schemaVersion: Int; let vmID: UUID; let sessionToken: UUID
++        let fingerprint: String; let state: String; let owner: String; let failureCode: String?
++    }
++    var managedSetup: ManagedSetup? = nil
  
      /// The newest guest protocol this app understands. A guest that reports a
      /// newer one still works; the app only reads the fields it knows.
-@@ -37,6 +48,19 @@ struct ShellGuestReport: Codable, Equatable {
+@@ -37,6 +53,25 @@ struct ShellGuestReport: Codable, Equatable {
                texts.allSatisfy({ $0.count <= 512 && !$0.contains(where: { $0.isNewline }) }) else {
              throw HelperError.io("invalid guest status")
          }
@@ -955,11 +1806,17 @@ index 273876f..6614c26 100644
 +                throw HelperError.io("invalid managed SSH failure code")
 +            }
 +        }
++        if let setup = value.managedSetup {
++            guard setup.schemaVersion == 1, ["provisioning", "configured", "error"].contains(setup.state),
++                  setup.fingerprint.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
++                  setup.owner != "root", setup.owner.range(of: "^[a-z_][a-z0-9_-]{0,31}$", options: .regularExpression) != nil,
++                  setup.failureCode == nil || ["contract-mismatch", "invalid-seed", "provisioning-failed", "encrypted-image", "existing-owner", "unsafe-share"].contains(setup.failureCode!) else { throw HelperError.io("invalid owner setup status") }
++        }
          return value
      }
  }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..0fb2f76 100644
+index c959f32..ce160b9 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -968,7 +1825,15 @@ index c959f32..0fb2f76 100644
  import Darwin
  import Foundation
  import TryOmarchyKitClient
-@@ -70,7 +71,7 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -21,6 +22,7 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+         storage: LauncherSettingsFile.storageLocation(legacy: LauncherSettingsFile.fullAppPreferences(),
+                                                       legacyIsWritable: false)
+     )
++    private var ownerSetupManifest: ManagedSetupLaunch.Manifest?
+     private var stateRoot: URL?
+     private var bridgedNetwork: BridgedNetworkAvailability?
+     private var currentBridgedNetwork: BridgedNetworkAvailability?
+@@ -70,7 +72,7 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
  
      private func resolveSettings(bridgedNetwork: () -> BridgedNetworkAvailability)
          -> Result<VMRunLaunchSettings, VMRunError> {
@@ -977,7 +1842,7 @@ index c959f32..0fb2f76 100644
              baseEnvironment: launchEnvironment(),
              configuration: configuration,
              storageLocation: storageLocationStore.load(),
-@@ -79,6 +80,15 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -79,6 +81,16 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
              bridgedNetwork: bridgedNetwork,
              metrics: QEMUGPUStorageSpaceEstimate.bundledMetrics(bundle: bundle)
          )
@@ -985,15 +1850,26 @@ index c959f32..0fb2f76 100644
 +        case .failure: return result
 +        case .success(let settings):
 +            do {
-+                let environment = try ManagedSSHLaunch.environment(root: settings.stateRoot, mappings: settings.portForwardMappings, base: settings.environment)
++                let sshEnvironment = try ManagedSSHLaunch.environment(root: settings.stateRoot, mappings: settings.portForwardMappings, base: settings.environment)
++                let environment = try ManagedSetupLaunch.environment(root: settings.stateRoot, base: sshEnvironment)
 +                return .success(VMRunLaunchSettings(environment: environment, stateRoot: settings.stateRoot,
 +                    portForwardMappings: settings.portForwardMappings, bridgedNetwork: settings.bridgedNetwork, notice: settings.notice))
-+            } catch { return .failure(VMRunError(code: .storageUnavailable, message: "Managed SSH provisioning is invalid or changed. Its files were preserved.")) }
++            } catch { return .failure(VMRunError(code: .storageUnavailable, message: "Managed guest provisioning is invalid or changed. Its files were preserved.")) }
 +        }
      }
  
      private func launch(networkLayout: NetworkServiceLayout, bridgedNetwork availability: BridgedNetworkAvailability?) {
-@@ -154,6 +164,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -87,6 +99,9 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+         case .success(let resolved): settings = resolved
+         case .failure(let error): return fail(error)
+         }
++        if settings.environment[ManagedSetupLaunch.environmentKey] != nil {
++            ownerSetupManifest = try? JSONDecoder().decode(ManagedSetupLaunch.Manifest.self, from: ManagedSSHLaunch.read(settings.stateRoot.appendingPathComponent(".omarchy-managed-setup.json")))
++        }
+         stateRoot = settings.stateRoot
+         bridgedNetwork = settings.bridgedNetwork
+         if let notice = settings.notice { emit(.notice(notice)) }
+@@ -154,6 +169,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
          environment[VMRunBridges.environmentKey] = VMRunBridges.names(configuration.bridges)
          environment[ProductName.environmentKey] = configuration.productName
          environment[ProductName.iconEnvironmentKey] = configuration.iconPath
@@ -1004,7 +1880,18 @@ index c959f32..0fb2f76 100644
          return environment
      }
  
-@@ -407,3 +421,30 @@ enum VMRunFailure {
+@@ -275,6 +294,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+     private func finish(status: Int32) {
+         guard !finished else { return }
+         finished = true
++        if let stateRoot, let ownerSetupManifest {
++            do { try ManagedSetupLaunch.clearSeed(root: stateRoot, expected: ownerSetupManifest) }
++            catch { emit(.error(VMRunError(code: .storageUnavailable, message: "The guest stopped, but its temporary owner setup seed could not be removed."))) }
++        }
+         emit(.exited(status: min(255, max(0, status))))
+         Darwin.exit(status == 0 ? 0 : 1)
+     }
+@@ -407,3 +430,30 @@ enum VMRunFailure {
          return VMRunError(code: code, message: message)
      }
  }
@@ -1141,6 +2028,61 @@ index 0000000..08c920d
 +        }
 +        ssh["failureStatus"] = -9
 +        #expect(try decode(ssh).managedSSH?.failureStatus == -9)
++    }
++}
+diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift
+new file mode 100644
+index 0000000..23f6e0d
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift
+@@ -0,0 +1,49 @@
++import Darwin
++import Foundation
++import Testing
++@testable import OmarchyVMHelper
++
++@Suite("Unattended owner launch boundary")
++struct ManagedSetupLaunchTests {
++    @Test("an environment override cannot attach a setup share")
++    func ignoresEnvironment() throws {
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        #expect(try ManagedSetupLaunch.environment(root: root, base: [ManagedSetupLaunch.environmentKey: "/unsafe"]) == [:])
++    }
++    @Test("matching private seed identity is required and cleanup refuses another session")
++    func launchAndCleanup() throws {
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        let bootstrap = root.appendingPathComponent(".manager-setup/bootstrap")
++        try FileManager.default.createDirectory(at: bootstrap, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
++        defer { try? FileManager.default.removeItem(at: root) }
++        chmod(root.path, 0o700); chmod(root.appendingPathComponent(".manager-setup").path, 0o700)
++        let id = UUID(uuidString: root.lastPathComponent)!, token = UUID()
++        let config = ManagedSetupLaunch.Configuration(username: "owner", fullName: "Synthetic Owner", email: "owner@example.invalid", hostnamePrefix: "work", timezone: "UTC", keyboardID: "English (US)")
++        let manifest = ManagedSetupLaunch.Manifest(schemaVersion: 1, vmID: id, sessionToken: token, fingerprint: String(repeating: "a", count: 64), configuration: config, hostname: "work-" + id.uuidString.prefix(8).lowercased())
++        func write(_ data: Data, _ path: URL) throws { try data.write(to: path); chmod(path.path, 0o600) }
++        let marker = root.appendingPathComponent(".omarchy-managed-setup.json"), seed = bootstrap.appendingPathComponent("owner-setup.json")
++        try write(JSONEncoder().encode(manifest), marker)
++        try write(JSONEncoder().encode(manifest), bootstrap.appendingPathComponent("manifest.json"))
++        try write(Data(#"{"password":"synthetic-password"}"#.utf8), seed)
++        #expect(try ManagedSetupLaunch.environment(root: root, base: [:])[ManagedSetupLaunch.environmentKey] == bootstrap.path)
++        chmod(seed.path, 0o644)
++        #expect(throws: (any Error).self) { try ManagedSetupLaunch.environment(root: root, base: [:]) }
++        chmod(seed.path, 0o600)
++        let other = ManagedSetupLaunch.Manifest(schemaVersion: 1, vmID: id, sessionToken: UUID(), fingerprint: manifest.fingerprint, configuration: config, hostname: manifest.hostname)
++        #expect(throws: (any Error).self) { try ManagedSetupLaunch.clearSeed(root: root, expected: other) }
++        #expect(FileManager.default.fileExists(atPath: seed.path))
++        try ManagedSetupLaunch.clearSeed(root: root, expected: manifest)
++        #expect(!FileManager.default.fileExists(atPath: seed.path))
++        #expect(!FileManager.default.fileExists(atPath: marker.path))
++    }
++    @Test("guest setup status accepts only known non-secret fields")
++    func guestStatus() throws {
++        var value: [String: Any] = ["schemaVersion": 1, "vmID": UUID().uuidString, "sessionToken": UUID().uuidString, "fingerprint": String(repeating: "a", count: 64), "state": "error", "owner": "owner", "failureCode": "contract-mismatch"]
++        func decode() throws -> ShellGuestReport { try ShellGuestReport.decode(JSONSerialization.data(withJSONObject: ["protocol": 1, "managedSetup": value])) }
++        #expect(try decode().managedSetup?.failureCode == "contract-mismatch")
++        value["failureCode"] = "untrusted-private-message"
++        #expect(throws: (any Error).self) { try decode() }
++        value["failureCode"] = "invalid-seed"; value["owner"] = "root"
++        #expect(throws: (any Error).self) { try decode() }
 +    }
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
@@ -1460,10 +2402,10 @@ index b496be7..d93a979 100755
          builder = BUILDER.read_text(encoding="utf-8")
          expected = re.search(r"^identity_patch_sha256=([a-f0-9]{64})$", builder, re.M)
 diff --git a/macos/run-qemu-gpu.sh b/macos/run-qemu-gpu.sh
-index cf3bb8f..ec983fd 100755
+index cf3bb8f..f66ac67 100755
 --- a/macos/run-qemu-gpu.sh
 +++ b/macos/run-qemu-gpu.sh
-@@ -290,6 +290,11 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
+@@ -290,6 +290,17 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
    host_options+=" tryomarchy.ssh_access=1 tryomarchy.ssh_from=any"
  fi
  [[ $QEMU_NETWORK_MODE == nat ]] || port_forwarding_summary='inactive in bridged mode'
@@ -1472,10 +2414,16 @@ index cf3bb8f..ec983fd 100755
 +  [[ $QEMU_NETWORK_MODE == nat && $QEMU_PORT_FORWARDING_ENABLES_SSH == 1 && -d $managed_ssh && ! -L $managed_ssh ]] || fail "managed SSH requires NAT and its validated provisioning share"
 +  host_options+=" tryomarchy.managed_ssh=1"
 +fi
++
++managed_setup=${OMARCHY_MANAGED_SETUP_ROOT:-}
++if [[ -n $managed_setup ]]; then
++  [[ $QEMU_NETWORK_MODE == nat && -d $managed_setup && ! -L $managed_setup ]] || fail "owner setup requires NAT and its validated provisioning share"
++  host_options+=" tryomarchy.managed_setup=1"
++fi
  
  keyboard=$("$native_bridge" --host-keyboard-geometry) || fail "cannot detect the Mac keyboard geometry"
  case $keyboard in ansi | iso | jis) host_options+=" tryomarchy.keyboard=$keyboard" ;; *) fail "invalid keyboard geometry" ;; esac
-@@ -595,7 +600,11 @@ make_product_app() { # app
+@@ -595,7 +606,11 @@ make_product_app() { # app
      /usr/bin/plutil -insert CFBundleExecutable -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleName -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleDisplayName -string "$product_name" "$plist" &&
@@ -1488,7 +2436,7 @@ index cf3bb8f..ec983fd 100755
  }
  qemu_exec=$qemu_bin
  case $product_name in
-@@ -758,6 +767,13 @@ if bridge_enabled settings; then
+@@ -758,6 +773,20 @@ if bridge_enabled settings; then
    )
  fi
  
@@ -1496,6 +2444,13 @@ index cf3bb8f..ec983fd 100755
 +  qemu_args+=(
 +    -fsdev "local,id=omarchy-managed-ssh,path=${managed_ssh//,/,,},security_model=none,readonly=on"
 +    -device 'virtio-9p-pci,fsdev=omarchy-managed-ssh,mount_tag=tryomarchy-managed-ssh,romfile='
++  )
++fi
++
++if [[ -n $managed_setup ]]; then
++  qemu_args+=(
++    -fsdev "local,id=omarchy-managed-setup,path=${managed_setup//,/,,},security_model=none,readonly=on"
++    -device 'virtio-9p-pci,fsdev=omarchy-managed-setup,mount_tag=tryomarchy-managed-setup,romfile='
 +  )
 +fi
 +
@@ -1514,3 +2469,14 @@ index dd68ab0..434a5c1 100644
 +## SSH in an embedding manager
 +
 +Omarchy VM Manager offers **Enable SSH from this Mac** when creating a guest. Once normal owner-account setup finishes, its SSH page verifies the connection and offers **Copy SSH Command**. Each guest has a separate localhost port and pinned identity. An optional public key selected during creation can also log in; the manager never copies your private key. A host-key mismatch stops verification and requires reviewed recovery. The normal Try Omarchy app's manual SSH setup above is unchanged.
+diff --git a/manual/managed-owner-setup.md b/manual/managed-owner-setup.md
+new file mode 100644
+index 0000000..9543717
+--- /dev/null
++++ b/manual/managed-owner-setup.md
+@@ -0,0 +1,5 @@
++# Saved guest setup
++
++The private manager can save owner, keyboard, timezone and hostname defaults for new virtual machines. Enable Guest Defaults in the manager, then choose whether to apply them in New VM. Existing guests keep their settings.
++
++The prepared VM image uses Omarchy's owner setup rather than the ISO installer's disk configuration. Disk partitioning, encryption and Tailscale inputs are not part of this flow. A changed factory setup contract returns to the normal wizard and reports a fixed failure code. SSH remains a separate key-based integration.

@@ -33,6 +33,7 @@ public struct TryOmarchyRuntime: VMRuntime {
     private let kit: TryOmarchyKit
     private let protocolTestMode: Bool
     private let pocAdmission: POCLaunchAdmission?
+    private let ownerSecrets: any OwnerSecretStoring = KeychainOwnerSecretStore()
     private var managedStorage: ManagerStorage? = nil
 
     public init(kit: TryOmarchyKit) {
@@ -73,6 +74,10 @@ public struct TryOmarchyRuntime: VMRuntime {
                 let provenance = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
                 guard provenance.managedSSHVersion == 1 else { throw VMFailure(code: "unproven-ssh-runtime", message: "Managed SSH requires the exact kit with provisioning capability version 1.") }
             }
+            if request.profile.ownerSetup != nil {
+                let provenance = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
+                guard provenance.managedSetupVersion == 1 else { throw VMFailure(code: "unproven-owner-runtime", message: "Unattended setup requires the exact reviewed provisioning-capable runtime. This guest was not launched.") }
+            }
             guard storage.matchesRoot(request.storageRoot, profile: request.profile) else {
                 throw VMFailure(code: "invalid-storage-root", message: "Only this profile’s manager-owned root may launch.")
             }
@@ -84,11 +89,20 @@ public struct TryOmarchyRuntime: VMRuntime {
             guard let free = TryOmarchyStorage.freeBytes(at: request.storageRoot), free >= required else {
                 throw VMFailure(code: "not-enough-space", message: "Free at least \(ByteCountFormatter.string(fromByteCount: required, countStyle: .file)) before starting this VM.")
             }
-            _ = try storage.prepare(request.profile, sessionID: request.sessionID)
+            let owner = ManagedOwnerStorage(root: request.storageRoot)
+            let password: Data?
+            if let setup = request.profile.ownerSetup, try !owner.completed(request.profile) {
+                password = try ownerSecrets.read(reference: setup.credentialReference)
+            } else { password = nil }
+            _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password)
         } else { try pocAdmission?.admit(request) }
         let configuration = try Self.configuration(for: request)
         let client = VMRunClient(kit: kit)
-        try client.start(configuration, onEvent: onEvent)
+        do { try client.start(configuration, onEvent: onEvent) }
+        catch {
+            if request.profile.ownerSetup != nil, let storage = managedStorage { try? storage.withLock(request.profile) { try ManagedOwnerStorage(root: request.storageRoot).clearSeed() } }
+            throw error
+        }
         return TryOmarchyRuntimeHandle(client: client)
     }
 

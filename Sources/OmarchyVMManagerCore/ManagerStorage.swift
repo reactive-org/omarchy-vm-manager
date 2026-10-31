@@ -29,7 +29,7 @@ public struct ManagerStorage: Sendable {
     private struct Forwarding: Decodable { struct Mapping: Decodable { let hostPort: Int; let guestPort: Int; let `protocol`: String }; let schemaVersion: Int; let mappings: [Mapping] }
     private struct Fullscreen: Decodable { let schemaVersion: Int; let isImmersive: Bool; let usesNotch: Bool? }
 
-    public func prepare(_ profile: VMProfile, sessionID: UUID = UUID()) throws -> URL {
+    public func prepare(_ profile: VMProfile, sessionID: UUID = UUID(), ownerPassword: Data? = nil) throws -> URL {
         try RegistryStore.validate(profile)
         try PrivateFiles.directory(directory, create: true)
         try PrivateFiles.directory(vms, create: true)
@@ -67,6 +67,11 @@ public struct ManagerStorage: Sendable {
             try withLock(profile) { try ManagedSSHStorage(root: root).prepare(profile: profile, sessionID: sessionID, applicationSupport: applicationSupport, newRoot: created) }
         } else if PrivateFiles.exists(root.appendingPathComponent(ManagedSSHStorage.manifestName)) {
             throw PrivateFiles.failure("Unexpected managed SSH metadata is present. No existing access was changed.")
+        }
+        if profile.ownerSetup != nil {
+            try withLock(profile) { try ManagedOwnerStorage(root: root).prepare(profile, sessionID: sessionID, password: ownerPassword, newRoot: created) }
+        } else if PrivateFiles.exists(root.appendingPathComponent(".manager-setup")) || PrivateFiles.exists(root.appendingPathComponent(ManagedOwnerStorage.launchName)) {
+            throw PrivateFiles.failure("Unexpected unattended setup metadata is present. Existing storage was preserved.")
         }
         return root
     }

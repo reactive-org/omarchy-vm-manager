@@ -12,6 +12,7 @@ public actor VMManager {
         var coldStart = false
         var reachedReady = false
         var sshTask: Task<Void, Never>?
+        var ownerTask: Task<Void, Never>?
     }
 
     private let runtime: any VMRuntime
@@ -29,6 +30,8 @@ public actor VMManager {
     private let trashService: (any VMTrashService)?
     private let sshProbe: (any SSHReadinessChecking)?
     private let portProbe: any HostPortProbing
+    private let ownerDefaults: OwnerDefaultsStore?
+    private var ownerStates: [UUID: OwnerSetupReadiness] = [:]
     private var sshStates: [UUID: SSHReadiness] = [:]
     private var storageTransactions: Set<UUID> = []
     private var quitting = false
@@ -46,7 +49,7 @@ public actor VMManager {
                 hostMemoryMiB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 logicalCPUs: Int = ProcessInfo.processInfo.processorCount,
                 registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil,
-                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe()) {
+                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil) {
         self.runtime = runtime
         self.profiles = profiles
         self.applicationSupport = applicationSupport
@@ -55,7 +58,7 @@ public actor VMManager {
         self.logicalCPUs = logicalCPUs
         self.registry = registry
         self.trashService = trashService
-        self.sshProbe = sshProbe; self.portProbe = portProbe
+        self.sshProbe = sshProbe; self.portProbe = portProbe; self.ownerDefaults = ownerDefaults
         interruptedDeletions = registry?.pendingDeletions ?? []
         for id in interruptedDeletions {
             let failure = VMFailure(code: "interrupted-deletion", message: "A previous deletion was interrupted. The disk may already be in Trash. Review Delete VM again to finish removing the profile; restore files manually before recovery.")
@@ -66,20 +69,32 @@ public actor VMManager {
     public static func open(runtime: any VMRuntime, applicationSupport: URL, trashService: any VMTrashService) throws -> VMManager {
         let registry = try RegistryStore(applicationSupport: applicationSupport)
         let profiles = try registry.load()
+        let storage = ManagerStorage(applicationSupport: applicationSupport)
+        for profile in profiles where profile.ownerSetup != nil && PrivateFiles.exists(storage.root(for: profile)) {
+            try storage.validate(profile)
+            try storage.withLock(profile) { try ManagedOwnerStorage(root: storage.root(for: profile)).clearSeed() }
+        }
         return VMManager(runtime: runtime, profiles: profiles, applicationSupport: applicationSupport,
-                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe())
+                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport))
     }
 
-    public func create(name: String, memoryMiB: Int, cpus: Int, clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true, publicKey: String? = nil) throws -> UUID {
+    public func create(name: String, memoryMiB: Int, cpus: Int, clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true, publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true) throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
         var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
+        var chosenPublicKey = publicKey
+        if useOwnerDefaults != false, let ownerDefaults {
+            let defaults = try ownerDefaults.load()
+            if useOwnerDefaults == true, !defaults.enabled { throw OwnerConfiguration.invalid("Enable and save Guest Defaults before choosing unattended setup.") }
+            profile.ownerSetup = try ownerDefaults.snapshot(for: profile.id)
+            if profile.ownerSetup != nil, chosenPublicKey == nil, inheritDefaultPublicKey { chosenPublicKey = defaults.sshPublicKey }
+        } else if useOwnerDefaults == true { throw OwnerConfiguration.invalid("Guest Defaults is unavailable.") }
         if sshEnabled {
             let occupied = Set(profiles.compactMap { $0.ssh?.hostPort })
             guard let port = (2222...49151).first(where: { !occupied.contains($0) && portProbe.isAvailable($0) }) else {
                 throw VMFailure(code: "ssh-port-unavailable", message: "No unprivileged loopback port is available for SSH.")
             }
-            let fingerprint = try publicKey.map { try SelectedPublicKeyStore(applicationSupport: applicationSupport).save($0, id: profile.id) }
+            let fingerprint = try chosenPublicKey.map { try SelectedPublicKeyStore(applicationSupport: applicationSupport).save($0, id: profile.id) }
             profile.ssh = SSHOptions(hostPort: port, publicKeyFingerprint: fingerprint)
         }
         try validateResources(profile)
@@ -88,11 +103,23 @@ public actor VMManager {
         return profile.id
     }
 
+    public func guestDefaults() throws -> OwnerDefaults {
+        guard let ownerDefaults else { return OwnerDefaults() }
+        return try ownerDefaults.load()
+    }
+
+    public func saveGuestDefaults(enabled: Bool, configuration: OwnerConfiguration, password: Data?, sshPublicKey: String?) throws -> OwnerDefaults {
+        guard !quitting, let registry, let ownerDefaults else { throw OwnerConfiguration.invalid("Guest Defaults is unavailable while the manager is quitting.") }
+        try registry.checkRevision()
+        return try ownerDefaults.save(enabled: enabled, configuration: configuration, password: password, sshPublicKey: sshPublicKey)
+    }
+
     public func configure(_ profile: VMProfile) throws {
         try requireEditable(profile.id)
         guard !interruptedDeletions.contains(profile.id) else { throw VMFailure(code: "interrupted-deletion", message: "Finish reviewing the interrupted deletion before configuring this profile.") }
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }), let registry,
               profiles[index].createdAt == profile.createdAt else { throw VMFailure(code: "unknown-vm", message: "The VM profile changed or is missing.") }
+        guard profile.ownerSetup == profiles[index].ownerSetup else { throw OwnerConfiguration.invalid("Owner setup is fixed at guest creation. Existing disks need a separate reviewed migration.") }
         guard profile.ssh == profiles[index].ssh else { throw VMFailure(code: "ssh-migration-required", message: "SSH enrollment is chosen at creation. Changing existing access needs a separate stopped-VM migration.") }
         try validateResources(profile)
         var edited = profile
@@ -162,8 +189,16 @@ public actor VMManager {
         profiles.map {
             VMSnapshot(profile: $0, state: states[$0.id] ?? .stopped,
                        sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: notices[$0.id],
-                       sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped))
+                       sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped),
+                       ownerSetupReadiness: ownerReadiness($0))
         }
+    }
+
+    private func ownerReadiness(_ profile: VMProfile) -> OwnerSetupReadiness {
+        guard profile.ownerSetup != nil else { return .manual }
+        if let state = ownerStates[profile.id] { return state }
+        let root = ManagerStorage(applicationSupport: applicationSupport).root(for: profile)
+        return (try? ManagedOwnerStorage(root: root).completed(profile)) == true ? .configured : .pending
     }
 
     public var activeSessionCount: Int { sessions.count }
@@ -214,6 +249,7 @@ public actor VMManager {
             let handle = try runtime.start(request) { continuation.yield($0) }
             sessions[vmID]?.handle = handle
             beginSSHProbe(request)
+            beginOwnerProbe(request)
             Task {
                 for await event in events {
                     receive(event, vmID: vmID, sessionID: sessionID)
@@ -228,6 +264,32 @@ public actor VMManager {
             record("Start refused: " + failure.message, vmID: vmID, sessionID: sessionID)
             throw failure
         }
+    }
+
+    private func beginOwnerProbe(_ request: VMStartRequest) {
+        guard request.profile.ownerSetup != nil else { return }
+        sessions[request.profile.id]?.ownerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.checkOwner(request)
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            }
+        }
+    }
+
+    private func checkOwner(_ request: VMStartRequest) {
+        guard sessions[request.profile.id]?.id == request.sessionID else { return }
+        let owner = ManagedOwnerStorage(root: request.storageRoot)
+        do {
+            if try owner.completed(request.profile) { ownerStates[request.profile.id] = .configured; return }
+            guard let report = try OwnerSetupGuestReport.read(request) else { return }
+            switch report.state {
+            case "configured":
+                try owner.finish(request.profile)
+                ownerStates[request.profile.id] = .configured
+            case "error": ownerStates[request.profile.id] = .failed("Automatic setup failed (" + (report.failureCode ?? "provisioning-failed") + "). Use the guest’s setup screen or restart to retry.")
+            default: ownerStates[request.profile.id] = .provisioning
+            }
+        } catch { ownerStates[request.profile.id] = .failed("Cannot verify owner setup or remove its temporary seed. Shut down this guest and review its storage.") }
     }
 
     private func beginSSHProbe(_ request: VMStartRequest) {
@@ -305,6 +367,12 @@ public actor VMManager {
             failures[vmID] = VMFailure(code: error.reportedCode, message: error.message)
         case .exited(let status):
             session.sshTask?.cancel()
+            session.ownerTask?.cancel()
+            if let profile = profiles.first(where: { $0.id == vmID }), profile.ownerSetup != nil {
+                checkOwner(VMStartRequest(profile: profile, storageRoot: session.root, sessionID: sessionID, startedAt: .distantPast))
+                do { try ManagerStorage(applicationSupport: applicationSupport).withLock(profile) { try ManagedOwnerStorage(root: session.root).clearSeed() } }
+                catch { failures[vmID] = VMFailure(code: "owner-seed-cleanup", message: "The guest stopped, but its temporary setup seed could not be removed.") }
+            }
             sshStates[vmID] = profiles.first(where: { $0.id == vmID })?.ssh == nil ? .disabled : .stopped
             if failures[vmID] == nil, status != 0, !session.forceRequested {
                 failures[vmID] = VMFailure(code: "helper-exit-\(status)", message: "The helper exited with status \(status).")

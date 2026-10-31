@@ -51,7 +51,7 @@ struct RegistryStorageTests {
             let data: Data
             switch mode {
             case "malformed": data = Data("broken".utf8)
-            case "newer": data = Data("{\"schemaVersion\":3,\"profiles\":[]}".utf8)
+            case "newer": data = Data("{\"schemaVersion\":4,\"profiles\":[]}".utf8)
             case "oversized": data = Data(repeating: 32, count: 1_048_577)
             default:
                 var object = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]

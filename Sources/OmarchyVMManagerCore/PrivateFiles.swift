@@ -107,7 +107,7 @@ public final class RegistryStore: @unchecked Sendable {
         if PrivateFiles.exists(file) {
             let data = try PrivateFiles.read(file, maximum: 1_048_576)
             let registry = try JSONDecoder().decode(Registry.self, from: data)
-            guard (1...2).contains(registry.schemaVersion) else { throw PrivateFiles.failure("Unknown registry version. The original file was preserved.") }
+            guard (1...3).contains(registry.schemaVersion) else { throw PrivateFiles.failure("Unknown registry version. The original file was preserved.") }
             try Self.validate(registry.profiles)
             let pending = registry.pendingDeletions ?? []
             guard pending.isSubset(of: Set(registry.profiles.map(\.id))), pending.isDisjoint(with: POCProfiles.ids) else { throw PrivateFiles.failure("Invalid pending deletion metadata; the registry was preserved.") }
@@ -147,7 +147,7 @@ public final class RegistryStore: @unchecked Sendable {
         } else if PrivateFiles.exists(file) { throw PrivateFiles.failure("A registry appeared during initialization. It was preserved.") }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let nextPending = pending.intersection(Set(profiles.map(\.id)))
-        let nextSchema = max(schemaVersion, profiles.contains(where: { $0.ssh != nil }) ? 2 : 1)
+        let nextSchema = max(schemaVersion, profiles.contains(where: { $0.ownerSetup != nil }) ? 3 : (profiles.contains(where: { $0.ssh != nil }) ? 2 : 1))
         let data = try encoder.encode(Registry(schemaVersion: nextSchema, profiles: profiles, pendingDeletions: nextPending))
         guard data.count <= 1_048_576 else { throw PrivateFiles.failure("The registry is too large.") }
         try PrivateFiles.write(data, name: "registry.json", in: directory, exclusively: revision == nil)
@@ -166,10 +166,11 @@ public final class RegistryStore: @unchecked Sendable {
     public static func validate(_ profile: VMProfile) throws {
         if let poc = POCProfiles.all.first(where: { $0.id == profile.id }) {
             guard profile.name == poc.name, profile.memoryMiB == poc.memoryMiB, profile.cpus == poc.cpus,
-                  profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil, profile.settingsFingerprint == nil, profile.ssh == nil else {
+                  profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil, profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil else {
                 throw PrivateFiles.failure("Retained POC metadata is protected. Restore its original profile; its disk was preserved.")
             }
         }
+        try profile.ownerSetup?.validate(for: profile.id)
         if let ssh = profile.ssh {
             guard (1024...65535).contains(ssh.hostPort), ssh.publicKeyFingerprint == nil || ssh.publicKeyFingerprint!.range(of: "^SHA256:[A-Za-z0-9+/]{43}$", options: .regularExpression) != nil else {
                 throw PrivateFiles.failure("Invalid managed SSH endpoint or public-key reference.")

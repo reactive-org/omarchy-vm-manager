@@ -12,7 +12,7 @@ app = Path(sys.argv[1])
 contents = app / "Contents"
 info = plistlib.loads((contents / "Info.plist").read_bytes())
 assert info["CFBundleExecutable"] == "OmarchyVMManager"
-contract = contents / "Resources/OmarchyVMManager_OmarchyVMManagerCore.bundle/OwnerSetupContract.json"
+contract = contents / "Resources/OmarchyVMManager_OmarchyVMManagerCore.bundle/Contents/Resources/OwnerSetupContract.json"
 assert contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json").read_bytes()
 assert json.loads(contract.read_bytes())["schemaVersion"] == 1
 assert info["CFBundleIdentifier"] == "dev.omarchy.vm-manager"
