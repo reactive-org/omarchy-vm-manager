@@ -1,5 +1,5 @@
 import AppKit
-import ApplicationServices
+@preconcurrency import ApplicationServices
 import Darwin
 import Foundation
 import OmarchyVMManagerCore
@@ -16,6 +16,7 @@ final class AppModel: ObservableObject {
     @Published var shuttingDown = false
     @Published var actionError: String?
     @Published var forceStopID: UUID?
+    @Published var accessibilityTrusted = AXIsProcessTrusted()
     let approved: Bool
     let manager: VMManager
     private let support: URL
@@ -80,11 +81,32 @@ final class AppModel: ObservableObject {
         await update()
     }
 
+    func requestSuperShortcuts() async {
+        guard await manager.activeSessionCount == 0 else {
+            actionError = "Shut down the disposable VMs before refreshing Accessibility access."
+            return
+        }
+        guard !AXIsProcessTrusted() else { await update(); return }
+        guard ManagerAccessibilityPermissionRepair.resetCurrentAppEntry() else {
+            actionError = "macOS could not refresh this manager's Accessibility entry."
+            return
+        }
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        _ = AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+        await update()
+    }
+
     private func update() async {
         let observation = await manager.observation()
         snapshots = observation.snapshots
         records = observation.records
         let accessibilityTrusted = AXIsProcessTrusted()
+        if self.accessibilityTrusted != accessibilityTrusted { self.accessibilityTrusted = accessibilityTrusted }
         guard approved,
               records.last?.id != lastReportID || accessibilityTrusted != lastAccessibilityTrusted else { return }
         lastReportID = records.last?.id
@@ -250,6 +272,22 @@ private struct ManagerView: View {
                             }
                         }
                     }.padding(16).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                }
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Super shortcuts").font(.headline)
+                        Text(model.accessibilityTrusted ? "Manager Accessibility access is allowed." :
+                            "Allow the manager to keep Command+Space and other Mac shortcuts in the focused guest.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if !model.accessibilityTrusted && model.snapshots.contains(where: { $0.sessionID != nil }) {
+                            Text("Shut down the VMs before refreshing access.").font(.caption)
+                        }
+                    }
+                    Spacer()
+                    if !model.accessibilityTrusted {
+                        Button("Enable Super shortcuts…") { Task { await model.requestSuperShortcuts() } }
+                            .disabled(model.checking || model.snapshots.contains(where: { $0.sessionID != nil }))
+                    }
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
