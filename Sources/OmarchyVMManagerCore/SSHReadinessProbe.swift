@@ -100,7 +100,7 @@ public struct ManagedSSHProbe: SSHReadinessChecking {
     }
 }
 
-private final class SSHProbeProcess: @unchecked Sendable {
+final class SSHProbeProcess: @unchecked Sendable {
     struct Result { let status: Int32; let output: Data; let hostKeyMismatch: Bool }
     private let lock = NSLock()
     private var process: Process?

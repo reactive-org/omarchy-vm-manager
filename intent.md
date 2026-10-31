@@ -1025,3 +1025,9 @@ The safe v1 answer is intentionally narrow: manager-owned roots, exact source/bi
 ## Unattended defaults — user extension, 31 October 2026
 
 **DESIGN DECISION:** the user requested reusable in-app defaults based on Omarchy's unattended-install guide. The prepared factory image's owner setup will receive an immutable new-profile snapshot, with the reusable password held in Keychain and only a temporary protected provisioning seed supplied to the guest. This explicitly permits a password for unattended owner creation; manager SSH still uses independent key authentication. Existing guests remain unchanged. See `Docs/UnattendedDefaults.md` for verified ISO/OEM distinctions, the versioned private coupling and remaining checks.
+
+## JSON guest CLI — user extension, 31 October 2026
+
+**DESIGN DECISION:** add a concise JSON command-line interface for guest CRUD, resource configuration, start/stop/restart and bounded waits for running, stopped or authenticated SSH readiness. Use the existing GUI manager as the single lifecycle/registry owner through a private same-user local command socket; a short-lived CLI must never drop live runtime handles. Configuration edits remain stopped-only and must also respect an externally held runtime lock. New guests inherit saved owner defaults unless explicitly opted out.
+
+Return the usable host SSH endpoint separately from authenticated guest IP information. NAT guests may have the same private guest IP; host connections use the allocated `127.0.0.1` port, managed identity and pinned host key. Do not expose passwords, private-key material or Keychain references in JSON. Reuse the supported kit launch API and existing guarded Trash helper. The CLI does not add arbitrary guest-command execution, public networking or a second VM supervisor. See `Docs/CLI.md` for the command contract and validation.

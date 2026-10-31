@@ -30,6 +30,7 @@ final class AppModel: ObservableObject {
     @Published var storageBytes: [UUID: Int64] = [:]
     let manager: VMManager
     private let support: URL
+    private var commandServer: ManagerCommandServer?
     private var lastReportID: UUID?
     private var lastAccessibilityTrusted: Bool?
     private var lastOwnerStates: [UUID: OwnerSetupReadiness] = [:]
@@ -88,11 +89,23 @@ final class AppModel: ObservableObject {
 
     func observe() async {
         await refresh()
+        startCommandServer()
         while !Task.isCancelled {
             await update()
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
         }
     }
+
+    private func startCommandServer() {
+        guard !Self.layoutPreview, registryError == nil, commandServer == nil else { return }
+        let service = GuestCommandService(manager: manager, applicationSupport: support)
+        do {
+            commandServer = try ManagerCommandServer(endpoint: ManagerCommandEndpoint(applicationSupport: support)) { request in
+                await service.execute(request)
+            }
+        } catch { actionError = "CLI command server unavailable: " + error.localizedDescription }
+    }
+    func stopCommandServer() { commandServer?.stop(); commandServer = nil }
 
     func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool) async -> UUID? {
         guard registryError == nil else { return nil }

@@ -59,3 +59,19 @@ See `Docs/POC.md` for the approval gate and real test matrix, `Docs/ClipboardPat
 The manager icon is editable vector artwork in `App/Assets/OmarchyVMManager.svg`, with a 1024-pixel PNG and a complete macOS ICNS family. `make icon` regenerates it using the pinned upstream AppKit renderer and validated icon packer. `make app` includes it in the bundle and the native UI. When the main manager is hosting a guest, `make app-preview verify-preview` prepares a signed sibling bundle without replacing the live app; close the live manager after shutting down its guests before installing the normal build.
 
 Guest artwork uses the official Omarchy mark in monochrome, with pending-trademark attribution to the [Omacom Foundation](https://omarchy.org/foundation/). The sidebar credits this manager as a project of [reactive.org enterprises](https://www.reactive.org/). Launch cards reserve progress/message space and draw busy spinners over the artwork so preparation does not move their controls. `make layout-preview verify-layout-preview` builds a separate debug gallery for all seven lifecycle presentations without accessing the registry, Keychain or real guests.
+
+
+## JSON CLI
+
+`make app verify-app` also packages `omarchy-vm`. Use `./bin/omarchy-vm` or add this repository's `bin` directory to `PATH`:
+
+```sh
+./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --start --wait ssh --timeout 1800
+./bin/omarchy-vm get dev
+./bin/omarchy-vm stop dev --wait
+./bin/omarchy-vm update dev --memory 5GiB --cpus 6
+./bin/omarchy-vm start dev --wait ssh
+./bin/omarchy-vm delete dev
+```
+
+The CLI opens the manager in the background when needed and shares its existing lifecycle owner. Replies are concise JSON, including state/config and an authenticated SSH endpoint plus guest IPs when ready. NAT guests can share a private IP; use the returned localhost SSH port and generated `ssh.command`. Configuration updates refuse running guests and apply next start; delete uses guarded recoverable Trash. Saved Guest Defaults apply to new guests unless disabled. See [the full CLI contract and validation](Docs/CLI.md).

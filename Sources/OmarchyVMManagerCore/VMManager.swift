@@ -82,6 +82,7 @@ public actor VMManager {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
         var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
+        try validateResources(profile)
         var chosenPublicKey = publicKey
         if useOwnerDefaults != false, let ownerDefaults {
             let defaults = try ownerDefaults.load()
@@ -98,7 +99,8 @@ public actor VMManager {
             profile.ssh = SSHOptions(hostPort: port, publicKeyFingerprint: fingerprint)
         }
         try validateResources(profile)
-        try registry.save(profiles + [profile])
+        do { try registry.save(profiles + [profile]) }
+        catch { SelectedPublicKeyStore(applicationSupport: applicationSupport).remove(profile.id); throw error }
         profiles.append(profile)
         return profile.id
     }
@@ -114,6 +116,17 @@ public actor VMManager {
         return try ownerDefaults.save(enabled: enabled, configuration: configuration, password: password, sshPublicKey: sshPublicKey)
     }
 
+    public func update(_ id: UUID, configuration: GuestConfigurationPatch) throws {
+        guard var profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.") }
+        guard configuration.ssh == nil, configuration.ownerDefaults == nil, configuration.publicKey == nil else { throw VMFailure(code: "creation-only", message: "SSH and owner enrollment are chosen at creation.") }
+        if let value = configuration.name { profile.name = value }
+        if let value = configuration.memoryMiB { profile.memoryMiB = value }
+        if let value = configuration.cpus { profile.cpus = value }
+        if let value = configuration.clipboard { profile.clipboardEnabled = value }
+        if let value = configuration.immersive { profile.immersiveMode = value }
+        try configure(profile)
+    }
+
     public func configure(_ profile: VMProfile) throws {
         try requireEditable(profile.id)
         guard !interruptedDeletions.contains(profile.id) else { throw VMFailure(code: "interrupted-deletion", message: "Finish reviewing the interrupted deletion before configuring this profile.") }
@@ -124,13 +137,18 @@ public actor VMManager {
         try validateResources(profile)
         var edited = profile
         let storage = ManagerStorage(applicationSupport: applicationSupport)
-        if PrivateFiles.exists(storage.root(for: edited)) {
-            try storage.validate(edited)
-            edited.settingsFingerprint = try storage.settingsFingerprint(edited)
+        func save() throws {
+            var next = profiles; next[index] = edited
+            try registry.save(next)
+            profiles = next
         }
-        var next = profiles; next[index] = edited
-        try registry.save(next)
-        profiles = next
+        if PrivateFiles.exists(storage.root(for: edited)) {
+            try storage.withLock(edited) {
+                try storage.validate(edited)
+                edited.settingsFingerprint = try storage.settingsFingerprint(edited)
+                try save()
+            }
+        } else { try save() }
     }
 
     public func deletionRequest(_ id: UUID) throws -> TrashRequest? {

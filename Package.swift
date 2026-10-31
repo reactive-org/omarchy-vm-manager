@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "OmarchyVMManager", targets: ["OmarchyVMManagerApp"]),
+        .executable(name: "omarchy-vm", targets: ["OmarchyVMCLI"]),
         .library(name: "OmarchyVMManagerCore", targets: ["OmarchyVMManagerCore"]),
         .executable(name: "OmarchyVMStorageHelper", targets: ["OmarchyVMStorageHelper"])
     ],
@@ -15,6 +16,7 @@ let package = Package(
             .product(name: "TryOmarchyKitClient", package: "macos")
         ], resources: [.process("Resources")]),
         .executableTarget(name: "OmarchyVMManagerApp", dependencies: ["OmarchyVMManagerCore"]),
+        .executableTarget(name: "OmarchyVMCLI", dependencies: ["OmarchyVMManagerCore"]),
         .executableTarget(name: "OmarchyVMStorageHelper", dependencies: ["OmarchyVMManagerCore"]),
         .testTarget(name: "OmarchyVMManagerCoreTests", dependencies: ["OmarchyVMManagerCore"])
     ],

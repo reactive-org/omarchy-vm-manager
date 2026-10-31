@@ -25,7 +25,7 @@ for stem in ("OmarchyVMManager", "OmarchyGuest"):
     assert (contents / "Resources" / (stem + ".icns")).read_bytes().startswith(b"icns")
 assert not (contents / "Library/LaunchDaemons").exists(), "NAT-only app must not register networking"
 assert (contents / "Resources/TryOmarchy-THIRD_PARTY_NOTICES.md").is_file()
-for name in ("OmarchyVMManager", "OmarchyVMStorageHelper"):
+for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", "omarchy-vm"):
     assert (contents / "MacOS" / name).is_file()
 lock = json.loads((ROOT / "Config/TryOmarchyRuntime.lock.json").read_bytes())
 embedded_lock = contents / "Resources/TryOmarchyRuntime.lock.json"

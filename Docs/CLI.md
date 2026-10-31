@@ -1,0 +1,60 @@
+# Guest command line
+
+Build with `make app verify-app`. Run `./bin/omarchy-vm` from this repository, or run the bundled `dist/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm`. Add this repository's `bin` directory to `PATH` to use `omarchy-vm` directly. No global symlink or privileged service is installed.
+
+```sh
+./bin/omarchy-vm list
+./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --start --wait ssh --timeout 1800
+./bin/omarchy-vm get dev
+./bin/omarchy-vm stop dev --wait
+./bin/omarchy-vm update dev --memory 5GiB --cpus 6
+./bin/omarchy-vm start dev --wait ssh
+./bin/omarchy-vm restart dev --wait ssh
+./bin/omarchy-vm delete dev
+```
+
+Commands accept a full UUID or exact guest name. Names are unique under the existing registry policy. UUIDs are preferable in scripts. Creation accepts a positional name or `--name`; update can rename with `--name`.
+
+Replies are one compact JSON object on stdout. `--help` prints human-readable usage; `--version` returns JSON. Exit 0 means success, 1 means failure and 124 means wait timeout. Failure replies contain a stable `error.code` and message. When a create/start or wait fails, the reply includes the created/current guest so its UUID and state can be inspected. A timeout, closed CLI or disconnected client leaves the VM under the manager's lifecycle ownership; it does not shut down or delete it. A lost transport reply can leave a mutation's outcome unknown, so the client does not automatically repeat a sent mutation.
+
+## Configuration
+
+Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `clipboard`, `immersive`, `ssh`, `ownerDefaults` and `publicKey`. Unknown keys and nulls are rejected. For example:
+
+```json
+{"memoryMiB":8192,"cpus":8,"clipboard":true,"immersive":false}
+```
+
+The current policy requires at least 4 CPU cores and 4 GiB RAM, with RAM in whole GiB, within the Mac's existing guest budget. `--memory` accepts MiB or GiB suffixes; a plain integer means MiB. `--memory-mib` is also available. Boolean flags take `on`/`off` or `true`/`false`.
+
+SSH and owner setup are creation-only. New guests inherit saved Guest Defaults and enable managed SSH by default. `--owner-defaults off` selects the normal guest owner wizard. `--ssh off` disables SSH enrollment. `--public-key FILE.pub` imports only an explicitly selected public key; no personal credentials are scanned. Configure reusable passwords locally in the app's Guest Defaults page; no CLI password argument or secret field is supported.
+
+`update` refuses active, stopping or otherwise busy guests and retained POC profiles. An external runtime-compatible storage lock also prevents edits. Changes apply on the next start. SSH enrollment, owner snapshots, disk paths and general port forwarding cannot be changed by update.
+
+## Readiness and SSH
+
+`start` and `create --start` return after launch admission unless a wait is requested. `--wait running` means the upstream runtime reached its normal ready boundary; it does not prove an owner account or SSH is usable. `--wait ssh` waits for an authenticated pinned connection, then verifies the current owner/VM/session again before returning literal guest addresses. Use `wait ID --for ssh|running|stopped` to continue observing an existing session. Stop accepts `--wait` for matching terminal exit; `--force` explicitly requests forced termination. Restart waits for the old session's matching exit before starting another.
+
+The default wait limit is 600 seconds, configurable from 1 to 3600. The same deadline applies across restart's stop/start waits. Existing manual-setup guests need their owner wizard completed before SSH can become ready. Closing or restarting the GUI manager still follows its normal coordinated shutdown; the CLI is a client of that long-running app. If needed, the CLI opens the bundled manager hidden in the background.
+
+Connection details distinguish the two addresses:
+
+```json
+{"ssh":{"enabled":true,"status":"ready","host":"127.0.0.1","port":2224,"user":"owner","command":"ssh ..."},"network":{"mode":"nat","guestIPs":["10.0.2.15"],"hostAddress":"127.0.0.1","addressesVerified":true}}
+```
+
+Use `ssh.command` for the generated client configuration, independent managed key and pinned server identity. The private guest IP is informational and may be shared by different NAT guests. `get` refreshes addresses when SSH is ready; list may include the last checked addresses for the same active session. Stopped or replaced sessions have no verified address cache. Passwords, private keys and Keychain references are excluded from replies.
+
+## Local control and deletion
+
+The manager keeps the registry lock and all runtime clients. The CLI uses a bounded, versioned JSON protocol on an owned mode-0600 Unix socket inside a mode-0700 directory under `/private/tmp`; both peers check the local UID. The socket directory includes a digest of the fixed application-support location and UID. No TCP command listener, authentication bypass or arbitrary storage-root override is exposed.
+
+`delete` requests the manager's existing reviewed whole-root Trash transaction. It never recursively erases a VM. Running and retained POC guests stay protected. A profile without initialized storage is removed as metadata only. Inspect and restore any trashed VM files using the Mac's normal Trash workflow; automatic restoration is outside this CLI.
+
+## Validation status
+
+**VERIFIED — no-VM checks:** 92 Swift tests in 21 suites and 9 artifact checks pass. Fake-runtime tests cover CRUD, immutable creation fields, active/protected guards, external locks, session-bound waits, timeout behavior and restart sequencing. Real Unix-socket tests cover private permissions, bounded same-user request/response exchange, live endpoint refusal, malformed schemas and client disconnect. Normal app/CLI signature, compatibility, layout and host-preflight checks pass.
+
+**VERIFIED — packaged CLI:** build 0.5.0 (7) automatically opened the manager hidden, returned JSON for version/list and restored the four existing profiles as stopped. A new metadata-only fixture with owner defaults and SSH off was created, updated from a JSON file, renamed, looked up by exact name, waited for as stopped and deleted through the CLI. Its updated 5 GiB configuration appeared in the same GUI. It never acquired a storage root or launched a VM. All four earlier profile values and disk identities match their baseline.
+
+**TO PROVE:** an additionally approved fresh real guest's returned IP, authenticated SSH, running-update refusal and stopped reconfiguration across the next launch. Earlier retained disks must not be launched or changed as test fixtures.

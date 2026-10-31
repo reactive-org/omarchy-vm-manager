@@ -1,0 +1,4 @@
+#!/bin/bash
+set -euo pipefail
+project_root=$(cd "$(dirname "$0")/.." && pwd -P)
+exec "$project_root/dist/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm" "$@"

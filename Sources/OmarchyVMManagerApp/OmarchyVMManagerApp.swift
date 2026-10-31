@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await model.requestQuit() }
         return .terminateLater
     }
+    func applicationWillTerminate(_ notification: Notification) { model?.stopCommandServer() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 

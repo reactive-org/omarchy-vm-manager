@@ -36,7 +36,7 @@ def assemble():
     for name in ("MacOS", "Resources", "Helpers"):
         (stage / "Contents" / name).mkdir(parents=True, exist_ok=True)
     try:
-        for executable in ("OmarchyVMManager", "OmarchyVMStorageHelper"):
+        for executable in ("OmarchyVMManager", "OmarchyVMStorageHelper", "omarchy-vm"):
             shutil.copy2(binaries / executable, stage / "Contents/MacOS" / executable)
         resources = binaries / "OmarchyVMManager_OmarchyVMManagerCore.bundle"
         assert resources.is_dir() and not resources.is_symlink(), "missing core resource bundle"
@@ -63,6 +63,7 @@ def assemble():
         run("python3", signature, "verify", "--signature-only", kit)
         assert inventory(kit) == lock["files"], "embedding changed pinned kit bytes"
         run("codesign", "--force", "--sign", "-", "--identifier", "dev.omarchy.vm-manager.storage", stage / "Contents/MacOS/OmarchyVMStorageHelper")
+        run("codesign", "--force", "--sign", "-", "--identifier", "dev.omarchy.vm-manager.cli", stage / "Contents/MacOS/omarchy-vm")
         run("codesign", "--force", "--sign", "-", "--identifier", info["CFBundleIdentifier"],
             "--entitlements", ROOT / "App/OmarchyVMManager.entitlements", stage)
         run("codesign", "--verify", "--deep", "--strict", stage)
