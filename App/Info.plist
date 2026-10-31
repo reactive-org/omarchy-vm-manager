@@ -6,8 +6,8 @@
     <key>CFBundleName</key><string>Omarchy VM Manager</string>
     <key>CFBundleDisplayName</key><string>Omarchy VM Manager</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>0.2.0</string>
+    <key>CFBundleVersion</key><string>2</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Allow microphone audio in your Omarchy virtual machines.</string>

@@ -15,7 +15,7 @@ let package = Package(
             .product(name: "TryOmarchyKitClient", package: "macos")
         ]),
         .executableTarget(name: "OmarchyVMManagerApp", dependencies: ["OmarchyVMManagerCore"]),
-        .executableTarget(name: "OmarchyVMStorageHelper"),
+        .executableTarget(name: "OmarchyVMStorageHelper", dependencies: ["OmarchyVMManagerCore"]),
         .testTarget(name: "OmarchyVMManagerCoreTests", dependencies: ["OmarchyVMManagerCore"])
     ],
     swiftLanguageModes: [.v6]

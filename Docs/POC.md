@@ -1,5 +1,7 @@
 # Two-VM POC — Phase 1
 
+This records the original Phase 1 launcher and approval workflow. The completed Phase 2 registry/manual-launch workflow is described in [Phase 2](Phase2.md); earlier POC command-line flags no longer auto-start guests.
+
 The guarded launcher is implemented. The user approved downloading the factory image and running both disposable manager-owned VMs on 31 October 2026. They separately approved controlling only those guest windows and using temporary synthetic clipboard contents. The user will initiate whole-Mac sleep/wake when prompted; the agent must not initiate it.
 
 ## Approval gate

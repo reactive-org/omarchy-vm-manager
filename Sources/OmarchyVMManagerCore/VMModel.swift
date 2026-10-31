@@ -1,20 +1,27 @@
 import Foundation
 import TryOmarchyKitClient
 
-public struct VMProfile: Identifiable, Equatable, Sendable {
+public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public var name: String
     public var memoryMiB: Int
     public var cpus: Int
     public var clipboardEnabled: Bool
+    public let createdAt: Date
+    public var immersiveMode: Bool?
+    public var settingsFingerprint: String? = nil
+
+    public var isRetainedPOC: Bool { POCProfiles.ids.contains(id) }
 
     public init(id: UUID, name: String, memoryMiB: Int = 4096, cpus: Int = 4,
-                clipboardEnabled: Bool = true) {
+                clipboardEnabled: Bool = true, createdAt: Date = Date(), immersiveMode: Bool? = nil) {
         self.id = id
         self.name = name
         self.memoryMiB = memoryMiB
         self.cpus = cpus
         self.clipboardEnabled = clipboardEnabled
+        self.createdAt = createdAt
+        self.immersiveMode = immersiveMode
     }
 }
 
@@ -41,6 +48,7 @@ public enum VMState: Equatable, Sendable {
     case starting(phase: VMRunPhase, percent: Int?)
     case running
     case stopping
+    case deleting
     case failed(VMFailure)
 
     public var label: String {
@@ -51,6 +59,7 @@ public enum VMState: Equatable, Sendable {
         case .starting: "Starting"
         case .running: "Running"
         case .stopping: "Stopping"
+        case .deleting: "Moving to Trash"
         case .failed: "Failed"
         }
     }
@@ -73,6 +82,7 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
 }
 
 public enum POCProfiles {
+    public static let ids: Set<UUID> = [UUID(uuidString: "C7C2B381-E43C-4A5A-8246-4314596B4C0A")!, UUID(uuidString: "89F88CC2-BD11-44B5-9C1B-31EDB2DE6B0B")!]
     public static let all: [VMProfile] = [
         VMProfile(id: UUID(uuidString: "C7C2B381-E43C-4A5A-8246-4314596B4C0A")!, name: "Omarchy POC A"),
         VMProfile(id: UUID(uuidString: "89F88CC2-BD11-44B5-9C1B-31EDB2DE6B0B")!, name: "Omarchy POC B")

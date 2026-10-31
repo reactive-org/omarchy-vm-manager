@@ -122,17 +122,7 @@ public struct POCLaunchAdmission: Sendable {
               request.storageRoot.standardizedFileURL == storage.root(for: request.profile).standardizedFileURL else {
             throw VMFailure(code: "poc-root-refused", message: "Only the two fixed manager-owned disposable roots may launch.")
         }
-        let diagnostic = try KitVerifier.inspect(kit: kit, lockData: lockData,
-                                                 expectedLockSHA256: RuntimePin.lockSHA256, policy: .debugPOC)
-        if let failure = diagnostic.preflightFailure { throw VMFailure(code: "host-preflight-failed", message: failure) }
-        let signature = Process()
-        signature.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        signature.arguments = ["--verify", "--deep", "--strict", kit.bundleURL.path]
-        signature.standardOutput = FileHandle.nullDevice
-        signature.standardError = FileHandle.nullDevice
-        try signature.run()
-        signature.waitUntilExit()
-        guard signature.terminationStatus == 0 else { throw VMFailure(code: "kit-signature-invalid", message: "The embedded kit signature is invalid.") }
+        try validateKit()
         guard request.profile.cpus >= POCHostPolicy.minimumVMCPUs,
               request.profile.cpus <= ProcessInfo.processInfo.processorCount else {
             throw VMFailure(code: "unsupported-cpu-count", message: "The pinned runtime requires 4 through the host CPU count per VM.")
@@ -144,6 +134,24 @@ public struct POCLaunchAdmission: Sendable {
         _ = try storage.prepare(request.profile)
         #endif
     }
+    func validateKit() throws {
+        #if !DEBUG
+        throw VMFailure(code: "private-build-only", message: "The development kit is refused by release builds.")
+        #else
+        let diagnostic = try KitVerifier.inspect(kit: kit, lockData: lockData,
+                                                 expectedLockSHA256: RuntimePin.lockSHA256, policy: .debugPOC)
+        if let failure = diagnostic.preflightFailure { throw VMFailure(code: "host-preflight-failed", message: failure) }
+        let signature = Process()
+        signature.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        signature.arguments = ["--verify", "--deep", "--strict", kit.bundleURL.path]
+        signature.standardOutput = FileHandle.nullDevice
+        signature.standardError = FileHandle.nullDevice
+        try signature.run()
+        signature.waitUntilExit()
+        guard signature.terminationStatus == 0 else { throw VMFailure(code: "kit-signature-invalid", message: "The embedded kit signature is invalid.") }
+        #endif
+    }
+
 }
 
 public enum POCHostPolicy {

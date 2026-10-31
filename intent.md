@@ -666,6 +666,10 @@ If this gate fails because the kit/runtime assumes a singleton, document the sma
 
 ### Phase 2 — Minimal manager MVP
 
+**Implementation status — 31 October 2026:** implemented as a private debug build; registry, lifecycle, safe Trash and native UI checks pass. See [validation and remaining real-guest Spaces checks](Docs/Phase2.md).
+
+**DESIGN DECISION — user request, 31 October 2026:** follow the native sidebar/grouped-settings visual style of the supplied Try Omarchy screenshots and provide stopped-guest configuration for name, CPU, memory, clipboard and immersive mode. Keep both existing POC disks intact and protect their profiles from edits and deletion. For Mission Control Spaces, the user chose native Dock assignment over an in-app picker. The private runtime may stamp a stable, canonical-root-derived bundle identifier on each explicitly rooted guest app; retain the public client protocol and stock QEMU/image. Actual Dock assignment persistence remains **TO PROVE** until observed with the updated runtime. See [Phase 2 implementation and validation](Docs/Phase2.md).
+
 Deliver:
 
 - schema-versioned registry and atomic persistence;

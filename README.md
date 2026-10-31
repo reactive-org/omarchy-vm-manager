@@ -1,6 +1,6 @@
 # Omarchy VM Manager
 
-A native macOS 15+ SwiftUI manager around Try Omarchy's official kit architecture. Phases 0, 0A and the Phase 1 POC launcher are implemented as a private debug build. Real VM launch remains disabled by default. After explicit POC approval, `--poc-approved` enables only the two fixed disposable manager-owned profiles.
+A native macOS 15+ SwiftUI manager around Try Omarchy's official kit architecture. Phase 2 provides a persistent VM library, per-guest configuration and safe Trash deletion in a private debug build. Guests start only when you choose Launch. The two retained POC profiles are protected from edits and deletion.
 
 ## Build and check
 
@@ -16,7 +16,7 @@ make verify-app
 make run
 ```
 
-`fetch-kit` downloads only the pinned 14 MB stock kit, its checksum and manifest. `patched-kit` reconstructs the exact clipboard patch commit, compiles the helper, derives and ad-hoc signs a complete kit using upstream `macos/build-kit.sh`, then runs upstream `make test-kit`. It never runs `make guest`, downloads a factory image, launches a VM or registers a privileged networking service. The stock kit's QEMU, firmware, guest package and image download metadata are reused byte-for-byte as build inputs; this is not a fresh source build of QEMU or the guest package. The complete resulting kit is signed through upstream's pipeline, not shipped with an unsigned helper replacement.
+`fetch-kit` downloads only the pinned 14 MB stock kit, its checksum and manifest. `patched-kit` reconstructs the exact clipboard/guest-identity runtime patch commit, compiles the helper, derives and ad-hoc signs a complete kit using upstream `macos/build-kit.sh`, then runs upstream `make test-kit`. It never runs `make guest`, downloads a factory image, launches a VM or registers a privileged networking service. The stock kit's QEMU, firmware, guest package and image download metadata are reused byte-for-byte as build inputs; this is not a fresh source build of QEMU or the guest package. The complete resulting kit is signed through upstream's pipeline, not shipped with an unsigned helper replacement.
 
 `make test-upstream` runs the broader upstream no-VM suite on the exact patched source. The upstream Makefile cannot handle spaces in its checkout path, so scripts use a deterministic private build checkout under `/private/tmp/omarchy-vm-manager-source-<commit>`. The checked-in vendor submodule stays at stock `v1.3.0`. `Patches/0001-focus-aware-clipboard.patch` and `Config/TryOmarchyClipboardPatch.json` reconstruct the reviewed local patch commit even on a fresh clone.
 
@@ -28,23 +28,23 @@ The Python scripts refuse optimized execution (`PYTHONOPTIMIZE` or `python -O`) 
 - `Config/TryOmarchyRuntime.lock.json`: actual private patch commit, patch digest, generated kit digest, build date and full signed file inventory.
 - `Sources/OmarchyVMManagerCore/RuntimePin.swift`: compiled SHA-256 of that runtime lock.
 
-The app verifies the compiled lock pin, manifest, helper, protocol and every embedded file. Missing, changed, extra or symlinked files fail closed. Debug POC builds accept only the exact locked development kit. Release builds refuse it. A rebuild after deleting `VendorArtifacts` creates a new archive/build date, updates the runtime lock and compiled pin, and requires review of those changes. Existing mismatched artifacts are refused, not silently replaced.
+The app verifies the compiled lock pin, manifest, helper, protocol and every embedded file. Missing, changed, extra or symlinked files fail closed. Private debug builds accept only the exact locked development kit. Release builds refuse it. A rebuild after deleting `VendorArtifacts` creates a new archive/build date, updates the runtime lock and compiled pin, and requires review of those changes. Existing mismatched artifacts are refused, not silently replaced.
 
 `make app` produces `dist/Omarchy VM Manager.app` with the verified kit under `Contents/Helpers/TryOmarchyKit.bundle`. It reuses upstream's signing order and leaves the three networking binaries pinned by the daemon untouched. Only ad-hoc signing is implemented. No signing identity, keychain credential, notarization or permission grant is used. The app registers no networking daemon and enables no camera/authentication bridge.
 
-## Private POC
+## Use the manager
 
-Two in-memory profiles have distinct stable UUIDs, names, 4096 MiB RAM and four CPUs. Their paths derive from `~/Library/Application Support/Omarchy VM Manager/VMs/<UUID>`. Roots are created only on an approved start, and an existing root must pass ownership and settings checks. The intended bridge list is explicitly clipboard, battery and timezone, with shared/NAT networking.
+Open `dist/Omarchy VM Manager.app` and choose **New VM**. The native sidebar lists independent guests; each has Home, Virtual Machine, Network, Startup and Spaces pages. Configure name, CPU, memory, clipboard and immersive mode while stopped. Creation saves only profile metadata; the official factory image downloads on the first launch.
 
-After approval, start the private app with:
+The schema-versioned private registry lives at `~/Library/Application Support/Omarchy VM Manager/registry.json`. UUID roots derive beneath the sibling `VMs` directory. Reopening restores profiles as stopped. The existing POC roots are validated and registered without modifying their files. Their profiles cannot be reconfigured, renamed or deleted.
 
-```sh
-open -n "dist/Omarchy VM Manager.app" --args --poc-approved
-```
+The actor reserves aggregate memory/CPUs, serializes cold starts, retains clients through terminal exit and prevents start/delete races. Every launch checks exact kit provenance/signatures, host preflight, free space and the restricted v1 settings contract. Networking remains NAT with no forwards, shared folders, USB, authentication or camera. The fullscreen adapter applies explicit configuration saves without silently overwriting conflicting external edits. Full effective-settings and port policies remain Phase 3.
 
-Add `--poc-start-a` to start A automatically. Start B after A is ready and its first-boot desktop is usable. The manager refuses overlapping cold starts, reserves the configured aggregate memory/CPUs through exit, checks free space and exact kit provenance/signatures at every start, and initializes private UUID roots with both ownership markers and explicit null inherited settings. The POC refuses changed or unknown settings instead of decoding arbitrary user configurations: this enforces NAT, no forwards, no shared folder, no USB, 4 GiB and four CPUs. Full effective-settings/resource/port policies belong to Phase 3.
+Deletion confirms the selected root/disk identity and uses a separate helper holding the runtime-compatible POSIX lock throughout the move to macOS Trash. A pending-deletion journal prevents a crash between the move and registry update from recreating a missing disk. Corrupt/newer/externally changed registry data is preserved. Session progress, notices, errors, shutdown, confirmed Force Stop and coordinated Quit are visible in the app.
 
-The actor and production adapter are testable with fake runtimes and executable protocol stubs. Callbacks enter one ordered event stream; session IDs reject stale events. Errors retain handles and allocations until terminal exit. The production adapter requires explicit debug POC admission to launch. The app offers independent shutdown, confirmed force stop, a bounded event log, live state/progress and quit coordination with a pre-shutdown Cancel action. POC evidence is written privately to the manager’s `Logs/POC-status.json`. The storage helper is a refusal-only executable until Phase 2 implements the locked Trash transaction. Registry persistence, general settings/resource/port admission and user management actions are later phases.
+For Spaces, launch a windowed guest and use its Dock icon: **Options → Assign To → This Desktop**. The runtime stamps each explicitly rooted guest app with a stable identity independent of its name. The Spaces page contains the steps. Real Dock assignment persistence across restarts remains to be verified with the updated runtime; no private macOS APIs are used.
+
+See [Phase 2 behaviour and validation](Docs/Phase2.md). The earlier `--poc-approved`/`--poc-start-a` command-line workflow is superseded by the registry and manual Launch controls.
 
 With the VMs stopped, **Enable Super shortcuts…** runs the full Try Omarchy launcher's permission-repair flow for `dev.omarchy.vm-manager` only, then opens macOS Accessibility settings. The user invokes this action and enables the grant themselves. It never resets the installed Try Omarchy app's entry. The manager reports its own permission status; that alone does not prove QEMU installed its keyboard event tap. Start a guest after granting access and verify Command+Space is kept in the guest. Ad-hoc rebuilds can require a fresh grant.
 

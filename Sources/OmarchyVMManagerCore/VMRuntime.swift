@@ -30,6 +30,7 @@ public struct TryOmarchyRuntime: VMRuntime {
     private let kit: TryOmarchyKit
     private let protocolTestMode: Bool
     private let pocAdmission: POCLaunchAdmission?
+    private var managedStorage: ManagerStorage? = nil
 
     public init(kit: TryOmarchyKit) {
         self.kit = kit
@@ -48,6 +49,13 @@ public struct TryOmarchyRuntime: VMRuntime {
         pocAdmission = POCLaunchAdmission(kit: approvedPOCKit, lockData: lockData, applicationSupport: applicationSupport)
     }
 
+    public init(managedKit: TryOmarchyKit, lockData: Data, applicationSupport: URL) {
+        kit = managedKit
+        protocolTestMode = false
+        pocAdmission = POCLaunchAdmission(kit: managedKit, lockData: lockData, applicationSupport: applicationSupport)
+        managedStorage = ManagerStorage(applicationSupport: applicationSupport)
+    }
+
     public func preflight() -> VMRunError? { VMRunClient.preflight() }
 
     public func start(_ request: VMStartRequest,
@@ -56,7 +64,21 @@ public struct TryOmarchyRuntime: VMRuntime {
             throw VMFailure(code: "poc-approval-required",
                             message: "Launch the private manager with --poc-approved after approval for its disposable VM run.")
         }
-        try pocAdmission?.admit(request)
+        if let storage = managedStorage, let admission = pocAdmission {
+            try admission.validateKit()
+            guard request.storageRoot.standardizedFileURL == storage.root(for: request.profile).standardizedFileURL else {
+                throw VMFailure(code: "invalid-storage-root", message: "Only this profile’s manager-owned root may launch.")
+            }
+            try RegistryStore.validate(request.profile)
+            guard request.profile.cpus <= ProcessInfo.processInfo.processorCount else {
+                throw VMFailure(code: "unsupported-resources", message: "Reduce the VM’s CPU count to fit this Mac.")
+            }
+            let required = TryOmarchyStorage.requiredFreeBytes(at: request.storageRoot) + 2_147_483_648
+            guard let free = TryOmarchyStorage.freeBytes(at: request.storageRoot), free >= required else {
+                throw VMFailure(code: "not-enough-space", message: "Free at least \(ByteCountFormatter.string(fromByteCount: required, countStyle: .file)) before starting this VM.")
+            }
+            _ = try storage.prepare(request.profile)
+        } else { try pocAdmission?.admit(request) }
         let configuration = try Self.configuration(for: request)
         let client = VMRunClient(kit: kit)
         try client.start(configuration, onEvent: onEvent)
