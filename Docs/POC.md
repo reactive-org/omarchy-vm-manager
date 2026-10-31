@@ -26,3 +26,15 @@ Record model (without serial/UUID), macOS version, physical memory, kit manifest
 Stop feature work and preserve a minimal reproduction if runtime singleton/focus/lifecycle problems appear. Do not hide a failed gate behind retries.
 
 Gracefully shut down both guests. Confirm both `.exited` and no helper/QEMU remains for those roots, then offer to move the disposable roots to Trash. No permanent deletion.
+
+## Manual background clipboard check
+
+Use only throwaway clipboard text. The user operates the guest UI. Run this in A's Foot terminal:
+
+```sh
+printf poc-local | wl-copy; (sleep 20; if [ "$(wl-paste -n)" = poc-local ]; then echo RECEIVE-PASS; else echo RECEIVE-FAIL; fi; printf poc-background | wl-copy) &
+```
+
+Immediately switch to a Mac text field, copy `poc-host`, then focus B and confirm B can paste that host text. Keep B focused for at least 30 seconds after starting A's command. Switch to the Mac and paste: its selection must still be `poc-host`. Then return to A and read only its printed PASS/FAIL result. `RECEIVE-PASS` proves the host update did not reach A while it was in the background; an unchanged Mac selection proves A's later background copy was suppressed. Returning to A intentionally synchronizes the current Mac selection, so inspect the printed result rather than A's clipboard after returning.
+
+Repeat with B running the command and A remaining focused. Record only pass/fail, never clipboard contents. A delayed switch, an early return to the background guest or other copying during the check invalidates that trial.
