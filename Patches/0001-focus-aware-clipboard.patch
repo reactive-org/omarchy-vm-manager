@@ -61,10 +61,10 @@ index fac6182..a1cd7b1 100644
 +
 +The shared cache holds compressed images, keyed by the pinned factory identity. The normal downloader locks the directory, resumes partial files, verifies part and whole-image digests, and atomically publishes completed images. Each new guest re-verifies a cached image before its own factory preparation. A successful reuse refreshes the image's last-use time. Startup cleanup preserves the current identity and prunes only obsolete owned regular downloads unused for at least seven days. Guest disks and decompressed factories stay in their original UUID roots.
 diff --git a/guest/package/README.md b/guest/package/README.md
-index 2cc716c..2961963 100644
+index 2cc716c..4ab481b 100644
 --- a/guest/package/README.md
 +++ b/guest/package/README.md
-@@ -182,3 +182,15 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
+@@ -182,3 +182,17 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
  window closes, since Omarchy's screensaver shows it as it exits. It also keeps
  the mode in sync with the window through EDID, and applies the pinch and Apple
  keyboard input rules.
@@ -80,6 +80,8 @@ index 2cc716c..2961963 100644
 +## Managed owner contracts
 +
 +Opted-in manager setup selects the official or lean-e4fffc6 contract by its reviewed digest. The helper binds that choice to the verified factory; guest metadata cannot authorize another program set. Root-owned, non-writable regular programs and their source dependencies must match before a private snapshot is sourced. The lean adapter preserves the saved full name and email. A finalization warning preserves pending/setup-user so a retry keeps the same account and SSH remains blocked. Managed failures report a bounded code and stop; only unseeded setup uses the interactive program.
++
++Managed completion is recorded durably before upstream cleanup removes pending. A matching committed owner can retry interrupted cleanup; another identity is refused. Lean finalization executes the canonical hash-checked program, and SSH waits for a configured owner report from the current seeded VM/session.
 diff --git a/guest/package/tests/fixtures/owner-contracts/LICENSE b/guest/package/tests/fixtures/owner-contracts/LICENSE
 new file mode 100644
 index 0000000..f12cfa7
@@ -389,10 +391,10 @@ index 0000000..b63c486
 +}
 diff --git a/guest/package/tests/test_managed_setup.py b/guest/package/tests/test_managed_setup.py
 new file mode 100644
-index 0000000..0ca90c0
+index 0000000..dd08acf
 --- /dev/null
 +++ b/guest/package/tests/test_managed_setup.py
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,259 @@
 +import copy
 +import hashlib
 +import importlib.machinery
@@ -507,12 +509,14 @@ index 0000000..0ca90c0
 +systemctl() { :; }
 +usermod() { printf '%s\n' "$*" >"$FIXTURE/gecos"; }
 +getent() { printf 'owner:x:1000:1000::%s:/bin/bash\n' "$FIXTURE"; }
++managed_commit() { [[ $MODE != commit-failure ]] || return 1; printf committed >"$FIXTURE/commit"; }
 +runuser() { printf '%s\n' "$*" >>"$FIXTURE/git"; }
 +''')
 +        if mode == 'interface': script.write_text(script.read_text() + '\nunset -f platform_ready\n')
 +        secret = "synthetic'$(touch " + str(root / 'injected') + '):password'
 +        values = ['owner', secret, 'Synthetic Owner', 'owner@example.invalid', 'work-12345678', 'UTC', 'English (US)', 'us', 'none', '']
-+        run = subprocess.run(['/bin/bash', '-c', m.BASH, 'fixture', str(script), 'official' if kind == 'official' else 'lean-e4fffc6'], input=b''.join(v.encode()+b'\0' for v in values), env=dict(os.environ, FIXTURE=str(root), MODE=mode), capture_output=True)
++        bash = m.BASH.replace('/usr/lib/try-omarchy/managed-owner-setup --commit', 'managed_commit')
++        run = subprocess.run(['/bin/bash', '-c', bash, 'fixture', str(script), 'official' if kind == 'official' else 'lean-e4fffc6'], input=b''.join(v.encode()+b'\0' for v in values), env=dict(os.environ, FIXTURE=str(root), MODE=mode), capture_output=True)
 +        self.assertFalse((root / 'injected').exists())
 +        self.assertNotIn(secret.encode(), run.stdout + run.stderr + (root / 'log').read_bytes())
 +        return run
@@ -531,12 +535,12 @@ index 0000000..0ca90c0
 +                self.assertEqual((root/'input-method').read_text(), 'none|')
 +                if kind == 'lean':
 +                    self.assertIn('Synthetic Owner', (root/'gecos').read_text()); self.assertIn('owner@example.invalid', (root/'git').read_text())
-+            for mode in ('keyboard-failure', 'platform-failure', 'interface'):
++            for mode in ('keyboard-failure', 'platform-failure', 'interface', 'commit-failure'):
 +                with tempfile.TemporaryDirectory() as directory:
 +                    root=Path(directory); (root/'pending').touch(); (root/'log').touch()
 +                    result = self.run_bash(root, kind, mode)
 +                    self.assertNotEqual(result.returncode, 0); self.assertTrue((root/'pending').exists())
-+                    self.assertFalse((root/'accounts').exists())
++                    self.assertEqual((root/'accounts').exists(), mode == 'commit-failure')
 +
 +    def test_main_unknown_contract_and_failures_never_execute_unverified_fallback(self):
 +        for mode in ('contract', 'provision', 'success'):
@@ -547,10 +551,10 @@ index 0000000..0ca90c0
 +                    p=root/name; p.write_text(json.dumps(value)); p.chmod(0o600)
 +                cmd=root/'cmdline'; cmd.write_text('tryomarchy.managed_setup=1')
 +                result=type('Result',(),{'stdout':'disk'})()
-+                with patch.object(m,'SHARE',root),patch.object(m,'PENDING',root/'pending'),patch.object(m,'CMDLINE',cmd),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'mount_share'),patch.object(m,'selected_contract',side_effect=ValueError if mode=='contract' else None,return_value=(LEAN,'lean-e4fffc6')),patch.object(m,'verified_program',return_value={}),patch.object(m.subprocess,'run',return_value=result),patch.object(m.pwd,'getpwall',return_value=[]),patch.object(m,'status') as status,patch.object(m,'provision',side_effect=ValueError if mode=='provision' else None) as provision,patch.object(m,'record_identity') as identity,patch.object(m.os,'execv') as execute:
++                with patch.object(m,'SHARE',root),patch.object(m,'PENDING',root/'pending'),patch.object(m,'CMDLINE',cmd),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',side_effect=ValueError if mode=='contract' else None,return_value=(LEAN,'lean-e4fffc6')),patch.object(m,'verified_program',return_value={}),patch.object(m.subprocess,'run',return_value=result),patch.object(m.pwd,'getpwall',return_value=[]),patch.object(m,'status') as status,patch.object(m,'provision',side_effect=ValueError if mode=='provision' else None) as provision,patch.object(m,'matching_identity') as identity,patch.object(m,'cleanup_finished',return_value=True),patch.object(m.os,'execv') as execute:
 +                    self.assertEqual(m.main(),0 if mode=='success' else 1)
 +                    execute.assert_not_called()
-+                    if mode=='success': identity.assert_called_once(); self.assertEqual(status.call_args.args[1:],('configured',))
++                    if mode=='success': identity.assert_called_once_with(manifest); self.assertEqual(status.call_args.args[1:],('configured',))
 +                    else: identity.assert_not_called(); self.assertEqual(status.call_args.args[1:],('error','contract-mismatch' if mode=='contract' else 'provisioning-failed'))
 +                    self.assertEqual(provision.call_count,int(mode!='contract'))
 +
@@ -565,7 +569,7 @@ index 0000000..0ca90c0
 +            for name,value in [('manifest.json',manifest),('identity',identity)]:
 +                p=root/name;p.write_text(json.dumps(value));p.chmod(0o600)
 +            cmd=root/'cmdline';cmd.write_text('tryomarchy.managed_setup=1')
-+            with patch.object(m,'SHARE',root),patch.object(m,'CMDLINE',cmd),patch.object(m,'PENDING',root/'pending'),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'mount_share'),patch.object(m,'selected_contract',return_value=(LEAN,'lean-e4fffc6')),patch.object(m.pwd,'getpwnam',return_value=type('Account',(),{'pw_uid':1000})()),patch.object(m,'status') as status:
++            with patch.object(m,'SHARE',root),patch.object(m,'CMDLINE',cmd),patch.object(m,'PENDING',root/'pending'),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(LEAN,'lean-e4fffc6')),patch.object(m.pwd,'getpwnam',return_value=type('Account',(),{'pw_uid':1000})()),patch.object(m,'status') as status:
 +                m.acknowledge();self.assertEqual(status.call_args.args[1:],('configured',))
 +                manifest['ownerSetupContractSHA256']=m.OFFICIAL;(root/'manifest.json').write_text(json.dumps(manifest))
 +                with self.assertRaises(ValueError):m.acknowledge()
@@ -587,13 +591,75 @@ index 0000000..0ca90c0
 +                with self.assertRaises(ValueError): m.provision(self.fixture(), {'password': secret}, CONTRACT['keyboards'][0], programs, 'official')
 +                self.assertEqual(run.call_count, 1)
 +
++    def test_lean_finalizer_executes_the_canonical_hash_checked_path(self):
++        with tempfile.TemporaryDirectory() as directory:
++            program = b'#!/bin/bash\nfinalize_user() { "$OMARCHY_PATH/bin/omarchy-provision-user" --force --first-install; }\nmain\n'
++            programs = {str(m.PROGRAM): program, '/usr/bin/omarchy-provision-user': b'# synthetic checked finalizer\n'}
++            def execute(args, **kwargs):
++                source = Path(args[-2]).read_text()
++                self.assertIn('/usr/bin/omarchy-provision-user --force --first-install', source)
++                self.assertNotIn('$OMARCHY_PATH/bin/omarchy-provision-user', source)
++            with patch.object(m,'RUN',Path(directory)),patch.object(m.subprocess,'run',side_effect=execute) as run:
++                m.provision(self.fixture(m.LEAN), {'password':'synthetic-password'}, LEAN['keyboards'][0], programs, 'lean-e4fffc6')
++                programs[str(m.PROGRAM)] = b'#!/bin/bash\nmain\n'
++                with self.assertRaises(ValueError): m.provision(self.fixture(m.LEAN), {'password':'synthetic-password'}, LEAN['keyboards'][0], programs, 'lean-e4fffc6')
++                self.assertEqual(run.call_count,1)
++
++class CompletionBoundaryTests(unittest.TestCase):
++    fixture = ManagedSetupTests.fixture
++    def test_commit_precedes_cleanup_and_restarts_acknowledge_the_bound_owner(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            with self.subTest(digest=digest),tempfile.TemporaryDirectory() as directory:
++                root=Path(directory);manifest=self.fixture(digest)
++                (root/'manifest.json').write_text(json.dumps(manifest));(root/'manifest.json').chmod(0o600)
++                pending=root/'pending';pending.touch();resume=root/'setup-user';resume.write_text('owner')
++                cmd=root/'cmdline';cmd.write_text('tryomarchy.managed_setup=1')
++                account=type('Account',(),{'pw_uid':1000})()
++                with patch.object(m,'SHARE',root),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'PENDING',pending),patch.object(m,'CMDLINE',cmd),patch.object(m,'directory'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(CONTRACT,'official')),patch.object(m.pwd,'getpwnam',return_value=account),patch.object(m,'status') as status:
++                    real_fsync = os.fsync
++                    directory_flushes = []
++                    def durable(fd):
++                        if stat.S_ISDIR(os.fstat(fd).st_mode):
++                            directory_flushes.append(fd)
++                            if len(directory_flushes) == 1: raise OSError('synthetic directory flush failure')
++                        return real_fsync(fd)
++                    with patch.object(m.os,'fsync',side_effect=durable):
++                        with self.assertRaises(OSError): m.commit_identity()
++                        m.commit_identity()
++                    self.assertEqual(len(directory_flushes),2)
++                    self.assertTrue(pending.exists());self.assertEqual(json.loads(m.read(root/'identity')),m.identity_value(manifest))
++                    m.matching_identity(manifest)
++                    m.commit_identity()  # Idempotent after interruption before cleanup.
++                    changed=copy.deepcopy(manifest);changed['fingerprint']='b'*64
++                    with self.assertRaises(ValueError):m.matching_identity(changed)
++                    pending.unlink()
++                    with self.assertRaises(ValueError):m.acknowledge()  # Partial cleanup cannot report success.
++                    resume.unlink()
++                    m.acknowledge();self.assertEqual(status.call_args.args[1:],('configured',))
++                    with self.assertRaises(ValueError):m.commit_identity()  # Not an arbitrary completion override.
++
++class RetryIdentityTests(unittest.TestCase):
++    fixture = ManagedSetupTests.fixture
++    def test_matching_committed_identity_can_retry_after_interrupted_cleanup(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root=Path(directory);manifest=self.fixture(m.LEAN)
++            for name,value in [('manifest.json',manifest),('owner-setup.json',{'password':'synthetic-password'}),('identity',m.identity_value(manifest))]:
++                path=root/name;path.write_text(json.dumps(value));path.chmod(0o600)
++            pending=root/'pending';pending.touch();resume=root/'setup-user';resume.write_text('owner')
++            cmd=root/'cmdline';cmd.write_text('tryomarchy.managed_setup=1')
++            account=type('Account',(),{'pw_name':'owner','pw_uid':1000,'pw_shell':'/bin/bash'})()
++            def provision(*args):pending.unlink();resume.unlink()
++            with patch.object(m,'SHARE',root),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'PENDING',pending),patch.object(m,'CMDLINE',cmd),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(LEAN,'lean-e4fffc6')),patch.object(m,'verified_program',return_value={}),patch.object(m,'reviewed_bytes',return_value=b'owner'),patch.object(m.pwd,'getpwall',return_value=[account]),patch.object(m.subprocess,'run',return_value=type('Result',(),{'stdout':'disk'})()),patch.object(m,'provision',side_effect=provision) as attempt,patch.object(m,'status') as status:
++                self.assertEqual(m.main(),0);attempt.assert_called_once()
++                self.assertEqual(status.call_args.args[1:],('configured',))
++
 +if __name__ == '__main__': unittest.main()
 diff --git a/guest/package/tests/test_managed_ssh.py b/guest/package/tests/test_managed_ssh.py
 new file mode 100644
-index 0000000..7e99db3
+index 0000000..8bcfa6d
 --- /dev/null
 +++ b/guest/package/tests/test_managed_ssh.py
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,178 @@
 +#!/usr/bin/env python3
 +import hashlib
 +import importlib.machinery
@@ -662,6 +728,18 @@ index 0000000..7e99db3
 +                self.assertEqual(runner.run_bash(root, kind).returncode, 0)
 +            m.main()
 +            self.assertEqual(json.loads((m.RUN / 'status.json').read_bytes())['state'], 'configured')
++
++    def test_managed_setup_requires_current_configured_owner_report(self):
++        m=self.module
++        m.CMDLINE.write_text(m.CMDLINE.read_text()+' tryomarchy.managed_setup=1')
++        path=m.ROOT/'run/try-omarchy/managed-setup/status.json'
++        path.parent.mkdir(parents=True,mode=0o700)
++        for state,token,ready in [('error',self.manifest['sessionToken'],False),('configured',str(uuid.uuid4()),False),('configured',self.manifest['sessionToken'],True)]:
++            path.write_text(json.dumps(dict(schemaVersion=1,vmID=self.manifest['vmID'],sessionToken=token,state=state,owner='owner')))
++            m.main()
++            self.assertEqual(json.loads((m.RUN/'status.json').read_bytes())['state'],'configured' if ready else 'waiting-owner')
++        path.chmod(0o666)
++        with self.assertRaises(ValueError):m.main()
 +
 +    def test_waits_for_normal_owner_setup_without_starting_ssh(self):
 +        m = self.module
@@ -761,7 +839,7 @@ index 0000000..7e99db3
 +
 +if __name__ == "__main__": unittest.main()
 diff --git a/guest/package/try-omarchy/PKGBUILD b/guest/package/try-omarchy/PKGBUILD
-index 8426f5d..51561b8 100644
+index 8426f5d..f383db2 100644
 --- a/guest/package/try-omarchy/PKGBUILD
 +++ b/guest/package/try-omarchy/PKGBUILD
 @@ -8,7 +8,7 @@
@@ -769,7 +847,7 @@ index 8426f5d..51561b8 100644
  pkgname=try-omarchy
  pkgver=0.1.0
 -pkgrel=36
-+pkgrel=41
++pkgrel=42
  pkgdesc='Mac host integration for Omarchy running in Try Omarchy'
  arch=('aarch64')
  url='https://github.com/omacom/try-omarchy'
@@ -907,10 +985,10 @@ index 1ee48ee..6632cdd 100755
 +fi
 diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup
 new file mode 100755
-index 0000000..348061c
+index 0000000..2dc46ec
 --- /dev/null
 +++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup
-@@ -0,0 +1,298 @@
+@@ -0,0 +1,351 @@
 +#!/usr/bin/python3 -I
 +"""Use reviewed Omarchy OEM functions for an explicitly seeded new guest."""
 +import hashlib
@@ -1089,6 +1167,7 @@ index 0000000..348061c
 +        [[ -z $full_name ]] || runuser -u "$username" -- env HOME="$home" git config --global -- user.name "$full_name"
 +        [[ -z $email_address ]] || runuser -u "$username" -- env HOME="$home" git config --global -- user.email "$email_address"
 +    fi
++    /usr/lib/try-omarchy/managed-owner-setup --commit
 +    managed_upstream_cleanup_oem_state
 +}
 +for variable in username password full_name email_address hostname timezone keyboard_label keyboard keyboard_input_method keyboard_xkb_layout; do
@@ -1124,15 +1203,31 @@ index 0000000..348061c
 +                if source.count(statement) != 1:
 +                    raise ValueError('interface')
 +                source = source.replace(statement, 'source "' + str(snapshot) + '"')
++        if adapter == 'lean-e4fffc6':
++            call = '"$OMARCHY_PATH/bin/omarchy-provision-user" --force --first-install'
++            if source.count(call) != 1:
++                raise ValueError('finalizer-interface')
++            source = source.replace(call, '/usr/bin/omarchy-provision-user --force --first-install')
 +        snapshots[str(PROGRAM)].write_text(source)
 +        subprocess.run(['/bin/bash', '-c', BASH, 'managed-owner-setup', str(snapshots[str(PROGRAM)]), adapter], input=data, check=True)
 +
 +
-+def record_identity(manifest):
-+    directory(IDENTITY.parent)
++def identity_value(manifest):
 +    value = {key: manifest[key] for key in ('vmID', 'fingerprint')}
 +    value['owner'] = manifest['configuration']['username']
 +    value['ownerSetupContractSHA256'] = manifest.get('ownerSetupContractSHA256', OFFICIAL)
++    return value
++
++
++def matching_identity(manifest):
++    directory(IDENTITY.parent)
++    if json.loads(read(IDENTITY)) != identity_value(manifest):
++        raise ValueError('identity')
++
++
++def record_identity(manifest):
++    directory(IDENTITY.parent)
++    value = identity_value(manifest)
 +    fd = os.open(IDENTITY, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
 +    try:
 +        with os.fdopen(fd, 'w', closefd=False) as stream:
@@ -1141,11 +1236,39 @@ index 0000000..348061c
 +        os.close(fd)
 +
 +
++def commit_identity():
++    mount_share()
++    manifest = json.loads(read(SHARE / 'manifest.json'))
++    selected_contract(manifest)
++    if not PENDING.exists() or Path('/run/omarchy-provision-owner.finalize-warning').exists():
++        raise ValueError('cleanup-state')
++    owner = pwd.getpwnam(manifest['configuration']['username'])
++    if not 1000 <= owner.pw_uid < 60000:
++        raise ValueError('owner')
++    if IDENTITY.exists():
++        matching_identity(manifest)
++    else:
++        record_identity(manifest)
++    for path in (IDENTITY, IDENTITY.parent):
++        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
++        try:
++            os.fsync(fd)
++        finally:
++            os.close(fd)
++
++
++def cleanup_finished():
++    return not any(path.exists() for path in [PENDING, PENDING.parent / 'setup-user', PENDING.parent / 'authorized_keys', PENDING.parent / 'luks-rekey.state', Path('/run/omarchy-provision-owner.finalize-warning')])
++
++
 +def acknowledge():
 +    if not CMDLINE.exists() or 'tryomarchy.managed_setup=1' not in CMDLINE.read_text().split() or PENDING.exists() or not IDENTITY.exists():
 +        return
++    if not cleanup_finished():
++        raise ValueError('cleanup-state')
 +    mount_share()
 +    manifest = json.loads(read(SHARE / 'manifest.json'))
++    directory(IDENTITY.parent)
 +    identity = json.loads(read(IDENTITY))
 +    selected_contract(manifest)
 +    if identity.get('ownerSetupContractSHA256', OFFICIAL) != manifest.get('ownerSetupContractSHA256', OFFICIAL):
@@ -1163,8 +1286,12 @@ index 0000000..348061c
 +    if not CMDLINE.exists() or 'tryomarchy.managed_setup=1' not in CMDLINE.read_text().split():
 +        os.execv(str(PROGRAM), [str(PROGRAM)])
 +    if not PENDING.exists():
-+        acknowledge()
-+        return 0
++        try:
++            acknowledge()
++            return 0
++        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
++            print('Saved owner setup completion could not be verified.', file=sys.stderr)
++            return 1
 +    manifest = None
 +    try:
 +        FAILURE = 'unsafe-share'; mount_share()
@@ -1180,15 +1307,16 @@ index 0000000..348061c
 +            raise ValueError('unsupported-image')
 +        FAILURE = 'existing-owner'
 +        if IDENTITY.exists():
-+            raise ValueError('already-provisioned')
++            matching_identity(manifest)
 +        existing = [p.pw_name for p in pwd.getpwall() if 1000 <= p.pw_uid < 60000 and p.pw_shell not in ('/usr/bin/nologin', '/bin/false', '/usr/sbin/nologin', '/usr/bin/false')]
 +        resume = PENDING.parent / 'setup-user'
 +        if existing and (existing != [manifest['configuration']['username']] or not resume.exists() or reviewed_bytes(resume, maximum=128).decode().strip() != existing[0]):
 +            raise ValueError('existing-account')
 +        status(manifest, 'provisioning')
 +        FAILURE = 'provisioning-failed'; provision(manifest, seed, keyboard, programs, adapter)
-+        if not IDENTITY.exists():
-+            record_identity(manifest)
++        matching_identity(manifest)
++        if not cleanup_finished():
++            raise ValueError('cleanup-state')
 +        status(manifest, 'configured')
 +        return 0
 +    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
@@ -1202,19 +1330,22 @@ index 0000000..348061c
 +
 +
 +if __name__ == '__main__':
-+    if sys.argv[1:] == ['--report']:
++    if sys.argv[1:] in (['--report'], ['--commit']):
 +        try:
-+            acknowledge()
++            if sys.argv[1:] == ['--commit']:
++                commit_identity()
++            else:
++                acknowledge()
 +        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
 +            sys.exit(1)
 +    else:
 +        sys.exit(main())
 diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh
 new file mode 100755
-index 0000000..0dbca16
+index 0000000..632c8ed
 --- /dev/null
 +++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,248 @@
 +#!/usr/bin/python3 -I
 +"""Enroll managed SSH through a per-VM read-only host provisioning share."""
 +import json
@@ -1315,6 +1446,24 @@ index 0000000..0dbca16
 +    return candidates[0] if len(candidates) == 1 else None
 +
 +
++def setup_owner(manifest, binding):
++    if "tryomarchy.managed_setup=1" not in CMDLINE.read_text().split():
++        return owner_account(binding)
++    path = ROOT / "run/try-omarchy/managed-setup/status.json"
++    if not path.exists():
++        return None
++    private_directory(path.parent)
++    info = path.lstat()
++    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022 or info.st_nlink != 1:
++        raise ProvisioningError("unsafe-setup-status")
++    report = json.loads(read(path))
++    if report.get("state") != "configured" or type(report.get("schemaVersion")) is not int or report["schemaVersion"] != 1 or any(report.get(key) != manifest[key] for key in ("vmID", "sessionToken")):
++        return None
++    if not isinstance(report.get("owner"), str) or binding.get("owner", report["owner"]) != report["owner"]:
++        raise ProvisioningError("setup-owner-changed")
++    return owner_account(dict(binding, owner=report["owner"]))
++
++
 +def mount_share():
 +    private_directory(SHARE.parent)
 +    if not os.path.ismount(SHARE):
@@ -1373,7 +1522,7 @@ index 0000000..0dbca16
 +            raise ValueError("SSH host identity mismatch")
 +    write(identity_path, (json.dumps(binding) + "\n").encode())
 +    STAGE = "owner"
-+    owner = None if PENDING.exists() else owner_account(binding)
++    owner = None if PENDING.exists() else setup_owner(manifest, binding)
 +    if owner is None:
 +        status(manifest, "waiting-owner")
 +        return
@@ -3286,7 +3435,7 @@ index f199020..961c03a 100644
          exit(0)
 diff --git a/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 new file mode 100644
-index 0000000..36c4eb2
+index 0000000..3d72b20
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 @@ -0,0 +1,143 @@
@@ -3296,7 +3445,7 @@ index 0000000..36c4eb2
 +
 +public struct VMFactorySelection: Codable, Equatable, Sendable {
 +    public static let capabilityVersion = 1
-+    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-41-aarch64.pkg.tar.zst"
++    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-42-aarch64.pkg.tar.zst"
 +    public let bundlePath: String
 +    public let manifestSHA256: String
 +    public init(bundlePath: String, manifestSHA256: String) {
@@ -3435,7 +3584,7 @@ index 0000000..36c4eb2
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
 new file mode 100644
-index 0000000..43ea55c
+index 0000000..6ac7b6a
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
 @@ -0,0 +1,16 @@
@@ -3446,7 +3595,7 @@ index 0000000..43ea55c
 +    public static let official = "d381667f407b5f82cfb9f9c391eccf2898ba8a064bc6b2f082e28f959e76aef8"
 +    public static let lean = "1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310"
 +    public static let provenancePath = "Contents/Resources/owner-setup-provenance.json"
-+    public static let leanIntegrationVersion = "0.1.0-41.1"
++    public static let leanIntegrationVersion = "0.1.0-42.1"
 +    public static let leanPrograms = [
 +        "/usr/bin/omarchy-provision-owner": "b81202f7b6f58f4e670c8f3509e1eb952807b92ad24d0c0e87b75bd03004d0ca",
 +        "/usr/share/omarchy/install/provisioning/setup-form.sh": "b3ae7c22c8c8de91590d3a0e7d037b75734b7d886c8dceb012a3bbdf546045c5",
@@ -4343,7 +4492,7 @@ index df1e815..b8f2824 100644
 +    }
 +}
 diff --git a/macos/Tests/run-mode.test.sh b/macos/Tests/run-mode.test.sh
-index fb2be66..9cd21d7 100755
+index fb2be66..4c13b6d 100755
 --- a/macos/Tests/run-mode.test.sh
 +++ b/macos/Tests/run-mode.test.sh
 @@ -119,7 +119,8 @@ if not marker.exists():
@@ -4391,7 +4540,7 @@ index fb2be66..9cd21d7 100755
 +(custom / "factory.json").write_text(json.dumps(factory))
 +(custom / "omarchy.img.zst").write_bytes(image)
 +(custom / "provisioning.json").write_text('{"fixture":"no VM"}')
-+package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-41-aarch64.pkg.tar.zst"
++package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-42-aarch64.pkg.tar.zst"
 +required = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy",
 +            "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", package_path]
 +for name in required:

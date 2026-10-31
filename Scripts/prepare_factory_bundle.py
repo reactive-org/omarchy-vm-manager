@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-41-aarch64.pkg.tar.zst'
+PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-42-aarch64.pkg.tar.zst'
 
 
 def read_regular(path, maximum=None):
@@ -103,11 +103,11 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
         build = metadata(bundle / image_build)
         expected = metadata(selected)['programs'].copy()
         del expected['/usr/share/omarchy/install/provisioning/progress-icon.sh']
-        if (evidence.get('owner_programs') != expected or evidence.get('packages', {}).get('try-omarchy') != '0.1.0-41.1'
+        if (evidence.get('owner_programs') != expected or evidence.get('packages', {}).get('try-omarchy') != '0.1.0-42.1'
                 or build.get('try_commit') != lock.get('patchCommit') or not re.fullmatch('[0-9a-f]{40}', str(build.get('try_commit', '')))):
             raise ValueError('Rebuild the lean disk from this reviewed manager integration source; owner programs, package or source differ')
         extra = {'ownerSetupEvidence': compatibility, 'imageBuildEvidence': image_build,
-                 'imageIntegrationVersion': '0.1.0-41.1', 'imageIntegrationSourceCommit': build['try_commit']}
+                 'imageIntegrationVersion': '0.1.0-42.1', 'imageIntegrationSourceCommit': build['try_commit']}
     value = {
         'format': 1, 'name': name, 'architecture': 'aarch64', 'boot': 'uefi-limine',
         'customFactoryVersion': 1, 'managedSSHVersion': 1, 'managedSetupVersion': 1,

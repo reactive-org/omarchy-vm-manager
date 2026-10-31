@@ -445,7 +445,7 @@ public actor VMManager {
             case "configured":
                 try owner.finish(request.profile)
                 ownerStates[request.profile.id] = .configured
-            case "error": ownerStates[request.profile.id] = .failed("Automatic setup failed (" + (report.failureCode ?? "provisioning-failed") + "). Use the guest’s setup screen or restart to retry.")
+            case "error": ownerStates[request.profile.id] = .failed("Automatic setup failed (" + (report.failureCode ?? "provisioning-failed") + "). Shut down this guest and review the failure before restarting to retry.")
             default: ownerStates[request.profile.id] = .provisioning
             }
         } catch { ownerStates[request.profile.id] = .failed("Cannot verify owner setup or remove its temporary seed. Shut down this guest and review its storage.") }

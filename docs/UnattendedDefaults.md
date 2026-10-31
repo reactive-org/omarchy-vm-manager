@@ -18,6 +18,8 @@ The user's request authorizes storing a password for unattended owner creation. 
 
 **DESIGN DECISION — reviewed contract extension, 1 November 2026:** package 41 preserves the official contract and adds explicitly selected `lean-e4fffc6` support bound to verified factory/runtime provenance. It checks complete program sets and their private snapshots before managed functions, preserves saved full-name/email fields for lean, and prevents finalization warnings from removing retry markers or enabling SSH. Opted-in errors stop with a bounded failure code; they no longer execute an interactive fallback after contract failure. Unseeded guests retain normal interactive setup. See [lean source review, rebuild and commands](LeanOwnerSetup.md). This extension has synthetic validation only; the earlier real-guest results below apply to the official factory and historical build.
 
+**DESIGN DECISION — review corrections:** package 42 executes the lean finalizer at its checked canonical path, commits and flushes the bound completion identity before upstream cleanup, and permits a matching committed owner to retry interrupted cleanup. Failed commit/flush leaves pending intact. Seeded SSH additionally requires a configured owner report for the current VM/session. Unseeded and previously completed guests keep their existing SSH path. No existing guest is migrated by this work.
+
 ## Required checks
 
 - Defaults off until saved; optional opt-out per new guest.

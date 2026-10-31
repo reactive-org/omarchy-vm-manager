@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-01T14:00:00+11:00",
+  "authorDate": "2026-11-01T16:00:00+11:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-01T14:00:00+11:00",
-  "subject": "Add reviewed official and lean owner provisioning contracts",
-  "commit": "2f4edb784dc9e0d58a35f1d31558ef72bbe2df37",
-  "patchSHA256": "7a3b339a616fd6062a23f1d018765ba440fac6d575aa90eeaeb2545cd8f89163"
+  "committerDate": "2026-11-01T16:00:00+11:00",
+  "subject": "Bind managed finalization and durable completion to the reviewed owner",
+  "commit": "aab6bd82b279cc81c2627be73f7b206ae6dadfc0",
+  "patchSHA256": "ae48d3c5ca62bc41d000bd6cdfa123325f629125e81830e333addaa04b807f84"
 }

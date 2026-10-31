@@ -110,7 +110,7 @@ class LeanPreparationTests(unittest.TestCase):
                 expected = json.loads((ROOT / 'Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json').read_bytes())['programs']
                 del expected['/usr/share/omarchy/install/provisioning/progress-icon.sh']
                 if case == 'mixed': expected['/usr/bin/omarchy-provision-owner'] = 'a' * 64
-                (bundle / 'compatibility.json').write_text(json.dumps({'owner_programs': expected, 'packages': {'try-omarchy': '0.1.0-36.1' if case == 'old-package' else '0.1.0-41.1'}}))
+                (bundle / 'compatibility.json').write_text(json.dumps({'owner_programs': expected, 'packages': {'try-omarchy': '0.1.0-36.1' if case == 'old-package' else '0.1.0-42.1'}}))
                 (bundle / 'image-build.json').write_text(json.dumps({'try_commit': 'f' * 40 if case == 'wrong-source' else lock['patchCommit']}))
                 if case == 'capability': del lock['ownerSetupContractsVersion']
                 lock_path.write_text(json.dumps(lock))
@@ -118,7 +118,7 @@ class LeanPreparationTests(unittest.TestCase):
                 if case == 'success':
                     module.prepare(bundle, 'Lean fixture', ['compatibility.json','image-build.json'], **kwargs)
                     value = json.loads((bundle / 'reviewed-factory.json').read_bytes())
-                    self.assertEqual(value['imageIntegrationVersion'], '0.1.0-41.1')
+                    self.assertEqual(value['imageIntegrationVersion'], '0.1.0-42.1')
                     self.assertEqual(value['ownerSetupContractSHA256'], module.digest(ROOT / 'Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json'))
                 else:
                     with self.assertRaises(ValueError): module.prepare(bundle, 'Lean fixture', ['compatibility.json','image-build.json'], **kwargs)

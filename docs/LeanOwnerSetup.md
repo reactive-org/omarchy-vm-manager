@@ -10,10 +10,11 @@ The official contract remains byte-for-byte unchanged in `Sources/OmarchyVMManag
 | --- | --- |
 | `apply_keyboard(keymap)` and `omarchy_persist_input_selection()` | Same interfaces and identical 52-entry keyboard table. Console keymap persistence/readback, input method and XKB selection remain upstream-owned. Unknown keymaps and failed persistence fail setup. |
 | `create_user()` | Both pin `setup-user`, create or resume the same account, set passwords through stdin and preserve upstream groups/policy. Lean removed full-name propagation. The lean adapter applies the saved GECOS name before cleanup. |
-| `finalize_user()` | Both use `runuser`, the account's home and shell, `provision-owner`, and `--force --first-install`. Lean removed the name/email environment inputs. Its reviewed adapter preserves saved Git name/email before cleanup; empty fields remain unset. |
+| `finalize_user()` | Both use `runuser`, the account's home and shell, `provision-owner`, and `--force --first-install`. Lean execution is bound to the checked `/usr/bin/omarchy-provision-user`, bypassing the separate Omarchy alias. Lean removed the name/email environment inputs. Its reviewed adapter preserves saved Git name/email before cleanup; empty fields remain unset. |
 | `run_provisioning()` | Same account, login, hostname/timezone, finalization, boot and cleanup sequence. A failed finalizer sets a warning but upstream continues. The managed adapter guards cleanup so that warning preserves `pending` and `setup-user`, stops acknowledgement and blocks SSH until retry succeeds. |
 | Top-level dependencies | Lean additionally sources `progress-icon.sh`. The lean contract pins that file and `omarchy-provision-user` alongside owner/setup-form/LUKS programs. Interactive localization/progress differences do not alter the managed function interface. |
 | Failure and retry | Opted-in failures emit only a bounded code and return failure. Contract mismatches cannot launch an unverified interactive fallback. Unseeded setup still runs the normal interactive program. A retry may only resume the recorded owner; encrypted, wipe-pending and unrelated-account states remain refused. |
+| Completion boundary | A root-only callback records and flushes the bound completion identity before upstream cleanup. A failed flush prevents cleanup and is retried even when the record exists. Matching committed identities can resume interrupted cleanup; other identities fail closed. Acknowledgement requires all cleanup markers gone. Seeded SSH waits for a configured owner report matching the current VM/session. |
 
 **PRIVATE COUPLING:** the adapter loads only signed-package contracts with compiled known digests. Programs and parents must be root-owned, non-writable by group/other, regular and non-linked; hashes must exactly match one complete set. Source programs/dependencies are snapshotted privately before Bash loads them. The cleanup wrapper is derived from that verified function, never imported executable metadata. Secret answers remain NUL-delimited stdin data, outside arguments/status. Guest Defaults, profile fingerprints, per-guest SSH keys and matching `.exited` lifecycle ownership are unchanged.
 
@@ -21,7 +22,7 @@ The official contract remains byte-for-byte unchanged in `Sources/OmarchyVMManag
 
 **The supplied disk needs rebuilding for managed lean setup.** Its integration package lacks this adapter and managed SSH. Injecting the old manager package would also restore software-rendering policy. Do not patch the existing disk or alter an official cache.
 
-The reviewed integration source is commit **`2f4edb784dc9e0d58a35f1d31558ef72bbe2df37`**, reproduced by `make prepare-source` at `.build/runtime-source`. It retains the exact stock factory builder and descends from Try Omarchy v1.3.0. The complete kit offers `try-omarchy 0.1.0-41`. The dev-vm builder's existing, checked hardware-policy transformation produces **0.1.0-41.1** from the same source, retaining the managed adapter/SSH/contracts while removing its documented software-rendering wrappers. The existing installer compares package versions and preserves this newer variant rather than overwriting it with 41. Factory admission requires evidence of that source/version; the evidence remains a declaration until live validation.
+The reviewed integration source is commit **`aab6bd82b279cc81c2627be73f7b206ae6dadfc0`**, reproduced by `make prepare-source` at `.build/runtime-source`. It retains the exact stock factory builder and descends from Try Omarchy v1.3.0. The complete kit offers `try-omarchy 0.1.0-42`. The dev-vm builder's existing, checked hardware-policy transformation produces **0.1.0-42.1** from the same source, retaining the managed adapter/SSH/contracts while removing its documented software-rendering wrappers. The existing installer compares package versions and preserves this newer variant rather than overwriting it with 42. Factory admission requires evidence of that source/version; the evidence remains a declaration until live validation.
 
 Use the existing builder and tools; these commands do not install host tools:
 
@@ -34,7 +35,7 @@ git -C "$integration_source" rev-parse HEAD
 cd /Users/danwas/Development/Projects/dev-vm
 make build-omarchy-image \
   OMARCHY_IMAGE_TRY_SOURCE="$integration_source" \
-  OMARCHY_IMAGE_TRY_COMMIT=2f4edb784dc9e0d58a35f1d31558ef72bbe2df37 \
+  OMARCHY_IMAGE_TRY_COMMIT=aab6bd82b279cc81c2627be73f7b206ae6dadfc0 \
   OMARCHY_IMAGE_SIZE_GIB=20
 ```
 
@@ -64,7 +65,7 @@ python3 Scripts/prepare_factory_bundle.py "$bundle" \
   --provisioning user-provisioning-check.json
 ```
 
-Use the CLI from the matching rebuilt app with its matching manager running; an older running manager will not acquire the new contract from a newer CLI. This work builds a separate signed preview and does not install or open it. After the operator has installed/selected that build and opened the matching manager, run:
+Use the CLI from the matching reviewed 0.9.1 app with its matching manager running; an older running manager will not acquire the new contract from a newer CLI. Installation does not open the app or issue guest commands. After the operator has opened the matching manager, run:
 
 ```sh
 cli='/absolute/path/to/matching/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm'
