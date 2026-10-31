@@ -13,6 +13,8 @@ struct DeletionReview: Identifiable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    @Published var factoryImportInProgress = false
+    @Published var factoryImportProgress = FactoryImportProgress.verifying
     @Published var factories: [FactoryIdentity] = [.official]
     @Published var ownerDefaults: OwnerDefaults?
     @Published var defaultsError: String?
@@ -32,6 +34,7 @@ final class AppModel: ObservableObject {
     @Published var storageBytes: [UUID: Int64] = [:]
     let manager: VMManager
     private let support: URL
+    private var factoryImportID: UUID?
     private var commandServer: ManagerCommandServer?
     private var lastReportID: UUID?
     private var lastAccessibilityTrusted: Bool?
@@ -136,6 +139,24 @@ final class AppModel: ObservableObject {
             storageRefreshed = .distantPast
             await update(); return id
         } catch { configurationError = error.localizedDescription; return nil }
+    }
+
+    func importFactory(from url: URL) async throws -> FactoryIdentity {
+        guard registryError == nil, !factoryImportInProgress, !shuttingDown else { throw VMFailure(code: "factory-import-unavailable", message: "A factory import is already running or the manager is unavailable.") }
+        let importID = UUID()
+        factoryImportID = importID
+        factoryImportInProgress = true
+        factoryImportProgress = .verifying
+        defer { factoryImportInProgress = false; factoryImportID = nil }
+        let identity = try await manager.importFactory(url) { [weak self] progress in
+            Task { @MainActor in
+                guard let self, self.factoryImportID == importID else { return }
+                self.factoryImportProgress = progress
+            }
+        }
+        factories.removeAll { $0.selector == identity.selector }
+        factories.append(identity)
+        return identity
     }
 
     func loadFactories() async {

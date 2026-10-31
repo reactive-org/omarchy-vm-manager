@@ -30,6 +30,20 @@ public struct FactoryCatalogListing: Sendable {
     public let issues: [FactoryCatalogIssue]
 }
 
+public enum FactoryImportProgress: String, Sendable {
+    case verifying = "Verifying factory…"
+    case copying = "Copying factory…"
+    case checkingCopy = "Checking imported copy…"
+    case saving = "Saving verified factory…"
+}
+
+struct FactoryImportReceipt: Codable, Equatable {
+    let schemaVersion: Int
+    let factory: FactoryIdentity
+    let runtimeLockSHA256: String
+    let importedAt: Date
+}
+
 public struct FactoryCatalog: Sendable {
     let applicationSupport: URL
     let kit: TryOmarchyKit
@@ -63,16 +77,51 @@ public struct FactoryCatalog: Sendable {
     }
     var directory: URL { ManagerStorage(applicationSupport: applicationSupport).directory.appendingPathComponent("Factories") }
     func root(_ digest: String) -> URL { directory.appendingPathComponent(digest) }
+    var receipts: URL { directory.appendingPathComponent(".receipts") }
+    func receiptURL(_ digest: String) -> URL { receipts.appendingPathComponent(digest + ".json") }
+    private func receipt(for digest: String) throws -> FactoryImportReceipt? {
+        guard PrivateFiles.exists(receipts) else { return nil }
+        try PrivateFiles.directory(directory); try PrivateFiles.directory(receipts)
+        let url = receiptURL(digest)
+        guard PrivateFiles.exists(url) else { return nil }
+        let receipt = try JSONDecoder().decode(FactoryImportReceipt.self, from: PrivateFiles.read(url))
+        try receipt.factory.validate()
+        guard receipt.schemaVersion == 1, receipt.factory.kind == .custom, receipt.factory.manifestSHA256 == digest,
+              receipt.runtimeLockSHA256 == KitVerifier.sha256(lockData), receipt.importedAt.timeIntervalSince1970.isFinite else {
+            throw Self.invalid("This factory’s import record is damaged or belongs to a different runtime.")
+        }
+        return receipt
+    }
+    private func recordImport(_ factory: FactoryIdentity) throws {
+        try PrivateFiles.directory(receipts, create: true)
+        try Self.flushDirectory(directory)
+        if let existing = try receipt(for: factory.manifestSHA256) {
+            guard existing.factory == factory else { throw Self.invalid("The imported factory differs from its saved identity.") }
+            return
+        }
+        let receipt = FactoryImportReceipt(schemaVersion: 1, factory: factory, runtimeLockSHA256: KitVerifier.sha256(lockData), importedAt: Date())
+        try PrivateFiles.write(JSONEncoder().encode(receipt), name: receiptURL(factory.manifestSHA256).lastPathComponent, in: receipts, exclusively: true)
+    }
     static func invalid(_ message: String) -> VMFailure { VMFailure(code: "factory-verification-failed", message: message) }
 
     func verify(_ url: URL, digest: String) throws -> FactoryIdentity {
-        guard reviewed.contains(digest) else { throw Self.invalid("This factory has no manifest digest in the app’s reviewed catalog. Review and rebuild the app before importing it.") }
+        let receipt = try receipt(for: digest)
+        guard reviewed.contains(digest) || receipt != nil else { throw Self.invalid("Import this prepared factory through Import Factory before selecting it.") }
+        let identity = try verifyCandidate(url, digest: digest)
+        if let receipt, receipt.factory != identity { throw Self.invalid("The imported factory differs from its saved identity.") }
+        return identity
+    }
+
+    private func verifyCandidate(_ url: URL, digest: String) throws -> FactoryIdentity {
+        try Task.checkCancellation()
         let lock = try JSONDecoder().decode(RuntimeProvenance.self, from: lockData)
         guard lock.customFactoryVersion == 1, lock.managedSSHVersion == 1, lock.managedSetupVersion == 1 else { throw Self.invalid("The runtime lacks the reviewed custom-factory and provisioning capabilities.") }
         let selection = VMFactorySelection(bundlePath: url.path, manifestSHA256: digest)
         let manifest: VMFactoryManifest
         do { manifest = try selection.verified(runtimeBundle: kit.bundleURL) }
+        catch is CancellationError { throw CancellationError() }
         catch { throw Self.invalid("The factory payload, image metadata or runtime hashes failed verification.") }
+        try Task.checkCancellation()
         let contract = Bundle.module.url(forResource: "OwnerSetupContract", withExtension: "json")!
         guard manifest.runtimeFiles == lock.files,
               manifest.integrationPackageSHA256 == lock.files[VMFactorySelection.packagePath],
@@ -81,15 +130,23 @@ public struct FactoryCatalog: Sendable {
         return FactoryIdentity(kind: .custom, name: manifest.name, manifestSHA256: digest, diskSHA256: image.disk.sha256)
     }
 
-    public func importBundle(_ source: URL) throws -> FactoryIdentity {
-        let digest = KitVerifier.sha256(try VMFactorySelection.readMetadata(source.appendingPathComponent("reviewed-factory.json")))
-        let identity = try verify(source, digest: digest)
+    public func importBundle(_ source: URL, onProgress: @Sendable (FactoryImportProgress) -> Void = { _ in }) throws -> FactoryIdentity {
+        try Task.checkCancellation()
+        onProgress(.verifying)
+        let descriptor: Data
+        do { descriptor = try VMFactorySelection.readMetadata(source.appendingPathComponent("reviewed-factory.json")) }
+        catch { throw Self.invalid("Choose a prepared factory bundle with a readable reviewed-factory.json manifest.") }
+        let digest = KitVerifier.sha256(descriptor)
+        let identity = try verifyCandidate(source, digest: digest)
         try PrivateFiles.directory(ManagerStorage(applicationSupport: applicationSupport).directory)
         try PrivateFiles.directory(directory, create: true)
         let destination = root(digest)
         if PrivateFiles.exists(destination) {
             try PrivateFiles.directory(destination)
-            guard try verify(destination, digest: digest) == identity else { throw Self.invalid("The imported factory identity changed.") }
+            guard try verifyCandidate(destination, digest: digest) == identity else { throw Self.invalid("The imported factory identity changed.") }
+            try Task.checkCancellation()
+            onProgress(.saving)
+            try recordImport(identity)
             return identity
         }
         let stage = directory.appendingPathComponent(".import-" + UUID().uuidString)
@@ -100,13 +157,26 @@ public struct FactoryCatalog: Sendable {
             }
             try? FileManager.default.removeItem(at: stage)
         }
+        onProgress(.copying)
         for name in try FileManager.default.contentsOfDirectory(atPath: source.path) {
+            try Task.checkCancellation()
             let target = stage.appendingPathComponent(name)
             try Self.copyPayload(source.appendingPathComponent(name), to: target)
         }
-        guard try verify(stage, digest: digest) == identity else { throw Self.invalid("Factory changed while importing. The source was preserved.") }
+        onProgress(.checkingCopy)
+        guard try verifyCandidate(stage, digest: digest) == identity else { throw Self.invalid("Factory changed while importing. The source was preserved.") }
+        try Task.checkCancellation()
+        onProgress(.saving)
         try FileManager.default.moveItem(at: stage, to: destination)
+        try Self.flushDirectory(directory)
+        try recordImport(identity)
         return identity
+    }
+    private static func flushDirectory(_ url: URL) throws {
+        let fd = open(url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw invalid("Cannot flush factory metadata.") }
+        defer { close(fd) }
+        guard fsync(fd) == 0 else { throw invalid("Cannot flush factory metadata.") }
     }
     private static func copyPayload(_ source: URL, to target: URL) throws {
         let input = open(source.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
@@ -119,7 +189,19 @@ public struct FactoryCatalog: Sendable {
         defer { close(output) }
         let reader = FileHandle(fileDescriptor: input, closeOnDealloc: false)
         let writer = FileHandle(fileDescriptor: output, closeOnDealloc: false)
-        while let data = try reader.read(upToCount: 1_048_576), !data.isEmpty { try writer.write(contentsOf: data) }
+        var remaining = info.st_size
+        while remaining > 0 {
+            try Task.checkCancellation()
+            let data = try reader.read(upToCount: Int(min(remaining, 1_048_576))) ?? Data()
+            guard !data.isEmpty else { throw invalid("A factory payload changed while copying.") }
+            try writer.write(contentsOf: data)
+            remaining -= off_t(data.count)
+        }
+        let extra = try reader.read(upToCount: 1) ?? Data()
+        var current = stat()
+        guard extra.isEmpty, fstat(input, &current) == 0, current.st_size == info.st_size,
+              current.st_mtimespec.tv_sec == info.st_mtimespec.tv_sec, current.st_mtimespec.tv_nsec == info.st_mtimespec.tv_nsec,
+              current.st_ctimespec.tv_sec == info.st_ctimespec.tv_sec, current.st_ctimespec.tv_nsec == info.st_ctimespec.tv_nsec else { throw invalid("A factory payload changed while copying.") }
         guard fsync(output) == 0 else { throw invalid("Cannot flush the imported factory payload.") }
     }
     public func listing() throws -> FactoryCatalogListing {
@@ -133,7 +215,7 @@ public struct FactoryCatalog: Sendable {
                 try PrivateFiles.directory(root(digest))
                 factories.append(try verify(root(digest), digest: digest))
             } catch {
-                issues.append(FactoryCatalogIssue(selector: digest, message: "This imported factory failed verification. Reimport or review its provenance before selecting it."))
+                issues.append(FactoryCatalogIssue(selector: digest, message: "This imported factory or its import record failed verification and cannot be selected."))
             }
         }
         return FactoryCatalogListing(factories: factories, issues: issues)

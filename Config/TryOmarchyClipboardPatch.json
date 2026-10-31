@@ -5,7 +5,7 @@
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
   "committerDate": "2026-11-01T12:00:00+11:00",
-  "subject": "Add reviewed custom factory selection to the managed run mode",
-  "commit": "368940636a648d8ac29fe36ba3e1e44f360cb894",
-  "patchSHA256": "59f4131142230c7e0a328382aade50e612b62e125ddb2d6b0197028897628078"
+  "subject": "Add cancellable verified factory selection to the managed run mode",
+  "commit": "eda42dd2add4cc3fe465bcd0e60db593ed29c3a0",
+  "patchSHA256": "40ebe457514ca80f6b193ed20b1aa95a15cc342b1d30a10810c3ad1058a98ad9"
 }

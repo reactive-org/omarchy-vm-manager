@@ -8,7 +8,7 @@ public struct GuestCLIInvocation: Sendable {
     omarchy-vm <command> [UUID | exact-name] [options]
 
       factories                    List verified imported factories and official
-      factory-import PATH          Import a prepared, reviewed factory bundle
+      factory-import PATH          Verify and import a prepared factory bundle
       list                         List guests
       get ID                       Show config, state and SSH/network details
       create NAME [options]        Create a guest with saved owner defaults

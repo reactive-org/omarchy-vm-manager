@@ -104,3 +104,6 @@ Pause keeps the live process, memory allocation, disk lock and SSH port reserved
 ## Factory image cache
 
 New guests share a verified download in `~/Downloads/Omarchy VM Manager/Factory Images/`, including guests created through the CLI. The current pinned image stays cached; obsolete image downloads are pruned after seven days without use. Interrupted downloads resume and cached images are checksum-verified before reuse. Guest disks remain independent. See [factory cache](docs/FactoryCache.md).
+
+
+Use **Import Factory** in the toolbar or **New VM** to select and verify a prepared custom factory bundle. Imported factories are recorded locally and remain selectable after reopening the app; no catalog JSON edit or app rebuild is needed. See [custom factories](docs/CustomFactories.md) for the prepared-bundle contract and validation limits.

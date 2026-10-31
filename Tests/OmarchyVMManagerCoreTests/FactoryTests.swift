@@ -50,7 +50,8 @@ private struct FactoryFixture {
         return KitVerifier.sha256(data)
     }
     func catalog(reviewed: Set<String>) throws -> FactoryCatalog {
-        FactoryCatalog(applicationSupport: files.support, kit: kit.kit, lockData: try JSONEncoder().encode(lock), reviewed: reviewed)
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        return FactoryCatalog(applicationSupport: files.support, kit: kit.kit, lockData: try encoder.encode(lock), reviewed: reviewed)
     }
     func cleanup() { files.cleanup(); kit.cleanup() }
 }
@@ -91,7 +92,7 @@ struct FactoryTests {
     @Test("one damaged import cannot hide official or another valid factory")
     func damagedListing() async throws {
         let f = try FactoryFixture(); defer { f.cleanup() }
-        let digest = try f.write(), catalog = try f.catalog(reviewed: [digest])
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
         _ = try catalog.importBundle(f.source)
         let unknown = String(repeating: "e", count: 64)
         try PrivateFiles.directory(catalog.directory.appendingPathComponent(unknown), create: true)
@@ -111,19 +112,101 @@ struct FactoryTests {
         #expect(response.ok && response.factories == [.official])
         #expect(response.factoryIssues?.count == 2)
     }
-    @Test("unknown bundles cannot approve themselves or create a cache")
-    func unreviewed() throws {
+    @Test("explicit import verifies and persists a local factory without a bundled review pin")
+    func localImport() throws {
         let f = try FactoryFixture(); defer { f.cleanup() }
-        _ = try f.write()
-        let catalog = try f.catalog(reviewed: [])
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
+        #expect(throws: VMFailure.self) { try catalog.verify(f.source, digest: digest) }
+        let identity = try catalog.importBundle(f.source)
+        let receiptData = try PrivateFiles.read(catalog.receiptURL(digest))
+        let receipt = try JSONDecoder().decode(FactoryImportReceipt.self, from: receiptData)
+        #expect(receipt.factory == identity && receipt.schemaVersion == 1)
+        let reopened = try f.catalog(reviewed: [])
+        #expect(try reopened.identities() == [.official, identity])
+        #expect(try reopened.selection(for: identity)?.manifestSHA256 == digest)
+        #expect(try reopened.importBundle(f.source) == identity)
+        #expect(try PrivateFiles.read(catalog.receiptURL(digest)) == receiptData)
+        #expect(!FileManager.default.fileExists(atPath: f.files.storage.vms.path))
+    }
+    @Test("invalid candidates cannot write a local import receipt or become selectable")
+    func invalidLocalImport() throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
+        try Data("changed provisioning".utf8).write(to: f.source.appendingPathComponent("provisioning.json"))
         #expect(throws: VMFailure.self) { try catalog.importBundle(f.source) }
         #expect(!FileManager.default.fileExists(atPath: catalog.directory.path))
+        #expect(!FileManager.default.fileExists(atPath: catalog.receiptURL(digest).path))
         #expect(!FileManager.default.fileExists(atPath: f.files.storage.vms.path))
+    }
+    @Test("local receipts reject tampering, other runtimes and unsafe files", arguments: ["schema", "runtime", "identity", "permissions", "symlink", "missing"])
+    func localReceiptDamage(_ mode: String) throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
+        _ = try catalog.importBundle(f.source)
+        let url = catalog.receiptURL(digest)
+        if mode == "missing" {
+            try FileManager.default.removeItem(at: url)
+        } else if mode == "permissions" {
+            try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        } else if mode == "symlink" {
+            let outside = f.files.support.appendingPathComponent("outside-receipt")
+            try FileManager.default.moveItem(at: url, to: outside)
+            try FileManager.default.createSymbolicLink(at: url, withDestinationURL: outside)
+        } else {
+            var value = try JSONSerialization.jsonObject(with: PrivateFiles.read(url)) as! [String: Any]
+            if mode == "schema" { value["schemaVersion"] = 2 }
+            if mode == "runtime" { value["runtimeLockSHA256"] = String(repeating: "a", count: 64) }
+            if mode == "identity" {
+                var factory = value["factory"] as! [String: Any]
+                factory["diskSHA256"] = String(repeating: "a", count: 64); value["factory"] = factory
+            }
+            try PrivateFiles.write(JSONSerialization.data(withJSONObject: value), name: url.lastPathComponent, in: catalog.receipts)
+        }
+        #expect(throws: (any Error).self) { try catalog.identity(for: digest) }
+        let listing = try catalog.listing()
+        #expect(listing.factories == [.official] && listing.issues.map(\.selector) == [digest])
+        if mode != "missing" {
+            let damaged = try Data(contentsOf: url)
+            #expect(throws: (any Error).self) { try catalog.importBundle(f.source) }
+            #expect(try Data(contentsOf: url) == damaged)
+        } else {
+            #expect(try catalog.importBundle(f.source).manifestSHA256 == digest)
+        }
+    }
+    @Test("the shared file hasher observes cancellation before scanning payloads")
+    func cancellableHasher() async throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let payload = f.source.appendingPathComponent("test.img.zst")
+        let task = Task.detached {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try VMFactorySelection.digest(payload)
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
+    @Test("cancelled verification and copy publish no factory or receipt", arguments: [FactoryImportProgress.verifying, .copying, .checkingCopy])
+    func cancelImport(_ phase: FactoryImportProgress) async throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
+        let original = try KitVerifier.inventory(at: f.source)
+        let source = f.source
+        let task = Task.detached {
+            try catalog.importBundle(source) { progress in
+                if progress == phase { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(!FileManager.default.fileExists(atPath: catalog.root(digest).path))
+        #expect(!FileManager.default.fileExists(atPath: catalog.receiptURL(digest).path))
+        #expect(try KitVerifier.inventory(at: f.source) == original)
+        #expect(try catalog.identities() == [.official])
+        if FileManager.default.fileExists(atPath: catalog.directory.path) {
+            #expect(try FileManager.default.contentsOfDirectory(atPath: catalog.directory.path).isEmpty)
+        }
     }
     @Test("reviewed imports are copied, verified, idempotent and selectable alongside official")
     func imports() throws {
         let f = try FactoryFixture(); defer { f.cleanup() }
-        let digest = try f.write(), catalog = try f.catalog(reviewed: [digest])
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
         let identity = try catalog.importBundle(f.source)
         #expect(identity.kind == .custom && identity.manifestSHA256 == digest)
         #expect(throws: VMFailure.self) { try catalog.validateCapacity(identity, diskGiB: Int.max) }
@@ -150,7 +233,7 @@ struct FactoryTests {
             var inventory = f.lock.files; inventory["Contents/Resources/runtime/bin/Try Omarchy"] = String(repeating: "a", count: 64); f.manifest[key] = inventory
         default: f.manifest[key] = String(repeating: "a", count: 64)
         }
-        let digest = try f.write(), catalog = try f.catalog(reviewed: [digest])
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
         #expect(throws: (any Error).self) { try catalog.importBundle(f.source) }
     }
     @Test("extra files, traversal, symlinks and changed image/provisioning hashes fail closed", arguments: ["extra", "symlink", "traversal", "image", "recipe"])
@@ -159,7 +242,7 @@ struct FactoryTests {
         if kind == "traversal" {
             var inventory = f.manifest["files"] as! [String: String]; inventory["../escape"] = String(repeating: "a", count: 64); f.manifest["files"] = inventory
         }
-        let digest = try f.write(), catalog = try f.catalog(reviewed: [digest])
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
         if kind == "symlink" {
             let target = f.source.appendingPathComponent("test.img.zst")
             try FileManager.default.moveItem(at: target, to: f.files.support.appendingPathComponent("outside"))
@@ -180,7 +263,7 @@ struct FactoryTests {
         try bytes.write(to: imageURL)
         var hashes = f.manifest["files"] as! [String: String]
         hashes["factory.json"] = KitVerifier.sha256(bytes); f.manifest["files"] = hashes
-        let digest = try f.write(), catalog = try f.catalog(reviewed: [digest])
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
         #expect(throws: (any Error).self) { try catalog.importBundle(f.source) }
         var lock = f.lock; lock.customFactoryVersion = nil
         let unsupported = FactoryCatalog(applicationSupport: f.files.support, kit: f.kit.kit, lockData: try JSONEncoder().encode(lock), reviewed: [digest])
@@ -201,7 +284,7 @@ struct FactoryTests {
     @Test("legacy identity stays absent; new identity persists and cannot be changed")
     func profileContinuity() async throws {
         let f = try FactoryFixture(); defer { f.cleanup() }
-        let digest = try f.write(), catalog = try f.catalog(reviewed: [digest]), identity = try catalog.importBundle(f.source)
+        let digest = try f.write(), catalog = try f.catalog(reviewed: []), identity = try catalog.importBundle(f.source)
         let registry = try RegistryStore(applicationSupport: f.files.support); _ = try registry.load()
         let legacy = f.files.profile(name: "Legacy"); try registry.save([legacy])
         let legacyRoot = try f.files.storage.prepare(legacy)
@@ -292,5 +375,68 @@ struct FactoryLifecycleTests {
         #expect(await manager.activeSessionCount == 1)
         pending.emit(.exited(status: 1))
         #expect(await eventually { await manager.isIdle })
+    }
+}
+
+private final class FactoryImportGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var entered = false
+    private var opened = false
+    var isBlocked: Bool { lock.withLock { entered && !opened } }
+    func report(_ progress: FactoryImportProgress) {
+        guard progress == .copying else { return }
+        lock.withLock { entered = true }
+        semaphore.wait()
+    }
+    func release() {
+        let signal = lock.withLock { if opened { return false }; opened = true; return true }
+        if signal { semaphore.signal() }
+    }
+}
+
+@Suite("Local factory import through the manager — no VMs")
+struct LocalFactoryManagerTests {
+    @Test("the command import is available after reopening without compiled approval or storage creation")
+    func commandImport() async throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
+        let registry = try RegistryStore(applicationSupport: f.files.support); _ = try registry.load()
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: f.files.support, registry: registry)
+        await manager.installFactoryCatalog(catalog)
+        let service = GuestCommandService(manager: manager, applicationSupport: f.files.support)
+        let response = await service.execute(GuestCommandRequest(command: .importFactory, selector: f.source.path))
+        #expect(response.ok && response.factories?.first?.manifestSHA256 == digest)
+        await manager.installFactoryCatalog(try f.catalog(reviewed: []))
+        let listing = await service.execute(GuestCommandRequest(command: .factories))
+        #expect(listing.ok && listing.factories?.count == 2 && listing.factoryIssues == nil)
+        let created = await service.execute(GuestCommandRequest(command: .create, config: GuestConfigurationPatch(name: "Imported fixture", ssh: false, ownerDefaults: false, factory: digest)))
+        #expect(created.ok && created.guest?.factory?.manifestSHA256 == digest)
+        #expect(runtime.startedHandles.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: f.files.storage.vms.path))
+    }
+    @Test("manager cancellation stops the import and releases its busy guard for retry")
+    func cancellationPropagation() async throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let digest = try f.write(), catalog = try f.catalog(reviewed: []), source = f.source
+        let registry = try RegistryStore(applicationSupport: f.files.support); _ = try registry.load()
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: f.files.support, registry: registry)
+        await manager.installFactoryCatalog(catalog)
+        let gate = FactoryImportGate()
+        let fallback = Task.detached {
+            do { try await Task.sleep(for: .seconds(5)); gate.release() } catch { }
+        }
+        defer { gate.release(); fallback.cancel() }
+        let operation = Task { try await manager.importFactory(source) { gate.report($0) } }
+        #expect(await eventually { gate.isBlocked })
+        operation.cancel()
+        gate.release()
+        await #expect(throws: CancellationError.self) { try await operation.value }
+        #expect(!FileManager.default.fileExists(atPath: catalog.receiptURL(digest).path))
+        #expect(try await manager.importFactory(source).manifestSHA256 == digest)
+        #expect(runtime.startedHandles.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: f.files.storage.vms.path))
     }
 }

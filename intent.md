@@ -1093,3 +1093,12 @@ The helper owns QMP pause/resume and keeps manual ownership separate from host-s
 
 
 **DESIGN DECISION — custom-factory review corrections:** bind the packaged review list to a generated compiled digest, report rejected imports separately while keeping valid/official choices available, and move large verification/copy/preparation work outside the lifecycle actor. Admit/reserve a session before preparation, honor pending stop/force-stop/Quit when its handle arrives, and retain runtime ownership through matching `.exited`. Experimental restore uses private admission with its timeout installed before event handling; no global restore exemption is exposed while preparation is pending. Strict preparation validation rejects metadata the importer cannot accept. These changes add no image or guest approval.
+
+
+## In-app factory import — user extension, 1 November 2026
+
+**DESIGN DECISION — supersedes the build-time approval requirement for explicit imports:** the user requested an Import Factory button that selects and verifies a prepared bundle without editing JSON or rebuilding the app. A user-initiated UI or CLI import may register a new manifest digest locally after all existing image, runtime, package and provisioning checks pass. The packaged review list remains a backward-compatible path for prior entries; it is no longer required for an explicitly selected import. Whole-kit provenance and signing policy are unchanged.
+
+**DESIGN DECISION — local record:** copy and reverify the prepared bundle, then atomically publish a private import receipt binding its exact factory identity to the current runtime-lock digest. Listing, selection and launch require a matching valid receipt or a legacy compiled pin, plus full bundle verification. Missing, damaged, unsafe or mismatched records fail closed. Preserve damaged entries; do not silently replace or migrate them. No existing profile identity or writable guest disk is changed.
+
+**DESIGN DECISION — UI:** expose Import Factory in the toolbar and the New VM image picker. Show verification/copy progress, cancellation and validation errors; successful import from New VM selects the new factory. Import and verification start no VM and create no guest storage. Large work remains outside the lifecycle actor, cancellation before publication removes staging files, and final publication records only verified metadata. Selection expresses local user trust, not independent proof of a publisher, image contents or a successful boot. Real-image behavior retains its TO PROVE status.

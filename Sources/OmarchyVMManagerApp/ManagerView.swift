@@ -9,6 +9,7 @@ struct ManagerView: View {
     @ObservedObject var model: AppModel
     @State private var destination: Destination? = .library
     @State private var editor: EditorSelection?
+    @State private var importingFactory = false
     @State private var page: GuestPage = .home
     @State private var detailPresentation = UUID()
     private var active: [VMSnapshot] { model.snapshots.filter { $0.sessionID != nil } }
@@ -70,6 +71,10 @@ struct ManagerView: View {
         }
         .navigationTitle("Omarchy VM Manager")
         .toolbar {
+            ToolbarItem {
+                Button { importingFactory = true } label: { Label("Import Factory", systemImage: "square.and.arrow.down") }
+                    .disabled(model.registryError != nil || model.shuttingDown || model.checking || model.diagnostics == nil || model.factoryImportInProgress)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { editor = EditorSelection(profile: nil) } label: { Label("New VM", systemImage: "plus") }
                     .disabled(model.registryError != nil || model.shuttingDown)
@@ -83,6 +88,7 @@ struct ManagerView: View {
                   let snapshot = model.snapshots.first(where: { $0.sessionID == session }) else { return }
             focusGuest(snapshot.id)
         }
+        .sheet(isPresented: $importingFactory) { FactoryImportView(model: model) }
         .sheet(item: $editor) { selection in
             VMEditor(model: model, profile: selection.profile) { id in focusGuest(id); editor = nil }
         }
@@ -389,6 +395,7 @@ private struct VMEditor: View {
     @State private var selectedPublicKey: String?
     @State private var keyError: String?
     @State private var factory = "official"
+    @State private var importingFactory = false
     @State private var useOwnerDefaults: Bool
     init(model: AppModel, profile: VMProfile?, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = saved
@@ -412,6 +419,8 @@ private struct VMEditor: View {
                     Picker("Factory image", selection: $factory) {
                         ForEach(model.factories, id: \.selector) { image in Text(image.displayName).tag(image.selector) }
                     }
+                    Button("Import Factory…") { importingFactory = true }
+                        .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
                 } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
                 Stepper("Memory: \(memory) GiB", value: $memory, in: 4...maximumMemory)
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
@@ -459,6 +468,9 @@ private struct VMEditor: View {
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
             }
         }.padding(26).frame(width: 520).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }.task { await model.loadFactories() }
+        .sheet(isPresented: $importingFactory) {
+            FactoryImportView(model: model) { identity in factory = identity.selector }
+        }
     }
     private func choosePublicKey() {
         do { if let key = try PublicKeyPicker.choose() { selectedPublicKey = key; keyError = nil } }

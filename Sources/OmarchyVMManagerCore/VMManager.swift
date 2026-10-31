@@ -104,12 +104,13 @@ public actor VMManager {
         return try await Task.detached(priority: .utility) { try factoryCatalog.listing() }.value
     }
     public func factories() async throws -> [FactoryIdentity] { try await factoryListing().factories }
-    public func importFactory(_ source: URL) async throws -> FactoryIdentity {
+    public func importFactory(_ source: URL, onProgress: @escaping @Sendable (FactoryImportProgress) -> Void = { _ in }) async throws -> FactoryIdentity {
         guard !quitting, registry != nil, let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
         guard !importingFactory else { throw FactoryCatalog.invalid("A factory import is already in progress.") }
         importingFactory = true
         defer { importingFactory = false }
-        return try await Task.detached(priority: .utility) { try factoryCatalog.importBundle(source) }.value
+        let operation = Task.detached(priority: .utility) { try factoryCatalog.importBundle(source, onProgress: onProgress) }
+        return try await withTaskCancellationHandler(operation: { try await operation.value }, onCancel: { operation.cancel() })
     }
 
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
