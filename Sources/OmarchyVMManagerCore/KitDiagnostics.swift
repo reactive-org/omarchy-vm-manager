@@ -91,7 +91,7 @@ public enum KitVerifier {
             throw invalid("The runtime provenance or focus-aware clipboard capability is unproven.")
         }
         if let version = lock.managedSSHVersion {
-            guard version == 1, lock.files.keys.contains("Contents/Resources/guest-packages/try-omarchy-0.1.0-37-aarch64.pkg.tar.zst") else {
+            guard version == 1, lock.files.keys.contains("Contents/Resources/guest-packages/try-omarchy-0.1.0-39-aarch64.pkg.tar.zst") else {
                 throw invalid("Managed SSH provisioning capability is unknown or its guest package is missing.")
             }
         }

@@ -16,6 +16,10 @@ The guest waits until owner provisioning finishes and exactly one eligible non-r
 
 The host accepts advisory status only for the matching UUID and session nonce, then authenticates with its exact client key and strict pinned host identity. A packaged identity command must confirm the expected non-root account and VM/session before Ready. Probes are bounded and cancelled on exit. SSH errors never release a live VM handle, memory or port reservation.
 
+The guest validates the exact read-only 9p provisioning mount on each enrollment attempt. Once mounted, its inode ownership comes from the Mac; it is not treated as an ordinary guest-owned directory. The mount's parent remains root-owned in the guest. Wrong tags, writable mounts and links are refused. Repeated timer runs are covered by a regression test and a real-guest run.
+
+Provisioning errors expose only validated stage/code enums and an optional bounded errno or exit status. Exception messages, command output, paths and key data are not sent to the manager. These diagnostics identified and fixed the first real-guest enrollment failure.
+
 ## Recovery and limitations
 
 Missing keys, pin mismatches, ambiguous owner accounts, unexpected settings and changed host identities fail closed. Keys are preserved for review; there is no automatic credential regeneration, host-key replacement or destructive reset. **Retry SSH Check** repeats verification after setup or a transient failure. Enrollment/owner/key rotation and existing-disk migration need a future explicit recovery transaction.
@@ -28,4 +32,6 @@ The manager suite covers default-on/off creation, persistent distinct ports, leg
 
 `make test-ssh` uses two disposable containers and synthetic credentials. It verifies normal-owner provisioning, managed and optional public-key authentication, explicit localhost bindings, cross-VM credential rejection and changed host-key rejection. On a Mac, `python3 Scripts/test_managed_ssh.py --swift-probe` additionally exercises the production Swift readiness probe against those servers. Docker must already be available; the test does not manage Docker settings. Containers are removed on completion. No Omarchy factory image or real QEMU VM is used by these tests.
 
-**TO PROVE:** fresh real Omarchy first boot/package upgrade, two real guests, preserved SSH identities across reboot, sleep/wake, independent shutdown and authentication during a graphical failure. Container tests do not establish these real-Mac exit criteria. The earlier intermittent graphics startup failure remains open. Existing POC disks are not used for SSH testing.
+**VERIFIED — disposable A:** normal owner setup followed by package upgrade to `0.1.0-39` becomes authenticated SSH-ready without a pasted command, guest password capture or host-key prompt. The generated Copy SSH Command configuration works, and original host/client key files and pins survive the diagnostic restarts unchanged.
+
+**TO PROVE:** clean first boot of the corrected package in B, two simultaneous authenticated guests, successful SSH recovery across a working guest restart, sleep/wake, independent shutdown and authentication during a graphical failure. Container tests do not establish these real-Mac exit criteria. The earlier intermittent graphics startup failure remains open. Existing POC disks are not used for SSH testing.

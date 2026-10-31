@@ -12,6 +12,8 @@ jobs:
           submodules: true
       - name: Manager and artifact contracts
         run: make test
+      - name: Render and validate native app icon
+        run: make icon
       - name: Exact patched upstream suite
         run: make test-upstream
 

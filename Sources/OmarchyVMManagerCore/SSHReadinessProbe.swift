@@ -18,6 +18,9 @@ public struct ManagedSSHProbe: SSHReadinessChecking {
         let sessionToken: UUID
         let state: String
         let owner: String?
+        var failureStage: String? = nil
+        var failureCode: String? = nil
+        var failureStatus: Int? = nil
     }
     struct Identity: Decodable { let vmID: UUID; let sessionToken: UUID; let user: String; let uid: Int }
 
@@ -33,7 +36,15 @@ public struct ManagedSSHProbe: SSHReadinessChecking {
                     if !hasConnected, Date() > deadline { await update(.failed("SSH provisioning timed out. Complete guest setup and retry the SSH check.")); return }
                     try await Task.sleep(for: .seconds(2)); continue
                 }
-                guard report.state != "error" else { await update(.failed("Guest SSH provisioning failed. Check its integration service; no host identity was replaced.")); return }
+                guard report.state != "error" else {
+                    var detail = ""
+                    if let stage = report.failureStage {
+                        let code = report.failureCode ?? "unknown"
+                        let status = report.failureStatus.map { ":\($0)" } ?? ""
+                        detail = " at \(stage) (\(code)\(status))"
+                    }
+                    await update(.failed("Guest SSH provisioning failed" + detail + ". Its identities were preserved.")); return
+                }
                 guard let user = report.owner, Self.validUser(user), report.state == "configured" else {
                     await update(.waitingForOwner)
                     if Date() > deadline { await update(.failed("Waiting for the guest’s normal owner-account setup. Retry SSH after setup finishes.")); return }
@@ -80,6 +91,11 @@ public struct ManagedSSHProbe: SSHReadinessChecking {
               status.receivedAt >= request.startedAt.addingTimeInterval(-1),
               report.schemaVersion == 1, report.vmID == request.profile.id, report.sessionToken == request.sessionID,
               ["waiting-owner", "configured", "error"].contains(report.state), report.owner == nil || Self.validUser(report.owner!) else { return nil }
+        let stages = ["host-settings", "run-directory", "share-mount", "manifest", "identity", "host-key-read", "host-key-verify", "owner", "authorized-keys", "daemon-config", "daemon-check", "daemon-start"]
+        let codes = ["unsafe-directory", "unsafe-share", "file-type", "file-links", "file-size", "invalid-data", "command-failed", "timeout", "file-access", "unexpected"]
+        guard report.failureStage == nil || stages.contains(report.failureStage!),
+              report.failureCode == nil || codes.contains(report.failureCode!),
+              report.failureStatus == nil || (-255...255).contains(report.failureStatus!) else { return nil }
         return report
     }
 }

@@ -55,7 +55,7 @@ def build():
     shutil.rmtree(contents / "_CodeSignature")
     shutil.copy2(source / "macos/.build/release/omarchy-vm-helper", contents / "MacOS/omarchy-vm-helper")
     packages = list((source / "dist/guest/packages").glob("try-omarchy-*.pkg.tar.zst"))
-    assert len(packages) == 1 and packages[0].name == "try-omarchy-0.1.0-37-aarch64.pkg.tar.zst"
+    assert len(packages) == 1 and packages[0].name == "try-omarchy-0.1.0-39-aarch64.pkg.tar.zst"
     for old in (contents / "Resources/guest-packages").iterdir():
         assert old.is_file() and not old.is_symlink()
         old.unlink()
@@ -75,8 +75,8 @@ def build():
         "kitSHA256": digest(destination / "TryOmarchyKit.zip"),
         "kitVersion": value["version"], "runProtocolVersion": value["runProtocolVersion"],
         "buildDate": value["buildDate"], "focusAwareClipboard": True, "managedSSHVersion": 1,
-        "guestPackageVersion": "0.1.0-37",
-        "composition": "Source-built patched helper, guest integration package 0.1.0-37 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
+        "guestPackageVersion": "0.1.0-39",
+        "composition": "Source-built patched helper, guest integration package 0.1.0-39 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
         "files": inventory(destination / "TryOmarchyKit.bundle")
     }
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"

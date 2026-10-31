@@ -256,3 +256,28 @@ struct FreshRootAdmissionTests {
         #expect(f.storage.matchesRoot(directoryURL.resolvingSymlinksInPath(), profile: profile))
     }
 }
+
+@Suite("Bounded guest provisioning diagnostics")
+struct ManagedSSHFailureReportTests {
+    @Test("unknown diagnostic enums and out-of-range numbers cannot reach the UI")
+    func validatesFailure() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let profile = f.profile(); let root = try f.storage.prepare(profile)
+        try PrivateFiles.directory(root.appendingPathComponent("shell"), create: true)
+        let request = VMStartRequest(profile: profile, storageRoot: root)
+        var guest: [String: Any] = ["schemaVersion": 1, "vmID": profile.id.uuidString, "sessionToken": request.sessionID.uuidString, "state": "error", "failureStage": "host-key-read", "failureCode": "file-access", "failureStatus": 13]
+        func write(_ value: [String: Any]) throws {
+            let record: [String: Any] = ["receivedAt": ISO8601DateFormatter().string(from: Date()), "report": ["managedSSH": value]]
+            try PrivateFiles.write(JSONSerialization.data(withJSONObject: record), name: "guest-status.json", in: root.appendingPathComponent("shell"))
+        }
+        try write(guest)
+        #expect(try ManagedSSHProbe().currentReport(request)?.failureCode == "file-access")
+        for (key, value) in [("failureStage", "private-data" as Any), ("failureCode", "private-data" as Any), ("failureStatus", 256 as Any)] {
+            var invalid = guest; invalid[key] = value; try write(invalid)
+            #expect(try ManagedSSHProbe().currentReport(request) == nil)
+        }
+        guest.removeValue(forKey: "failureStage"); guest.removeValue(forKey: "failureCode"); guest.removeValue(forKey: "failureStatus")
+        try write(guest)
+        #expect(try ManagedSSHProbe().currentReport(request)?.state == "error")
+    }
+}
