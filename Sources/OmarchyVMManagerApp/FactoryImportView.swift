@@ -25,6 +25,8 @@ struct FactoryImportView: View {
             } else {
                 Text("Choose a prepared factory bundle from a source you trust. The app checks the image, provisioning files and compatibility with this runtime.")
                     .foregroundStyle(.secondary)
+                Link("Prepare your own factory image: dev-vm example", destination: URL(string: "https://www.reactive.org/dev-vm")!)
+                    .font(.callout)
                 if let selectedName { Text(selectedName).font(.callout).lineLimit(2) }
                 if working {
                     ProgressView(cancelling ? "Cancelling import…" : model.factoryImportProgress.rawValue)
