@@ -2,6 +2,8 @@
 
 A native macOS 15+ SwiftUI manager around Try Omarchy's official kit architecture. Phase 2 provides a persistent VM library, per-guest configuration and safe Trash deletion in a private debug build. Guests start only when you choose Launch. The two retained POC profiles are protected from edits and deletion.
 
+**[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [44-second MP4 tour](docs/media/quick-tour.mp4)
+
 ## Build and check
 
 Open `Package.swift` in Xcode, or use Swift 6 and Python 3.10+ on Apple Silicon:
@@ -36,7 +38,7 @@ The app verifies the compiled lock pin, manifest, helper, protocol and every emb
 
 Open `dist/Omarchy VM Manager.app` and choose **New VM**. The native sidebar lists independent guests; each has Home, Virtual Machine, Network, Startup, SSH and Spaces pages. Configure name, CPU, memory, clipboard and immersive mode while stopped. Creation saves only profile metadata; the official factory image downloads on the first launch when it is not already cached.
 
-**Guest Defaults** saves owner setup for future guests: username, password, optional name/Git email, keyboard, timezone, hostname prefix and optional public key. Enable and save it once, then leave **Use saved owner setup defaults** checked in New VM. Passwords stay in the login Keychain; profiles hold immutable snapshots and credential references. Each hostname gets a unique suffix. Existing guests are unchanged. The prepared image uses a reviewed adapter to Omarchy's owner setup, rather than the ISO disk/encryption installer. See [unattended defaults and validation](Docs/UnattendedDefaults.md). A fresh unattended guest passed owner/settings, pinned SSH and restart checks; the known intermittent graphics issue remains open.
+**Guest Defaults** saves owner setup for future guests: username, password, optional name/Git email, keyboard, timezone, hostname prefix and optional public key. Enable and save it once, then leave **Use saved owner setup defaults** checked in New VM. Passwords stay in the login Keychain; profiles hold immutable snapshots and credential references. Each hostname gets a unique suffix. Existing guests are unchanged. The prepared image uses a reviewed adapter to Omarchy's owner setup, rather than the ISO disk/encryption installer. See [unattended defaults and validation](docs/UnattendedDefaults.md). A fresh unattended guest passed owner/settings, pinned SSH and restart checks; the known intermittent graphics issue remains open.
 
 The schema-versioned private registry lives at `~/Library/Application Support/Omarchy VM Manager/registry.json`. UUID roots derive beneath the sibling `VMs` directory. Reopening restores profiles as stopped. The existing POC roots are validated and registered without modifying their files. Their profiles cannot be reconfigured, renamed or deleted.
 
@@ -46,15 +48,15 @@ Deletion confirms the selected root/disk identity and uses a separate helper hol
 
 For Spaces, launch a windowed guest and use its Dock icon: **Options → Assign To → This Desktop**. The runtime stamps each explicitly rooted guest app with a stable identity independent of its name. The Spaces page contains the steps. Real Dock assignment persistence across restarts remains to be verified with the updated runtime; no private macOS APIs are used.
 
-See [Phase 2 behaviour and validation](Docs/Phase2.md). The earlier `--poc-approved`/`--poc-start-a` command-line workflow is superseded by the registry and manual Launch controls.
+See [Phase 2 behaviour and validation](docs/Phase2.md). The earlier `--poc-approved`/`--poc-start-a` command-line workflow is superseded by the registry and manual Launch controls.
 
 With the VMs stopped, **Enable Super shortcuts…** runs the full Try Omarchy launcher's permission-repair flow for `dev.omarchy.vm-manager` only, then opens macOS Accessibility settings. The user invokes this action and enables the grant themselves. It never resets the installed Try Omarchy app's entry. The manager reports its own permission status; that alone does not prove QEMU installed its keyboard event tap. Start a guest after granting access and verify Command+Space is kept in the guest. Ad-hoc rebuilds can require a fresh grant.
 
-New profiles enable host SSH by default, with an optional existing-public-key chooser. After normal owner setup, the SSH page verifies a pinned, authenticated connection and offers **Copy SSH Command**. Existing profiles remain unchanged. See [managed SSH design, checks and remaining real-VM validation](Docs/ManagedSSH.md). Run `make test-ssh` for isolated OpenSSH container checks; no real VM is launched by that target.
+New profiles enable host SSH by default, with an optional existing-public-key chooser. After normal owner setup, the SSH page verifies a pinned, authenticated connection and offers **Copy SSH Command**. Existing profiles remain unchanged. See [managed SSH design, checks and remaining real-VM validation](docs/ManagedSSH.md). Run `make test-ssh` for isolated OpenSSH container checks; no real VM is launched by that target.
 
-The real two-VM run passed focused clipboard transfers, background clipboard suppression for both guests, user-initiated sleep/wake, independent Force Stop, cancelled/normal Quit and manager crash cleanup. Phase 1 is complete by user acceptance on 31 October 2026, with the intermittent graphics startup failure carried forward for further investigation. Both test guests are stopped, and both disks are kept at the user’s request. The graphics issue and documented unverified checks remain open. See [the run report](Docs/Phase1-POC.md) and [reduced graphics observation](Docs/Phase1-Graphics-Repro.md).
+The real two-VM run passed focused clipboard transfers, background clipboard suppression for both guests, user-initiated sleep/wake, independent Force Stop, cancelled/normal Quit and manager crash cleanup. Phase 1 is complete by user acceptance on 31 October 2026, with the intermittent graphics startup failure carried forward for further investigation. Both test guests are stopped, and both disks are kept at the user’s request. The graphics issue and documented unverified checks remain open. See [the run report](docs/Phase1-POC.md) and [reduced graphics observation](docs/Phase1-Graphics-Repro.md).
 
-See `Docs/POC.md` for the approval gate and real test matrix, `Docs/ClipboardPatch.md` for the upstream-ready change explanation, and `Docs/Validation.md` for exact results and remaining evidence gaps.
+See `docs/POC.md` for the approval gate and real test matrix, `docs/ClipboardPatch.md` for the upstream-ready change explanation, and `docs/Validation.md` for exact results and remaining evidence gaps.
 
 The manager icon is editable vector artwork in `App/Assets/OmarchyVMManager.svg`, with a 1024-pixel PNG and a complete macOS ICNS family. `make icon` regenerates it using the pinned upstream AppKit renderer and validated icon packer. `make app` includes it in the bundle and the native UI. When the main manager is hosting a guest, `make app-preview verify-preview` prepares a signed sibling bundle without replacing the live app; close the live manager after shutting down its guests before installing the normal build.
 
@@ -75,8 +77,8 @@ Guest artwork uses the official Omarchy mark in monochrome, with pending-tradema
 ./bin/omarchy-vm delete dev
 ```
 
-The CLI opens the manager in the background when needed and shares its existing lifecycle owner. Replies are concise JSON, including state/config and an authenticated SSH endpoint plus guest IPs when ready. NAT guests can share a private IP; use the returned localhost SSH port and generated `ssh.command`. Configuration updates refuse running guests and apply next start; delete uses guarded recoverable Trash. Saved Guest Defaults apply to new guests unless disabled. See [the full CLI contract and validation](Docs/CLI.md).
+The CLI opens the manager in the background when needed and shares its existing lifecycle owner. Replies are concise JSON, including state/config and an authenticated SSH endpoint plus guest IPs when ready. NAT guests can share a private IP; use the returned localhost SSH port and generated `ssh.command`. Configuration updates refuse running guests and apply next start; delete uses guarded recoverable Trash. Saved Guest Defaults apply to new guests unless disabled. See [the full CLI contract and validation](docs/CLI.md).
 
 ## Factory image cache
 
-New guests share a verified download in `~/Downloads/Omarchy VM Manager/Factory Images/`, including guests created through the CLI. The current pinned image stays cached; obsolete image downloads are pruned after seven days without use. Interrupted downloads resume and cached images are checksum-verified before reuse. Guest disks remain independent. See [factory cache](Docs/FactoryCache.md).
+New guests share a verified download in `~/Downloads/Omarchy VM Manager/Factory Images/`, including guests created through the CLI. The current pinned image stays cached; obsolete image downloads are pruned after seven days without use. Interrupted downloads resume and cached images are checksum-verified before reuse. Guest disks remain independent. See [factory cache](docs/FactoryCache.md).

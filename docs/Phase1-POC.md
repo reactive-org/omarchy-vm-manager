@@ -6,7 +6,7 @@ Run date: 31 October 2026 (Australia/Melbourne). **Status: Phase 1 complete by u
 
 The user approved factory-image downloads and two disposable manager-owned VMs. They separately approved controlling only those guest windows and using synthetic clipboard contents. They will initiate whole-Mac sleep/wake when prompted. Their existing Try Omarchy VM and storage are excluded from all operations.
 
-The initial run used the kit from Docs/Validation.md: patch commit `a135f003c2ffd2ce820900b5896b7ad9e2b84a96`, kit SHA-256 `24d569ea2ee06e4f8fd435ea215483db4b968720e509f194ad8d2913a8f44d6e`, manifest `development`, protocol 1. Later clipboard repairs and their exact provenance are recorded below. Each profile uses 4096 MiB, four CPUs, NAT and explicit clipboard/battery/timezone bridges. No forwards, shared folders, USB, authentication or camera.
+The initial run used the kit from docs/Validation.md: patch commit `a135f003c2ffd2ce820900b5896b7ad9e2b84a96`, kit SHA-256 `24d569ea2ee06e4f8fd435ea215483db4b968720e509f194ad8d2913a8f44d6e`, manifest `development`, protocol 1. Later clipboard repairs and their exact provenance are recorded below. Each profile uses 4096 MiB, four CPUs, NAT and explicit clipboard/battery/timezone bridges. No forwards, shared folders, USB, authentication or camera.
 
 - A: `C7C2B381-E43C-4A5A-8246-4314596B4C0A`, Omarchy POC A.
 - B: `89F88CC2-BD11-44B5-9C1B-31EDB2DE6B0B`, Omarchy POC B.

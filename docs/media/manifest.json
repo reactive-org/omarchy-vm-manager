@@ -1,0 +1,107 @@
+{
+  "appVersion": "0.5.1 (8)",
+  "captureDate": "2026-10-31",
+  "timezone": "Australia/Melbourne",
+  "source": "real manager window captured through Computer Use",
+  "tourKind": "captioned still-screen walkthrough, not a continuous recording",
+  "screens": [
+    {
+      "file": "library.webp",
+      "title": "Your virtual machines",
+      "dimensions": "1280x891",
+      "bytes": 44568,
+      "sha256": "cf7ef5682cf14a29eab179972189f81f7673d651a7ae3b33ccfe1f7013552640",
+      "sourceSHA256": "0e1253291e4999c39841a0ec9a664d0cdf4a06ad27fd84850d7f44e79f72fad5"
+    },
+    {
+      "file": "new-vm.webp",
+      "title": "Create a guest",
+      "dimensions": "1040x1244",
+      "bytes": 56998,
+      "sha256": "0fdf0606cc8ae7a300595220a890c4c4b396d13eb2daf671137f0d9fd336b50c",
+      "sourceSHA256": "1d0c06291197d79349cb5c5250aa2355f12bb2f8f30b49308b2ea30a08e65b8e"
+    },
+    {
+      "file": "guest-home.webp",
+      "title": "Guest Home",
+      "dimensions": "1280x891",
+      "bytes": 46574,
+      "sha256": "4b4a36c8c63d2f0bed0b0f5f670f6d3982f417af39a8c4dc75540dba056cba7e",
+      "sourceSHA256": "86dcffb4f959d9b5404c47324a7d5210bc22f084c4fa2a042a0e90f9db5057cd"
+    },
+    {
+      "file": "running.webp",
+      "title": "A running guest",
+      "dimensions": "1280x891",
+      "bytes": 46236,
+      "sha256": "b91ec2d0a4ad02976ddfbc8b872b785cbf4e22afa62e08ac03a1bad78940ae1a",
+      "sourceSHA256": "f965c0d5ccaf301f56751a4405f9532abbd3e3ee2a0fda05034d06255814ddbf"
+    },
+    {
+      "file": "configure.webp",
+      "title": "Configure a stopped guest",
+      "dimensions": "1040x934",
+      "bytes": 36524,
+      "sha256": "d9d41a888faca09793bc6c74697d67c19c700e9e264e77549c41467f108d32bc",
+      "sourceSHA256": "66055043c9328a5f0d8863a289b4bba744391fb3b2a05cd274e3b2a323179211"
+    },
+    {
+      "file": "network.webp",
+      "title": "Networking",
+      "dimensions": "1280x891",
+      "bytes": 47348,
+      "sha256": "ecd60aca96296690d2999b2f2f9ec87862a96d2a043a3a999a9198293feac132",
+      "sourceSHA256": "607a6893e4ba3d50a676d5b7fe54f629082c3c24b57c700523e8593aab7f0e0b"
+    },
+    {
+      "file": "startup.webp",
+      "title": "Startup and display",
+      "dimensions": "1280x891",
+      "bytes": 45914,
+      "sha256": "089151e1725995ee1d6aa9acd888efae3113d9e028da2ec19053629a3d8ed18f",
+      "sourceSHA256": "9c9670cf57372709caf8eedb8297e074812ad826901abf6e080dca4d5b58eda6"
+    },
+    {
+      "file": "ssh.webp",
+      "title": "SSH from this Mac",
+      "dimensions": "1280x891",
+      "bytes": 46950,
+      "sha256": "b6974461d3a5479c158531f15a047a00c905e10dd5aec7862b8500a688e7758f",
+      "sourceSHA256": "bff75694704c2f8ca9c867d3c792493f58a376ceeaad32e785edce8527f53da1"
+    },
+    {
+      "file": "spaces.webp",
+      "title": "Mission Control Spaces",
+      "dimensions": "1280x891",
+      "bytes": 54636,
+      "sha256": "17d21d63849b53d0275bdf5d903dbce254ccf5acd785e0eea38d7671aaa974c6",
+      "sourceSHA256": "a2ec84035366596c1bdbcf21839976687ff16fcf5590a27adb3494c52236db4c"
+    },
+    {
+      "file": "permissions.webp",
+      "title": "Super shortcuts",
+      "dimensions": "1280x891",
+      "bytes": 39682,
+      "sha256": "4a981f6fe99576aeee54c34d1a161daac72a549d9885bda7a07c19746d4bb60c",
+      "sourceSHA256": "d8c7aadcd47717f50ef0233041b6be954b179e57047aabaeab63f8db98800e0d"
+    },
+    {
+      "file": "runtime.webp",
+      "title": "Runtime and troubleshooting",
+      "dimensions": "1280x891",
+      "bytes": 34892,
+      "sha256": "6c12bb7c85e4e7077c86844c312f6c9e03f5c03bbd727d78661137db78b18bb1",
+      "sourceSHA256": "2953bfa59d6c6d28e6263cfbf5ccdab50a741133e84320089730f1afba535be3"
+    }
+  ],
+  "video": {
+    "file": "quick-tour.mp4",
+    "bytes": 663272,
+    "durationSeconds": 44,
+    "dimensions": "1280x960",
+    "codec": "H.264",
+    "audio": false,
+    "sha256": "ac48161f03d53f3c762a83e133da06952653642dbaab40144c956404441633d7"
+  },
+  "screenshotsAndVideoBytes": 1163594
+}

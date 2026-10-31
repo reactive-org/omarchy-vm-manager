@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:04.000
+Your virtual machines. Browse guest states, configured resources and total allocated memory.
+
+2
+00:00:04.000 --> 00:00:08.000
+Create a guest. Choose a name, resources, owner setup and SSH. This example was cancelled.
+
+3
+00:00:08.000 --> 00:00:12.000
+Guest Home. Select a guest to inspect its state, resources, clipboard and storage.
+
+4
+00:00:12.000 --> 00:00:16.000
+A running guest. The current guest shows Shut Down controls. Configuration is locked until it stops.
+
+5
+00:00:16.000 --> 00:00:20.000
+Configure a stopped guest. Save CPU, memory and display changes for the next start. This form was cancelled.
+
+6
+00:00:20.000 --> 00:00:24.000
+Networking. Each SSH-enabled guest has a distinct localhost port. Networking uses NAT.
+
+7
+00:00:24.000 --> 00:00:28.000
+Startup and display. Choose windowed or immersive mode. Opening the manager does not start guests.
+
+8
+00:00:28.000 --> 00:00:32.000
+SSH from this Mac. A stopped guest is available on next launch. Copy SSH Command appears after verification.
+
+9
+00:00:32.000 --> 00:00:36.000
+Mission Control Spaces. Use the running guest's Dock icon: Options, Assign To, This Desktop.
+
+10
+00:00:36.000 --> 00:00:40.000
+Super shortcuts. Enable the manager in Accessibility yourself before starting guests.
+
+11
+00:00:40.000 --> 00:00:44.000
+Runtime and troubleshooting. Check host readiness and the known graphics startup limitation.
