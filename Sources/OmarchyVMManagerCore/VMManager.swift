@@ -98,19 +98,34 @@ public actor VMManager {
     private var factoryCatalog: FactoryCatalog? = nil
 
     public func installFactoryCatalog(_ catalog: FactoryCatalog) { factoryCatalog = catalog }
-    private var importingFactory = false
+    private struct FactoryImportOperation {
+        let id: UUID
+        let task: Task<FactoryIdentity, any Error>
+    }
+    private var factoryImportOperation: FactoryImportOperation?
+    public var isImportingFactory: Bool { factoryImportOperation != nil }
     public func factoryListing() async throws -> FactoryCatalogListing {
         guard let factoryCatalog else { return FactoryCatalogListing(factories: [.official], issues: []) }
         return try await Task.detached(priority: .utility) { try factoryCatalog.listing() }.value
     }
     public func factories() async throws -> [FactoryIdentity] { try await factoryListing().factories }
     public func importFactory(_ source: URL, onProgress: @escaping @Sendable (FactoryImportProgress) -> Void = { _ in }) async throws -> FactoryIdentity {
+        try Task.checkCancellation()
         guard !quitting, registry != nil, let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
-        guard !importingFactory else { throw FactoryCatalog.invalid("A factory import is already in progress.") }
-        importingFactory = true
-        defer { importingFactory = false }
-        let operation = Task.detached(priority: .utility) { try factoryCatalog.importBundle(source, onProgress: onProgress) }
+        guard factoryImportOperation == nil else { throw FactoryCatalog.invalid("A factory import is already in progress.") }
+        let id = UUID()
+        let operation = Task.detached(priority: .utility) {
+            try await withTaskCancellationHandler(operation: { try factoryCatalog.importBundle(source, onProgress: onProgress) }, onCancel: { onProgress(.cancelling) })
+        }
+        factoryImportOperation = FactoryImportOperation(id: id, task: operation)
+        defer { if factoryImportOperation?.id == id { factoryImportOperation = nil } }
         return try await withTaskCancellationHandler(operation: { try await operation.value }, onCancel: { operation.cancel() })
+    }
+    public func cancelFactoryImportAndWait() async {
+        guard let operation = factoryImportOperation else { return }
+        operation.task.cancel()
+        _ = try? await operation.task.value
+        if factoryImportOperation?.id == operation.id { factoryImportOperation = nil }
     }
 
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
@@ -279,7 +294,7 @@ public actor VMManager {
     }
 
     public var activeSessionCount: Int { sessions.count }
-    public var isIdle: Bool { sessions.isEmpty && storageTransactions.isEmpty }
+    public var isIdle: Bool { sessions.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil }
     public var allocatedMemoryMiB: Int {
         profiles.filter { sessions[$0.id] != nil }.reduce(0) { $0 + $1.memoryMiB }
     }
@@ -537,6 +552,7 @@ public actor VMManager {
     public func beginApplicationShutdown() -> Bool {
         guard !hasActiveSuspensionTransition else { return false }
         quitting = true
+        factoryImportOperation?.task.cancel()
         for vmID in Array(sessions.keys) { shutDown(vmID) }
         return isIdle
     }

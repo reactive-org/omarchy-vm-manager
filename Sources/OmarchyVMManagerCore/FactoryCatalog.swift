@@ -35,6 +35,7 @@ public enum FactoryImportProgress: String, Sendable {
     case copying = "Copying factory…"
     case checkingCopy = "Checking imported copy…"
     case saving = "Saving verified factory…"
+    case cancelling = "Cancelling import…"
 }
 
 struct FactoryImportReceipt: Codable, Equatable {
@@ -126,8 +127,13 @@ public struct FactoryCatalog: Sendable {
         guard manifest.runtimeFiles == lock.files,
               manifest.integrationPackageSHA256 == lock.files[VMFactorySelection.packagePath],
               manifest.ownerSetupContractSHA256 == (try VMFactorySelection.digest(contract)) else { throw Self.invalid("Factory runtime, integration package or provisioning contract provenance differs from this kit.") }
-        let image = try JSONDecoder().decode(VMFactoryManifest.Image.self, from: VMFactorySelection.readMetadata(url.appendingPathComponent("factory.json")))
+        let image = try Self.decodeImage(VMFactorySelection.readMetadata(url.appendingPathComponent("factory.json")), expectedSHA256: manifest.files["factory.json"])
         return FactoryIdentity(kind: .custom, name: manifest.name, manifestSHA256: digest, diskSHA256: image.disk.sha256)
+    }
+
+    static func decodeImage(_ data: Data, expectedSHA256: String?) throws -> VMFactoryManifest.Image {
+        guard let expectedSHA256, KitVerifier.sha256(data) == expectedSHA256 else { throw invalid("Factory image metadata changed after verification.") }
+        return try JSONDecoder().decode(VMFactoryManifest.Image.self, from: data)
     }
 
     public func importBundle(_ source: URL, onProgress: @Sendable (FactoryImportProgress) -> Void = { _ in }) throws -> FactoryIdentity {
@@ -228,8 +234,15 @@ public struct FactoryCatalog: Sendable {
         return try verify(root(selector), digest: selector)
     }
     public func validateCapacity(_ identity: FactoryIdentity, diskGiB: Int) throws {
+        try identity.validate()
         guard identity.kind == .custom else { return }
-        let image = try JSONDecoder().decode(VMFactoryManifest.Image.self, from: VMFactorySelection.readMetadata(root(identity.manifestSHA256).appendingPathComponent("factory.json")))
+        try PrivateFiles.directory(directory); try PrivateFiles.directory(root(identity.manifestSHA256))
+        let descriptor = try VMFactorySelection.readMetadata(root(identity.manifestSHA256).appendingPathComponent("reviewed-factory.json"))
+        guard KitVerifier.sha256(descriptor) == identity.manifestSHA256 else { throw Self.invalid("The factory descriptor differs from its recorded identity.") }
+        let manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: descriptor)
+        try manifest.validate()
+        let image = try Self.decodeImage(VMFactorySelection.readMetadata(root(identity.manifestSHA256).appendingPathComponent("factory.json")), expectedSHA256: manifest.files["factory.json"])
+        guard image.disk.sha256 == identity.diskSHA256, image.disk.bytes > 0 else { throw Self.invalid("Factory image metadata differs from its recorded identity.") }
         guard (64...8192).contains(diskGiB), Int64(diskGiB) * 1_073_741_824 >= image.disk.bytes else { throw Self.invalid("Choose a disk capacity at least as large as the prepared factory disk.") }
     }
     public func selection(for identity: FactoryIdentity?) throws -> VMFactorySelection? {

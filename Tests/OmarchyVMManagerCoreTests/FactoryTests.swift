@@ -269,6 +269,24 @@ struct FactoryTests {
         let unsupported = FactoryCatalog(applicationSupport: f.files.support, kit: f.kit.kit, lockData: try JSONEncoder().encode(lock), reviewed: [digest])
         #expect(throws: VMFailure.self) { try unsupported.importBundle(f.source) }
     }
+    @Test("capacity checks reject metadata changed after identity verification", arguments: ["image", "descriptor", "identity"])
+    func capacityMetadata(_ mode: String) throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
+        var identity = try catalog.importBundle(f.source)
+        try catalog.validateCapacity(identity, diskGiB: 64)
+        if mode == "identity" {
+            identity = FactoryIdentity(kind: .custom, name: identity.name, manifestSHA256: digest, diskSHA256: String(repeating: "a", count: 64))
+        } else {
+            let file = catalog.root(digest).appendingPathComponent(mode == "image" ? "factory.json" : "reviewed-factory.json")
+            var data = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
+            if mode == "image" {
+                var disk = data["disk"] as! [String: Any]; disk["bytes"] = 1; data["disk"] = disk
+            } else { data["name"] = "Changed metadata" }
+            try JSONSerialization.data(withJSONObject: data).write(to: file)
+        }
+        #expect(throws: VMFailure.self) { try catalog.validateCapacity(identity, diskGiB: 64) }
+    }
     @Test("factory selection uses the public protocol and rejects malformed fields")
     func protocolRoundTrip() throws {
         var config = VMRunConfiguration(productName: "Fixture", storageRoot: "/private/tmp/" + UUID().uuidString)
@@ -379,13 +397,18 @@ struct FactoryLifecycleTests {
 }
 
 private final class FactoryImportGate: @unchecked Sendable {
+    private let pauseAt: FactoryImportProgress
+    init(pauseAt: FactoryImportProgress = .copying) { self.pauseAt = pauseAt }
     private let lock = NSLock()
     private let semaphore = DispatchSemaphore(value: 0)
     private var entered = false
     private var opened = false
+    private var cancelled = false
     var isBlocked: Bool { lock.withLock { entered && !opened } }
+    var cancellationRequested: Bool { lock.withLock { cancelled } }
     func report(_ progress: FactoryImportProgress) {
-        guard progress == .copying else { return }
+        if progress == .cancelling { lock.withLock { cancelled = true }; return }
+        guard progress == pauseAt else { return }
         lock.withLock { entered = true }
         semaphore.wait()
     }
@@ -397,6 +420,60 @@ private final class FactoryImportGate: @unchecked Sendable {
 
 @Suite("Local factory import through the manager — no VMs")
 struct LocalFactoryManagerTests {
+    @Test("quit waits for import cancellation or final publication", arguments: ["cancel", "shutdown", "saving"])
+    func quitDuringImport(_ mode: String) async throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let digest = try f.write(), catalog = try f.catalog(reviewed: []), source = f.source
+        let registry = try RegistryStore(applicationSupport: f.files.support); _ = try registry.load()
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: f.files.support, registry: registry)
+        await manager.installFactoryCatalog(catalog)
+        let gate = FactoryImportGate(pauseAt: mode == "saving" ? .saving : .copying)
+        let fallback = Task.detached {
+            do { try await Task.sleep(for: .seconds(5)); gate.release() } catch { }
+        }
+        defer { gate.release(); fallback.cancel() }
+        let imported = Task { try await manager.importFactory(source) { gate.report($0) } }
+        #expect(await eventually { gate.isBlocked })
+        #expect(await manager.isImportingFactory)
+        #expect(await manager.isIdle == false)
+        #expect(await manager.prepareToQuitIfIdle() == false)
+        let cancelled: Task<Void, Never>?
+        if mode == "shutdown" {
+            #expect(await manager.beginApplicationShutdown() == false)
+            cancelled = nil
+        } else { cancelled = Task { await manager.cancelFactoryImportAndWait() } }
+        #expect(await eventually { gate.cancellationRequested })
+        #expect(await manager.isIdle == false)
+        gate.release()
+        if mode == "saving" {
+            let identity = try await imported.value
+            #expect(try catalog.identity(for: digest) == identity)
+            #expect(FileManager.default.fileExists(atPath: catalog.receiptURL(digest).path))
+        } else {
+            await #expect(throws: CancellationError.self) { try await imported.value }
+            #expect(!FileManager.default.fileExists(atPath: catalog.receiptURL(digest).path))
+        }
+        await cancelled?.value
+        #expect(await eventually { await manager.isIdle })
+        #expect(runtime.startedHandles.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: f.files.storage.vms.path))
+    }
+    @Test("an already cancelled caller cannot start an import worker")
+    func cancelledCaller() async throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        _ = try f.write(); let catalog = try f.catalog(reviewed: []), source = f.source
+        let registry = try RegistryStore(applicationSupport: f.files.support); _ = try registry.load()
+        let manager = VMManager(runtime: FakeRuntime(), profiles: [], applicationSupport: f.files.support, registry: registry)
+        await manager.installFactoryCatalog(catalog)
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await manager.importFactory(source)
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(await manager.isIdle)
+        #expect(!FileManager.default.fileExists(atPath: catalog.directory.path))
+    }
     @Test("the command import is available after reopening without compiled approval or storage creation")
     func commandImport() async throws {
         let f = try FactoryFixture(); defer { f.cleanup() }

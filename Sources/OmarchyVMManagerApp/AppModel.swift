@@ -15,7 +15,9 @@ struct DeletionReview: Identifiable {
 final class AppModel: ObservableObject {
     @Published var factoryImportInProgress = false
     @Published var factoryImportProgress = FactoryImportProgress.verifying
-    @Published var factories: [FactoryIdentity] = [.official]
+    @Published private var factoryLibrary = FactoryLibraryCache()
+    var factories: [FactoryIdentity] { factoryLibrary.factories }
+    private static let factoryIssueMessage = "Some imported factories failed verification and cannot be selected."
     @Published var ownerDefaults: OwnerDefaults?
     @Published var defaultsError: String?
     @Published var diagnostics: KitDiagnostics?
@@ -92,9 +94,13 @@ final class AppModel: ObservableObject {
             do {
                 let catalog = try FactoryCatalog(applicationSupport: support, kit: .embedded(), lockData: Data(contentsOf: Self.lockURL))
                 await manager.installFactoryCatalog(catalog)
-                let listing = try await manager.factoryListing()
-                factories = listing.factories
-                if !listing.issues.isEmpty { actionError = "Some imported factories failed verification and cannot be selected." }
+                let request = factoryLibrary.beginRefresh()
+                do {
+                    let listing = try await manager.factoryListing()
+                    if factoryLibrary.apply(listing, for: request), !listing.issues.isEmpty { actionError = Self.factoryIssueMessage }
+                } catch {
+                    if factoryLibrary.isCurrent(request) { actionError = error.localizedDescription }
+                }
             } catch { actionError = error.localizedDescription }
         }
         await loadDefaults()
@@ -154,17 +160,21 @@ final class AppModel: ObservableObject {
                 self.factoryImportProgress = progress
             }
         }
-        factories.removeAll { $0.selector == identity.selector }
-        factories.append(identity)
+        factoryLibrary.imported(identity)
+        if factoryLibrary.issues.isEmpty, configurationError == Self.factoryIssueMessage { configurationError = nil }
         return identity
     }
 
     func loadFactories() async {
+        let request = factoryLibrary.beginRefresh()
         do {
             let listing = try await manager.factoryListing()
-            factories = listing.factories
-            if !listing.issues.isEmpty { configurationError = "Some imported factories failed verification and cannot be selected." }
-        } catch { configurationError = error.localizedDescription }
+            guard factoryLibrary.apply(listing, for: request) else { return }
+            if !listing.issues.isEmpty { configurationError = Self.factoryIssueMessage }
+            else if configurationError == Self.factoryIssueMessage { configurationError = nil }
+        } catch {
+            if factoryLibrary.isCurrent(request) { configurationError = error.localizedDescription }
+        }
     }
 
     func loadDefaults() async {
@@ -287,6 +297,7 @@ final class AppModel: ObservableObject {
     }
 
     func requestQuit() async {
+        await manager.cancelFactoryImportAndWait()
         if await manager.hasActiveSuspensionTransition {
             actionError = "An experimental suspension or restore is unresolved. Let it finish, or explicitly stop that guest and preserve its guarded state before quitting."
             NSApplication.shared.reply(toApplicationShouldTerminate: false); return

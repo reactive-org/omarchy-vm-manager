@@ -50,7 +50,7 @@ omarchy-vm create custom-dev --factory MANIFEST_SHA256
 omarchy-vm create official-dev --factory official
 ```
 
-`factory-import` returns the imported identity in a `factories` array. The creation config accepts `"factory":"official"` or an imported manifest digest. `get`, `list` and creation replies expose the recorded `factory`, when present. Creation requires a capacity at least as large as the prepared disk. Update refuses image changes. The example creates metadata only; it does not start a VM.
+`factory-import` returns the imported identity in a `factories` array. The creation config accepts `"factory":"official"` or an imported manifest digest. `get`, `list` and creation replies expose the recorded `factory`, when present. Creation requires a capacity at least as large as the prepared disk. Capacity checks recheck the descriptor digest and image-metadata hash against the recorded identity. Update refuses image changes. The example creates metadata only; it does not start a VM.
 
 ## Runtime boundary and validation
 
@@ -58,7 +58,7 @@ omarchy-vm create official-dev --factory official
 
 The existing kit implements decompression, sparse disks, APFS cloning, growth, locking, lifecycle, NAT and guest integration under manager orchestration. Before cloning, custom factory preparation additionally checks the uncompressed disk digest, including a previously decompressed custom cache. The integration package remains inside the whole-kit signing/inventory boundary; a factory cannot replace it. SSH enrollment and readiness retain their per-guest and per-session checks.
 
-Large scans and copy/preparation work run outside the lifecycle actor. Cancellation before publication removes the staging copy and creates no receipt. Final publication completes as one commit phase. Session/resource admission, pending stop/force-stop/Quit and matching `.exited` ownership remain unchanged.
+Large scans and copy/preparation work run outside the lifecycle actor. Cancellation before publication removes the staging copy and creates no receipt. Final publication completes as one commit phase. Quit cancels an uncommitted import and waits for its worker to stop; if publication has begun, it waits for the verified files and receipt to finish. An import counts as active work until that boundary. Older library refreshes cannot remove a newly imported picker choice or replace a newer refresh with stale results/errors. Session/resource admission, pending stop/force-stop and matching `.exited` ownership remain unchanged.
 
 Run `make test`, `make test-factories` and `make app-preview verify-preview` for no-VM validation. Synthetic fixtures cover local import/reopen without compiled pins, receipt corruption/runtime mismatch/permissions/symlinks, cancellation and retry, image/provisioning tampering, metadata-only creation and legacy identity/disk continuity. The helper process test uses synthetic image files and a QMP stub, never QEMU.
 
