@@ -1,0 +1,7 @@
+{
+  "tag": "v1.3.0",
+  "commit": "13d63df8da2947f833c04025ff5ade187d39ba81",
+  "runProtocolVersion": 1,
+  "kitSHA256": "3ad65381b34ced2ebe3f5f19b95d58ec1a2c51a77a6edf7599666a939b6991a6",
+  "focusAwareClipboard": false
+}

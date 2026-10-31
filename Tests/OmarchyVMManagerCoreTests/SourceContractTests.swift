@@ -1,0 +1,46 @@
+import Foundation
+import Testing
+@testable import OmarchyVMManagerCore
+
+@Suite("Pinned source contracts")
+struct SourceContractTests {
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+
+    @Test("upstream source and stock lock name the reviewed baseline")
+    func baseline() throws {
+        let lock = try JSONSerialization.jsonObject(with: Data(contentsOf: repository.appendingPathComponent("Config/TryOmarchyUpstream.lock.json"))) as! [String: Any]
+        #expect(lock["commit"] as? String == UpstreamBaseline.commit)
+        #expect(lock["kitSHA256"] as? String == UpstreamBaseline.stockSHA256)
+        #expect(lock["focusAwareClipboard"] as? Bool == false)
+        let source = try String(contentsOf: repository.appendingPathComponent("Vendor/try-omarchy/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift"), encoding: .utf8)
+        #expect(source.contains("public static let version = 1"))
+        let package = try String(contentsOf: repository.appendingPathComponent("Vendor/try-omarchy/macos/Package.swift"), encoding: .utf8)
+        #expect(package.contains("swift-tools-version: 6.0"))
+        #expect(package.contains("TryOmarchyKitClient"))
+    }
+
+    @Test("prepared POC roots are distinct UUIDs under the manager directory")
+    func preparedRoots() {
+        let support = URL(fileURLWithPath: "/private/tmp/source-contract")
+        let roots = POCProfiles.all.map { POCProfiles.root(for: $0, applicationSupport: support) }
+        #expect(Set(roots).count == 2)
+        for (index, root) in roots.enumerated() {
+            #expect(root.deletingLastPathComponent().path == "/private/tmp/source-contract/Omarchy VM Manager/VMs")
+            #expect(root.lastPathComponent == POCProfiles.all[index].id.uuidString)
+        }
+    }
+}
+
+@Test("committed runtime lock matches the compiled pin and reproducible patch")
+func committedRuntimeProvenance() throws {
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let lockData = try Data(contentsOf: repository.appendingPathComponent("Config/TryOmarchyRuntime.lock.json"))
+    #expect(KitVerifier.sha256(lockData) == RuntimePin.lockSHA256)
+    let lock = try JSONDecoder().decode(RuntimeProvenance.self, from: lockData)
+    try KitVerifier.validate(lock, policy: .debugPOC)
+    let metadata = try JSONSerialization.jsonObject(with: Data(contentsOf: repository.appendingPathComponent("Config/TryOmarchyClipboardPatch.json"))) as! [String: String]
+    #expect(lock.patchCommit == metadata["commit"])
+    #expect(lock.patchSHA256 == metadata["patchSHA256"])
+    let patch = try Data(contentsOf: repository.appendingPathComponent("Patches/0001-focus-aware-clipboard.patch"))
+    #expect(KitVerifier.sha256(patch) == lock.patchSHA256)
+}

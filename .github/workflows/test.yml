@@ -1,0 +1,16 @@
+name: No-VM checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Manager and artifact contracts
+        run: make test
+      - name: Exact patched upstream suite
+        run: make test-upstream

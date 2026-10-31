@@ -1,0 +1,11 @@
+{
+  "commit": "a135f003c2ffd2ce820900b5896b7ad9e2b84a96",
+  "authorName": "Omarchy VM Manager",
+  "authorEmail": "build@localhost",
+  "authorDate": "2026-10-31T11:27:20+11:00",
+  "committerName": "Omarchy VM Manager",
+  "committerEmail": "build@localhost",
+  "committerDate": "2026-10-31T11:27:20+11:00",
+  "subject": "Route the native clipboard only through the focused QEMU guest",
+  "patchSHA256": "0c6ca8e97cbf81393ff00c6789eb415a79452027f21e7cabfc6ad2a1631eff18"
+}

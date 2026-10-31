@@ -1,0 +1,365 @@
+From a135f003c2ffd2ce820900b5896b7ad9e2b84a96 Mon Sep 17 00:00:00 2001
+From: Omarchy VM Manager <build@localhost>
+Date: Sat, 31 Oct 2026 11:27:20 +1100
+Subject: [PATCH] Route the native clipboard only through the focused QEMU
+ guest
+
+---
+ docs/vm-kit.md                                |   6 +
+ .../NativeClipboardBridge.swift               | 136 ++++++++++++----
+ .../NativeClipboardBridgeTests.swift          | 150 ++++++++++++++++++
+ 3 files changed, 259 insertions(+), 33 deletions(-)
+
+diff --git a/docs/vm-kit.md b/docs/vm-kit.md
+index fac6182..ea9f8d8 100644
+--- a/docs/vm-kit.md
++++ b/docs/vm-kit.md
+@@ -159,3 +159,9 @@ A fetched kit lives outside the embedding app's bundle, and the registered daemo
+ ## Sharing a VM
+ 
+ The full app and an embedding app open the same VM in the default folder ([finding the VM](#finding-the-vm)), never at once: the VM folder's lock refuses the second. The run mode reports `vm-already-open`, and the full app says that Omarchy is open in another app, such as Omarchy Installer. Either can boot a VM the other made. The `try-omarchy` package only upgrades, so an older kit never downgrades the guest. A launcher refuses a VM whose `vm.json` names a storage layout it does not know (`storage-layout-unknown`).
++
++### Focused clipboard routing (private POC patch)
++
++The native clipboard bridge reads and writes the Mac clipboard only while its exact QEMU process is frontmost and its captured kernel process identity is still alive. Unknown focus fails closed. It needs no additional Accessibility grant. Focus gain synchronizes the current Mac clipboard once; a background guest's clipboard and sync messages are ignored. A quarter-second poll reconciles focus, and each clipboard side effect checks focus again on the bridge's serial state queue. Echo markers reset at observed focus loss/gain. If a guest message first observes focus gain, the current host selection wins that transition.
++
++The global Mac clipboard still transfers content intentionally when the user switches guests. The change prevents background broadcast and background writes; it does not create private host clipboards. The client configuration and run protocol remain at version 1. Deterministic two-route tests cover shared pasteboard isolation, rapid activation, focus loss during reads and immediately before side effects. Real two-guest focus behaviour remains to be validated on Apple Silicon.
+diff --git a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
+index 39b07ba..77f297f 100644
+--- a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
++++ b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
+@@ -197,29 +197,123 @@ final class GeneralPasteboard: HostPasteboardProviding {
+     }
+ }
+ 
++protocol ClipboardFocusProviding: AnyObject {
++    func isFocused() -> Bool
++}
++
++final class QEMUClipboardFocus: ClipboardFocusProviding {
++    private let processIdentity: KernelProcessIdentity
++
++    init(processIdentity: KernelProcessIdentity) {
++        self.processIdentity = processIdentity
++    }
++
++    func isFocused() -> Bool {
++        processIdentity.isStillRunning &&
++            NSWorkspace.shared.frontmostApplication?.processIdentifier == processIdentity.processIdentifier
++    }
++}
++
++final class FocusedClipboardRouting {
++    private let pasteboard: HostPasteboardProviding
++    private let focus: ClipboardFocusProviding
++    private let send: (Data) throws -> Void
++    private var state = ClipboardSyncState()
++    private var wasFocused = false
++    private var observedChangeCount: Int?
++
++    init(pasteboard: HostPasteboardProviding, focus: ClipboardFocusProviding,
++         send: @escaping (Data) throws -> Void) {
++        self.pasteboard = pasteboard
++        self.focus = focus
++        self.send = send
++    }
++
++    private func stillFocused() -> Bool {
++        guard focus.isFocused() else {
++            wasFocused = false
++            observedChangeCount = nil
++            state = ClipboardSyncState()
++            return false
++        }
++        return true
++    }
++
++    private func reconcileFocus() throws -> (focused: Bool, gained: Bool) {
++        guard stillFocused() else { return (false, false) }
++        let gained = !wasFocused
++        wasFocused = true
++        if gained {
++            state = ClipboardSyncState()
++            try sendHostSelection()
++        }
++        return (wasFocused, gained)
++    }
++
++    private func sendHostSelection() throws {
++        guard stillFocused() else { return }
++        let count = pasteboard.changeCount
++        let message = pasteboard.read()
++        guard stillFocused() else { return }
++        observedChangeCount = count
++        guard let message, state.hostChanged(message) else { return }
++        let data = try message.encode()
++        guard stillFocused() else { return }
++        try send(data)
++    }
++
++    func poll() throws {
++        let transition = try reconcileFocus()
++        guard transition.focused, !transition.gained else { return }
++        guard stillFocused(), pasteboard.changeCount != observedChangeCount else { return }
++        try sendHostSelection()
++    }
++
++    func handle(_ line: ClipboardMessage.GuestLine) throws {
++        let transition = try reconcileFocus()
++        guard transition.focused else { return }
++        switch line {
++        case .sync:
++            guard !transition.gained else { return }
++            state = ClipboardSyncState()
++            try sendHostSelection()
++        case .clipboard(let message):
++            guard !transition.gained, stillFocused(), state.guestChanged(message) else { return }
++            guard stillFocused() else { return }
++            pasteboard.write(message)
++            observedChangeCount = pasteboard.changeCount
++        case .ignored:
++            return
++        }
++    }
++}
++
+ final class NativeClipboardBridge {
+     private let descriptor: Int32
+-    private let pasteboard: HostPasteboardProviding
++    private let routing: FocusedClipboardRouting
+     private let stateQueue = DispatchQueue(label: "dev.tryomarchy.native.clipboard-bridge-state")
+-    private let writeQueue = DispatchQueue(label: "dev.tryomarchy.native.clipboard-bridge-writes")
+     private let stopLock = NSLock()
+-    private var state = ClipboardSyncState()
+-    private var observedChangeCount: Int
+     private var poller: DispatchSourceTimer?
+     private var stopped = false
+ 
+     init(
+         targetPID: pid_t,
+         socketPath: String,
+-        pasteboard: HostPasteboardProviding = GeneralPasteboard()
++        pasteboard: HostPasteboardProviding = GeneralPasteboard(),
++        focus: ClipboardFocusProviding? = nil
+     ) throws {
+         guard let processIdentity = KernelProcessIdentity.capture(processIdentifier: targetPID),
+               processIdentity.isQEMUSystemProcess else {
+             throw HelperError.io("native clipboard bridge target is not a QEMU system process")
+         }
+         descriptor = try NativeBridgeSocket.connectSecure(path: socketPath, label: "clipboard bridge")
+-        self.pasteboard = pasteboard
+-        observedChangeCount = pasteboard.changeCount
++        let socketDescriptor = descriptor
++        routing = FocusedClipboardRouting(
++            pasteboard: pasteboard,
++            focus: focus ?? QEMUClipboardFocus(processIdentity: processIdentity)
++        ) { data in
++            try NativeBridgeSocket.writeAll(data, to: socketDescriptor, label: "clipboard")
++        }
+     }
+ 
+     deinit {
+@@ -287,12 +381,8 @@ final class NativeClipboardBridge {
+     }
+ 
+     private func pollPasteboard() {
+-        let current = pasteboard.changeCount
+-        guard current != observedChangeCount else { return }
+-        observedChangeCount = current
+-        guard let message = pasteboard.read(), state.hostChanged(message) else { return }
+         do {
+-            try send(message.encode())
++            try routing.poll()
+         } catch {
+             fputs("[clipboard-bridge] \(error.localizedDescription)\n", stderr)
+             stop()
+@@ -301,27 +391,7 @@ final class NativeClipboardBridge {
+ 
+     private func handle(_ data: Data) throws {
+         try stateQueue.sync {
+-            switch try ClipboardMessage.decode(data) {
+-            case .sync:
+-                guard let message = pasteboard.read() else { return }
+-                // A fresh guest session asks for the current Mac clipboard.
+-                // Reset the host marker so the same text can be re-sent.
+-                state = ClipboardSyncState()
+-                guard state.hostChanged(message) else { return }
+-                try send(message.encode())
+-            case .clipboard(let message):
+-                guard state.guestChanged(message) else { return }
+-                pasteboard.write(message)
+-                observedChangeCount = pasteboard.changeCount
+-            case .ignored:
+-                return
+-            }
+-        }
+-    }
+-
+-    private func send(_ data: Data) throws {
+-        try writeQueue.sync {
+-            try NativeBridgeSocket.writeAll(data, to: descriptor, label: "clipboard")
++            try routing.handle(ClipboardMessage.decode(data))
+         }
+     }
+ }
+diff --git a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
+index 814cebc..0959576 100644
+--- a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
++++ b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
+@@ -108,3 +108,153 @@ struct NativeClipboardBridgeTests {
+         #expect(guest(b, at: window + 1))
+     }
+ }
++
++private final class ClipboardTestFocus: ClipboardFocusProviding {
++    var focused = false
++    var probes: [Bool] = []
++    func isFocused() -> Bool {
++        if !probes.isEmpty { return probes.removeFirst() }
++        return focused
++    }
++}
++
++private final class ClipboardTestPasteboard: HostPasteboardProviding {
++    var changeCount = 0
++    var message: ClipboardMessage?
++    var reads = 0
++    var writes = 0
++    var onRead: (() -> Void)?
++    func read() -> ClipboardMessage? {
++        reads += 1
++        onRead?()
++        return message
++    }
++    func write(_ message: ClipboardMessage) {
++        self.message = message
++        changeCount += 1
++        writes += 1
++    }
++    func copy(_ text: String) {
++        message = ClipboardMessage(format: .text, payload: Data(text.utf8))!
++        changeCount += 1
++    }
++}
++
++private final class ClipboardTestOutput {
++    var messages: [ClipboardMessage] = []
++    func send(_ data: Data) throws {
++        if case .clipboard(let message) = try ClipboardMessage.decode(data) {
++            messages.append(message)
++        }
++    }
++}
++
++@Suite("Focus-routed clipboard")
++struct FocusedClipboardRoutingTests {
++    @Test("two bridges share a host clipboard without background traffic")
++    func twoBridges() throws {
++        let host = ClipboardTestPasteboard()
++        let aFocus = ClipboardTestFocus(), bFocus = ClipboardTestFocus()
++        let aOutput = ClipboardTestOutput(), bOutput = ClipboardTestOutput()
++        let a = FocusedClipboardRouting(pasteboard: host, focus: aFocus, send: aOutput.send)
++        let b = FocusedClipboardRouting(pasteboard: host, focus: bFocus, send: bOutput.send)
++        host.copy("host one")
++        try a.poll(); try b.poll()
++        #expect(host.reads == 0)
++        aFocus.focused = true
++        try a.poll(); try a.poll(); try b.poll()
++        #expect(aOutput.messages.map(\.text) == ["host one"])
++        #expect(bOutput.messages.isEmpty)
++        host.copy("host two")
++        try a.poll(); try b.handle(.sync)
++        #expect(aOutput.messages.map(\.text) == ["host one", "host two"])
++        let background = ClipboardMessage(format: .text, payload: Data("background".utf8))!
++        try b.handle(.clipboard(background))
++        #expect(host.message?.text == "host two")
++        #expect(host.writes == 0)
++        let guest = ClipboardMessage(format: .text, payload: Data("guest A".utf8))!
++        try a.handle(.clipboard(guest))
++        try a.poll(); try b.poll()
++        #expect(host.message == guest)
++        #expect(aOutput.messages.count == 2)
++        aFocus.focused = false; bFocus.focused = true
++        try a.poll(); try b.poll(); try b.poll()
++        #expect(bOutput.messages.map(\.text) == ["guest A"])
++        #expect(host.writes == 1)
++        let guestB = ClipboardMessage(format: .text, payload: Data("guest B".utf8))!
++        try b.handle(.clipboard(guestB))
++        #expect(host.message == guestB)
++        try a.handle(.clipboard(background))
++        #expect(host.message == guestB)
++    }
++
++    @Test("rapid focus changes synchronize once per observed activation")
++    func rapidSwitches() throws {
++        let host = ClipboardTestPasteboard()
++        let fa = ClipboardTestFocus(), fb = ClipboardTestFocus()
++        let oa = ClipboardTestOutput(), ob = ClipboardTestOutput()
++        let a = FocusedClipboardRouting(pasteboard: host, focus: fa, send: oa.send)
++        let b = FocusedClipboardRouting(pasteboard: host, focus: fb, send: ob.send)
++        host.copy("current")
++        for i in 0..<20 {
++            fa.focused = i % 2 == 0; fb.focused = !fa.focused
++            try a.poll(); try b.poll(); try a.poll(); try b.poll()
++        }
++        #expect(oa.messages.count == 10)
++        #expect(ob.messages.count == 10)
++        #expect(host.writes == 0)
++    }
++
++    @Test("focus lost while reading prevents host delivery and recovers on activation")
++    func lostDuringRead() throws {
++        let host = ClipboardTestPasteboard(), focus = ClipboardTestFocus()
++        let output = ClipboardTestOutput()
++        let route = FocusedClipboardRouting(pasteboard: host, focus: focus, send: output.send)
++        host.copy("private")
++        focus.focused = true
++        host.onRead = { focus.focused = false }
++        try route.poll()
++        #expect(output.messages.isEmpty)
++        host.onRead = nil; focus.focused = true
++        try route.poll(); try route.poll()
++        #expect(output.messages.map(\.text) == ["private"])
++    }
++
++    @Test("focus is checked immediately before guest writes and host sends")
++    func sideEffectChecks() throws {
++        let host = ClipboardTestPasteboard(), focus = ClipboardTestFocus()
++        let output = ClipboardTestOutput()
++        let route = FocusedClipboardRouting(pasteboard: host, focus: focus, send: output.send)
++        host.copy("host")
++        focus.focused = true
++        try route.poll()
++        let guest = ClipboardMessage(format: .text, payload: Data("guest".utf8))!
++        focus.probes = [true, true, false]
++        try route.handle(.clipboard(guest))
++        #expect(host.writes == 0)
++        #expect(host.message?.text == "host")
++        focus.probes = [true, true, true, false]
++        try route.poll()
++        #expect(output.messages.count == 1)
++    }
++
++    @Test("sync is gated and foreground echoes stay suppressed")
++    func syncAndEcho() throws {
++        let host = ClipboardTestPasteboard(), focus = ClipboardTestFocus()
++        let output = ClipboardTestOutput()
++        let route = FocusedClipboardRouting(pasteboard: host, focus: focus, send: output.send)
++        host.copy("selection")
++        try route.handle(.sync)
++        #expect(host.reads == 0)
++        focus.focused = true
++        try route.handle(.sync)
++        #expect(output.messages.count == 1)
++        try route.handle(.clipboard(host.message!))
++        #expect(host.writes == 0)
++        try route.handle(.sync)
++        #expect(output.messages.count == 2)
++        focus.focused = false
++        try route.handle(.sync)
++        #expect(output.messages.count == 2)
++    }
++}
+-- 
+2.54.0 (Apple Git-157)
+

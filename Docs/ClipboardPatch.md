@@ -1,0 +1,13 @@
+# Route the native clipboard only through the focused QEMU guest
+
+Stock Try Omarchy v1.3.0 runs an independent clipboard bridge per QEMU process. Each polls the same Mac pasteboard, so a second background guest receives host updates and can overwrite copies from the foreground guest.
+
+This patch adds `ClipboardFocusProviding`, with a production adapter that compares the exact target PID against `NSWorkspace.shared.frontmostApplication` and revalidates the captured kernel process identity. No process-name matching, Accessibility grant or run-protocol change is introduced.
+
+`FocusedClipboardRouting` is the bridge's shared test/live state machine. Its poll and guest handlers run on the existing serial state queue. They ignore background sync/clipboard messages, reset echo state on observed focus loss/gain, synchronize the current host selection once on focus gain, and recheck focus immediately before sends and host writes. If a guest clipboard event first detects activation, the host selection wins that transition so a queued background copy cannot replace it. Existing two-second echo suppression remains intact. Payloads are never logged.
+
+The tests use two real routing instances, two fake focus probes and one fake pasteboard. They cover both directions, foreground echoes, background suppression, activation synchronization, rapid switching, focus lost during a read, focus lost immediately before side effects and unavailable focus. Existing single-VM clipboard tests still pass.
+
+The patch is saved as a dedicated reproducible local commit with the exact identity in `Config/TryOmarchyClipboardPatch.json`. It is based on v1.3.0 commit `13d63df8da2947f833c04025ff5ade187d39ba81`; the vendor checkout remains at that baseline. No upstream PR has been published.
+
+Real multi-guest clipboard, Cocoa foreground identity, rapid UI focus transitions and sleep/wake remain TO PROVE. Focus is reconciled by the existing 250 ms poll and at every message/side effect; events during an unobserved loss-and-regain interval have no focus epoch in protocol 1. The exact real-world behaviour must pass the two-VM gate before claiming this fixes the product use case.

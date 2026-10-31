@@ -1,0 +1,2 @@
+Patches/*.patch -whitespace
+intent.md whitespace=-blank-at-eol
