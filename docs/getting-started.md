@@ -43,7 +43,7 @@ Click **Create VM**. This saves the profile; the guest disk is created on its fi
 
 ## Launch and connect
 
-Select the guest and click **Launch**. Its Home page shows its current state and resource summary.
+Select the guest and click **Launch**. The manager selects its Home card and scrolls to the top so preparation and download progress are visible. Launching through the CLI selects the same card when the manager observes the new session. You can switch to another guest or page while startup continues.
 
 ![The stopped guest Home page with its Launch button and Quick Settings](media/guest-home.webp)
 

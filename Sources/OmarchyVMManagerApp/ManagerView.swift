@@ -10,6 +10,7 @@ struct ManagerView: View {
     @State private var destination: Destination? = .library
     @State private var editor: EditorSelection?
     @State private var page: GuestPage = .home
+    @State private var detailPresentation = UUID()
     private var active: [VMSnapshot] { model.snapshots.filter { $0.sessionID != nil } }
 
     var body: some View {
@@ -65,7 +66,7 @@ struct ManagerView: View {
                     default: library
                     }
                 }.padding(28).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
-            }.background(Color(nsColor: .windowBackgroundColor))
+            }.id(detailPresentation).background(Color(nsColor: .windowBackgroundColor))
         }
         .navigationTitle("Omarchy VM Manager")
         .toolbar {
@@ -77,8 +78,13 @@ struct ManagerView: View {
         }
         .frame(minWidth: 920, minHeight: 650)
         .onChange(of: destination) { page = .home }
+        .onChange(of: model.snapshots.compactMap(\.sessionID)) { previous, current in
+            guard let session = current.last(where: { !previous.contains($0) }),
+                  let snapshot = model.snapshots.first(where: { $0.sessionID == session }) else { return }
+            focusGuest(snapshot.id)
+        }
         .sheet(item: $editor) { selection in
-            VMEditor(model: model, profile: selection.profile) { id in destination = .guest(id); page = .home; editor = nil }
+            VMEditor(model: model, profile: selection.profile) { id in focusGuest(id); editor = nil }
         }
         .sheet(isPresented: $model.shuttingDown) { ProgressView("Shutting down VMs…").padding(40).interactiveDismissDisabled() }
         .alert("Power off this VM?", isPresented: Binding(get: { model.forceStopID != nil }, set: { if !$0 { model.forceStopID = nil } })) {
@@ -124,7 +130,7 @@ struct ManagerView: View {
                 actions: { Button("New VM") { editor = EditorSelection(profile: nil) }.buttonStyle(.borderedProminent) }
             }
             ForEach(model.snapshots) { snapshot in
-                GuestLibraryRow(snapshot: snapshot, open: { destination = .guest(snapshot.id) }) { controls(snapshot) }
+                GuestLibraryRow(snapshot: snapshot, open: { focusGuest(snapshot.id) }) { controls(snapshot) }
             }
         }
     }
@@ -320,8 +326,13 @@ struct ManagerView: View {
 
     private func controls(_ snapshot: VMSnapshot) -> some View {
         GuestControls(snapshot: snapshot, launchEnabled: !model.checking && model.diagnostics != nil && model.registryError == nil && !model.shuttingDown,
-                      start: { Task { await model.start(snapshot.id) } }, stop: { Task { await model.stop(snapshot.id) } },
+                      start: { focusGuest(snapshot.id); Task { await model.start(snapshot.id) } }, stop: { Task { await model.stop(snapshot.id) } },
                       forceStop: { model.forceStopID = snapshot.id })
+    }
+    private func focusGuest(_ id: UUID) {
+        destination = .guest(id)
+        page = .home
+        detailPresentation = UUID()
     }
     private func editable(_ snapshot: VMSnapshot) -> Bool { snapshot.sessionID == nil && snapshot.state.canStart && !snapshot.profile.isRetainedPOC && !model.shuttingDown }
 }
