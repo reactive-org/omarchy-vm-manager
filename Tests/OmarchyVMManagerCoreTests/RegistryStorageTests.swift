@@ -51,7 +51,7 @@ struct RegistryStorageTests {
             let data: Data
             switch mode {
             case "malformed": data = Data("broken".utf8)
-            case "newer": data = Data("{\"schemaVersion\":4,\"profiles\":[]}".utf8)
+            case "newer": data = Data("{\"schemaVersion\":5,\"profiles\":[]}".utf8)
             case "oversized": data = Data(repeating: 32, count: 1_048_577)
             default:
                 var object = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
@@ -90,7 +90,41 @@ struct RegistryStorageTests {
         let values = object["settings"] as! [String: Any]
         #expect(Set(values.keys) == POCStorage.inheritedKeys)
         #expect(values["networkPreferences"] is NSNull)
+        let resources = values["vmResourcePreferences"] as? [String: Any]
+        let configured = resources?["resources"] as? [String: Any]
+        #expect(resources?["schemaVersion"] as? Int == 1)
+        #expect(configured?["cpuCount"] as? Int == profile.cpus)
+        #expect(configured?["memoryGiB"] as? Int == profile.memoryMiB / 1024)
+        #expect(configured?["diskGiB"] as? Int == 64)
         #expect((values["fullscreenPreferences"] as? [String: Any])?["isImmersive"] as? Bool == false)
+    }
+
+    @Test("legacy profiles decode without a disk policy; managed capacity is grow-only")
+    func diskPolicyMigration() async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let original = VMProfile(id: UUID(), name: "Legacy", diskGiB: nil, immersiveMode: false)
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(VMProfile.self, from: encoded)
+        #expect(decoded.diskGiB == nil)
+
+        let store = try RegistryStore(applicationSupport: f.support); _ = try store.load(); try store.save([original])
+        let manager = VMManager(runtime: FakeRuntime(), profiles: [original], applicationSupport: f.support,
+                                hostMemoryMiB: 32768, logicalCPUs: 8, registry: store)
+        try await manager.update(original.id, configuration: GuestConfigurationPatch(diskGiB: 64))
+        #expect(await manager.snapshots()[0].profile.diskGiB == 64)
+        await #expect(throws: VMFailure.self) {
+            try await manager.update(original.id, configuration: GuestConfigurationPatch(diskGiB: 63))
+        }
+        let managed = try #require(await manager.snapshots().first?.profile)
+        let root = try f.storage.prepare(managed)
+        let disk = root.appendingPathComponent("shell/disk.img")
+        #expect(FileManager.default.createFile(atPath: disk.path, contents: nil, attributes: [.posixPermissions: 0o600]))
+        let file = try FileHandle(forWritingTo: disk); try file.truncate(atOffset: 80 * 1_073_741_824); try file.close()
+        await #expect(throws: VMFailure.self) {
+            try await manager.update(original.id, configuration: GuestConfigurationPatch(diskGiB: 64))
+        }
+        try await manager.update(original.id, configuration: GuestConfigurationPatch(diskGiB: 128))
+        #expect(await manager.snapshots()[0].profile.diskGiB == 128)
     }
 
     @Test("outside display-setting edits are preserved until an explicit configuration save")

@@ -78,9 +78,11 @@ public actor VMManager {
                          enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport))
     }
 
-    public func create(name: String, memoryMiB: Int, cpus: Int, clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true, publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true) throws -> UUID {
+    public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
+                       clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true,
+                       publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true) throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
-        var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus,
+        var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus, diskGiB: diskGiB,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
         try validateResources(profile)
         var chosenPublicKey = publicKey
@@ -122,6 +124,7 @@ public actor VMManager {
         if let value = configuration.name { profile.name = value }
         if let value = configuration.memoryMiB { profile.memoryMiB = value }
         if let value = configuration.cpus { profile.cpus = value }
+        if let value = configuration.diskGiB { profile.diskGiB = value }
         if let value = configuration.clipboard { profile.clipboardEnabled = value }
         if let value = configuration.immersive { profile.immersiveMode = value }
         try configure(profile)
@@ -134,6 +137,11 @@ public actor VMManager {
               profiles[index].createdAt == profile.createdAt else { throw VMFailure(code: "unknown-vm", message: "The VM profile changed or is missing.") }
         guard profile.ownerSetup == profiles[index].ownerSetup else { throw OwnerConfiguration.invalid("Owner setup is fixed at guest creation. Existing disks need a separate reviewed migration.") }
         guard profile.ssh == profiles[index].ssh else { throw VMFailure(code: "ssh-migration-required", message: "SSH enrollment is chosen at creation. Changing existing access needs a separate stopped-VM migration.") }
+        if let current = profiles[index].diskGiB {
+            guard let requested = profile.diskGiB, requested >= current else {
+                throw VMFailure(code: "disk-cannot-shrink", message: "VM disks can grow but cannot shrink. Keep or increase the current capacity.")
+            }
+        }
         try validateResources(profile)
         var edited = profile
         let storage = ManagerStorage(applicationSupport: applicationSupport)
@@ -145,6 +153,9 @@ public actor VMManager {
         if PrivateFiles.exists(storage.root(for: edited)) {
             try storage.withLock(edited) {
                 try storage.validate(edited)
+                if let requested = edited.diskGiB, let currentDisk = try storage.diskCapacityGiB(edited), requested < currentDisk {
+                    throw VMFailure(code: "disk-cannot-shrink", message: "The disk is already " + String(currentDisk) + " GiB and cannot shrink to " + String(requested) + " GiB.")
+                }
                 edited.settingsFingerprint = try storage.settingsFingerprint(edited)
                 try save()
             }

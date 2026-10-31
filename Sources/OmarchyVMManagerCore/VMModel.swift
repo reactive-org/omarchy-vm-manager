@@ -6,6 +6,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public var name: String
     public var memoryMiB: Int
     public var cpus: Int
+    public var diskGiB: Int?
     public var clipboardEnabled: Bool
     public let createdAt: Date
     public var immersiveMode: Bool?
@@ -15,15 +16,36 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
 
     public var isRetainedPOC: Bool { POCProfiles.ids.contains(id) }
 
-    public init(id: UUID, name: String, memoryMiB: Int = 4096, cpus: Int = 4,
+    public init(id: UUID, name: String, memoryMiB: Int = 4096, cpus: Int = 4, diskGiB: Int? = 64,
                 clipboardEnabled: Bool = true, createdAt: Date = Date(), immersiveMode: Bool? = nil) {
         self.id = id
         self.name = name
         self.memoryMiB = memoryMiB
         self.cpus = cpus
+        self.diskGiB = diskGiB
         self.clipboardEnabled = clipboardEnabled
         self.createdAt = createdAt
         self.immersiveMode = immersiveMode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, memoryMiB, cpus, diskGiB, clipboardEnabled, createdAt, immersiveMode
+        case settingsFingerprint, ssh, ownerSetup
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        memoryMiB = try values.decode(Int.self, forKey: .memoryMiB)
+        cpus = try values.decode(Int.self, forKey: .cpus)
+        diskGiB = try values.decodeIfPresent(Int.self, forKey: .diskGiB)
+        clipboardEnabled = try values.decode(Bool.self, forKey: .clipboardEnabled)
+        createdAt = try values.decode(Date.self, forKey: .createdAt)
+        immersiveMode = try values.decodeIfPresent(Bool.self, forKey: .immersiveMode)
+        settingsFingerprint = try values.decodeIfPresent(String.self, forKey: .settingsFingerprint)
+        ssh = try values.decodeIfPresent(SSHOptions.self, forKey: .ssh)
+        ownerSetup = try values.decodeIfPresent(OwnerSetupOptions.self, forKey: .ownerSetup)
     }
 }
 
@@ -95,8 +117,8 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
 public enum POCProfiles {
     public static let ids: Set<UUID> = [UUID(uuidString: "C7C2B381-E43C-4A5A-8246-4314596B4C0A")!, UUID(uuidString: "89F88CC2-BD11-44B5-9C1B-31EDB2DE6B0B")!]
     public static let all: [VMProfile] = [
-        VMProfile(id: UUID(uuidString: "C7C2B381-E43C-4A5A-8246-4314596B4C0A")!, name: "Omarchy POC A"),
-        VMProfile(id: UUID(uuidString: "89F88CC2-BD11-44B5-9C1B-31EDB2DE6B0B")!, name: "Omarchy POC B")
+        VMProfile(id: UUID(uuidString: "C7C2B381-E43C-4A5A-8246-4314596B4C0A")!, name: "Omarchy POC A", diskGiB: nil),
+        VMProfile(id: UUID(uuidString: "89F88CC2-BD11-44B5-9C1B-31EDB2DE6B0B")!, name: "Omarchy POC B", diskGiB: nil)
     ]
 
     public static func root(for profile: VMProfile, applicationSupport: URL) -> URL {

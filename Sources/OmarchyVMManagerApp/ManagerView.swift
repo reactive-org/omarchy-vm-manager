@@ -183,7 +183,7 @@ struct ManagerView: View {
             OmarchyAttribution()
             Text("Quick Settings").font(.title2.bold())
             GroupedPanel {
-                SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory", icon: "cpu", color: .purple) {
+                SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory · " + (snapshot.profile.diskGiB.map { "\($0) GiB disk" } ?? "factory disk capacity"), icon: "cpu", color: .purple) {
                     Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
                 Divider().padding(.horizontal, 20)
@@ -199,7 +199,7 @@ struct ManagerView: View {
     private func resources(_ snapshot: VMSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             GroupedPanel {
-                SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory", icon: "cpu", color: .purple) {
+                SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory · " + (snapshot.profile.diskGiB.map { "\($0) GiB disk" } ?? "factory disk capacity"), icon: "cpu", color: .purple) {
                     Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
                 Divider().padding(.horizontal, 20)
@@ -360,6 +360,7 @@ private struct VMEditor: View {
     @State private var name: String
     @State private var memory: Int
     @State private var cpus: Int
+    @State private var disk: Int
     @State private var clipboard: Bool
     @State private var immersive: Bool
     @State private var saving = false
@@ -372,6 +373,7 @@ private struct VMEditor: View {
         _name = State(initialValue: profile?.name ?? "")
         _memory = State(initialValue: (profile?.memoryMiB ?? 4096) / 1024)
         _cpus = State(initialValue: profile?.cpus ?? 4)
+        _disk = State(initialValue: profile?.diskGiB ?? 64)
         _clipboard = State(initialValue: profile?.clipboardEnabled ?? true)
         _immersive = State(initialValue: profile?.immersiveMode ?? false)
         _useOwnerDefaults = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true)
@@ -386,6 +388,7 @@ private struct VMEditor: View {
                 TextField("Name", text: $name)
                 Stepper("Memory: \(memory) GiB", value: $memory, in: 4...maximumMemory)
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
+                Stepper("Disk capacity: \(disk) GiB", value: $disk, in: max(64, profile?.diskGiB ?? 64)...8192, step: 16)
                 Toggle("Clipboard integration", isOn: $clipboard)
                 Toggle("Immersive Mode", isOn: $immersive)
                 if profile == nil {
@@ -423,7 +426,7 @@ private struct VMEditor: View {
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     saving = true
                     Task {
-                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults) { saved(id) }
+                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults) { saved(id) }
                         saving = false
                     }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)

@@ -118,7 +118,7 @@ struct OwnerDefaultsCreationTests {
         #expect(!FileManager.default.fileExists(atPath: f.storage.vms.path))
         let data = try PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json"))
         let document = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        #expect(document["schemaVersion"] as? Int == 3)
+        #expect(document["schemaVersion"] as? Int == 4)
         #expect(!String(decoding: data, as: UTF8.self).contains("synthetic-password"))
         var changed = try #require(rows.first(where: { $0.id == id })?.profile)
         changed.ownerSetup = rows[3].profile.ownerSetup

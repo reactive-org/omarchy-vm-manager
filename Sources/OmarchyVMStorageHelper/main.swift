@@ -19,7 +19,7 @@ do {
     struct Registry: Decodable { let schemaVersion: Int; let profiles: [VMProfile]; let pendingDeletions: Set<UUID>? }
     let data = try PrivateFiles.read(storage.directory.appendingPathComponent("registry.json"), maximum: 1_048_576)
     let registry = try JSONDecoder().decode(Registry.self, from: data)
-    guard (1...3).contains(registry.schemaVersion), registry.pendingDeletions?.contains(id) == true, registry.profiles.filter({ $0.id == id }).count == 1,
+    guard (1...4).contains(registry.schemaVersion), registry.pendingDeletions?.contains(id) == true, registry.profiles.filter({ $0.id == id }).count == 1,
           let profile = registry.profiles.first(where: { $0.id == id }) else {
         throw VMFailure(code: "unregistered-vm", message: "The VM is not uniquely registered.")
     }

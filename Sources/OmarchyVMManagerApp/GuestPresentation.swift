@@ -65,7 +65,8 @@ struct GuestLibraryRow<Controls: View>: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(.title3.bold())
                         .lineLimit(1).help(snapshot.profile.name)
-                    let summary = "\(snapshot.state.label) · \(snapshot.profile.cpus) cores · \(snapshot.profile.memoryMiB / 1024) GiB memory"
+                    let disk = snapshot.profile.diskGiB.map { " · \($0) GiB disk" } ?? ""
+                    let summary = "\(snapshot.state.label) · \(snapshot.profile.cpus) cores · \(snapshot.profile.memoryMiB / 1024) GiB memory" + disk
                     Text(summary).font(.callout).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).help(summary)
                     GuestProgressSlot(state: snapshot.state)
                     Group {

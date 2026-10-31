@@ -31,7 +31,7 @@ struct ManagedSSHTests {
         #expect(rows[1].sshReadiness == .stopped)
         let data = try PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json"), maximum: 1_048_576)
         let object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        #expect(object["schemaVersion"] as? Int == 2)
+        #expect(object["schemaVersion"] as? Int == 4)
         #expect(!String(decoding: data, as: UTF8.self).contains("PRIVATE KEY"))
         #expect(!FileManager.default.fileExists(atPath: f.storage.root(for: rows[1].profile).path))
     }

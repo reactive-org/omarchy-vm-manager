@@ -4,19 +4,22 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     public var name: String?
     public var memoryMiB: Int?
     public var cpus: Int?
+    public var diskGiB: Int?
     public var clipboard: Bool?
     public var immersive: Bool?
     public var ssh: Bool?
     public var ownerDefaults: Bool?
     public var publicKey: String?
-    public init(name: String? = nil, memoryMiB: Int? = nil, cpus: Int? = nil, clipboard: Bool? = nil, immersive: Bool? = nil,
+    public init(name: String? = nil, memoryMiB: Int? = nil, cpus: Int? = nil, diskGiB: Int? = nil,
+                clipboard: Bool? = nil, immersive: Bool? = nil,
                 ssh: Bool? = nil, ownerDefaults: Bool? = nil, publicKey: String? = nil) {
-        self.name = name; self.memoryMiB = memoryMiB; self.cpus = cpus; self.clipboard = clipboard; self.immersive = immersive
+        self.name = name; self.memoryMiB = memoryMiB; self.cpus = cpus; self.diskGiB = diskGiB
+        self.clipboard = clipboard; self.immersive = immersive
         self.ssh = ssh; self.ownerDefaults = ownerDefaults; self.publicKey = publicKey
     }
     public static func decodeStrict(_ data: Data) throws -> Self {
         guard data.count <= 32768, let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              Set(object.keys).isSubset(of: ["name", "memoryMiB", "cpus", "clipboard", "immersive", "ssh", "ownerDefaults", "publicKey"]),
+              Set(object.keys).isSubset(of: ["name", "memoryMiB", "cpus", "diskGiB", "clipboard", "immersive", "ssh", "ownerDefaults", "publicKey"]),
               !object.values.contains(where: { $0 is NSNull }) else { throw commandFailure("invalid-config", "Configuration must contain only supported, non-null guest settings.") }
         return try JSONDecoder().decode(Self.self, from: data)
     }
@@ -56,7 +59,7 @@ public struct GuestCommandRequest: Codable, Sendable {
         }
         if command == .create, config?.name == nil { throw commandFailure("invalid-config", "A guest name is required.") }
         if command == .update, let config {
-            guard config.name != nil || config.memoryMiB != nil || config.cpus != nil || config.clipboard != nil || config.immersive != nil else { throw commandFailure("invalid-config", "Supply at least one setting to update.") }
+            guard config.name != nil || config.memoryMiB != nil || config.cpus != nil || config.diskGiB != nil || config.clipboard != nil || config.immersive != nil else { throw commandFailure("invalid-config", "Supply at least one setting to update.") }
             guard config.ssh == nil, config.ownerDefaults == nil, config.publicKey == nil else { throw commandFailure("creation-only", "SSH and owner enrollment are chosen at guest creation.") }
         }
     }
@@ -93,6 +96,7 @@ public struct GuestCommandRecord: Codable, Sendable {
     public let protected: Bool
     public let memoryMiB: Int
     public let cpus: Int
+    public let diskGiB: Int?
     public let clipboard: Bool
     public let immersive: Bool?
     public let unattended: Bool
@@ -140,6 +144,7 @@ public actor GuestCommandService {
             if request.command == .create {
                 let c = request.config!
                 target = try await manager.create(name: c.name!, memoryMiB: c.memoryMiB ?? 4096, cpus: c.cpus ?? 4,
+                    diskGiB: c.diskGiB ?? 64,
                     clipboardEnabled: c.clipboard ?? true, immersiveMode: c.immersive ?? false, sshEnabled: c.ssh ?? true,
                     publicKey: c.publicKey, useOwnerDefaults: c.ownerDefaults)
                 if request.start { try await manager.start(target!) }
@@ -247,7 +252,8 @@ public actor GuestCommandService {
         case .failed: sshState = "failed"
         }
         return GuestCommandRecord(id: value.id, name: value.profile.name, protected: value.profile.isRetainedPOC,
-            memoryMiB: value.profile.memoryMiB, cpus: value.profile.cpus, clipboard: value.profile.clipboardEnabled,
+            memoryMiB: value.profile.memoryMiB, cpus: value.profile.cpus, diskGiB: value.profile.diskGiB,
+            clipboard: value.profile.clipboardEnabled,
             immersive: value.profile.immersiveMode, unattended: value.profile.ownerSetup != nil, state: state, active: value.sessionID != nil,
             sessionID: value.sessionID, phase: phase, percent: percent,
             ssh: GuestSSHRecord(enabled: value.profile.ssh != nil, status: sshState, host: value.profile.ssh == nil ? nil : "127.0.0.1", port: value.profile.ssh?.hostPort, user: user, command: command),

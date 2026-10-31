@@ -4,10 +4,10 @@ Build with `make app verify-app`. Run `./bin/omarchy-vm` from this repository, o
 
 ```sh
 ./bin/omarchy-vm list
-./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --start --wait ssh --timeout 1800
+./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --disk 64GiB --start --wait ssh --timeout 1800
 ./bin/omarchy-vm get dev
 ./bin/omarchy-vm stop dev --wait
-./bin/omarchy-vm update dev --memory 5GiB --cpus 6
+./bin/omarchy-vm update dev --memory 5GiB --cpus 6 --disk 128GiB
 ./bin/omarchy-vm start dev --wait ssh
 ./bin/omarchy-vm restart dev --wait ssh
 ./bin/omarchy-vm stop dev --wait
@@ -20,17 +20,17 @@ Replies are one compact JSON object on stdout. `--help` prints human-readable us
 
 ## Configuration
 
-Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `clipboard`, `immersive`, `ssh`, `ownerDefaults` and `publicKey`. Unknown keys and nulls are rejected. For example:
+Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `clipboard`, `immersive`, `ssh`, `ownerDefaults` and `publicKey`. Unknown keys and nulls are rejected. For example:
 
 ```json
-{"memoryMiB":8192,"cpus":8,"clipboard":true,"immersive":false}
+{"memoryMiB":8192,"cpus":8,"diskGiB":64,"clipboard":true,"immersive":false}
 ```
 
-The current policy requires at least 4 CPU cores and 4 GiB RAM, with RAM in whole GiB, within the Mac's existing guest budget. `--memory` accepts MiB or GiB suffixes; a plain integer means MiB. `--memory-mib` is also available. Boolean flags take `on`/`off` or `true`/`false`.
+The current policy requires at least 4 CPU cores and 4 GiB RAM, with RAM in whole GiB, within the Mac's existing guest budget. New guests use a 64 GiB sparse disk. `--disk 64GiB` and `--disk-gib 64` set capacity from 64 through 8192 GiB; an existing disk can only grow. `--memory` accepts MiB or GiB suffixes; a plain integer means MiB. `--memory-mib` is also available. Boolean flags take `on`/`off` or `true`/`false`.
 
 SSH and owner setup are creation-only. New guests inherit saved Guest Defaults and enable managed SSH by default. `--owner-defaults off` selects the normal guest owner wizard. `--ssh off` disables SSH enrollment. `--public-key FILE.pub` imports only an explicitly selected public key; no personal credentials are scanned. Configure reusable passwords locally in the app's Guest Defaults page; no CLI password argument or secret field is supported.
 
-`update` refuses active, stopping or otherwise busy guests and retained POC profiles. An external runtime-compatible storage lock also prevents edits. Changes apply on the next start. SSH enrollment, owner snapshots, disk paths and general port forwarding cannot be changed by update.
+`update` refuses active, stopping or otherwise busy guests and retained POC profiles. An external runtime-compatible storage lock also prevents edits. Changes apply on the next start. Disk capacity can grow but never shrink; growth uses the official runtime and guest root-growth service on the next boot. SSH enrollment, owner snapshots, disk paths and general port forwarding cannot be changed by update.
 
 ## Readiness and SSH
 
@@ -54,7 +54,7 @@ The manager keeps the registry lock and all runtime clients. The CLI uses a boun
 
 ## Validation status
 
-**VERIFIED — no-VM checks:** 92 Swift tests in 21 suites and 9 artifact checks pass. Fake-runtime tests cover CRUD, immutable creation fields, active/protected guards, external locks, session-bound waits, timeout behavior and restart sequencing. Real Unix-socket tests cover private permissions, bounded same-user request/response exchange, live endpoint refusal, malformed schemas and client disconnect. Normal app/CLI signature, compatibility, layout and host-preflight checks pass.
+**VERIFIED — no-VM checks:** 93 Swift tests in 21 suites and 9 artifact checks pass. Fake-runtime tests cover CRUD, immutable creation fields, active/protected guards, grow-only disk capacity, external locks, session-bound waits, timeout behavior and restart sequencing. Real Unix-socket tests cover private permissions, bounded same-user request/response exchange, live endpoint refusal, malformed schemas and client disconnect. Normal app/CLI signature, compatibility, layout and host-preflight checks pass.
 
 **VERIFIED — packaged CLI:** build 0.5.0 (7) automatically opened the manager hidden, returned JSON for version/list and restored the four existing profiles as stopped. A new metadata-only fixture with owner defaults and SSH off was created, updated from a JSON file, renamed, looked up by exact name, waited for as stopped and deleted through the CLI. Its updated 5 GiB configuration appeared in the same GUI. It never acquired a storage root or launched a VM. All four earlier profile values and disk identities match their baseline.
 
@@ -63,6 +63,8 @@ The manager keeps the registry lock and all runtime clients. The CLI uses a boun
 An independent connection through that generated pinned SSH configuration verified the expected non-root account and current VM/session. A running CPU/RAM update failed with `vm-not-editable` and preserved the original configuration. `stop --wait` reached matching terminal exit and closed disk handles. A stopped update from 4 GiB/4 CPUs to 5 GiB/6 CPUs applied on the next start: the guest itself reported six CPUs and over 800 MiB additional usable RAM. The boot/session changed; the SSH endpoint, client/server key metadata and host pin remained unchanged. The temporary owner password seed stayed absent.
 
 A real one-second wait for stopped returned exit 124 with `wait-timeout` while leaving the guest running. Final normal stop reached `Exited (0)`, with no QEMU process or open disk handle for the test guest. The CLI then moved only that guest's entire root to recoverable Trash as authorized and removed its profile. All four earlier profiles and disk identities match their baseline; both original POC trees also match every recorded stat/hash entry. They remain stopped. No personal VM or personal private SSH key was used.
+
+**VERIFIED — grow-only disk:** the accepted `Dev Omarchy` guest was gracefully stopped, updated from its legacy factory capacity to `diskGiB: 64`, and restarted through the packaged 0.6.0 CLI. The host image reports exactly 68,719,476,736 logical bytes while remaining sparse at about 9.9 GiB allocated. Inside the guest, `/dev/vda` reports 64 GiB, the Btrfs root partition reports about 62 GiB, and `df` reports 52 GiB available. The manager did not truncate, partition or directly edit the filesystem.
 
 Abrupt manager/helper crash recovery and unsupported future guest-image behavior retain their earlier documented limits. This CLI milestone does not add general port forwarding or migrate existing SSH/owner enrollment.
 

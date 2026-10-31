@@ -24,7 +24,7 @@ Screenshots were captured on 31 October 2026. Guest names and the illustrated SS
 | Task | Current behavior |
 | --- | --- |
 | Create guests | Independent disks; optional saved owner setup; SSH on by default |
-| Configure | Name, CPU, memory, clipboard and immersive mode while stopped |
+| Configure | Name, CPU, memory, grow-only disk capacity, clipboard and immersive mode while stopped |
 | Connect | NAT networking and a separate localhost SSH port for each enabled guest |
 | Organize windows | Native Dock assignment to Mission Control Spaces |
 | Remove a guest | Move its stopped guest folder to macOS Trash |

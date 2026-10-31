@@ -146,7 +146,13 @@ Build 0.5.0 (7) packages a signed `omarchy-vm` executable and repository `bin/om
 
 **VERIFIED — no-VM checks:** manager tests (92 Swift tests in 21 suites plus nine artifact checks), helper tests (540 in 105 suites), full upstream no-VM suite, rebuilt kit validation and packaged app verification pass. Cache tests cover distinct managed roots sharing the fixed Downloads destination, unchanged default-root behavior, verifier admission for a cached compressed image, retained current image, seven-day obsolete-image pruning, download-lock exclusion, preserved unknown files and refused unsafe directories/active image files. Existing downloader fixtures confirm zero-request cache reuse, corruption replacement, part/whole-image verification, interrupted resume and waiting for a concurrent downloader.
 
-The app/CLI is 0.5.1 (8); exact runtime provenance is recorded in `Config/TryOmarchyRuntime.lock.json`. Packaged CLI version and registry checks pass with all four retained guests stopped. The idle manager was restarted for this app update. No factory image download, guest launch, permission grant, retained-disk change or personal Try Omarchy action occurred.
+### Managed 64 GiB disk capacity
+
+**VERIFIED — implementation and live growth, 31 October 2026:** 93 Swift tests in 21 suites plus nine script checks pass. New profiles default to 64 GiB, schema-1 resource preferences include CPU, memory and disk, legacy profiles decode without an implicit migration, stopped configuration refuses reductions, and the storage helper accepts registry schema 4. The packaged 0.6.0 app passes exact kit inventory, signature, compatibility, preflight and layout verification.
+
+The accepted `Dev Omarchy` guest was gracefully stopped and explicitly updated to 64 GiB. On restart, the pinned runtime extended its sparse image to 68,719,476,736 logical bytes while host allocation remained about 9.9 GiB. The guest growth service expanded `/dev/vda2` and Btrfs: `df -h /` reports a 62 GiB filesystem, 9.8 GiB used and 52 GiB available. Managed SSH returned ready after the boot with the same endpoint and identity.
+
+The app/CLI is 0.6.0 (9); exact runtime provenance is recorded in `Config/TryOmarchyRuntime.lock.json`. Packaged CLI version and registry checks pass with `Dev Omarchy` running and the four earlier profiles stopped. The idle manager was restarted for this app update. No factory image download, permission grant, retained-POC change or personal Try Omarchy action occurred.
 
 The subsequently approved real two-guest cache check is recorded below and in [factory cache](FactoryCache.md).
 

@@ -32,9 +32,9 @@ private struct CommandFixture {
 struct GuestCLIArgumentsTests {
     @Test("create options produce a validated request; JSON config is overridden explicitly")
     func createOptions() throws {
-        let request = try #require(GuestCLIInvocation.parse(["create", "work", "--memory", "8GiB", "--cpus", "8", "--clipboard", "off", "--start", "--wait", "ssh", "--timeout", "1800"]).request)
+        let request = try #require(GuestCLIInvocation.parse(["create", "work", "--memory", "8GiB", "--cpus", "8", "--disk", "128GiB", "--clipboard", "off", "--start", "--wait", "ssh", "--timeout", "1800"]).request)
         #expect(request.config?.name == "work"); #expect(request.config?.memoryMiB == 8192)
-        #expect(request.config?.cpus == 8); #expect(request.config?.clipboard == false)
+        #expect(request.config?.cpus == 8); #expect(request.config?.diskGiB == 128); #expect(request.config?.clipboard == false)
         #expect(request.start && request.waitFor == .ssh && request.timeoutSeconds == 1800)
         let fixture = try RegistryFixture(); defer { fixture.cleanup() }
         let file = fixture.support.appendingPathComponent("config.json")
@@ -71,8 +71,8 @@ struct GuestCommandTests {
     func crud() async throws {
         let f = try CommandFixture(); defer { f.files.cleanup() }
         let id = try await f.create()
-        let configured = await f.service.execute(GuestCommandRequest(command: .update, selector: id.uuidString, config: GuestConfigurationPatch(memoryMiB: 8192, cpus: 8, clipboard: false)))
-        #expect(configured.ok && configured.guest?.memoryMiB == 8192 && configured.guest?.cpus == 8 && configured.guest?.clipboard == false)
+        let configured = await f.service.execute(GuestCommandRequest(command: .update, selector: id.uuidString, config: GuestConfigurationPatch(memoryMiB: 8192, cpus: 8, diskGiB: 128, clipboard: false)))
+        #expect(configured.ok && configured.guest?.memoryMiB == 8192 && configured.guest?.cpus == 8 && configured.guest?.diskGiB == 128 && configured.guest?.clipboard == false)
         let renamed = await f.service.execute(GuestCommandRequest(command: .update, selector: id.uuidString, config: GuestConfigurationPatch(name: "Renamed")))
         #expect(renamed.guest?.memoryMiB == 8192)
         let fetched = await f.service.execute(GuestCommandRequest(command: .get, selector: "Renamed"))

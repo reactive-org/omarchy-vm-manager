@@ -1,6 +1,18 @@
 # Omarchy VM Manager
 
-A native macOS 15+ SwiftUI manager around Try Omarchy's official kit architecture. Phase 2 provides a persistent VM library, per-guest configuration and safe Trash deletion in a private debug build. Guests start only when you choose Launch. The two retained POC profiles are protected from edits and deletion.
+A high-fidelity, security-focused sandbox for AI-assisted development on Apple Silicon Macs. Give your coding agents a complete Omarchy Linux environment in a dedicated virtual machine, with its own filesystem, resources and lifecycle.
+
+This project is based heavily on the work of the [Try Omarchy team](https://github.com/omacom/try-omarchy). Their kit provides the VM runtime, official guest image and native Mac integrations; Omarchy VM Manager adds a native macOS app and orchestration for multiple independent guests.
+
+## Why use it?
+
+- **Multiple concurrent Omarchy guests.** Run one guest per project, one per client, or separate environments for experiments and AI agents. Each guest has independent storage and configuration.
+- **Official, verified factory image.** New guests use the official **Try Omarchy v1.3.0 ARM64 edge factory image**. Downloaded parts and the complete image are verified against the pinned SHA-256 checksums, and cached images are verified again before reuse.
+- **Automatic setup, ready in minutes.** Save your owner and system defaults once, then create guests that set themselves up with a usable desktop and SSH access. The shared image cache speeds up subsequent guests; first-download and setup time depend on your connection and Mac.
+- **Your developer environment, configured your way.** Pair with [reactive.org/dev-vm](https://reactive.org/dev-vm) for a declarative, fully configured developer environment inside the guest. Get each environment set up just the way you like it.
+- **A CLI for automation.** Create guests with custom resources, start and stop them individually, wait for authenticated SSH, inspect connection details, and update stopped guests through concise JSON responses.
+
+The native SwiftUI app requires macOS 15 or later. The current private debug build provides a persistent guest library, configuration and safe deletion through macOS Trash. Guests start when you choose **Launch** or issue a CLI start command. The two retained POC profiles are protected from edits and deletion.
 
 **[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [44-second MP4 tour](docs/media/quick-tour.mp4)
 
@@ -36,7 +48,7 @@ The app verifies the compiled lock pin, manifest, helper, protocol and every emb
 
 ## Use the manager
 
-Open `dist/Omarchy VM Manager.app` and choose **New VM**. The native sidebar lists independent guests; each has Home, Virtual Machine, Network, Startup, SSH and Spaces pages. Configure name, CPU, memory, clipboard and immersive mode while stopped. Creation saves only profile metadata; the official factory image downloads on the first launch when it is not already cached.
+Open `dist/Omarchy VM Manager.app` and choose **New VM**. The native sidebar lists independent guests; each has Home, Virtual Machine, Network, Startup, SSH and Spaces pages. Configure name, CPU, memory, grow-only disk capacity, clipboard and immersive mode while stopped. New guests default to a 64 GiB sparse disk. Creation saves only profile metadata; the official factory image downloads on the first launch when it is not already cached.
 
 **Guest Defaults** saves owner setup for future guests: username, password, optional name/Git email, keyboard, timezone, hostname prefix and optional public key. Enable and save it once, then leave **Use saved owner setup defaults** checked in New VM. Passwords stay in the login Keychain; profiles hold immutable snapshots and credential references. Each hostname gets a unique suffix. Existing guests are unchanged. The prepared image uses a reviewed adapter to Omarchy's owner setup, rather than the ISO disk/encryption installer. See [unattended defaults and validation](docs/UnattendedDefaults.md). A fresh unattended guest passed owner/settings, pinned SSH and restart checks; the known intermittent graphics issue remains open.
 
@@ -68,10 +80,10 @@ Guest artwork uses the official Omarchy mark in monochrome, with pending-tradema
 `make app verify-app` also packages `omarchy-vm`. Use `./bin/omarchy-vm` or add this repository's `bin` directory to `PATH`:
 
 ```sh
-./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --start --wait ssh --timeout 1800
+./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --disk 64GiB --start --wait ssh --timeout 1800
 ./bin/omarchy-vm get dev
 ./bin/omarchy-vm stop dev --wait
-./bin/omarchy-vm update dev --memory 5GiB --cpus 6
+./bin/omarchy-vm update dev --memory 5GiB --cpus 6 --disk 128GiB
 ./bin/omarchy-vm start dev --wait ssh
 ./bin/omarchy-vm stop dev --wait
 ./bin/omarchy-vm delete dev

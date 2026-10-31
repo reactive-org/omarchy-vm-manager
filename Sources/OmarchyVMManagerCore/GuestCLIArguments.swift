@@ -18,7 +18,8 @@ public struct GuestCLIInvocation: Sendable {
       wait ID [--for ssh|running|stopped]
 
     Config: --config FILE.json, --name NAME, --memory 4GiB (or MiB),
-            --memory-mib 4096, --cpus 4, --clipboard on|off, --immersive on|off
+            --memory-mib 4096, --cpus 4, --disk 64GiB, --disk-gib 64,
+            --clipboard on|off, --immersive on|off
     Creation only: --ssh on|off, --owner-defaults on|off, --public-key FILE.pub
     Lifecycle: --start (create), --wait [ssh|running|stopped], --timeout SECONDS
 
@@ -33,7 +34,7 @@ public struct GuestCLIInvocation: Sendable {
         guard let command = GuestCommand(rawValue: aliases[arguments[0]] ?? arguments[0]) else { throw commandFailure("usage", "Unknown command. Run omarchy-vm --help.") }
         var config = GuestConfigurationPatch(), selector: String?, positional: String?
         var values: [String: String] = [:], flags: Set<String> = [], index = 1
-        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--clipboard", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--timeout", "--for"]
+        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--clipboard", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--timeout", "--for"]
         while index < arguments.count {
             let key = arguments[index]; index += 1
             if key == "--wait" {
@@ -59,6 +60,11 @@ public struct GuestCLIInvocation: Sendable {
         }
         if let value = values["--memory-mib"] { config.memoryMiB = try positiveInteger(value) }
         if let value = values["--cpus"] { config.cpus = try positiveInteger(value) }
+        if let disk = values["--disk"] {
+            guard values["--disk-gib"] == nil else { throw commandFailure("usage", "Choose --disk or --disk-gib.") }
+            config.diskGiB = try diskGiB(disk)
+        }
+        if let value = values["--disk-gib"] { config.diskGiB = try positiveInteger(value) }
         if let value = values["--clipboard"] { config.clipboard = try boolean(value) }
         if let value = values["--immersive"] { config.immersive = try boolean(value) }
         if let value = values["--ssh"] { config.ssh = try boolean(value) }
@@ -88,6 +94,12 @@ public struct GuestCLIInvocation: Sendable {
         let (result, overflow) = number.multipliedReportingOverflow(by: multiplier)
         guard !overflow else { throw commandFailure("usage", "The memory value is too large.") }
         return result
+    }
+    private static func diskGiB(_ value: String) throws -> Int {
+        let text = value.lowercased()
+        let raw = text.hasSuffix("gib") ? String(text.dropLast(3)) : text
+        guard !raw.hasSuffix("mib") else { throw commandFailure("usage", "Disk capacity is specified in GiB.") }
+        return try positiveInteger(raw)
     }
     private static func boolean(_ value: String) throws -> Bool {
         switch value.lowercased() {

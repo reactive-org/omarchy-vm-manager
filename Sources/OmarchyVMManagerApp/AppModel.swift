@@ -107,17 +107,20 @@ final class AppModel: ObservableObject {
     }
     func stopCommandServer() { commandServer?.stop(); commandServer = nil }
 
-    func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool) async -> UUID? {
+    func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, diskGiB: Int,
+              clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool) async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
         do {
             let id: UUID
             if var profile {
-                profile.name = name; profile.memoryMiB = memoryGiB * 1024; profile.cpus = cpus
+                profile.name = name; profile.memoryMiB = memoryGiB * 1024; profile.cpus = cpus; profile.diskGiB = diskGiB
                 profile.clipboardEnabled = clipboard; profile.immersiveMode = immersive
                 try await manager.configure(profile); id = profile.id
             } else {
-                id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, clipboardEnabled: clipboard, immersiveMode: immersive, sshEnabled: sshEnabled, publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false)
+                id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
+                                              clipboardEnabled: clipboard, immersiveMode: immersive, sshEnabled: sshEnabled,
+                                              publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false)
             }
             storageRefreshed = .distantPast
             await update(); return id

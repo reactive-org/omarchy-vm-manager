@@ -28,6 +28,11 @@ public struct ManagerStorage: Sendable {
     private struct Schema: Decodable { let schemaVersion: Int }
     private struct Forwarding: Decodable { struct Mapping: Decodable { let hostPort: Int; let guestPort: Int; let `protocol`: String }; let schemaVersion: Int; let mappings: [Mapping] }
     private struct Fullscreen: Decodable { let schemaVersion: Int; let isImmersive: Bool; let usesNotch: Bool? }
+    private struct ResourcePreferences: Decodable {
+        struct Resources: Decodable { let cpuCount: Int; let memoryGiB: Int; let diskGiB: Int? }
+        let schemaVersion: Int
+        let resources: Resources
+    }
 
     public func prepare(_ profile: VMProfile, sessionID: UUID = UUID(), ownerPassword: Data? = nil) throws -> URL {
         try RegistryStore.validate(profile)
@@ -43,22 +48,31 @@ public struct ManagerStorage: Sendable {
             try PrivateFiles.write(Data("omarchy-qemu-storage-root-v1\n".utf8), name: ".omarchy-qemu-storage", in: root, exclusively: true)
             var values: [String: Any] = Dictionary(uniqueKeysWithValues: POCStorage.inheritedKeys.map { ($0, NSNull()) })
             if let ssh = profile.ssh { values["portForwardingPreferences"] = ["schemaVersion": 1, "mappings": [["hostPort": ssh.hostPort, "guestPort": 22, "protocol": "tcp"]]] }
+            if profile.diskGiB != nil { values["vmResourcePreferences"] = resourcePreferences(profile) }
             let settings: [String: Any] = ["schemaVersion": 1, "settings": values]
             try PrivateFiles.write(JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys]), name: "settings.json", in: root, exclusively: true)
             created = true
         }
         try validate(profile)
-        if !profile.isRetainedPOC, let immersive = profile.immersiveMode {
+        if !profile.isRetainedPOC, profile.diskGiB != nil || profile.immersiveMode != nil {
             try withLock(profile) {
                 try validate(profile)
                 var settings = try settings(profile)
                 var values = settings["settings"] as! [String: Any]
-                if let current = values["fullscreenPreferences"] as? [String: Any], current["isImmersive"] as? Bool == immersive { return }
+                let resourcesMatch = profile.diskGiB == nil || jsonEqual(values["vmResourcePreferences"], resourcePreferences(profile))
+                let fullscreenMatches = profile.immersiveMode == nil || {
+                    guard let current = values["fullscreenPreferences"] as? [String: Any] else { return false }
+                    return current["isImmersive"] as? Bool == profile.immersiveMode
+                }()
+                if resourcesMatch, fullscreenMatches { return }
                 let fingerprint = try settingsFingerprint(profile)
                 guard created || fingerprint == profile.settingsFingerprint else {
-                    throw VMFailure(code: "settings-changed", message: "Display settings changed outside the manager. They were preserved. Review and save the configuration again before launching.")
+                    throw VMFailure(code: "settings-changed", message: "VM settings changed outside the manager. They were preserved. Review and save the configuration again before launching.")
                 }
-                values["fullscreenPreferences"] = ["schemaVersion": 1, "isImmersive": immersive, "usesNotch": true]
+                if !resourcesMatch { values["vmResourcePreferences"] = resourcePreferences(profile) }
+                if !fullscreenMatches, let immersive = profile.immersiveMode {
+                    values["fullscreenPreferences"] = ["schemaVersion": 1, "isImmersive": immersive, "usesNotch": true]
+                }
                 settings["settings"] = values
                 try PrivateFiles.write(JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys]), name: "settings.json", in: root)
             }
@@ -117,6 +131,14 @@ public struct ManagerStorage: Sendable {
         }
         for (key, value) in values where !(value is NSNull) {
             if key == "portForwardingPreferences", profile.ssh != nil { continue }
+            if key == "vmResourcePreferences", profile.diskGiB != nil,
+               let payload = value as? [String: Any], Set(payload.keys) == ["schemaVersion", "resources"],
+               payload["schemaVersion"] as? Int == 1, let resources = payload["resources"] as? [String: Any],
+               Set(resources.keys) == ["cpuCount", "memoryGiB", "diskGiB"],
+               let typed = try? JSONDecoder().decode(ResourcePreferences.self, from: JSONSerialization.data(withJSONObject: payload)),
+               typed.schemaVersion == 1, (4...1024).contains(typed.resources.cpuCount),
+               (4...1024).contains(typed.resources.memoryGiB),
+               typed.resources.diskGiB.map({ (64...8192).contains($0) }) == true { continue }
             guard key == "fullscreenPreferences", let fullscreen = value as? [String: Any],
                   Set(fullscreen.keys).isSubset(of: ["schemaVersion", "isImmersive", "usesNotch"]),
                   fullscreen["schemaVersion"] as? Int == 1, fullscreen["isImmersive"] is Bool,
@@ -127,6 +149,28 @@ public struct ManagerStorage: Sendable {
             }
         }
         return object
+    }
+
+    public func diskCapacityGiB(_ profile: VMProfile) throws -> Int? {
+        let disk = root(for: profile).appendingPathComponent("shell/disk.img")
+        guard PrivateFiles.exists(disk) else { return nil }
+        var info = stat()
+        guard lstat(disk.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+              info.st_uid == getuid(), info.st_nlink == 1, info.st_mode & 0o077 == 0 else {
+            throw PrivateFiles.failure("The VM disk is unsafe; its capacity was not changed.")
+        }
+        return Int((UInt64(info.st_size) + 1_073_741_823) / 1_073_741_824)
+    }
+
+    private func resourcePreferences(_ profile: VMProfile) -> [String: Any] {
+        ["schemaVersion": 1, "resources": [
+            "cpuCount": profile.cpus, "memoryGiB": profile.memoryMiB / 1024, "diskGiB": profile.diskGiB!
+        ]]
+    }
+
+    private func jsonEqual(_ current: Any?, _ desired: [String: Any]) -> Bool {
+        guard let current = current as? [String: Any] else { return false }
+        return NSDictionary(dictionary: current).isEqual(to: desired)
     }
 
     func withLock<T>(_ profile: VMProfile, _ body: () throws -> T) throws -> T {
