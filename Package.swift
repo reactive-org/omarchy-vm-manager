@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .target(name: "OmarchyVMManagerCore", dependencies: [
             .product(name: "TryOmarchyKitClient", package: "macos")
-        ]),
+        ], resources: [.process("Resources")]),
         .executableTarget(name: "OmarchyVMManagerApp", dependencies: ["OmarchyVMManagerCore"]),
         .executableTarget(name: "OmarchyVMStorageHelper", dependencies: ["OmarchyVMManagerCore"]),
         .testTarget(name: "OmarchyVMManagerCoreTests", dependencies: ["OmarchyVMManagerCore"])

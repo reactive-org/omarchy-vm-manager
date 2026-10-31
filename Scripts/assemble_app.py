@@ -35,6 +35,10 @@ def assemble():
     try:
         for executable in ("OmarchyVMManager", "OmarchyVMStorageHelper"):
             shutil.copy2(binaries / executable, stage / "Contents/MacOS" / executable)
+        resources = binaries / "OmarchyVMManager_OmarchyVMManagerCore.bundle"
+        assert resources.is_dir() and not resources.is_symlink(), "missing core resource bundle"
+        assert all(not entry.is_symlink() for entry in resources.rglob("*")), "linked core resource entry"
+        shutil.copytree(resources, stage / "Contents/Resources" / resources.name)
         shutil.copy2(ROOT / "App/Info.plist", stage / "Contents/Info.plist")
         for extension in ("icns", "png"):
             shutil.copy2(ROOT / "App/Assets" / ("OmarchyVMManager." + extension), stage / "Contents/Resources" / ("OmarchyVMManager." + extension))
