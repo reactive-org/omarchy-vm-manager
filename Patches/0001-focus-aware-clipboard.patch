@@ -39,10 +39,10 @@ index 02d9082..dd8ed52 100644
 +
 +The manager holds reusable passwords in Keychain. Metadata never contains them. The host removes the staging seed after a matching completion report and on exit; the helper also removes it when the manager is gone. A root-owned completion identity lets a later boot acknowledge a setup that finished while its manager was unavailable. This status is separate from runtime readiness and authenticated SSH readiness. Manual guests get the normal Omarchy owner wizard.
 diff --git a/docs/vm-kit.md b/docs/vm-kit.md
-index fac6182..71095b1 100644
+index fac6182..a1cd7b1 100644
 --- a/docs/vm-kit.md
 +++ b/docs/vm-kit.md
-@@ -159,3 +159,11 @@ A fetched kit lives outside the embedding app's bundle, and the registered daemo
+@@ -159,3 +159,17 @@ A fetched kit lives outside the embedding app's bundle, and the registered daemo
  ## Sharing a VM
  
  The full app and an embedding app open the same VM in the default folder ([finding the VM](#finding-the-vm)), never at once: the VM folder's lock refuses the second. The run mode reports `vm-already-open`, and the full app says that Omarchy is open in another app, such as Omarchy Installer. Either can boot a VM the other made. The `try-omarchy` package only upgrades, so an older kit never downgrades the guest. A launcher refuses a VM whose `vm.json` names a storage layout it does not know (`storage-layout-unknown`).
@@ -54,6 +54,12 @@ index fac6182..71095b1 100644
 +The global Mac clipboard still transfers content intentionally when the user switches guests. The change prevents background broadcast and background writes; it does not create private host clipboards. The client configuration and run protocol remain at version 1. Deterministic two-route tests cover shared pasteboard isolation, rapid activation, focus loss during reads and immediately before side effects. Real two-guest focus behaviour remains to be validated on Apple Silicon.
 +
 +The headless clipboard helper keeps the main run loop running and performs its blocking guest-channel read on a worker queue. Every foreground lookup runs synchronously on the main thread, including lookups requested by the serial routing queue. The real POC found that an otherwise idle main loop could leave worker-only AppKit foreground polling stuck on an old app; main-thread lookups tracked the same focus cycle correctly. Tests exercise the actual focus adapter from both threads, matching and mismatching foreground PIDs, unavailable focus and stale process identities, alongside reader completion and error propagation. The correction does not change protocol 1 or any bridge/configuration fields.
++
++## Manager-owned download cache
++
++The private manager extension recognizes the protected `.omarchy-vm-manager.json` marker with a matching UUID root. Only these roots download into `~/Downloads/Omarchy VM Manager/Factory Images/`. Other kit users retain their existing storage-local download behavior. No client protocol or environment override is added.
++
++The shared cache holds compressed images, keyed by the pinned factory identity. The normal downloader locks the directory, resumes partial files, verifies part and whole-image digests, and atomically publishes completed images. Each new guest re-verifies a cached image before its own factory preparation. A successful reuse refreshes the image's last-use time. Startup cleanup preserves the current identity and prunes only obsolete owned regular downloads unused for at least seven days. Guest disks and decompressed factories stay in their original UUID roots.
 diff --git a/guest/package/README.md b/guest/package/README.md
 index 2cc716c..46fe376 100644
 --- a/guest/package/README.md
@@ -1386,6 +1392,163 @@ index 3b5b72d..dd9d95b 100644
 +  fi
    _reload_logind
  }
+diff --git a/macos/Sources/OmarchyVMHelper/FactoryImageDownload.swift b/macos/Sources/OmarchyVMHelper/FactoryImageDownload.swift
+index 40d02e3..828a0db 100644
+--- a/macos/Sources/OmarchyVMHelper/FactoryImageDownload.swift
++++ b/macos/Sources/OmarchyVMHelper/FactoryImageDownload.swift
+@@ -99,11 +99,12 @@ enum FactoryImagePreparation: Equatable {
+         bundlesImage: Bool,
+         stateRoot: URL,
+         sharedFactory: URL?,
++        downloadCache: URL? = nil,
+         fileManager: FileManager = .default
+     ) -> Self {
+         guard let manifest, !bundlesImage else { return .ready(image: nil) }
+         let localFactory = stateRoot.appendingPathComponent(VMWorkspaceTransfer.factoryCacheName, isDirectory: true)
+-        let directory = sharedFactory ?? localFactory
++        let directory = downloadCache ?? sharedFactory ?? localFactory
+         let image = FactoryImageStore.imageURL(in: directory, identity: manifest.identity)
+         let needsNewDisk = !FactoryImageStore.isRegularFile(
+             stateRoot.appendingPathComponent("shell/disk.img"), fileManager: fileManager)
+@@ -118,9 +119,6 @@ enum FactoryImagePreparation: Equatable {
+     }
+ }
+ 
+-/// The downloaded image lives beside the decompressed factory it becomes, in
+-/// the storage folder's `shell-factory/`: `<identity>.img.zst` once verified,
+-/// `<identity>.img.zst.download` while it is being fetched.
+ enum FactoryImageStore {
+     static func imageURL(in directory: URL, identity: String) -> URL {
+         directory.appendingPathComponent("\(identity).img.zst", isDirectory: false)
+@@ -176,10 +174,9 @@ enum FactoryImageStore {
+         }
+     }
+ 
+-    /// Removes downloads for other factories, and this factory's download once
+-    /// its decompressed copy exists. Skipped while another app instance holds
+-    /// the folder for a download.
+-    static func removeObsoleteDownloads(in directory: URL, identity: String, fileManager: FileManager = .default) {
++    static func removeObsoleteDownloads(in directory: URL, identity: String, fileManager: FileManager = .default,
++                                        retention: TimeInterval? = nil, now: Date = Date()) {
++        let retention = retention ?? (ManagedFactoryCache.contains(directory) ? ManagedFactoryCache.retention : 0)
+         let descriptor = Darwin.open(directory.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+         guard descriptor >= 0 else { return }
+         defer { Darwin.close(descriptor) }
+@@ -195,8 +192,15 @@ enum FactoryImageStore {
+             } else {
+                 continue
+             }
+-            guard isDigest(String(owner)), owner != identity || factoryReady else { continue }
+-            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
++            guard isDigest(String(owner)) else { continue }
++            let file = directory.appendingPathComponent(name)
++            if retention > 0 {
++                var info = stat()
++                guard owner != identity, lstat(file.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
++                      info.st_uid == getuid(), info.st_nlink == 1, info.st_mode & 0o7777 == 0o600,
++                      now.timeIntervalSince1970 - Double(info.st_mtimespec.tv_sec) >= retention else { continue }
++            } else if owner == identity && !factoryReady { continue }
++            try? fileManager.removeItem(at: file)
+         }
+     }
+ }
+@@ -382,6 +386,9 @@ final class FactoryImageDownloader: NSObject, URLSessionDataDelegate, @unchecked
+         }
+         defer { flock(directoryDescriptor, LOCK_UN) }
+ 
++        if ManagedFactoryCache.contains(directory) {
++            try ManagedFactoryCache.validateImageFiles(in: directory, identity: manifest.identity)
++        }
+         if FactoryImageStore.isRegularFile(imageURL) {
+             if try verifyExistingImage() { return imageURL }
+             try? FileManager.default.removeItem(at: imageURL)
+@@ -694,7 +701,12 @@ final class FactoryImageDownloader: NSObject, URLSessionDataDelegate, @unchecked
+         report(.verifying, completed: manifest.imageBytes, force: true)
+         var whole = SHA256()
+         try digest(descriptor: descriptor, offset: 0, bytes: manifest.imageBytes) { whole.update(bufferPointer: $0) }
+-        return Self.hex(whole.finalize()) == manifest.imageSHA256
++        let verified = Self.hex(whole.finalize()) == manifest.imageSHA256
++        if verified, ManagedFactoryCache.contains(directory) {
++            var times = [timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT)), timespec(tv_sec: 0, tv_nsec: Int(UTIME_NOW))]
++            _ = futimens(descriptor, &times)
++        }
++        return verified
+     }
+ 
+     /// Checks one part against its digest and feeds it to the whole-image hash.
+diff --git a/macos/Sources/OmarchyVMHelper/ManagedFactoryCache.swift b/macos/Sources/OmarchyVMHelper/ManagedFactoryCache.swift
+new file mode 100644
+index 0000000..d47aa37
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/ManagedFactoryCache.swift
+@@ -0,0 +1,67 @@
++import Darwin
++import Foundation
++
++enum ManagedFactoryCache {
++    static let retention: TimeInterval = 7 * 24 * 60 * 60
++
++    static var downloads: URL {
++        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
++    }
++
++    static func cacheDirectory(downloads: URL = downloads) -> URL {
++        downloads.appendingPathComponent("Omarchy VM Manager/Factory Images", isDirectory: true)
++    }
++
++    static func directory(for root: URL, downloads: URL = downloads) throws -> URL? {
++        let marker = root.appendingPathComponent(".omarchy-vm-manager.json")
++        var info = stat()
++        guard lstat(marker.path, &info) == 0 else {
++            if errno == ENOENT { return nil }
++            throw HelperError.io("Cannot inspect manager factory-cache configuration")
++        }
++        try ManagedSSHLaunch.directory(root)
++        struct Marker: Decodable { let schemaVersion: Int; let id: UUID }
++        let value = try JSONDecoder().decode(Marker.self, from: ManagedSSHLaunch.read(marker))
++        guard value.schemaVersion == 1, value.id.uuidString == root.lastPathComponent else {
++            throw HelperError.io("The factory download cache requires a valid manager-owned UUID root")
++        }
++        return cacheDirectory(downloads: downloads)
++    }
++
++    static func contains(_ directory: URL) -> Bool {
++        directory.standardizedFileURL == cacheDirectory().standardizedFileURL
++    }
++
++    static func prepare(downloads: URL = downloads) throws {
++        var info = stat()
++        if lstat(downloads.path, &info) != 0, errno == ENOENT {
++            guard mkdir(downloads.path, 0o700) == 0 || errno == EEXIST else {
++                throw HelperError.io("Cannot create the Downloads folder for Omarchy images")
++            }
++        }
++        guard lstat(downloads.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
++              info.st_uid == getuid(), info.st_mode & 0o022 == 0 else {
++            throw HelperError.io("The Omarchy image cache needs an owned Downloads folder without symbolic links or writable access for others")
++        }
++        for directory in [downloads.appendingPathComponent("Omarchy VM Manager", isDirectory: true), cacheDirectory(downloads: downloads)] {
++            if mkdir(directory.path, 0o700) != 0, errno != EEXIST {
++                throw HelperError.io("Cannot create the Omarchy image cache in Downloads")
++            }
++            try ManagedSSHLaunch.directory(directory)
++        }
++    }
++
++    static func validateImageFiles(in directory: URL, identity: String) throws {
++        for file in [FactoryImageStore.imageURL(in: directory, identity: identity), FactoryImageStore.partialURL(in: directory, identity: identity)] {
++            var info = stat()
++            guard lstat(file.path, &info) == 0 else {
++                if errno == ENOENT { continue }
++                throw HelperError.io("Cannot inspect the cached Omarchy image")
++            }
++            guard info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(), info.st_nlink == 1,
++                  info.st_mode & 0o7777 == 0o600 else {
++                throw HelperError.io("The cached Omarchy image is unsafe; it was preserved")
++            }
++        }
++    }
++}
 diff --git a/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift b/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift
 new file mode 100644
 index 0000000..e798599
@@ -1922,6 +2085,86 @@ index c959f32..ce160b9 100644
 +        return "dev.tryomarchy.guest." + digest
 +    }
 +}
+diff --git a/macos/Sources/OmarchyVMHelper/VMRunSession.swift b/macos/Sources/OmarchyVMHelper/VMRunSession.swift
+index 9a3fe63..f0bfa22 100644
+--- a/macos/Sources/OmarchyVMHelper/VMRunSession.swift
++++ b/macos/Sources/OmarchyVMHelper/VMRunSession.swift
+@@ -52,7 +52,6 @@ final class VMRunSession {
+ 
+     private var factoryDownloader: FactoryImageDownloader?
+     private var downloadCancelled = false
+-    /// Where this launch's downloaded image lives, cleaned once the VM runs.
+     private var launchedFactoryDirectories: [URL] = []
+     private var activeStateRoot: String?
+     private var pendingHostSleepControlFailure: String?
+@@ -194,19 +193,20 @@ final class VMRunSession {
+     private func beginFactoryDownloadIfNeeded(_ context: LaunchContext,
+         then launch: @escaping (URL) -> Void) throws -> Bool {
+         guard let manifest = factoryManifest else { return false }
+-        guard case .download(var directory) = factoryImagePreparation(context),
++        guard case .download(var directory) = try factoryImagePreparation(context),
+               let stateRoot = context.stateRoot.map({ URL(fileURLWithPath: $0, isDirectory: true) })
+         else { return false }
+         let localFactory = stateRoot.appendingPathComponent(VMWorkspaceTransfer.factoryCacheName, isDirectory: true)
+-        do {
+-            // A disposable VM shares the storage folder's copy. A chosen folder
+-            // that is missing is never recreated, so the disposable workspace
+-            // keeps its own download instead.
+-            try FactoryImageStore.prepareDirectory(directory,
+-                mayCreateRoot: directory == localFactory || context.mayCreateFactoryRoot)
+-        } catch where directory != localFactory {
+-            directory = localFactory
+-            try FactoryImageStore.prepareDirectory(directory, mayCreateRoot: true)
++        if ManagedFactoryCache.contains(directory) {
++            try ManagedFactoryCache.prepare()
++        } else {
++            do {
++                try FactoryImageStore.prepareDirectory(directory,
++                    mayCreateRoot: directory == localFactory || context.mayCreateFactoryRoot)
++            } catch where directory != localFactory {
++                directory = localFactory
++                try FactoryImageStore.prepareDirectory(directory, mayCreateRoot: true)
++            }
+         }
+         FactoryImageStore.removeObsoleteDownloads(in: directory, identity: manifest.identity)
+         // The launcher then decompresses about half the disk beside it.
+@@ -239,7 +239,7 @@ final class VMRunSession {
+     }
+ 
+     /// The factory a new VM disk needs, for this launch's storage folder.
+-    private func factoryImagePreparation(_ context: LaunchContext) -> FactoryImagePreparation {
++    private func factoryImagePreparation(_ context: LaunchContext) throws -> FactoryImagePreparation {
+         guard context.storageUnavailableReason == nil, let stateRoot = context.stateRoot else {
+             return .ready(image: nil)
+         }
+@@ -248,7 +248,8 @@ final class VMRunSession {
+             bundlesImage: bundlesFactoryImage,
+             stateRoot: URL(fileURLWithPath: stateRoot, isDirectory: true),
+             sharedFactory: context.environment[QEMUGPURuntimeEnvironment.factoryCacheKey]
+-                .map { URL(fileURLWithPath: $0, isDirectory: true) }
++                .map { URL(fileURLWithPath: $0, isDirectory: true) },
++            downloadCache: try ManagedFactoryCache.directory(for: URL(fileURLWithPath: stateRoot, isDirectory: true))
+         )
+     }
+ 
+@@ -271,7 +272,7 @@ final class VMRunSession {
+                     .appendingPathComponent(VMWorkspaceTransfer.factoryCacheName, isDirectory: true)]
+             } ?? []
+             var factoryImage = downloadedFactoryImage
+-            if factoryImage == nil, case .ready(let image?) = factoryImagePreparation(context) {
++            if factoryImage == nil, case .ready(let image?) = try factoryImagePreparation(context) {
+                 factoryImage = image
+             }
+             if let factoryImage {
+@@ -317,8 +318,6 @@ final class VMRunSession {
+         }
+         reachedStart = true
+         self.qmpSocketPath = qmpSocketPath
+-        // The launcher has decompressed the factory by now, so a downloaded
+-        // image is no longer needed.
+         if let identity = factoryManifest?.identity {
+             let directories = launchedFactoryDirectories
+             DispatchQueue.global(qos: .utility).async {
 diff --git a/macos/Tests/OmarchyVMHelperTests/GuestApplicationIdentityTests.swift b/macos/Tests/OmarchyVMHelperTests/GuestApplicationIdentityTests.swift
 new file mode 100644
 index 0000000..b2a45c9
@@ -1958,6 +2201,153 @@ index 0000000..b2a45c9
 +        #expect(id.hasPrefix("dev.tryomarchy.guest."))
 +        #expect(!id.contains("/"))
 +        #expect(id == GuestApplicationIdentity.identifier(for: a.appendingPathComponent("child/..")))
++    }
++}
+diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedFactoryCacheTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedFactoryCacheTests.swift
+new file mode 100644
+index 0000000..53100e2
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/ManagedFactoryCacheTests.swift
+@@ -0,0 +1,141 @@
++import Darwin
++import Foundation
++import Testing
++@testable import OmarchyVMHelper
++
++@Suite("Managed factory download cache")
++struct ManagedFactoryCacheTests {
++    private func fixture() throws -> URL {
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent("managed-factory-\(UUID())")
++        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
++        return root
++    }
++
++    private func managedRoot(in container: URL) throws -> URL {
++        let root = container.appendingPathComponent(UUID().uuidString)
++        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
++        let data = try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "id": root.lastPathComponent])
++        try data.write(to: root.appendingPathComponent(".omarchy-vm-manager.json"))
++        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: root.appendingPathComponent(".omarchy-vm-manager.json").path)
++        return root
++    }
++
++    @Test("distinct managed guests share one Downloads cache; other roots do not opt in")
++    func selection() throws {
++        let container = try fixture(); defer { try? FileManager.default.removeItem(at: container) }
++        let a = try managedRoot(in: container), b = try managedRoot(in: container)
++        let downloads = container.appendingPathComponent("Downloads")
++        let expected = downloads.appendingPathComponent("Omarchy VM Manager/Factory Images", isDirectory: true)
++        #expect(try ManagedFactoryCache.directory(for: a, downloads: downloads) == expected)
++        #expect(try ManagedFactoryCache.directory(for: b, downloads: downloads) == expected)
++        #expect(try ManagedFactoryCache.directory(for: container, downloads: downloads) == nil)
++        #expect(!FileManager.default.fileExists(atPath: downloads.path))
++    }
++
++    @Test("damaged, mismatched and linked manager markers fail closed", arguments: ["invalid", "mismatch", "symlink", "permissions"])
++    func invalidMarker(kind: String) throws {
++        let container = try fixture(); defer { try? FileManager.default.removeItem(at: container) }
++        let root = try managedRoot(in: container)
++        let marker = root.appendingPathComponent(".omarchy-vm-manager.json")
++        switch kind {
++        case "invalid": try Data("invalid".utf8).write(to: marker)
++        case "mismatch": try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "id": UUID().uuidString]).write(to: marker)
++        case "symlink":
++            let target = container.appendingPathComponent("marker")
++            try FileManager.default.moveItem(at: marker, to: target)
++            try FileManager.default.createSymbolicLink(at: marker, withDestinationURL: target)
++        default: try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: marker.path)
++        }
++        #expect(throws: (any Error).self) { try ManagedFactoryCache.directory(for: root, downloads: container.appendingPathComponent("Downloads")) }
++    }
++
++    @Test("cache preparation makes only private cache folders and never a VM workspace")
++    func preparation() throws {
++        let container = try fixture(); defer { try? FileManager.default.removeItem(at: container) }
++        let downloads = container.appendingPathComponent("Downloads")
++        try ManagedFactoryCache.prepare(downloads: downloads)
++        try ManagedFactoryCache.prepare(downloads: downloads)
++        let cache = ManagedFactoryCache.cacheDirectory(downloads: downloads)
++        try ManagedSSHLaunch.directory(cache)
++        #expect(try FileManager.default.contentsOfDirectory(atPath: cache.path).isEmpty)
++        #expect(!StorageLocationPolicy.hasValidRootMarker(in: cache.deletingLastPathComponent()))
++    }
++
++    @Test("cache preparation preserves symbolic links and existing unsafe directories", arguments: ["downloads-link", "cache-link", "permissions"])
++    func unsafeDirectory(kind: String) throws {
++        let container = try fixture(); defer { try? FileManager.default.removeItem(at: container) }
++        let downloads = container.appendingPathComponent("Downloads")
++        let target = container.appendingPathComponent("untouched")
++        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
++        if kind == "downloads-link" {
++            try FileManager.default.createSymbolicLink(at: downloads, withDestinationURL: target)
++        } else {
++            try ManagedFactoryCache.prepare(downloads: downloads)
++            let cache = ManagedFactoryCache.cacheDirectory(downloads: downloads)
++            if kind == "cache-link" {
++                try FileManager.default.removeItem(at: cache)
++                try FileManager.default.createSymbolicLink(at: cache, withDestinationURL: target)
++            } else { try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cache.path) }
++        }
++        #expect(throws: (any Error).self) { try ManagedFactoryCache.prepare(downloads: downloads) }
++        #expect(try FileManager.default.contentsOfDirectory(atPath: target.path).isEmpty)
++    }
++
++    @Test("new disks always pass shared compressed images through the verifier; existing disks need no download")
++    func planning() throws {
++        let container = try fixture(); defer { try? FileManager.default.removeItem(at: container) }
++        let a = try managedRoot(in: container), b = try managedRoot(in: container)
++        let downloads = container.appendingPathComponent("Downloads")
++        try ManagedFactoryCache.prepare(downloads: downloads)
++        let cache = ManagedFactoryCache.cacheDirectory(downloads: downloads)
++        let identity = String(repeating: "a", count: 64)
++        let manifest = try #require(FactoryDownloadManifest.decode(JSONSerialization.data(withJSONObject: [
++            "format": 1, "kind": "try-omarchy-factory-download", "identity": identity,
++            "image": ["bytes": 4, "sha256": identity], "parts": [["url": "https://example.com/part", "bytes": 4, "sha256": identity]]
++        ])))
++        try Data("zstd".utf8).write(to: FactoryImageStore.imageURL(in: cache, identity: identity))
++        for root in [a, b] {
++            #expect(FactoryImagePreparation.plan(manifest: manifest, bundlesImage: false, stateRoot: root, sharedFactory: nil, downloadCache: cache) == .download(directory: cache))
++        }
++        try FileManager.default.createDirectory(at: a.appendingPathComponent("shell"), withIntermediateDirectories: false)
++        try Data().write(to: a.appendingPathComponent("shell/disk.img"))
++        #expect(FactoryImagePreparation.plan(manifest: manifest, bundlesImage: false, stateRoot: a, sharedFactory: nil, downloadCache: cache) == .ready(image: FactoryImageStore.imageURL(in: cache, identity: identity)))
++    }
++
++    @Test("only obsolete owned images unused for seven days are pruned under the download lock")
++    func retention() throws {
++        let container = try fixture(); defer { try? FileManager.default.removeItem(at: container) }
++        let current = String(repeating: "a", count: 64), old = String(repeating: "b", count: 64)
++        let recent = String(repeating: "c", count: 64), linked = String(repeating: "d", count: 64)
++        let now = Date()
++        for name in ["\(current).img.zst", "\(current).img", "\(old).img.zst", "\(old).img.zst.download", "\(recent).img.zst", "notes.img.zst"] {
++            let file = container.appendingPathComponent(name)
++            try Data().write(to: file)
++            try FileManager.default.setAttributes([.posixPermissions: 0o600, .modificationDate: now.addingTimeInterval(name.hasPrefix(recent) ? -86400 : -8 * 86400)], ofItemAtPath: file.path)
++        }
++        try FileManager.default.createSymbolicLink(at: container.appendingPathComponent("\(linked).img.zst"), withDestinationURL: container.appendingPathComponent("notes.img.zst"))
++        let lock = open(container.path, O_RDONLY | O_DIRECTORY)
++        #expect(lock >= 0)
++        defer { close(lock) }
++        #expect(flock(lock, LOCK_EX) == 0)
++        FactoryImageStore.removeObsoleteDownloads(in: container, identity: current, retention: ManagedFactoryCache.retention, now: now)
++        #expect(FileManager.default.fileExists(atPath: container.appendingPathComponent("\(old).img.zst").path))
++        #expect(flock(lock, LOCK_UN) == 0)
++        FactoryImageStore.removeObsoleteDownloads(in: container, identity: current, retention: ManagedFactoryCache.retention, now: now)
++        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: container.path)) == ["\(current).img.zst", "\(current).img", "\(recent).img.zst", "\(linked).img.zst", "notes.img.zst"])
++    }
++
++    @Test("cache validation refuses symbolic links and hard links without modifying their targets", arguments: [false, true])
++    func unsafeImage(hardLink: Bool) throws {
++        let container = try fixture(); defer { try? FileManager.default.removeItem(at: container) }
++        let identity = String(repeating: "a", count: 64)
++        let target = container.appendingPathComponent("keep")
++        try Data("preserved".utf8).write(to: target)
++        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
++        let image = FactoryImageStore.partialURL(in: container, identity: identity)
++        if hardLink { try FileManager.default.linkItem(at: target, to: image) }
++        else { try FileManager.default.createSymbolicLink(at: image, withDestinationURL: target) }
++        #expect(throws: (any Error).self) { try ManagedFactoryCache.validateImageFiles(in: container, identity: identity) }
++        #expect(try Data(contentsOf: target) == Data("preserved".utf8))
 +    }
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedSSHLaunchTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedSSHLaunchTests.swift
@@ -2480,3 +2870,15 @@ index 0000000..9543717
 +The private manager can save owner, keyboard, timezone and hostname defaults for new virtual machines. Enable Guest Defaults in the manager, then choose whether to apply them in New VM. Existing guests keep their settings.
 +
 +The prepared VM image uses Omarchy's owner setup rather than the ISO installer's disk configuration. Disk partitioning, encryption and Tailscale inputs are not part of this flow. A changed factory setup contract returns to the normal wizard and reports a fixed failure code. SSH remains a separate key-based integration.
+diff --git a/manual/updates-and-data.md b/manual/updates-and-data.md
+index 69f7b07..8e7ab60 100644
+--- a/manual/updates-and-data.md
++++ b/manual/updates-and-data.md
+@@ -42,3 +42,7 @@ Set CPU cores, memory and the maximum disk size in **Resources → Configure…*
+ ## VMs from older versions
+ 
+ Versions of the app before 1.0 used a different kind of VM, which this version can't launch. Your old VM's files stay where they were, and the new VM can read them. To copy your files and packages over, choose **Setup → Import Previous VM** in the Omarchy menu, or run `try-omarchy-import-previous --dry-run` to see what would be copied.
++
++## Omarchy VM Manager downloads
++
++When the separate Omarchy VM Manager app creates guests, they reuse a factory download in `~/Downloads/Omarchy VM Manager/Factory Images/`. The current image stays cached; obsolete image downloads are removed after at least seven days without use. You can remove that cache to reclaim space while no guest is being prepared. Existing guests keep their own disks and do not need the download to start.

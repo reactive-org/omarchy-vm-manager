@@ -27,3 +27,7 @@ The first main-loop repair restored A's clipboard, but B still failed both direc
 The combined reproducible patch now also gives explicitly rooted run-mode guests stable bundle identifiers for native Dock/Spaces assignment. It hashes a POSIX-canonical root, including an equivalent canonical parent before initial root creation, and stamps the generated product app. No public client protocol, QEMU binary, guest image or default-root identity is changed. The identity tests include first creation, symbolic aliases, separate roots, generated plist validation and the actual run-mode environment passed to a no-VM launcher stub.
 
 Phase 1 validated the four focused clipboard paths, background suppression and user-initiated sleep/wake with source `9341b7a...`. Phase 2 preserves that clipboard code and adds guest app identity; the changed runtime has no new real-guest acceptance claim. See [Phase 2 validation and remaining checks](Phase2.md).
+
+## Downloads cache extension
+
+The combined pin now also includes the manager-only compressed factory cache described in [factory cache](FactoryCache.md). This selects a fixed Downloads directory from the protected matching UUID marker, retains the current image, and preserves obsolete downloads for at least seven days after use. The existing kit downloader still owns locking, resume, verification and completion. No QEMU, guest integration source, public client protocol or development environment override changed for this extension.

@@ -65,3 +65,5 @@ An independent connection through that generated pinned SSH configuration verifi
 A real one-second wait for stopped returned exit 124 with `wait-timeout` while leaving the guest running. Final normal stop reached `Exited (0)`, with no QEMU process or open disk handle for the test guest. The CLI then moved only that guest's entire root to recoverable Trash as authorized and removed its profile. All four earlier profiles and disk identities match their baseline; both original POC trees also match every recorded stat/hash entry. They remain stopped. No personal VM or personal private SSH key was used.
 
 Abrupt manager/helper crash recovery and unsupported future guest-image behavior retain their earlier documented limits. This CLI milestone does not add general port forwarding or migrate existing SSH/owner enrollment.
+
+New guests share the factory image in `~/Downloads/Omarchy VM Manager/Factory Images/`. The current pinned image is retained; obsolete downloads are pruned after seven days without use. Deleting a guest does not discard the cache. See [factory cache](FactoryCache.md).
