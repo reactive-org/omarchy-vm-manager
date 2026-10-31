@@ -6,4 +6,4 @@ The kit includes QEMU, VirGL, libslirp, zstd, firmware and other runtime depende
 
 The manager's scoped Accessibility repair is adapted from Try Omarchy v1.3.0's `AccessibilityPermissionRepair` and `VMApplicationController` request flow, Copyright (c) 2026 Try Omarchy contributors, under the MIT License in `Vendor/try-omarchy/LICENSE` and the kit's `Contents/Resources/LICENSE`.
 
-The manager does not use upstream's icon for its own application identity. The kit's existing assets and guest package remain part of the upstream runtime.
+The manager's original stacked-frame artwork uses an Omarchy-inspired green palette and dark tile. Its SVG is in App/Assets. Icon rendering and packing reuse the MIT-licensed Try Omarchy tools from the pinned vendor source. The kit's existing assets remain part of the upstream runtime.

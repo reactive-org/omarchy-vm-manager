@@ -33,9 +33,12 @@ struct ManagerView: View {
                         Label("Runtime", systemImage: "checkmark.shield").tag(Destination.runtime)
                     }
                 }.listStyle(.sidebar)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Omarchy VM Manager").font(.caption.bold())
-                    Text("Private build · 0.3.0").font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    ManagerArtwork(size: 42)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Omarchy VM Manager").font(.caption.bold())
+                        Text("Private build · 0.3.0").font(.caption).foregroundStyle(.secondary)
+                    }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
             }.navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
         } detail: {
@@ -170,7 +173,7 @@ struct ManagerView: View {
         VStack(alignment: .leading, spacing: 22) {
             GroupedPanel {
                 HStack(spacing: 24) {
-                    TileIcon(symbol: "square.stack.3d.up", color: .green, size: 76)
+                    ManagerArtwork(size: 96)
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Omarchy").font(.system(size: 34, weight: .bold))
                         Text(snapshot.state == .stopped ? "Ready to launch" : snapshot.state.label).font(.title3).foregroundStyle(.secondary)
@@ -440,4 +443,15 @@ private struct VMEditor: View {
         } catch { keyError = error.localizedDescription }
     }
 
+}
+
+private struct ManagerArtwork: View {
+    let size: CGFloat
+    var body: some View {
+        if let path = Bundle.main.url(forResource: "OmarchyVMManager", withExtension: "png"), let image = NSImage(contentsOf: path) {
+            Image(nsImage: image).resizable().interpolation(.high).frame(width: size, height: size).accessibilityHidden(true)
+        } else {
+            Image(systemName: "square.stack.3d.up").resizable().scaledToFit().frame(width: size, height: size).foregroundStyle(.green).accessibilityHidden(true)
+        }
+    }
 }

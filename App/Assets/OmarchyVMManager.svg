@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Omarchy VM Manager</title>
+  <desc id="desc">Two overlapping angular green workspace frames on a dark rounded tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#293126"/>
+      <stop offset="0.5" stop-color="#1b2118"/>
+      <stop offset="1" stop-color="#10150e"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#b4df80"/>
+      <stop offset="1" stop-color="#9ece6a"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="108" width="824" height="824" rx="190" fill="#000000" fill-opacity="0.14"/>
+  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#tile)" stroke="#9ece6a" stroke-opacity="0.25" stroke-width="3"/>
+  <path d="M658 326V266H266V658H326" fill="none" stroke="#6e934c" stroke-width="48" stroke-linejoin="miter"/>
+  <path d="M350 350H790V790H350Z" fill="#141b10"/>
+  <path d="M602 374H374V766H766V374H662" fill="none" stroke="url(#front)" stroke-width="48" stroke-linejoin="miter"/>
+  <path d="M374 602V662" fill="none" stroke="#141b10" stroke-width="54"/>
+</svg>

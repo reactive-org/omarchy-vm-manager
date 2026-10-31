@@ -14,6 +14,11 @@ info = plistlib.loads((contents / "Info.plist").read_bytes())
 assert info["CFBundleExecutable"] == "OmarchyVMManager"
 assert info["CFBundleIdentifier"] == "dev.omarchy.vm-manager"
 assert info["LSMinimumSystemVersion"] == "15.0"
+assert info["CFBundleIconFile"] == "OmarchyVMManager"
+for extension in ("icns", "png"):
+    name = "OmarchyVMManager." + extension
+    assert (contents / "Resources" / name).read_bytes() == (ROOT / "App/Assets" / name).read_bytes()
+assert (contents / "Resources/OmarchyVMManager.icns").read_bytes().startswith(b"icns")
 assert not (contents / "Library/LaunchDaemons").exists(), "NAT-only app must not register networking"
 assert (contents / "Resources/TryOmarchy-THIRD_PARTY_NOTICES.md").is_file()
 for name in ("OmarchyVMManager", "OmarchyVMStorageHelper"):

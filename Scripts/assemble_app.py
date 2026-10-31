@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Assemble only a private debug app with exact kit content and ad-hoc signing."""
+import argparse
 import json
 from pathlib import Path
 import shutil
@@ -14,6 +15,9 @@ def run(*args, **kwargs):
 
 
 def assemble():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--preview", action="store_true", help="Build a sibling app without replacing the running manager")
+    args = parser.parse_args()
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"
     lock = json.loads(lock_path.read_bytes())
     assert lock["kitVersion"] == "development" and lock["focusAwareClipboard"] is True
@@ -22,8 +26,9 @@ def assemble():
     assert digest(source / "TryOmarchyKit.zip") == lock["kitSHA256"], "private archive mismatch"
     assert inventory(source / "TryOmarchyKit.bundle") == lock["files"], "private kit content mismatch"
     binaries = Path(subprocess.check_output(["swift", "build", "--disable-sandbox", "--show-bin-path"], cwd=ROOT, text=True).strip())
-    app = ROOT / "dist/Omarchy VM Manager.app"
-    stage = ROOT / "dist/.Omarchy VM Manager.staging.app"
+    name = "Omarchy VM Manager Preview" if args.preview else "Omarchy VM Manager"
+    app = ROOT / "dist" / (name + ".app")
+    stage = ROOT / "dist" / ("." + name + ".staging.app")
     assert not stage.exists(), "existing assembly stage; inspect before retrying"
     for name in ("MacOS", "Resources", "Helpers"):
         (stage / "Contents" / name).mkdir(parents=True, exist_ok=True)
@@ -31,6 +36,8 @@ def assemble():
         for executable in ("OmarchyVMManager", "OmarchyVMStorageHelper"):
             shutil.copy2(binaries / executable, stage / "Contents/MacOS" / executable)
         shutil.copy2(ROOT / "App/Info.plist", stage / "Contents/Info.plist")
+        for extension in ("icns", "png"):
+            shutil.copy2(ROOT / "App/Assets" / ("OmarchyVMManager." + extension), stage / "Contents/Resources" / ("OmarchyVMManager." + extension))
         shutil.copy2(lock_path, stage / "Contents/Resources" / lock_path.name)
         for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, stage / "Contents/Resources" / name)
