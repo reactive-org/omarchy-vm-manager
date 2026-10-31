@@ -1,20 +1,20 @@
-From a135f003c2ffd2ce820900b5896b7ad9e2b84a96 Mon Sep 17 00:00:00 2001
+From 53093243ea809c0ff75f619a184a3a8a952cc1af Mon Sep 17 00:00:00 2001
 From: Omarchy VM Manager <build@localhost>
-Date: Sat, 31 Oct 2026 11:27:20 +1100
-Subject: [PATCH] Route the native clipboard only through the focused QEMU
- guest
+Date: Sat, 31 Oct 2026 12:13:33 +1100
+Subject: [PATCH] Route clipboard through focused guests with live headless
+ focus updates
 
 ---
- docs/vm-kit.md                                |   6 +
- .../NativeClipboardBridge.swift               | 136 ++++++++++++----
- .../NativeClipboardBridgeTests.swift          | 150 ++++++++++++++++++
- 3 files changed, 259 insertions(+), 33 deletions(-)
+ docs/vm-kit.md                                |   8 +
+ .../NativeClipboardBridge.swift               | 186 ++++++++++++---
+ .../NativeClipboardBridgeTests.swift          | 217 ++++++++++++++++++
+ 3 files changed, 377 insertions(+), 34 deletions(-)
 
 diff --git a/docs/vm-kit.md b/docs/vm-kit.md
-index fac6182..ea9f8d8 100644
+index fac6182..8ab87b6 100644
 --- a/docs/vm-kit.md
 +++ b/docs/vm-kit.md
-@@ -159,3 +159,9 @@ A fetched kit lives outside the embedding app's bundle, and the registered daemo
+@@ -159,3 +159,11 @@ A fetched kit lives outside the embedding app's bundle, and the registered daemo
  ## Sharing a VM
  
  The full app and an embedding app open the same VM in the default folder ([finding the VM](#finding-the-vm)), never at once: the VM folder's lock refuses the second. The run mode reports `vm-already-open`, and the full app says that Omarchy is open in another app, such as Omarchy Installer. Either can boot a VM the other made. The `try-omarchy` package only upgrades, so an older kit never downgrades the guest. A launcher refuses a VM whose `vm.json` names a storage layout it does not know (`storage-layout-unknown`).
@@ -24,14 +24,63 @@ index fac6182..ea9f8d8 100644
 +The native clipboard bridge reads and writes the Mac clipboard only while its exact QEMU process is frontmost and its captured kernel process identity is still alive. Unknown focus fails closed. It needs no additional Accessibility grant. Focus gain synchronizes the current Mac clipboard once; a background guest's clipboard and sync messages are ignored. A quarter-second poll reconciles focus, and each clipboard side effect checks focus again on the bridge's serial state queue. Echo markers reset at observed focus loss/gain. If a guest message first observes focus gain, the current host selection wins that transition.
 +
 +The global Mac clipboard still transfers content intentionally when the user switches guests. The change prevents background broadcast and background writes; it does not create private host clipboards. The client configuration and run protocol remain at version 1. Deterministic two-route tests cover shared pasteboard isolation, rapid activation, focus loss during reads and immediately before side effects. Real two-guest focus behaviour remains to be validated on Apple Silicon.
++
++The headless clipboard helper keeps the main run loop running and performs its blocking guest-channel read on a worker queue. AppKit caches foreground application state until the main run loop advances. Blocking the main thread would leave the focus gate stuck on an old app and silently disable clipboard traffic. Tests verify that main-queue updates remain responsive while the reader waits, and that reader completion and errors return cleanly. The POC exposed this flaw in the first focus-gated build; the correction does not change protocol 1 or any bridge/configuration fields.
 diff --git a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
-index 39b07ba..77f297f 100644
+index 39b07ba..e0b2b75 100644
 --- a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
 +++ b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
-@@ -197,29 +197,123 @@ final class GeneralPasteboard: HostPasteboardProviding {
+@@ -1,4 +1,5 @@
+ import AppKit
++import CoreFoundation
+ import CryptoKit
+ import Darwin
+ import Foundation
+@@ -197,29 +198,164 @@ final class GeneralPasteboard: HostPasteboardProviding {
      }
  }
  
++private final class ClipboardRunCompletion: @unchecked Sendable {
++    private let lock = NSLock()
++    private var stored: Result<Void, Error>?
++
++    var result: Result<Void, Error>? { lock.withLock { stored } }
++    func finish(_ result: Result<Void, Error>) { lock.withLock { stored = result } }
++}
++
++enum ClipboardMainRunLoop {
++    static func run(_ operation: @escaping () throws -> Void) throws {
++        guard Thread.isMainThread else {
++            throw HelperError.io("the clipboard bridge must own the main run loop")
++        }
++        _ = NSWorkspace.shared.frontmostApplication
++        let loop = CFRunLoopGetCurrent()
++        var context = CFRunLoopSourceContext(
++            version: 0, info: nil, retain: nil, release: nil, copyDescription: nil,
++            equal: nil, hash: nil, schedule: nil, cancel: nil, perform: { _ in }
++        )
++        guard let keepAlive = CFRunLoopSourceCreate(nil, 0, &context) else {
++            throw HelperError.io("cannot create the clipboard bridge run loop")
++        }
++        CFRunLoopAddSource(loop, keepAlive, .commonModes)
++        defer {
++            CFRunLoopRemoveSource(loop, keepAlive, .commonModes)
++            CFRunLoopSourceInvalidate(keepAlive)
++        }
++        let completion = ClipboardRunCompletion()
++        DispatchQueue(label: "dev.tryomarchy.native.clipboard-bridge-reader").async {
++            let result = Result(catching: operation)
++            CFRunLoopPerformBlock(loop, CFRunLoopMode.commonModes.rawValue) {
++                completion.finish(result)
++                CFRunLoopStop(loop)
++            }
++            CFRunLoopWakeUp(loop)
++        }
++        while completion.result == nil { CFRunLoopRun() }
++        try completion.result!.get()
++    }
++}
++
 +protocol ClipboardFocusProviding: AnyObject {
 +    func isFocused() -> Bool
 +}
@@ -159,7 +208,22 @@ index 39b07ba..77f297f 100644
      }
  
      deinit {
-@@ -287,12 +381,8 @@ final class NativeClipboardBridge {
+@@ -227,7 +363,13 @@ final class NativeClipboardBridge {
+     }
+ 
+     func run() throws {
+-        startPolling()
++        try ClipboardMainRunLoop.run {
++            self.startPolling()
++            try self.readGuestChannel()
++        }
++    }
++
++    private func readGuestChannel() throws {
+         var line = Data()
+         var chunk = [UInt8](repeating: 0, count: 64 * 1024)
+         while true {
+@@ -287,12 +429,8 @@ final class NativeClipboardBridge {
      }
  
      private func pollPasteboard() {
@@ -173,7 +237,7 @@ index 39b07ba..77f297f 100644
          } catch {
              fputs("[clipboard-bridge] \(error.localizedDescription)\n", stderr)
              stop()
-@@ -301,27 +391,7 @@ final class NativeClipboardBridge {
+@@ -301,27 +439,7 @@ final class NativeClipboardBridge {
  
      private func handle(_ data: Data) throws {
          try stateQueue.sync {
@@ -203,10 +267,10 @@ index 39b07ba..77f297f 100644
      }
  }
 diff --git a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
-index 814cebc..0959576 100644
+index 814cebc..e60cf82 100644
 --- a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
 +++ b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
-@@ -108,3 +108,153 @@ struct NativeClipboardBridgeTests {
+@@ -108,3 +108,220 @@ struct NativeClipboardBridgeTests {
          #expect(guest(b, at: window + 1))
      }
  }
@@ -358,6 +422,73 @@ index 814cebc..0959576 100644
 +        focus.focused = false
 +        try route.handle(.sync)
 +        #expect(output.messages.count == 2)
++    }
++}
++
++
++@Suite("Clipboard headless main run loop")
++struct ClipboardMainRunLoopTests {
++    @Test("the actual headless runner services main-queue updates and returns reader results")
++    func standaloneMainRunLoop() throws {
++        let macos = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
++            .deletingLastPathComponent().deletingLastPathComponent()
++        let source = try String(contentsOf: macos.appendingPathComponent("Sources/OmarchyVMHelper/NativeClipboardBridge.swift"), encoding: .utf8)
++        let start = try #require(source.range(of: "private final class ClipboardRunCompletion"))
++        let end = try #require(source.range(of: "protocol ClipboardFocusProviding"))
++        let runner = String(source[start.lowerBound..<end.lowerBound])
++        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard-runloop-" + UUID().uuidString)
++        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false)
++        defer { try? FileManager.default.removeItem(at: temporary) }
++        let program = temporary.appendingPathComponent("probe.swift")
++        let executable = temporary.appendingPathComponent("probe")
++        let code = """
++        import AppKit
++        import CoreFoundation
++        import Foundation
++        enum HelperError: Error { case io(String) }
++        \(runner)
++        do {
++            switch CommandLine.arguments[1] {
++            case "mainqueue":
++                try ClipboardMainRunLoop.run { @Sendable in
++                    let delivered = DispatchSemaphore(value: 0)
++                    DispatchQueue.main.async { delivered.signal() }
++                    guard delivered.wait(timeout: .now() + 2) == .success else {
++                        throw HelperError.io("main-queue focus update was blocked")
++                    }
++                }
++            case "completed":
++                try ClipboardMainRunLoop.run { @Sendable in }
++            case "error":
++                var caught = false
++                do {
++                    try ClipboardMainRunLoop.run { @Sendable in throw HelperError.io("test channel closed") }
++                } catch HelperError.io { caught = true }
++                guard caught else { exit(2) }
++            default: exit(3)
++            }
++            exit(0)
++        } catch {
++            FileHandle.standardError.write(Data("\\(error)\\n".utf8))
++            exit(1)
++        }
++        """
++        try code.write(to: program, atomically: true, encoding: .utf8)
++        let compiler = Process()
++        compiler.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
++        compiler.arguments = ["swiftc", "-swift-version", "5", "-module-cache-path", temporary.appendingPathComponent("modules").path,
++                              program.path, "-o", executable.path]
++        try compiler.run()
++        compiler.waitUntilExit()
++        try #require(compiler.terminationStatus == 0)
++        for mode in ["mainqueue", "completed", "error"] {
++            let child = Process()
++            child.executableURL = executable
++            child.arguments = [mode]
++            try child.run()
++            child.waitUntilExit()
++            #expect(child.terminationStatus == 0, "Headless run-loop mode: \(mode)")
++        }
 +    }
 +}
 -- 

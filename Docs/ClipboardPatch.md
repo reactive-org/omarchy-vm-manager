@@ -11,3 +11,11 @@ The tests use two real routing instances, two fake focus probes and one fake pas
 The patch is saved as a dedicated reproducible local commit with the exact identity in `Config/TryOmarchyClipboardPatch.json`. It is based on v1.3.0 commit `13d63df8da2947f833c04025ff5ade187d39ba81`; the vendor checkout remains at that baseline. No upstream PR has been published.
 
 Real multi-guest clipboard, Cocoa foreground identity, rapid UI focus transitions and sleep/wake remain TO PROVE. Focus is reconciled by the existing 250 ms poll and at every message/side effect; events during an unobserved loss-and-regain interval have no focus epoch in protocol 1. The exact real-world behaviour must pass the two-VM gate before claiming this fixes the product use case.
+
+## Headless focus-cache repair found by Phase 1
+
+The first real run exposed a flaw missed by the fake-focus tests. The native clipboard helper blocked its main thread on its socket read. A read-only probe reproduced the same context: fresh per-PID active flags tracked A and B, but the workspace's cached foreground application stayed on the original host app. The focus gate consequently refused traffic in both guests. Apple documents the main-run-loop cache policy in the NSRunningApplication SDK header; see also [NSRunningApplication](https://developer.apple.com/documentation/appkit/nsrunningapplication).
+
+The corrected helper initializes the workspace on the main thread, keeps the main run loop in a common mode, and performs the blocking guest-channel read on a worker queue. Reader completion/errors are delivered back through the run loop. Clipboard routing and its final focus checks stay serialized on the existing state queue. No permission dependency, clipboard logging or protocol change is introduced.
+
+A standalone headless executable compiles the actual run-loop implementation from the bridge source and verifies main-queue responsiveness while the reader waits, immediate completion and error propagation. This tests the CLI execution context without launching a VM, displaying a window, generating input or reading clipboard contents. The repaired source and binary hashes are generated into the current committed locks; the old POC artifact is preserved for audit.
