@@ -48,4 +48,6 @@ The actor and production adapter are testable with fake runtimes and executable 
 
 With the VMs stopped, **Enable Super shortcuts…** runs the full Try Omarchy launcher's permission-repair flow for `dev.omarchy.vm-manager` only, then opens macOS Accessibility settings. The user invokes this action and enables the grant themselves. It never resets the installed Try Omarchy app's entry. The manager reports its own permission status; that alone does not prove QEMU installed its keyboard event tap. Start a guest after granting access and verify Command+Space is kept in the guest. Ad-hoc rebuilds can require a fresh grant.
 
+Future MVP requirement: new manager-created guests should automatically accept authenticated SSH connections from the host, using per-VM credentials and verified loopback endpoints, with readiness reported separately from QEMU startup. This is planned as Phase 3A in `intent.md`; it is not implemented by the current POC's temporary debug SSH bootstrap.
+
 See `Docs/POC.md` for the approval gate and real test matrix, `Docs/ClipboardPatch.md` for the upstream-ready change explanation, and `Docs/Validation.md` for exact results and remaining evidence gaps.

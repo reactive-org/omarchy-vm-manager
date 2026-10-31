@@ -36,6 +36,7 @@ This document uses four labels so implementation does not accidentally turn a hy
 - Prevent the manager from launching the same storage root twice.
 - Enforce an aggregate memory budget and warn on CPU oversubscription.
 - Detect and reserve conflicting NAT host ports before launch, while treating QEMU's bind as authoritative.
+- Launch new manager-owned guests with automatically provisioned, host-accessible SSH, and report SSH readiness only after a verified authenticated connection. No manual guest-console bootstrap or clipboard setup should be needed.
 - Provide a working Mac clipboard in every running VM, routed only to the currently focused QEMU guest so background VMs neither receive nor publish clipboard changes.
 - Shut down guests gracefully, make forced power-off explicit, and prevent deletion while any session can still touch the VM.
 - Pin, verify, embed and sign a known Try Omarchy kit.
@@ -45,7 +46,7 @@ This document uses four labels so implementation does not accidentally turn a hy
 
 - General-purpose support for arbitrary operating systems.
 - Snapshots, cloning, migration, import/export or moving VM storage.
-- Embedded guest display, VNC, SPICE, terminal, SSH client or file browser.
+- Embedded guest display, VNC, SPICE, terminal, interactive SSH client UI or file browser. Provisioning guest SSH access and exposing connection details for host tools are in scope.
 - Background clipboard broadcast or a one-VM-only clipboard compromise. A focus-aware runtime fix is a required prerequisite, not a deferred feature.
 - More than one bridged-network session.
 - Bridged networking at all in the proof of concept or first private MVP.
@@ -176,6 +177,7 @@ Show:
 - **Start**, **Shut Down**, **Force Stop** and **Delete** actions as permitted by state;
 - progress text and percentage while downloading or preparing;
 - a clipboard-enabled badge for each profile; do not claim live bridge health because run protocol 1 exposes no bridge-specific status event.
+- for SSH-enabled profiles, the host SSH endpoint and separate provisioning/readiness status, plus a **Copy SSH Command** action; never include private-key contents.
 
 Do not add guest thumbnails, embedded consoles, settings duplication or resource graphs to v1.
 
@@ -294,6 +296,8 @@ The production adapter wraps `VMRunClient`; tests use a deterministic fake. Do n
 
 `registry.json` stores only manager metadata: schema version, UUID, display name, created date, manager resource defaults and whether clipboard integration is enabled. The storage path is derived from the UUID, not accepted from the JSON as an arbitrary absolute path.
 
+Phase 3A adds versioned SSH metadata: enablement, allocated loopback port, intended guest username, credential reference and pinned public host identity. Private keys and passwords never belong in the registry or logs.
+
 ### Creation invariants
 
 For v1, all roots are manager-owned and below the fixed `VMs` directory. Importing or using an arbitrary external path is deferred.
@@ -323,6 +327,8 @@ The initialized settings object should contain these v1 keys as `null`:
 ```
 
 This is the smallest private compatibility layer that makes new roots deterministic. Isolate marker/settings knowledge in `TryOmarchyV1StorageContract`; do not scatter keys through the application.
+
+For future SSH-enabled profiles, Phase 3A may intentionally initialize a validated manager-owned SSH mapping after this null initialization and before first launch, using the supported kit API or a separately reviewed versioned adapter. This is an explicit creation step, not inheritance from global preferences. Existing mappings must not be silently overwritten during launch admission.
 
 ### Deletion invariants
 
@@ -453,6 +459,27 @@ Rules:
 - Do not claim the probe is a lock. An external process can still bind after the probe; QEMU's bind is authoritative. Convert the resulting launch failure into a port-specific error and include the requested mapping when it can be identified.
 - Never bind to a non-loopback address in the manager. The v1.3 NAT runtime forwards on `127.0.0.1`.
 - Do not use the public `environment:` argument to inject `OMARCHY_QEMU_GPU_PORT_FORWARDS`; upstream documents those variables as development overrides and the default client deliberately cleans them.
+
+### Managed host SSH — required future MVP capability
+
+**DESIGN DECISION — user requirement, 31 October 2026:** new manager-owned guests should become ready for SSH from the host automatically. SSH provisioning must not depend on a working graphical shell, clipboard, Accessibility permission or a manually pasted command. The temporary SSH bootstrap used to investigate Phase 1 is a diagnostic exception, not the product implementation.
+
+**VERIFIED — v1.3.0:** the kit can forward Mac loopback ports to the guest and start the existing guest SSH server for that boot when SSH is forwarded. Its public `VMRunConfiguration` has no authorized-key provisioning or authenticated SSH-readiness API. Port mapping remains the private settings coupling described above. These capabilities alone do not provide unattended SSH access.
+
+Requirements:
+
+- Enable managed host SSH by default for newly created manager profiles. Existing manager profiles need an explicit migration/enablement action; personal/default Try Omarchy VMs remain excluded.
+- Provision a dedicated manager-side SSH client key pair per VM for an intended non-root guest account. Install only its public key through a supported upstream first-boot/guest-integration mechanism. Do not bake shared keys into the factory image, copy another VM's credentials, patch Omarchy-owned files or depend on an embedded terminal.
+- Keep the private credential in an appropriate protected host store, with only a reference in profile metadata. Never request, store or log the guest's password as the SSH bootstrap mechanism. The exact credential-store design remains to be specified before implementation.
+- Use key authentication for the manager's access, an explicitly selected identity and pinned guest SSH host keys. Disable agent forwarding and password fallback for manager-initiated connections. Generate/preserve distinct guest host identities per VM; unexpected changes fail closed and require an explicit recovery action.
+- Allocate a distinct unprivileged `127.0.0.1:<hostPort>` endpoint per managed VM, coordinate it through the port ledger, and verify the actual runtime mapping. Preserve endpoint metadata across ordinary restarts; external conflicts must be actionable rather than silently redirecting to another guest. No LAN or bridged exposure is introduced by this feature.
+- Keep SSH readiness separate from VM lifecycle. `.ready` still indicates the upstream runtime boundary; it does not prove that a guest account, SSH daemon or authorized key is usable. Show provisioning/waiting/ready/failure separately, retaining the client and reservations through `.exited` even when SSH fails.
+- Mark SSH ready only after an authenticated, host-key-verified connection confirms the expected guest account and manager-owned VM identity. A listening TCP port alone is insufficient. Bound and cancel probes by `(vmID, sessionID)` so an old connection cannot mark a later run ready.
+- Make fresh-guest provisioning, normal restarts and host-initiated diagnostics work without manual shell commands. If owner-account setup is a prerequisite, represent that explicitly until provisioning completes; do not advertise SSH readiness prematurely.
+- Use or extend the upstream kit and guest integration through a reviewed, versioned API/capability. The manager continues to own orchestration. The ad hoc live QMP forward and custom debug SSH daemon used during the POC must not become the production launch path.
+- Any configuration migration beyond new-root initialization needs a separately reviewed, stopped-VM transaction using the supported upstream interface. Keep the current launch-admission adapter read-only; do not silently rewrite unrelated user settings to enable SSH.
+
+**TO PROVE:** the supported key/account provisioning path before the first authenticated connection, independent identities/endpoints with two guests, recovery after failed provisioning, and SSH continuity across guest restart and Mac sleep/wake. Implement and validate this in Phase 3A before the private MVP is accepted.
 
 ## 11. Clipboard and other host integrations
 
@@ -617,6 +644,8 @@ Deliver:
 - independent shutdown and forced-stop controls;
 - event/error log visible in the app.
 
+The original Phase 1 baseline has no permanent SSH provisioning or forwarding. User-authorized temporary loopback SSH used for diagnosis must be recorded and cleaned up. It does not satisfy the future managed-SSH requirement in Phase 3A.
+
 Decision-gate acceptance:
 
 - VM A reaches `.ready`; while A remains usable, VM B reaches `.ready`.
@@ -674,6 +703,27 @@ Exit criteria:
 - background VMs neither receive host changes nor publish guest changes;
 - a stock/unproven kit cannot be used for concurrent clipboard-enabled launch.
 
+### Phase 3A — Automatically SSH-ready guests
+
+Required before private MVP acceptance, after registry/lifecycle and port safeguards exist.
+
+Deliver:
+
+- a reviewed upstream-compatible public-key/account provisioning path with explicit capability/provenance checks;
+- per-VM protected credentials, pinned public host identity and coordinated loopback endpoint metadata;
+- automatic SSH bootstrap on first launch, separate authenticated readiness reporting and a **Copy SSH Command** action;
+- bounded, session-scoped probes and actionable provisioning, authentication, identity and port errors.
+
+Exit criteria:
+
+- a fresh manager-created guest accepts an authenticated host connection without a pasted command or manual SSH/firewall setup;
+- two guests accept connections concurrently through their own endpoints, and each connection identifies the expected VM;
+- one VM's credential does not authenticate to another VM, and host-key mismatches cannot be silently accepted;
+- normal guest restart preserves the intended key/host identity and restores readiness; sleep/wake and independent shutdown are tested;
+- SSH setup/probing works while the graphical shell or clipboard is unavailable;
+- an SSH failure never releases a live VM's client, resource allocation or port reservation;
+- credentials and diagnostic bootstrap artifacts cannot leak into registry exports, logs or source control.
+
 ### Phase 4 — Packaging and private distribution
 
 Deliver:
@@ -715,6 +765,7 @@ Candidates, only after v1:
 - Start/stop/failure/progress are independent per row.
 - Application relaunch preserves the registry and does not lose VM data.
 - One VM can fail to start without terminating another.
+- New manager-created guests become authenticated SSH-ready from the host automatically, with a distinct verified endpoint per VM and no manual console bootstrap.
 
 ### Lifecycle and data safety
 
