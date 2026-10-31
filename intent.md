@@ -468,7 +468,10 @@ Rules:
 
 Requirements:
 
-- Enable managed host SSH by default for newly created manager profiles. Existing manager profiles need an explicit migration/enablement action; personal/default Try Omarchy VMs remain excluded.
+- Enable managed host SSH by default for newly created manager profiles. The creation sheet has **Enable SSH from this Mac**, checked by default, with an explanation that access uses a guest-specific Mac loopback endpoint. Existing manager profiles need an explicit migration/enablement action; personal/default Try Omarchy VMs remain excluded.
+- Offer an optional **Add my SSH public key…** chooser at creation. Validate the selected OpenSSH public key, show its fingerprint, and install only its public material for the intended non-root owner after that account exists. Never copy or request the user's private key, infer a key from a private-key filename, scan personal credentials, or replace existing authorized keys. The manager's per-VM credential remains independent so readiness checks do not depend on unlocking a personal key or agent.
+- With no existing public key selected, provision the per-VM manager key automatically and supply a working **Copy SSH Command** using the matching protected host identity. Selecting a personal public key is optional convenience, not a prerequisite for passwordless manager access.
+- Automatically register the guest's initial public host key only after associating it with the expected VM through the trusted per-VM provisioning channel, then pin it for later connections. Ordinary connections should not need a first-use host-key prompt. A changed key requires explicit recovery; do not disable host-key checking. Keep manager-owned known-hosts/configuration separate from the user's global SSH files unless they choose an explicit integration action.
 - Provision a dedicated manager-side SSH client key pair per VM for an intended non-root guest account. Install only its public key through a supported upstream first-boot/guest-integration mechanism. Do not bake shared keys into the factory image, copy another VM's credentials, patch Omarchy-owned files or depend on an embedded terminal.
 - Keep the private credential in an appropriate protected host store, with only a reference in profile metadata. Never request, store or log the guest's password as the SSH bootstrap mechanism. The exact credential-store design remains to be specified before implementation.
 - Use key authentication for the manager's access, an explicitly selected identity and pinned guest SSH host keys. Disable agent forwarding and password fallback for manager-initiated connections. Generate/preserve distinct guest host identities per VM; unexpected changes fail closed and require an explicit recovery action.
@@ -717,12 +720,13 @@ Deliver:
 
 - a reviewed upstream-compatible public-key/account provisioning path with explicit capability/provenance checks;
 - per-VM protected credentials, pinned public host identity and coordinated loopback endpoint metadata;
-- automatic SSH bootstrap on first launch, separate authenticated readiness reporting and a **Copy SSH Command** action;
+- automatic SSH bootstrap on first launch, a creation-time default-on SSH toggle and optional existing-public-key chooser, separate authenticated readiness reporting and a **Copy SSH Command** action;
 - bounded, session-scoped probes and actionable provisioning, authentication, identity and port errors.
 
 Exit criteria:
 
-- a fresh manager-created guest accepts an authenticated host connection without a pasted command or manual SSH/firewall setup;
+- a fresh manager-created guest accepts an authenticated host connection after normal owner-account setup without a pasted command, manual SSH/firewall setup or host-key acceptance prompt;
+- an optionally selected personal public key also authenticates for the intended owner, private key material stays on the Mac, and existing guest authorized keys are preserved;
 - two guests accept connections concurrently through their own endpoints, and each connection identifies the expected VM;
 - one VM's credential does not authenticate to another VM, and host-key mismatches cannot be silently accepted;
 - normal guest restart preserves the intended key/host identity and restores readiness; sleep/wake and independent shutdown are tested;
