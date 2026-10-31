@@ -1105,3 +1105,11 @@ The helper owns QMP pause/resume and keeps manual ownership separate from host-s
 
 
 **DESIGN DECISION — Import Factory review fixes:** library refresh results/errors are bound to their request and catalog revision, so an older scan cannot remove a newly imported choice. Import workers count as active manager work; Quit cancels and waits for uncommitted work, or waits for final publication to complete before exit. Recheck the exact descriptor and image-metadata bytes before deriving identity/capacity. These corrections preserve the receipt schema, runtime pin, existing guest identities and writable disks.
+
+## CLI factory deletion — user extension, 1 November 2026
+
+**DESIGN DECISION:** `factory-delete MANIFEST_SHA256` removes only an unused, verified imported factory. Protect the official factory and refuse any manifest digest referenced by a persisted profile, including stopped, metadata-only and saved-session guests, or by a pending creation. There is no force override. Serialize import/deletion and reserve the selected factory against creation throughout review and Trash. Check registry continuity before admission and immediately before Trash; fail closed if it changed externally.
+
+**DESIGN DECISION — recoverability:** verify the full bundle and local receipt or legacy pin, then recheck private paths, payload stamps and identity before moving the bundle and receipt together to one recoverable Trash folder. Preserve the source bundle, registry, guest identities and disks. On failure, restore original paths without overwriting newly appeared files; preserve a recovery folder if rollback cannot finish. An admitted deletion remains manager-owned through client disconnect, and Quit waits for its outcome. Refresh the app library after CLI mutations. Damaged, unregistered or runtime-incompatible factories require manual review and cannot bypass verification through deletion.
+
+**VERIFIED / TO PROVE:** synthetic no-VM checks cover references, mutation races, changed registry/payloads, Trash failure and rollback recovery. Native Trash interaction with a real prepared factory remains unobserved. This change grants no guest launch, image download or existing-disk modification approval.

@@ -178,7 +178,7 @@ public struct FactoryCatalog: Sendable {
         try recordImport(identity)
         return identity
     }
-    private static func flushDirectory(_ url: URL) throws {
+    static func flushDirectory(_ url: URL) throws {
         let fd = open(url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw invalid("Cannot flush factory metadata.") }
         defer { close(fd) }

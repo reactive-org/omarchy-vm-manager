@@ -9,6 +9,7 @@ public struct GuestCLIInvocation: Sendable {
 
       factories                    List verified imported factories and official
       factory-import PATH          Verify and import a prepared factory bundle
+      factory-delete SHA256        Move an unused imported factory to Trash
       list                         List guests
       get ID                       Show config, state and SSH/network details
       create NAME [options]        Create a guest with saved owner defaults

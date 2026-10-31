@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
     @Published var storageBytes: [UUID: Int64] = [:]
     let manager: VMManager
     private let support: URL
+    private var observedFactoryRevision: UUID?
     private var factoryImportID: UUID?
     private var commandServer: ManagerCommandServer?
     private var lastReportID: UUID?
@@ -94,6 +95,7 @@ final class AppModel: ObservableObject {
             do {
                 let catalog = try FactoryCatalog(applicationSupport: support, kit: .embedded(), lockData: Data(contentsOf: Self.lockURL))
                 await manager.installFactoryCatalog(catalog)
+                observedFactoryRevision = await manager.factoryLibraryRevision
                 let request = factoryLibrary.beginRefresh()
                 do {
                     let listing = try await manager.factoryListing()
@@ -248,6 +250,10 @@ final class AppModel: ObservableObject {
 
     private func update() async {
         let observation = await manager.observation()
+        if observedFactoryRevision != observation.factoryRevision {
+            observedFactoryRevision = observation.factoryRevision
+            Task { await loadFactories() }
+        }
         snapshots = observation.snapshots; records = observation.records
         accessibilityTrusted = AXIsProcessTrusted()
         if Date().timeIntervalSince(storageRefreshed) > 10 {
@@ -298,6 +304,7 @@ final class AppModel: ObservableObject {
 
     func requestQuit() async {
         await manager.cancelFactoryImportAndWait()
+        await manager.waitForFactoryDeletion()
         if await manager.hasActiveSuspensionTransition {
             actionError = "An experimental suspension or restore is unresolved. Let it finish, or explicitly stop that guest and preserve its guarded state before quitting."
             NSApplication.shared.reply(toApplicationShouldTerminate: false); return

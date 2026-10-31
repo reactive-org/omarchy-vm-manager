@@ -23,6 +23,7 @@ public actor VMManager {
         var executionTimeout: Task<Void, Never>?
     }
 
+    private let factoryTrashService: any FactoryTrashService
     private let runtime: any VMRuntime
     private let applicationSupport: URL
     private var profiles: [VMProfile]
@@ -49,8 +50,10 @@ public actor VMManager {
     private var quitting = false
     private var interruptedDeletions: Set<UUID> = []
 
+    public private(set) var factoryLibraryRevision = UUID()
+
     public func eventLog() -> [VMLifecycleRecord] { records }
-    public func observation() -> (snapshots: [VMSnapshot], records: [VMLifecycleRecord]) { (snapshots(), records) }
+    public func observation() -> (snapshots: [VMSnapshot], records: [VMLifecycleRecord], factoryRevision: UUID) { (snapshots(), records, factoryLibraryRevision) }
 
     private func record(_ text: String, vmID: UUID, sessionID: UUID) {
         records.append(VMLifecycleRecord(date: Date(), vmID: vmID, sessionID: sessionID, text: String(text.prefix(4096))))
@@ -61,7 +64,8 @@ public actor VMManager {
                 hostMemoryMiB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 logicalCPUs: Int = ProcessInfo.processInfo.processorCount,
                 registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil,
-                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil) {
+                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService()) {
+        self.factoryTrashService = factoryTrashService
         self.runtime = runtime
         self.profiles = profiles
         self.applicationSupport = applicationSupport
@@ -103,6 +107,44 @@ public actor VMManager {
         let task: Task<FactoryIdentity, any Error>
     }
     private var factoryImportOperation: FactoryImportOperation?
+    private struct FactoryDeletionOperation {
+        let id: UUID
+        let selector: String
+        let task: Task<FactoryIdentity, any Error>
+    }
+    private var factoryDeletionOperation: FactoryDeletionOperation?
+    private var pendingFactoryCreations: [String: Int] = [:]
+
+    public func deleteFactory(_ selector: String) async throws -> FactoryIdentity {
+        try Task.checkCancellation()
+        try FactoryCatalog.validateDeletionSelector(selector)
+        guard !quitting, let registry, let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
+        try registry.checkRevision()
+        guard factoryDeletionOperation == nil, factoryImportOperation == nil else {
+            throw VMFailure(code: "factory-busy", message: "Wait for the active factory import or deletion to finish.")
+        }
+        try FactoryReferencePolicy.requireUnused(selector, profiles: profiles, pendingCreations: pendingFactoryCreations[selector, default: 0])
+        let id = UUID()
+        let operation = Task { try await performFactoryDeletion(selector, id: id, catalog: factoryCatalog, registry: registry) }
+        factoryDeletionOperation = FactoryDeletionOperation(id: id, selector: selector, task: operation)
+        return try await operation.value
+    }
+    private func performFactoryDeletion(_ selector: String, id: UUID, catalog: FactoryCatalog, registry: RegistryStore) async throws -> FactoryIdentity {
+        defer {
+            if factoryDeletionOperation?.id == id { factoryDeletionOperation = nil; factoryLibraryRevision = UUID() }
+        }
+        let review = try await Task.detached(priority: .utility) { try catalog.deletionReview(selector) }.value
+        try registry.checkRevision()
+        try FactoryReferencePolicy.requireUnused(selector, profiles: profiles, pendingCreations: pendingFactoryCreations[selector, default: 0])
+        let service = factoryTrashService
+        return try await Task.detached(priority: .utility) {
+            try await catalog.trash(review, service: service, beforeTrash: { try registry.checkRevision() })
+        }.value
+    }
+    public func waitForFactoryDeletion() async {
+        guard let operation = factoryDeletionOperation else { return }
+        _ = try? await operation.task.value
+    }
     public var isImportingFactory: Bool { factoryImportOperation != nil }
     public func factoryListing() async throws -> FactoryCatalogListing {
         guard let factoryCatalog else { return FactoryCatalogListing(factories: [.official], issues: []) }
@@ -112,26 +154,39 @@ public actor VMManager {
     public func importFactory(_ source: URL, onProgress: @escaping @Sendable (FactoryImportProgress) -> Void = { _ in }) async throws -> FactoryIdentity {
         try Task.checkCancellation()
         guard !quitting, registry != nil, let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
-        guard factoryImportOperation == nil else { throw FactoryCatalog.invalid("A factory import is already in progress.") }
+        guard factoryImportOperation == nil, factoryDeletionOperation == nil else { throw VMFailure(code: "factory-busy", message: "Wait for the active factory import or deletion to finish.") }
         let id = UUID()
         let operation = Task.detached(priority: .utility) {
             try await withTaskCancellationHandler(operation: { try factoryCatalog.importBundle(source, onProgress: onProgress) }, onCancel: { onProgress(.cancelling) })
         }
         factoryImportOperation = FactoryImportOperation(id: id, task: operation)
-        defer { if factoryImportOperation?.id == id { factoryImportOperation = nil } }
+        defer { finishFactoryImport(id) }
         return try await withTaskCancellationHandler(operation: { try await operation.value }, onCancel: { operation.cancel() })
     }
     public func cancelFactoryImportAndWait() async {
         guard let operation = factoryImportOperation else { return }
         operation.task.cancel()
         _ = try? await operation.task.value
-        if factoryImportOperation?.id == operation.id { factoryImportOperation = nil }
+        finishFactoryImport(operation.id)
+    }
+    private func finishFactoryImport(_ id: UUID) {
+        if factoryImportOperation?.id == id { factoryImportOperation = nil; factoryLibraryRevision = UUID() }
     }
 
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
                        clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true,
                        publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true, factory: String = "official") async throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
+        if factory != "official" {
+            guard factoryDeletionOperation?.selector != factory else { throw VMFailure(code: "factory-busy", message: "This factory is being deleted.") }
+            pendingFactoryCreations[factory, default: 0] += 1
+        }
+        defer {
+            if factory != "official" {
+                pendingFactoryCreations[factory, default: 1] -= 1
+                if pendingFactoryCreations[factory] == 0 { pendingFactoryCreations[factory] = nil }
+            }
+        }
         var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus, diskGiB: diskGiB,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
         if factory == "official" { profile.factory = .official }
@@ -294,7 +349,7 @@ public actor VMManager {
     }
 
     public var activeSessionCount: Int { sessions.count }
-    public var isIdle: Bool { sessions.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil }
+    public var isIdle: Bool { sessions.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil && factoryDeletionOperation == nil }
     public var allocatedMemoryMiB: Int {
         profiles.filter { sessions[$0.id] != nil }.reduce(0) { $0 + $1.memoryMiB }
     }

@@ -37,7 +37,7 @@ A repeated intact import reuses its entry and receipt. The source stays independ
 
 A changed runtime inventory requires a matching newly prepared bundle. Ordinary manager updates with the same runtime lock retain imported factories. The former compiled review catalog remains supported for older preapproved entries, but is not required for imports made through the app or CLI. Its optional bundled resource remains bound to its compiled digest.
 
-The `factories` listing reports damaged or unregistered entries separately as `factoryIssues`, preserving the official and other valid choices. There is no custom-factory removal or automatic pruning operation in this feature; deleting a guest does not delete its imported factory.
+The `factories` listing reports damaged or unregistered entries separately as `factoryIssues`, preserving the official and other valid choices. Unused verified entries can be removed with `factory-delete`; there is no automatic pruning of imported factories. Deleting a guest does not delete its imported factory. The app refreshes its factory picker after CLI import or deletion.
 
 ## CLI
 
@@ -51,6 +51,22 @@ omarchy-vm create official-dev --factory official
 ```
 
 `factory-import` returns the imported identity in a `factories` array. The creation config accepts `"factory":"official"` or an imported manifest digest. `get`, `list` and creation replies expose the recorded `factory`, when present. Creation requires a capacity at least as large as the prepared disk. Capacity checks recheck the descriptor digest and image-metadata hash against the recorded identity. Update refuses image changes. The example creates metadata only; it does not start a VM.
+
+## Delete an unused factory
+
+Copy the exact lowercase manifest digest from `factories`, then run:
+
+```sh
+omarchy-vm factory-delete MANIFEST_SHA256
+```
+
+Success returns `ok: true` and `deletedFactory` with the removed identity. The command waits for Trash to complete. It refuses the official factory (`factory-protected`) and any custom factory referenced by a guest profile or pending creation (`factory-in-use`). Stopping a guest does not release its reference: metadata-only, stopped, running and suspended profiles all protect their recorded factory. There is no `--force`, path selector or automatic profile reassignment. Concurrent import/deletion returns `factory-busy`; an unknown digest returns `unknown-factory`.
+
+Deletion requires the same valid identity, runtime compatibility and receipt or legacy pin used for selection. Damaged or unregistered entries stay preserved for manual review. After verification, the manager rechecks the files and registry before moving the bundle and receipt together into one folder in Trash. It never launches a guest, rewrites a profile or touches guest disks. The original prepared source and the official image's Downloads cache stay unchanged.
+
+The Trash folder is named `Omarchy Factory <manifest digest>-<transaction UUID>`, and contains `Factory.bundle`, its `Import receipt.json` when present, and `Factory deletion.json` recording the identity. To reuse a removed image, restore the folder from Trash and import its `Factory.bundle` through the normal verification flow. No automatic restore is provided.
+
+`factory-trash-failed` restores the library paths when possible. `factory-delete-recovery-required` means a recovery folder remains under the private `Factories` library; preserve it and inspect both its files and the original library paths before proceeding. A process crash can also leave that transaction folder for manual recovery. `factory-delete-outcome-unknown` or a lost CLI reply requires checking both Trash and `factories` before retrying. Already admitted deletion remains owned by the manager if the CLI disconnects; Quit waits for it. Recovery never overwrites a newly appeared library path or recursively erases factory files.
 
 ## Runtime boundary and validation
 

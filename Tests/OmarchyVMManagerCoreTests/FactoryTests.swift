@@ -3,7 +3,7 @@ import Testing
 import TryOmarchyKitClient
 @testable import OmarchyVMManagerCore
 
-private struct FactoryFixture {
+struct FactoryFixture {
     let files: RegistryFixture
     let kit: KitFixture
     let source: URL
@@ -396,7 +396,7 @@ struct FactoryLifecycleTests {
     }
 }
 
-private final class FactoryImportGate: @unchecked Sendable {
+final class FactoryImportGate: @unchecked Sendable {
     private let pauseAt: FactoryImportProgress
     init(pauseAt: FactoryImportProgress = .copying) { self.pauseAt = pauseAt }
     private let lock = NSLock()

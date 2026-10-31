@@ -28,7 +28,8 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
 }
 
 public enum GuestCommand: String, Codable, Sendable { case list, get, create, update, delete, start, stop, restart, pause, resume, wait, factories
-    case importFactory = "factory-import" }
+    case importFactory = "factory-import"
+    case deleteFactory = "factory-delete" }
 public enum GuestWaitCondition: String, Codable, Sendable { case running, ssh, stopped, paused }
 
 public struct GuestCommandRequest: Codable, Sendable {
@@ -60,6 +61,7 @@ public struct GuestCommandRequest: Codable, Sendable {
               ![.start, .restart].contains(command) || waitFor != .stopped else {
             throw commandFailure("invalid-request", "Options do not apply to this command.")
         }
+        if command == .deleteFactory { try FactoryCatalog.validateDeletionSelector(selector!) }
         if command == .importFactory, selector?.hasPrefix("/") != true { throw FactoryCatalog.invalid("A prepared factory bundle requires an absolute path.") }
         if command == .create, config?.name == nil { throw commandFailure("invalid-config", "A guest name is required.") }
         if command == .update, config?.factory != nil { throw commandFailure("creation-only", "Factory selection is fixed at creation.") }
@@ -129,9 +131,10 @@ public struct GuestCommandResponse: Codable, Sendable {
     public var guests: [GuestCommandRecord]?
     public var factories: [FactoryIdentity]?
     public var factoryIssues: [FactoryCatalogIssue]?
+    public var deletedFactory: FactoryIdentity?
     public var error: GuestCommandFailure?
-    public init(requestID: UUID, ok: Bool, guest: GuestCommandRecord? = nil, guests: [GuestCommandRecord]? = nil, error: GuestCommandFailure? = nil, factories: [FactoryIdentity]? = nil, factoryIssues: [FactoryCatalogIssue]? = nil) {
-        self.requestID = requestID; self.ok = ok; self.guest = guest; self.guests = guests; self.error = error; self.factories = factories; self.factoryIssues = factoryIssues
+    public init(requestID: UUID, ok: Bool, guest: GuestCommandRecord? = nil, guests: [GuestCommandRecord]? = nil, error: GuestCommandFailure? = nil, factories: [FactoryIdentity]? = nil, factoryIssues: [FactoryCatalogIssue]? = nil, deletedFactory: FactoryIdentity? = nil) {
+        self.requestID = requestID; self.ok = ok; self.guest = guest; self.guests = guests; self.error = error; self.factories = factories; self.factoryIssues = factoryIssues; self.deletedFactory = deletedFactory
     }
 }
 
@@ -158,6 +161,10 @@ public actor GuestCommandService {
             if request.command == .importFactory {
                 let url = URL(fileURLWithPath: request.selector!)
                 return GuestCommandResponse(requestID: request.requestID, ok: true, factories: [try await manager.importFactory(url)])
+            }
+            if request.command == .deleteFactory {
+                let identity = try await manager.deleteFactory(request.selector!)
+                return GuestCommandResponse(requestID: request.requestID, ok: true, deletedFactory: identity)
             }
             if request.command == .list {
                 let records = await manager.snapshots().map { record($0) }
