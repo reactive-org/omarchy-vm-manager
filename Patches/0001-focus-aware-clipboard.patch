@@ -1978,8 +1978,150 @@ index 273876f..88ba7a6 100644
          return value
      }
  }
+diff --git a/macos/Sources/OmarchyVMHelper/VMApplicationController.swift b/macos/Sources/OmarchyVMHelper/VMApplicationController.swift
+index 38f778a..0acdc9c 100644
+--- a/macos/Sources/OmarchyVMHelper/VMApplicationController.swift
++++ b/macos/Sources/OmarchyVMHelper/VMApplicationController.swift
+@@ -439,6 +439,8 @@ final class VMApplicationController: NSObject, NSApplicationDelegate {
+             startMenuWindow?.launchDidAbort()
+         case .launchProgress(let progress):
+             startMenuWindow?.launchDidProgress(to: progress)
++        case .executionState:
++            break
+         case .ready(let qmpSocketPath):
+             virtualMachineDidStart(qmpSocketPath: qmpSocketPath)
+         case .launchFailed(let error):
+diff --git a/macos/Sources/OmarchyVMHelper/VMHostSleepController.swift b/macos/Sources/OmarchyVMHelper/VMHostSleepController.swift
+index e5bb493..c38983b 100644
+--- a/macos/Sources/OmarchyVMHelper/VMHostSleepController.swift
++++ b/macos/Sources/OmarchyVMHelper/VMHostSleepController.swift
+@@ -1,4 +1,5 @@
+ import Foundation
++import TryOmarchyKitClient
+ 
+ enum VMHostSleepControlError: LocalizedError, Equatable {
+     case pauseOutcomeUnknown(String)
+@@ -209,6 +210,10 @@ final class QMPVMHostSleepController: VMHostSleepControlling {
+                         throw VMHostSleepControlError.unsafeResumeState(runState)
+                     }
+                     _ = try connection.execute("cont")
++                    let verified = try connection.execute("query-status")
++                    guard verified["running"] as? Bool == true else {
++                        throw VMHostSleepControlError.unsafeResumeState(verified["status"] as? String ?? "unknown")
++                    }
+                 }
+                 return
+             } catch let error as VMHostSleepControlError {
+@@ -226,7 +231,7 @@ final class QMPVMHostSleepController: VMHostSleepControlling {
+     }
+ }
+ 
+-/// Owns the pause across exactly one host sleep/wake cycle.
++/// Tracks ownership of manual pauses separately from a host sleep/wake cycle.
+ ///
+ /// Keeping this policy outside AppKit makes duplicate notifications, process
+ /// exits, and pre-existing QEMU pauses deterministic and testable.
+@@ -234,6 +239,56 @@ final class VMHostSleepCoordinator {
+     private var controller: (any VMHostSleepControlling)?
+     private let wakeRetryScheduler: VMHostWakeRetryScheduler
+     private(set) var pausedForHostSleep = false
++    private(set) var manuallyPaused = false
++    private var executionUncertain = false
++
++    var executionState: VMRunExecutionState {
++        if executionUncertain { return .unknown }
++        if manuallyPaused { return .paused }
++        return pausedForHostSleep ? .hostSleeping : .running
++    }
++
++    func pauseManually() throws {
++        guard !pausedForHostSleep else { throw HelperError.io("Wait until this Mac wakes before manually pausing the guest") }
++        guard let controller else { throw HelperError.io("The guest execution controller is not ready") }
++        if manuallyPaused && !executionUncertain { return }
++        guard !executionUncertain else { throw HelperError.io("The execution state is uncertain; shut down the guest to recover") }
++        do {
++            guard try controller.pauseIfRunning() else {
++                executionUncertain = true
++                throw HelperError.io("The guest has an unrelated pause; it was left untouched")
++            }
++            manuallyPaused = true
++        } catch {
++            if case VMHostSleepControlError.pauseOutcomeUnknown = error { manuallyPaused = true }
++            executionUncertain = true
++            throw error
++        }
++    }
++
++    func resumeManually() throws {
++        guard !pausedForHostSleep else { throw HelperError.io("Wait until this Mac wakes before resuming the guest") }
++        guard manuallyPaused, let controller else { throw HelperError.io("This helper does not own a manual pause") }
++        do {
++            try controller.resume()
++            manuallyPaused = false
++            executionUncertain = false
++        } catch {
++            executionUncertain = true
++            throw error
++        }
++    }
++
++    func prepareForShutdown() throws {
++        wakeRetryScheduler.cancel()
++        guard manuallyPaused || pausedForHostSleep else { return }
++        guard let controller else { throw HelperError.io("Cannot recover the owned pause for shutdown") }
++        defer { controller.close() }
++        try controller.resume()
++        manuallyPaused = false
++        pausedForHostSleep = false
++        executionUncertain = false
++    }
+ 
+     init(wakeRetryScheduler: VMHostWakeRetryScheduler = VMHostWakeRetryScheduler()) {
+         self.wakeRetryScheduler = wakeRetryScheduler
+@@ -253,6 +308,8 @@ final class VMHostSleepCoordinator {
+         controller?.close()
+         controller = nil
+         pausedForHostSleep = false
++        manuallyPaused = false
++        executionUncertain = false
+     }
+ 
+     func prepareForHostSleep(vmIsRunning: Bool, isStopping: Bool) throws {
+@@ -260,11 +317,13 @@ final class VMHostSleepCoordinator {
+         guard vmIsRunning,
+               !isStopping,
+               !pausedForHostSleep,
++              !manuallyPaused,
++              !executionUncertain,
+               let controller else { return }
+         do {
+             if try controller.pauseIfRunning() {
+                 pausedForHostSleep = true
+-            }
++            } else { executionUncertain = true }
+         } catch let error as VMHostSleepControlError {
+             if case .pauseOutcomeUnknown = error {
+                 pausedForHostSleep = true
+@@ -282,13 +341,15 @@ final class VMHostSleepCoordinator {
+         do {
+             try controller.resume()
+             pausedForHostSleep = false
++            executionUncertain = false
+         } catch let error as VMHostSleepControlError {
+             // An abnormal QEMU stop supersedes this sleep cycle. Relinquish
+-            // ownership without issuing cont so a later healthy cycle can be
+-            // paused normally again.
++            // ownership without issuing cont. The state stays unknown until
++            // shutdown; a later wake must not claim that the VM is running.
+             if case .unsafeResumeState = error {
+                 pausedForHostSleep = false
+             }
++            executionUncertain = true
+             throw error
+         }
+     }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..ce160b9 100644
+index c959f32..6a8379a 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -2032,7 +2174,26 @@ index c959f32..ce160b9 100644
          stateRoot = settings.stateRoot
          bridgedNetwork = settings.bridgedNetwork
          if let notice = settings.notice { emit(.notice(notice)) }
-@@ -154,6 +169,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -134,6 +149,18 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+         }
+     }
+ 
++    func requestExecution(_ command: VMRunCommand) {
++        guard command == .pause || command == .resume else { return }
++        var failure: VMRunError?
++        do {
++            guard !shutdownRequested, !finished else { throw HelperError.io("The guest is stopping") }
++            try session.setManualPause(command == .pause)
++        } catch {
++            failure = VMRunError(code: .launchFailed, message: error.localizedDescription, reportedCode: "execution-control-failed")
++        }
++        emit(.executionState(VMRunExecutionReport(state: session.executionState, command: command, failure: failure)))
++    }
++
+     /// A signal: shut down on the first, stop at once on the next.
+     func handleTerminationSignal() {
+         if shutdownRequested && session.isRunning {
+@@ -154,6 +181,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
          environment[VMRunBridges.environmentKey] = VMRunBridges.names(configuration.bridges)
          environment[ProductName.environmentKey] = configuration.productName
          environment[ProductName.iconEnvironmentKey] = configuration.iconPath
@@ -2043,7 +2204,16 @@ index c959f32..ce160b9 100644
          return environment
      }
  
-@@ -275,6 +294,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -244,6 +275,8 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+             if let phase = VMRunPhase(rawValue: progress.phase.rawValue) {
+                 emit(.progress(phase, percent: progress.percent))
+             }
++        case .executionState(let state):
++            emit(.executionState(VMRunExecutionReport(state: state)))
+         case .ready(let qmpSocketPath):
+             startSettingsBridge(qmpSocketPath: qmpSocketPath)
+             emit(.ready)
+@@ -275,6 +308,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
      private func finish(status: Int32) {
          guard !finished else { return }
          finished = true
@@ -2054,7 +2224,23 @@ index c959f32..ce160b9 100644
          emit(.exited(status: min(255, max(0, status))))
          Darwin.exit(status == 0 ? 0 : 1)
      }
-@@ -407,3 +430,30 @@ enum VMRunFailure {
+@@ -337,12 +374,14 @@ enum VMRunInput {
+         return try VMRunConfiguration.decode(line: Data(line.utf8))
+     }
+ 
+-    static func follow(onShutdown: @escaping @Sendable () -> Void) {
++    static func follow(onShutdown: @escaping @Sendable () -> Void, onExecution: @escaping @Sendable (VMRunCommand) -> Void = { _ in }) {
+         Thread.detachNewThread {
+             while let line = readLine(strippingNewline: false) {
+                 switch Result(catching: { try VMRunCommand.decode(line: Data(line.utf8)) }) {
+                 case .success(.shutdown):
+                     onShutdown()
++                case .success(let command):
++                    onExecution(command)
+                 case .failure:
+                     fputs("omarchy-vm-helper: ignoring an unknown run mode command\n", stderr)
+                 }
+@@ -407,3 +446,30 @@ enum VMRunFailure {
          return VMRunError(code: code, message: message)
      }
  }
@@ -2086,10 +2272,26 @@ index c959f32..ce160b9 100644
 +    }
 +}
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunSession.swift b/macos/Sources/OmarchyVMHelper/VMRunSession.swift
-index 9a3fe63..f0bfa22 100644
+index 9a3fe63..1699973 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunSession.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunSession.swift
-@@ -52,7 +52,6 @@ final class VMRunSession {
+@@ -1,6 +1,7 @@
+ import AppKit
+ import Darwin
+ import Foundation
++import TryOmarchyKitClient
+ 
+ /// One run of the VM: downloading the image a new VM needs, the launcher
+ /// process, QMP readiness, Mac sleep, the storage volume going away, and the
+@@ -32,6 +33,7 @@ final class VMRunSession {
+         case downloadCancelled
+         case launchProgress(VMProgress<VMLaunchPhase>)
+         case ready(qmpSocketPath: String)
++        case executionState(VMRunExecutionState)
+         case launchFailed(Error)
+         case hostWakeFailed(Error)
+         case volumeUnmounted
+@@ -52,12 +54,20 @@ final class VMRunSession {
  
      private var factoryDownloader: FactoryImageDownloader?
      private var downloadCancelled = false
@@ -2097,7 +2299,56 @@ index 9a3fe63..f0bfa22 100644
      private var launchedFactoryDirectories: [URL] = []
      private var activeStateRoot: String?
      private var pendingHostSleepControlFailure: String?
-@@ -194,19 +193,20 @@ final class VMRunSession {
+     private var forcedStopTimer: DispatchWorkItem?
+     private var launcherSignalled = false
++    private var powerDownRequested = false
++
++    var executionState: VMRunExecutionState { isRunning && reachedStart ? hostSleepCoordinator.executionState : .unknown }
++
++    func setManualPause(_ paused: Bool) throws {
++        guard isRunning, reachedStart, !powerDownRequested, !lifecycle.isTerminating else { throw HelperError.io("Wait until the guest is running and not stopping") }
++        if paused { try hostSleepCoordinator.pauseManually() }
++        else { try hostSleepCoordinator.resumeManually(); HostWake.post() }
++    }
+ 
+     private(set) var lifecycle = VMRunLifecycle()
+     private(set) var isRunning = false
+@@ -102,6 +112,7 @@ final class VMRunSession {
+         downloadCancelled = false
+         hostSleepCoordinator.cancelWakeRetry()
+         reachedStart = false
++        powerDownRequested = false
+         pendingHostSleepControlFailure = nil
+         do {
+             if try beginFactoryDownloadIfNeeded(context(), then: { [weak self] image in
+@@ -152,6 +163,8 @@ final class VMRunSession {
+         guard isRunning, reachedStart, let qmpSocketPath else {
+             throw HelperError.io("Omarchy is not running.")
+         }
++        powerDownRequested = true
++        try hostSleepCoordinator.prepareForShutdown()
+         let connection = try QMPConnection(socketPath: qmpSocketPath, identifierPrefix: "shutdown")
+         _ = try connection.execute("system_powerdown")
+         guard let forceAfter else { return }
+@@ -168,7 +181,7 @@ final class VMRunSession {
+     /// Stops the launcher, which stops QEMU and the bridges. It gets one
+     /// signal: a second would cut that cleanup short.
+     func quit() {
+-        hostSleepCoordinator.cancelWakeRetry()
++        hostSleepCoordinator.disconnect()
+         lifecycle.requestQuit()
+         forcedStopTimer?.cancel()
+         guard !launcherSignalled else { return }
+@@ -177,7 +190,7 @@ final class VMRunSession {
+     }
+ 
+     func terminate(signal: Int32) {
+-        hostSleepCoordinator.cancelWakeRetry()
++        hostSleepCoordinator.disconnect()
+         lifecycle.requestTermination(signal: signal)
+         supervisor.forward(signal: signal)
+     }
+@@ -194,19 +207,20 @@ final class VMRunSession {
      private func beginFactoryDownloadIfNeeded(_ context: LaunchContext,
          then launch: @escaping (URL) -> Void) throws -> Bool {
          guard let manifest = factoryManifest else { return false }
@@ -2128,7 +2379,7 @@ index 9a3fe63..f0bfa22 100644
          }
          FactoryImageStore.removeObsoleteDownloads(in: directory, identity: manifest.identity)
          // The launcher then decompresses about half the disk beside it.
-@@ -239,7 +239,7 @@ final class VMRunSession {
+@@ -239,7 +253,7 @@ final class VMRunSession {
      }
  
      /// The factory a new VM disk needs, for this launch's storage folder.
@@ -2137,7 +2388,7 @@ index 9a3fe63..f0bfa22 100644
          guard context.storageUnavailableReason == nil, let stateRoot = context.stateRoot else {
              return .ready(image: nil)
          }
-@@ -248,7 +248,8 @@ final class VMRunSession {
+@@ -248,7 +262,8 @@ final class VMRunSession {
              bundlesImage: bundlesFactoryImage,
              stateRoot: URL(fileURLWithPath: stateRoot, isDirectory: true),
              sharedFactory: context.environment[QEMUGPURuntimeEnvironment.factoryCacheKey]
@@ -2147,7 +2398,7 @@ index 9a3fe63..f0bfa22 100644
          )
      }
  
-@@ -271,7 +272,7 @@ final class VMRunSession {
+@@ -271,7 +286,7 @@ final class VMRunSession {
                      .appendingPathComponent(VMWorkspaceTransfer.factoryCacheName, isDirectory: true)]
              } ?? []
              var factoryImage = downloadedFactoryImage
@@ -2156,7 +2407,7 @@ index 9a3fe63..f0bfa22 100644
                  factoryImage = image
              }
              if let factoryImage {
-@@ -317,8 +318,6 @@ final class VMRunSession {
+@@ -317,8 +332,6 @@ final class VMRunSession {
          }
          reachedStart = true
          self.qmpSocketPath = qmpSocketPath
@@ -2165,6 +2416,197 @@ index 9a3fe63..f0bfa22 100644
          if let identity = factoryManifest?.identity {
              let directories = launchedFactoryDirectories
              DispatchQueue.global(qos: .utility).async {
+@@ -390,23 +403,27 @@ final class VMRunSession {
+     /// Keep this synchronous so QEMU acknowledges `stop` before macOS freezes
+     /// the Hypervisor.framework process.
+     private func prepareForHostSleep() {
++        let before = executionState
++        defer { if executionState != before { onEvent(.executionState(executionState)) } }
+         do {
+-            try hostSleepCoordinator.prepareForHostSleep(vmIsRunning: isRunning, isStopping: lifecycle.isTerminating)
++            try hostSleepCoordinator.prepareForHostSleep(vmIsRunning: isRunning, isStopping: lifecycle.isTerminating || powerDownRequested)
+         } catch {
+             fputs("omarchy-vm-helper: could not pause the VM before host sleep: \(error.localizedDescription)\n", stderr)
+         }
+     }
+ 
+     private func resumeAfterHostWake() {
++        let before = executionState
++        defer { if executionState != before { onEvent(.executionState(executionState)) } }
+         do {
+-            try hostSleepCoordinator.resumeAfterHostWake(vmIsRunning: isRunning, isStopping: lifecycle.isTerminating)
++            try hostSleepCoordinator.resumeAfterHostWake(vmIsRunning: isRunning, isStopping: lifecycle.isTerminating || powerDownRequested)
+             hostSleepCoordinator.cancelWakeRetry()
+         } catch {
+             fputs("omarchy-vm-helper: could not resume the VM after host wake: \(error.localizedDescription)\n", stderr)
+             guard !(error is VMHostSleepControlError),
+                   hostSleepCoordinator.pausedForHostSleep,
+                   isRunning,
+-                  !lifecycle.isTerminating
++                  !lifecycle.isTerminating, !powerDownRequested
+             else { return }
+             guard hostSleepCoordinator.scheduleWakeRetry({ [weak self] in self?.resumeAfterHostWake() }) else {
+                 onEvent(.hostWakeFailed(error))
+diff --git a/macos/Sources/OmarchyVMHelper/main.swift b/macos/Sources/OmarchyVMHelper/main.swift
+index f199020..961c03a 100644
+--- a/macos/Sources/OmarchyVMHelper/main.swift
++++ b/macos/Sources/OmarchyVMHelper/main.swift
+@@ -313,11 +313,15 @@ do {
+                 source.resume()
+                 terminationSignalSources.append(source)
+             }
+-            VMRunInput.follow {
++            VMRunInput.follow(onShutdown: {
+                 DispatchQueue.main.async {
+                     MainActor.assumeIsolated { controller.requestShutdown() }
+                 }
+-            }
++            }, onExecution: { command in
++                DispatchQueue.main.async {
++                    MainActor.assumeIsolated { controller.requestExecution(command) }
++                }
++            })
+             application.run()
+         }
+         exit(0)
+diff --git a/macos/Sources/TryOmarchyKitClient/VMRunClient.swift b/macos/Sources/TryOmarchyKitClient/VMRunClient.swift
+index 81aef76..5eb9717 100644
+--- a/macos/Sources/TryOmarchyKitClient/VMRunClient.swift
++++ b/macos/Sources/TryOmarchyKitClient/VMRunClient.swift
+@@ -155,6 +155,17 @@ public final class VMRunClient: @unchecked Sendable {
+         try? input.write(contentsOf: line)
+     }
+ 
++    public func pause() throws { try sendExecutionCommand(.pause) }
++    public func resume() throws { try sendExecutionCommand(.resume) }
++
++    private func sendExecutionCommand(_ command: VMRunCommand) throws {
++        let line = try command.encodedLine()
++        try lock.withLock {
++            guard !finished, let input else { throw VMRunError(code: .launchFailed, message: "The guest has no active session.") }
++            try input.write(contentsOf: line)
++        }
++    }
++
+     /// Stops the VM at once, as pulling the power would, without waiting for
+     /// Omarchy to shut down: unsaved work in Omarchy is lost. The helper reads
+     /// a first signal as `shutDown()` and a second as stop now, so this sends
+diff --git a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
+index 4e1af8d..112f1ab 100644
+--- a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
++++ b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
+@@ -144,6 +144,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+ public enum VMRunCommand: String, Sendable {
+     /// Ask Omarchy to shut down, then stop the VM if it has not within a minute.
+     case shutdown
++    case pause
++    case resume
+ 
+     public func encodedLine() throws -> Data {
+         try VMRunLine.encode(["version": VMRunProtocol.version, "command": rawValue])
+@@ -229,11 +231,27 @@ public struct VMRunNotice: Equatable, Sendable {
+     }
+ }
+ 
++public enum VMRunExecutionState: String, Sendable, CaseIterable {
++    case running, paused
++    case hostSleeping = "host-sleeping"
++    case unknown
++}
++
++public struct VMRunExecutionReport: Equatable, Sendable {
++    public let state: VMRunExecutionState
++    public let command: VMRunCommand?
++    public let failure: VMRunError?
++    public init(state: VMRunExecutionState, command: VMRunCommand? = nil, failure: VMRunError? = nil) {
++        self.state = state; self.command = command; self.failure = failure
++    }
++}
++
+ public enum VMRunEvent: Equatable, Sendable {
+     /// Percent is 0 to 100, or nil while the step cannot be measured.
+     case progress(VMRunPhase, percent: Int?)
+     case notice(VMRunNotice)
+     case ready
++    case executionState(VMRunExecutionReport)
+     case stopping
+     case error(VMRunError)
+     /// The last event. Status 0 is a clean shutdown.
+@@ -250,6 +268,14 @@ public enum VMRunEvent: Equatable, Sendable {
+             object["event"] = "notice"
+             object["code"] = notice.code.rawValue
+             object["message"] = String(notice.message.prefix(4_096))
++        case .executionState(let report):
++            object["event"] = "execution-state"
++            object["state"] = report.state.rawValue
++            if let command = report.command { object["command"] = command.rawValue }
++            if let failure = report.failure {
++                object["errorCode"] = String(failure.reportedCode.prefix(64))
++                object["errorMessage"] = String(failure.message.prefix(4096))
++            }
+         case .ready:
+             object["event"] = "ready"
+         case .stopping:
+@@ -295,6 +321,23 @@ public enum VMRunEvent: Equatable, Sendable {
+             guard let code = VMRunNoticeCode(rawValue: codeName) else { throw VMRunProtocolError.unknownEvent }
+             try require(["code", "message"])
+             return .notice(VMRunNotice(code: code, message: message))
++        case "execution-state":
++            guard let name = object["state"] as? String, let state = VMRunExecutionState(rawValue: name) else { throw VMRunProtocolError.invalidEvent }
++            var command: VMRunCommand?
++            if let value = object["command"] {
++                guard let name = value as? String, let parsed = VMRunCommand(rawValue: name), parsed != .shutdown else { throw VMRunProtocolError.invalidEvent }
++                command = parsed
++            }
++            var failure: VMRunError?
++            if object["errorCode"] != nil || object["errorMessage"] != nil {
++                guard command != nil, let code = object["errorCode"] as? String, !code.isEmpty, code.utf8.count <= 64,
++                      let message = object["errorMessage"] as? String, message.utf8.count <= 16384 else { throw VMRunProtocolError.invalidEvent }
++                failure = VMRunError(code: .launchFailed, message: message, reportedCode: code)
++            }
++            let allowed: Set<String> = ["version", "event", "state", "command", "errorCode", "errorMessage"]
++            guard Set(object.keys).isSubset(of: allowed),
++                  failure != nil || command == nil || (command == .pause && state == .paused) || (command == .resume && state == .running) else { throw VMRunProtocolError.invalidEvent }
++            return .executionState(VMRunExecutionReport(state: state, command: command, failure: failure))
+         case "ready":
+             try require([])
+             return .ready
+diff --git a/macos/Tests/OmarchyVMHelperTests/ExecutionProtocolTests.swift b/macos/Tests/OmarchyVMHelperTests/ExecutionProtocolTests.swift
+new file mode 100644
+index 0000000..02e32c6
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/ExecutionProtocolTests.swift
+@@ -0,0 +1,30 @@
++import Foundation
++import Testing
++import TryOmarchyKitClient
++
++@Suite("Manual execution run protocol")
++struct ExecutionProtocolTests {
++    @Test("pause and resume use the existing bounded command channel", arguments: [VMRunCommand.pause, .resume])
++    func commands(_ command: VMRunCommand) throws {
++        #expect(try VMRunCommand.decode(line: command.encodedLine()) == command)
++    }
++    @Test("execution acknowledgements round trip with a nonfatal error")
++    func acknowledgements() throws {
++        for state in VMRunExecutionState.allCases {
++            for command in [VMRunCommand.pause, .resume] {
++                let failure = VMRunError(code: .launchFailed, message: "synthetic failure", reportedCode: "execution-control-failed")
++                let event = VMRunEvent.executionState(VMRunExecutionReport(state: state, command: command, failure: failure))
++                #expect(try VMRunEvent.decode(line: event.encodedLine()) == event)
++            }
++            let event = VMRunEvent.executionState(VMRunExecutionReport(state: state))
++            #expect(try VMRunEvent.decode(line: event.encodedLine()) == event)
++        }
++    }
++    @Test("damaged execution reports cannot acknowledge a command")
++    func invalidReports() throws {
++        for extra in [#""state":"running","command":"pause""#, #""state":"paused","command":"resume""#, #""state":"paused","unexpected":true"#, #""state":"other""#, #""state":"paused","command":"shutdown""#, #""state":"running","command":"resume","errorMessage":"missing code""#, #""state":"paused","errorCode":"error","errorMessage":"no command""#] {
++            let data = Data((#"{"version":1,"event":"execution-state", "# + extra + "}").utf8)
++            #expect(throws: VMRunProtocolError.self) { try VMRunEvent.decode(line: data) }
++        }
++    }
++}
 diff --git a/macos/Tests/OmarchyVMHelperTests/GuestApplicationIdentityTests.swift b/macos/Tests/OmarchyVMHelperTests/GuestApplicationIdentityTests.swift
 new file mode 100644
 index 0000000..b2a45c9
@@ -2728,6 +3170,135 @@ index 814cebc..13363bb 100644
 +            child.waitUntilExit()
 +            #expect(child.terminationStatus == 0, "Headless run-loop mode: \(mode)")
 +        }
++    }
++}
+diff --git a/macos/Tests/OmarchyVMHelperTests/VMHostSleepControllerTests.swift b/macos/Tests/OmarchyVMHelperTests/VMHostSleepControllerTests.swift
+index df1e815..b8f2824 100644
+--- a/macos/Tests/OmarchyVMHelperTests/VMHostSleepControllerTests.swift
++++ b/macos/Tests/OmarchyVMHelperTests/VMHostSleepControllerTests.swift
+@@ -104,6 +104,9 @@ struct VMHostSleepCoordinatorTests {
+             try coordinator.resumeAfterHostWake(vmIsRunning: true, isStopping: false)
+         }
+         #expect(!coordinator.pausedForHostSleep)
++        #expect(coordinator.executionState == .unknown)
++        try coordinator.resumeAfterHostWake(vmIsRunning: true, isStopping: false)
++        #expect(controller.resumeCalls == 1)
+     }
+ 
+     @Test("wake retry backoff is bounded and resettable")
+@@ -286,6 +289,7 @@ struct QMPVMHostSleepControllerTests {
+                     result: ["running": false, "status": "paused"]
+                 ),
+                 TestStep(command: "cont", result: [:], events: ["RESUME"]),
++                TestStep(command: "query-status", result: ["running": true, "status": "running"]),
+             ], transcript: transcript),
+         ]
+         let descriptors = LockedDescriptorQueue(sessions.map(\.clientDescriptor))
+@@ -313,10 +317,34 @@ struct QMPVMHostSleepControllerTests {
+             "stop",
+             "query-status",
+             "cont",
++            "query-status",
+         ])
+         #expect(descriptors.isEmpty)
+     }
+ 
++    @Test("cont acknowledgement alone cannot report successful Resume")
++    func resumeMustActuallyRun() throws {
++        let transcript = LockedQMPTranscript()
++        let server = try Self.startServer(steps: [
++            TestStep(command: "query-status", result: ["running": true, "status": "running"]),
++            TestStep(command: "stop", result: [:], events: ["STOP"]),
++            TestStep(command: "query-status", result: ["running": false, "status": "paused"]),
++            TestStep(command: "cont", result: [:]),
++            TestStep(command: "query-status", result: ["running": false, "status": "io-error"]),
++        ], transcript: transcript)
++        let descriptors = LockedDescriptorQueue([server.clientDescriptor])
++        let controller = try QMPVMHostSleepController(connectionFactory: {
++            guard let descriptor = descriptors.take() else { throw HelperError.io("unexpected reconnect") }
++            return try QMPConnection(connectedDescriptor: descriptor, identifierPrefix: "test-manual-pause")
++        }, validateImmediately: false)
++        #expect(try controller.pauseIfRunning())
++        #expect(throws: VMHostSleepControlError.unsafeResumeState("io-error")) { try controller.resume() }
++        controller.close()
++        #expect(server.finished.wait(timeout: .now() + 2) == .success)
++        #expect(transcript.errorDescription == nil)
++        #expect(transcript.commands == ["qmp_capabilities", "query-status", "stop", "query-status", "cont", "query-status"])
++    }
++
+     @Test("retries a transient connection failure before sending stop")
+     func retriesBeforeStop() throws {
+         let transcript = LockedQMPTranscript()
+@@ -680,3 +708,71 @@ private final class LockedInvocationCounter: @unchecked Sendable {
+         }
+     }
+ }
++
++@Suite("Manual pause ownership")
++struct ManualPauseOwnershipTests {
++    @Test("manual pause survives duplicate sleep/wake and resumes only on request")
++    func manualOwnership() throws {
++        let controller = FakeHostSleepController(pauseResult: true)
++        let coordinator = VMHostSleepCoordinator(); coordinator.attach(controller)
++        try coordinator.pauseManually(); try coordinator.pauseManually()
++        try coordinator.prepareForHostSleep(vmIsRunning: true, isStopping: false)
++        try coordinator.prepareForHostSleep(vmIsRunning: true, isStopping: false)
++        try coordinator.resumeAfterHostWake(vmIsRunning: true, isStopping: false)
++        #expect(coordinator.executionState == .paused)
++        #expect(controller.pauseCalls == 1 && controller.resumeCalls == 0)
++        try coordinator.resumeManually()
++        #expect(coordinator.executionState == .running && controller.resumeCalls == 1)
++        try coordinator.prepareForHostSleep(vmIsRunning: true, isStopping: false)
++        try coordinator.resumeAfterHostWake(vmIsRunning: true, isStopping: false)
++        #expect(controller.pauseCalls == 2 && controller.resumeCalls == 2)
++    }
++    @Test("shutdown resumes its owned pause and releases the monitor")
++    func shutdownOwnership() throws {
++        let controller = FakeHostSleepController(pauseResult: true)
++        let coordinator = VMHostSleepCoordinator(); coordinator.attach(controller)
++        try coordinator.pauseManually(); try coordinator.prepareForShutdown()
++        #expect(controller.resumeCalls == 1 && controller.closeCalls == 1)
++        #expect(coordinator.executionState == .running)
++        try coordinator.resumeAfterHostWake(vmIsRunning: true, isStopping: true)
++        #expect(controller.resumeCalls == 1)
++    }
++    @Test("sleep ownership rejects manual resume and manual pause until wake")
++    func sleepOwnership() throws {
++        let controller = FakeHostSleepController(pauseResult: true)
++        let coordinator = VMHostSleepCoordinator(); coordinator.attach(controller)
++        try coordinator.prepareForHostSleep(vmIsRunning: true, isStopping: false)
++        #expect(throws: (any Error).self) { try coordinator.resumeManually() }
++        #expect(throws: (any Error).self) { try coordinator.pauseManually() }
++        #expect(coordinator.executionState == .hostSleeping && controller.resumeCalls == 0)
++        try coordinator.prepareForShutdown()
++        #expect(controller.resumeCalls == 1 && controller.closeCalls == 1)
++        try coordinator.resumeAfterHostWake(vmIsRunning: true, isStopping: true)
++        #expect(controller.resumeCalls == 1)
++    }
++    @Test("an unrelated pause is never resumed, including for shutdown")
++    func foreignPause() throws {
++        let controller = FakeHostSleepController(pauseResult: false)
++        let coordinator = VMHostSleepCoordinator(); coordinator.attach(controller)
++        #expect(throws: (any Error).self) { try coordinator.pauseManually() }
++        #expect(coordinator.executionState == .unknown)
++        #expect(throws: (any Error).self) { try coordinator.resumeManually() }
++        try coordinator.prepareForShutdown()
++        #expect(controller.resumeCalls == 0)
++    }
++    @Test("lost stop reply keeps manual ownership and unsafe recovery closes the monitor")
++    func ambiguousControl() throws {
++        let controller = FakeHostSleepController(pauseResult: true)
++        controller.pauseError = VMHostSleepControlError.pauseOutcomeUnknown("synthetic lost reply")
++        let coordinator = VMHostSleepCoordinator(); coordinator.attach(controller)
++        #expect(throws: (any Error).self) { try coordinator.pauseManually() }
++        try coordinator.prepareForHostSleep(vmIsRunning: true, isStopping: false)
++        try coordinator.resumeAfterHostWake(vmIsRunning: true, isStopping: false)
++        #expect(coordinator.executionState == .unknown && controller.resumeCalls == 0)
++        controller.resumeError = VMHostSleepControlError.unsafeResumeState("io-error")
++        #expect(throws: (any Error).self) { try coordinator.prepareForShutdown() }
++        #expect(controller.closeCalls == 1)
++        coordinator.disconnect()
++        #expect(!coordinator.manuallyPaused && !coordinator.pausedForHostSleep)
 +    }
 +}
 diff --git a/macos/Tests/run-mode.test.sh b/macos/Tests/run-mode.test.sh

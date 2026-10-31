@@ -71,6 +71,11 @@ public enum VMState: Equatable, Sendable {
     case downloading(phase: VMRunPhase, percent: Int?)
     case starting(phase: VMRunPhase, percent: Int?)
     case running
+    case pausing
+    case paused
+    case resuming
+    case hostSleeping
+    case executionUnknown
     case stopping
     case deleting
     case failed(VMFailure)
@@ -82,6 +87,11 @@ public enum VMState: Equatable, Sendable {
         case .downloading: "Downloading"
         case .starting: "Starting"
         case .running: "Running"
+        case .pausing: "Pausing"
+        case .paused: "Paused"
+        case .resuming: "Resuming"
+        case .hostSleeping: "Paused for Mac sleep"
+        case .executionUnknown: "Execution state unknown"
         case .stopping: "Stopping"
         case .deleting: "Moving to Trash"
         case .failed: "Failed"
@@ -105,12 +115,24 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
     public let notice: String?
     public var sshReadiness: SSHReadiness = .disabled
     public var ownerSetupReadiness: OwnerSetupReadiness = .manual
+    public var hibernation: GuestHibernationCapability?
+    public var suspension: ExperimentalSuspension?
+    public var suspensionMetadataUnsafe = false
+    public var experimentalPowerBusy = false
+    public var canRestoreExperimentalSuspension: Bool {
+        sessionID == nil && suspension != nil && suspension?.restoreAttempted == false && !suspensionMetadataUnsafe
+    }
+    public var canAttemptExperimentalSuspend: Bool {
+        guard !experimentalPowerBusy, sessionID != nil, state == .running, suspension == nil, !suspensionMetadataUnsafe, hibernation?.canAttempt == true else { return false }
+        if case .ready = sshReadiness { return true }; return false
+    }
 
     public init(profile: VMProfile, state: VMState, sessionID: UUID? = nil, lastFailure: VMFailure? = nil,
-                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual) {
+                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual, hibernation: GuestHibernationCapability? = nil, suspension: ExperimentalSuspension? = nil, suspensionMetadataUnsafe: Bool = false, experimentalPowerBusy: Bool = false) {
         self.profile = profile; self.state = state; self.sessionID = sessionID
         self.lastFailure = lastFailure; self.notice = notice
         self.sshReadiness = sshReadiness; self.ownerSetupReadiness = ownerSetupReadiness
+        self.hibernation = hibernation; self.suspension = suspension; self.suspensionMetadataUnsafe = suspensionMetadataUnsafe; self.experimentalPowerBusy = experimentalPowerBusy
     }
 }
 

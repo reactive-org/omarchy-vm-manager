@@ -204,6 +204,21 @@ struct LiveManagedSSHTests {
             guard case .ready(let user, let command) = await result.value else { Issue.record("Production SSH probe did not authenticate the synthetic server"); return }
             #expect(user == "owner")
             #expect(command.contains(fixture.id.uuidString.lowercased()))
+            // Exercise only inspection and RAM-marker transport. Never request power
+            // transitions from containers; this is not real hibernation acceptance.
+            let power = SSHGuestHibernation()
+            let capability = try await power.capability(request, user: "owner")
+            #expect(!capability.nonInteractivePermission)
+            #expect(!capability.canAttempt)
+            let proof = try await power.prepare(request, user: "owner", token: UUID())
+            if case .restored = try await power.verifyRestore(request, user: "owner", origin: fixture.sessionID, proof: proof) {} else {
+                Issue.record("Synthetic RAM marker did not round-trip over pinned SSH")
+            }
+            let absent = GuestSuspendProof(token: UUID(), bootID: UUID(), kernel: proof.kernel)
+            if case .coldBoot = try await power.verifyRestore(request, user: "owner", origin: fixture.sessionID, proof: absent) {} else {
+                Issue.record("Absent marker from another boot cannot verify memory restoration")
+            }
+
         }
     }
 }

@@ -192,6 +192,19 @@ public struct ManagerStorage: Sendable {
         try KitVerifier.sha256(PrivateFiles.read(root(for: profile).appendingPathComponent("settings.json")))
     }
 
+    func suspensionIdentity(_ profile: VMProfile) throws -> String {
+        try validate(profile)
+        var s = stat()
+        guard lstat(root(for: profile).appendingPathComponent("shell/disk.img").path, &s) == 0 else { throw PrivateFiles.failure("The guest disk is missing.") }
+        return try identity(root(for: profile)) + ":\(s.st_dev):\(s.st_ino):\(s.st_size):" + settingsFingerprint(profile)
+    }
+
+    func suspensionStamp(_ profile: VMProfile) throws -> String {
+        let variables = root(for: profile).appendingPathComponent("shell/efi-vars.fd")
+        let firmware = PrivateFiles.exists(variables) ? try KitVerifier.sha256(PrivateFiles.read(variables, maximum: 64 * 1024 * 1024)) : "no-firmware-variables"
+        return try deletionIdentity(profile) + ":" + firmware
+    }
+
     public func deletionIdentity(_ profile: VMProfile) throws -> String {
         try validate(profile)
         let disk = root(for: profile).appendingPathComponent("shell/disk.img")

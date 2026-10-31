@@ -24,6 +24,7 @@ final class AppModel: ObservableObject {
     @Published var shuttingDown = false
     @Published var actionError: String?
     @Published var forceStopID: UUID?
+    @Published var experimentalPowerReview: ExperimentalPowerReview?
     @Published var configurationError: String?
     @Published var deletionReview: DeletionReview?
     @Published var accessibilityTrusted = AXIsProcessTrusted()
@@ -143,6 +144,29 @@ final class AppModel: ObservableObject {
         do { try await manager.start(id) } catch { actionError = error.localizedDescription }
         await update()
     }
+    func recheckExperimentalRecovery(_ id: UUID) async {
+        do { try await manager.retryExperimentalRestoreVerification(id) } catch { actionError = error.localizedDescription }
+        await update()
+    }
+    func experimentalPower(_ review: ExperimentalPowerReview) async {
+        do {
+            switch review.action {
+            case .suspend: try await manager.experimentalSuspend(review.id, confirmed: true)
+            case .restore: try await manager.restoreExperimentalSuspension(review.id, confirmed: true)
+            case .acceptColdBoot: try await manager.acceptExperimentalColdBoot(review.id, confirmed: true, guestImageCleared: true)
+            }
+        } catch { actionError = error.localizedDescription }
+        await update()
+    }
+
+    func pause(_ id: UUID) async {
+        do { try await manager.pause(id) } catch { actionError = error.localizedDescription }
+        await update()
+    }
+    func resume(_ id: UUID) async {
+        do { try await manager.resume(id) } catch { actionError = error.localizedDescription }
+        await update()
+    }
     func retrySSH(_ id: UUID) async { await manager.retrySSH(id); await update() }
     func stop(_ id: UUID) async { await manager.shutDown(id); await update() }
     func forceStop(_ id: UUID) async {
@@ -224,6 +248,10 @@ final class AppModel: ObservableObject {
     }
 
     func requestQuit() async {
+        if await manager.hasActiveSuspensionTransition {
+            actionError = "An experimental suspension or restore is unresolved. Let it finish, or explicitly stop that guest and preserve its guarded state before quitting."
+            NSApplication.shared.reply(toApplicationShouldTerminate: false); return
+        }
         if await manager.prepareToQuitIfIdle() { NSApplication.shared.reply(toApplicationShouldTerminate: true); return }
         let alert = NSAlert()
         alert.messageText = "Shut down the VMs and quit?"

@@ -31,3 +31,7 @@ Phase 1 validated the four focused clipboard paths, background suppression and u
 ## Downloads cache extension
 
 The combined pin now also includes the manager-only compressed factory cache described in [factory cache](FactoryCache.md). This selects a fixed Downloads directory from the protected matching UUID marker, retains the current image, and preserves obsolete downloads for at least seven days after use. The existing kit downloader still owns locking, resume, verification and completion. No QEMU, guest integration source, public client protocol or development environment override changed for this extension.
+
+## Manual execution extension
+
+The accumulated pin also extends the existing client/helper command pipe with manual Pause/Resume and an execution-state acknowledgement. Manager and helper now use the same prepared SDK source. QMP pause ownership, host sleep/wake and shutdown are described in [Pause/Resume](PauseResume.md); no QEMU or guest integration source change is required for this extension.

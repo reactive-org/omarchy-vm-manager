@@ -101,6 +101,12 @@ struct ManagerView: View {
                 Text(review.identity == nil ? "Remove “\(review.name)”? No storage folder is present at its registered location. Any files already in Trash remain there." : "The entire storage folder for “\(review.name)” will move to the Mac Trash. You can recover its files from there.")
             }
         }
+        .alert(model.experimentalPowerReview?.title ?? "Experimental power action", isPresented: Binding(get: { model.experimentalPowerReview != nil }, set: { if !$0 { model.experimentalPowerReview = nil } })) {
+            Button(model.experimentalPowerReview?.button ?? "Continue", role: .destructive) {
+                if let review = model.experimentalPowerReview { model.experimentalPowerReview = nil; Task { await model.experimentalPower(review) } }
+            }
+            Button("Cancel", role: .cancel) { model.experimentalPowerReview = nil }
+        } message: { Text(model.experimentalPowerReview?.message ?? "") }
         .alert("Action could not finish", isPresented: Binding(get: { model.actionError != nil }, set: { if !$0 { model.actionError = nil } })) {
             Button("OK") { model.actionError = nil }
         } message: { Text(model.actionError ?? "") }
@@ -115,7 +121,7 @@ struct ManagerView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Omarchy VM Manager").font(.system(size: 32, weight: .bold))
                             Text("Your Omarchy virtual machines").font(.title3).foregroundStyle(.secondary)
-                            Text("\(active.count) running or starting · \(active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024) GiB allocated").foregroundStyle(.secondary)
+                            Text("\(active.count) active · \(active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024) GiB allocated").foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
                     }
@@ -186,6 +192,7 @@ struct ManagerView: View {
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 22) {
             GuestHomeHero(snapshot: snapshot)
+            GuestHibernationPanel(snapshot: snapshot, review: { action in model.experimentalPowerReview = .init(id: snapshot.id, action: action) }, recheck: { Task { await model.recheckExperimentalRecovery(snapshot.id) } })
             OmarchyAttribution()
             Text("Quick Settings").font(.title2.bold())
             GroupedPanel {
@@ -270,7 +277,7 @@ struct ManagerView: View {
             } else if snapshot.profile.ssh != nil {
                 Text("Complete the guest’s normal owner-account setup. The manager then verifies key-based SSH independently of its desktop and clipboard. Guest host keys are provisioned once and checked on every connection.").foregroundStyle(.secondary)
                 if snapshot.sessionID != nil {
-                    Button("Retry SSH Check") { Task { await model.retrySSH(snapshot.id) } }.disabled(snapshot.state == .stopping)
+                    Button("Retry SSH Check") { Task { await model.retrySSH(snapshot.id) } }.disabled(snapshot.state != .running)
                 }
             } else {
                 Text("SSH is enabled by default when creating a new VM. Existing profiles are unchanged; retained POC disks stay protected.").foregroundStyle(.secondary)
@@ -327,14 +334,17 @@ struct ManagerView: View {
     private func controls(_ snapshot: VMSnapshot) -> some View {
         GuestControls(snapshot: snapshot, launchEnabled: !model.checking && model.diagnostics != nil && model.registryError == nil && !model.shuttingDown,
                       start: { focusGuest(snapshot.id); Task { await model.start(snapshot.id) } }, stop: { Task { await model.stop(snapshot.id) } },
-                      forceStop: { model.forceStopID = snapshot.id })
+                      forceStop: { model.forceStopID = snapshot.id },
+                      pause: { Task { await model.pause(snapshot.id) } }, resume: { Task { await model.resume(snapshot.id) } },
+                      suspendToDisk: { model.experimentalPowerReview = .init(id: snapshot.id, action: .suspend) },
+                      restoreSuspension: { model.experimentalPowerReview = .init(id: snapshot.id, action: .restore) })
     }
     private func focusGuest(_ id: UUID) {
         destination = .guest(id)
         page = .home
         detailPresentation = UUID()
     }
-    private func editable(_ snapshot: VMSnapshot) -> Bool { snapshot.sessionID == nil && snapshot.state.canStart && !snapshot.profile.isRetainedPOC && !model.shuttingDown }
+    private func editable(_ snapshot: VMSnapshot) -> Bool { snapshot.sessionID == nil && snapshot.suspension == nil && !snapshot.suspensionMetadataUnsafe && snapshot.state.canStart && !snapshot.profile.isRetainedPOC && !model.shuttingDown }
 }
 
 private struct TileIcon: View {

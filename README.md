@@ -10,7 +10,7 @@ This project is based heavily on the work of the [Try Omarchy team](https://gith
 - **Official, verified factory image.** New guests use the official **Try Omarchy v1.3.0 ARM64 edge factory image**. Downloaded parts and the complete image are verified against the pinned SHA-256 checksums, and cached images are verified again before reuse.
 - **Automatic setup, ready in minutes.** Save your owner and system defaults once, then create guests that set themselves up with a usable desktop and SSH access. The shared image cache speeds up subsequent guests; first-download and setup time depend on your connection and Mac.
 - **Your developer environment, configured your way.** Pair with [reactive.org/dev-vm](https://reactive.org/dev-vm) for a declarative, fully configured developer environment inside the guest. Get each environment set up just the way you like it.
-- **A CLI for automation.** Create guests with custom resources, start and stop them individually, wait for authenticated SSH, inspect connection details, and update stopped guests through concise JSON responses.
+- **A CLI for automation.** Create guests with custom resources, start, pause, resume and stop them individually, wait for authenticated SSH, inspect connection details, and update stopped guests through concise JSON responses.
 
 The native SwiftUI app requires macOS 15 or later. The current private debug build provides a persistent guest library, configuration and safe deletion through macOS Trash. Guests start when you choose **Launch** or issue a CLI start command. The two retained POC profiles are protected from edits and deletion.
 
@@ -18,7 +18,7 @@ The native SwiftUI app requires macOS 15 or later. The current private debug bui
 
 ## Build and check
 
-Open `Package.swift` in Xcode, or use Swift 6 and Python 3.10+ on Apple Silicon:
+Use Swift 6 and Python 3.10+ on Apple Silicon. Run `make prepare-source` before opening `Package.swift` in Xcode so the client SDK resolves to the reviewed runtime source:
 
 ```sh
 git submodule update --init
@@ -30,7 +30,7 @@ make verify-app
 make run
 ```
 
-`fetch-kit` downloads only the pinned 14 MB stock kit, its checksum and manifest. `patched-kit` reconstructs the exact clipboard/guest-identity/managed-SSH/owner-setup/download-cache runtime patch commit, compiles the helper, derives and ad-hoc signs a complete kit using upstream `macos/build-kit.sh`, then runs upstream `make test-kit`. It never runs `make guest`, downloads a factory image, launches a VM or registers a privileged networking service. The stock kit's QEMU, firmware and image download metadata are reused byte-for-byte. The helper and versioned guest integration package are source-built; Docker is required for the upstream ARM guest-package builder. No factory image is rebuilt. The complete resulting kit is signed through upstream's pipeline, not shipped with an unsigned helper replacement.
+`fetch-kit` downloads only the pinned 14 MB stock kit, its checksum and manifest. `patched-kit` reconstructs the exact clipboard/guest-identity/managed-SSH/owner-setup/download-cache/manual-execution runtime patch commit, compiles the helper, derives and ad-hoc signs a complete kit using upstream `macos/build-kit.sh`, then runs upstream `make test-kit`. It never runs `make guest`, downloads a factory image, launches a VM or registers a privileged networking service. The stock kit's QEMU, firmware and image download metadata are reused byte-for-byte. The helper and versioned guest integration package are source-built; Docker is required for the upstream ARM guest-package builder. No factory image is rebuilt. The complete resulting kit is signed through upstream's pipeline, not shipped with an unsigned helper replacement.
 
 `make test-upstream` runs the broader upstream no-VM suite on the exact patched source. The upstream Makefile cannot handle spaces in its checkout path, so scripts use a deterministic private build checkout under `/private/tmp/omarchy-vm-manager-source-<commit>`. The checked-in vendor submodule stays at stock `v1.3.0`. `Patches/0001-focus-aware-clipboard.patch` and `Config/TryOmarchyClipboardPatch.json` reconstruct the reviewed local patch commit even on a fresh clone.
 
@@ -72,7 +72,7 @@ See `docs/POC.md` for the approval gate and real test matrix, `docs/ClipboardPat
 
 The manager icon is editable vector artwork in `App/Assets/OmarchyVMManager.svg`, with a 1024-pixel PNG and a complete macOS ICNS family. `make icon` regenerates it using the pinned upstream AppKit renderer and validated icon packer. `make app` includes it in the bundle and the native UI. When the main manager is hosting a guest, `make app-preview verify-preview` prepares a signed sibling bundle without replacing the live app; close the live manager after shutting down its guests before installing the normal build.
 
-Guest artwork uses the official Omarchy mark in monochrome, with pending-trademark attribution to the [Omacom Foundation](https://omarchy.org/foundation/). The sidebar credits this manager as a project of [reactive.org enterprises](https://www.reactive.org/). Launch cards reserve progress/message space and draw busy spinners over the artwork so preparation does not move their controls. `make layout-preview verify-layout-preview` builds a separate debug gallery for all seven lifecycle presentations without accessing the registry, Keychain or real guests.
+Guest artwork uses the official Omarchy mark in monochrome, with pending-trademark attribution to the [Omacom Foundation](https://omarchy.org/foundation/). The sidebar credits this manager as a project of [reactive.org enterprises](https://www.reactive.org/). Launch cards reserve progress/message space and draw busy spinners over the artwork so preparation does not move their controls. `make layout-preview verify-layout-preview` builds a separate debug gallery for the lifecycle presentations without accessing the registry, Keychain or real guests.
 
 
 ## JSON CLI
@@ -82,6 +82,8 @@ Guest artwork uses the official Omarchy mark in monochrome, with pending-tradema
 ```sh
 ./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --disk 64GiB --start --wait ssh --timeout 1800
 ./bin/omarchy-vm get dev
+./bin/omarchy-vm pause dev
+./bin/omarchy-vm resume dev
 ./bin/omarchy-vm stop dev --wait
 ./bin/omarchy-vm update dev --memory 5GiB --cpus 6 --disk 128GiB
 ./bin/omarchy-vm start dev --wait ssh
@@ -90,6 +92,14 @@ Guest artwork uses the official Omarchy mark in monochrome, with pending-tradema
 ```
 
 The CLI opens the manager in the background when needed and shares its existing lifecycle owner. Replies are concise JSON, including state/config and an authenticated SSH endpoint plus guest IPs when ready. NAT guests can share a private IP; use the returned localhost SSH port and generated `ssh.command`. Configuration updates refuse running guests and apply next start; delete uses guarded recoverable Trash. Saved Guest Defaults apply to new guests unless disabled. See [the full CLI contract and validation](docs/CLI.md).
+
+## Pause and resume
+
+The development build below pauses execution while retaining RAM. The clarified requirement is suspend-to-disk to release RAM; the current accelerated runtime blocks full VM state saving, and a fresh POC confirmed the official guest kernel has hibernation disabled. See [the suspend investigation](docs/Suspend.md). The development UI now detects the running guest’s kernel capability and basic hibernation prerequisites, with an explicitly opt-in experimental suspend/restore workflow. It remains disabled for the stock kernel; reliable restoration is unproven.
+
+Use a running guest’s ellipsis menu → **Pause**. Its main button becomes **Resume**. The CLI supports `pause ID`, `resume ID` and `wait ID --for paused`. Both commands wait for a helper acknowledgement before reporting success.
+
+Pause keeps the live process, memory allocation, disk lock and SSH port reserved. It does not save state to disk or free RAM. A manually paused guest stays paused across Mac sleep/wake. **Shut Down**, restart and manager Quit resume an owned pause before asking Linux to shut down; **Force Stop…** remains available. Resume before using SSH or editing work inside the guest. Configuration and deletion still require a stopped guest. See [Pause/Resume behavior and validation](docs/PauseResume.md).
 
 ## Factory image cache
 

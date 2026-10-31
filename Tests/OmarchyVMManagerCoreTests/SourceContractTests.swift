@@ -53,3 +53,14 @@ func runtimeCPUMinimum() throws {
     #expect(POCHostPolicy.minimumVMCPUs == 4)
     #expect(POCProfiles.all.allSatisfy { $0.cpus >= POCHostPolicy.minimumVMCPUs })
 }
+
+@Test("manager SDK is prepared from the exact helper patch source")
+func matchingExecutionSDK() throws {
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let metadata = try JSONSerialization.jsonObject(with: Data(contentsOf: repository.appendingPathComponent("Config/TryOmarchyClipboardPatch.json"))) as! [String: String]
+    let source = repository.appendingPathComponent(".build/runtime-source").resolvingSymlinksInPath()
+    let head = try String(contentsOf: source.appendingPathComponent(".git/HEAD"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+    #expect(head == metadata["commit"])
+    let lock = try JSONDecoder().decode(RuntimeProvenance.self, from: Data(contentsOf: repository.appendingPathComponent("Config/TryOmarchyRuntime.lock.json")))
+    #expect(lock.manualPauseVersion == 1)
+}

@@ -25,6 +25,8 @@ public protocol VMRuntime: Sendable {
 public protocol VMRuntimeHandle: AnyObject, Sendable {
     var isRunning: Bool { get }
     var recentStandardError: String { get }
+    func pause() throws
+    func resume() throws
     func shutDown()
     func terminate()
 }
@@ -70,6 +72,8 @@ public struct TryOmarchyRuntime: VMRuntime {
         }
         if let storage = managedStorage, let admission = pocAdmission {
             try admission.validateKit()
+            let execution = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
+            guard execution.manualPauseVersion == 1 else { throw VMFailure(code: "unproven-execution-runtime", message: "Manual execution control requires the exact reviewed runtime.") }
             if request.profile.ssh != nil {
                 let provenance = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
                 guard provenance.managedSSHVersion == 1 else { throw VMFailure(code: "unproven-ssh-runtime", message: "Managed SSH requires the exact kit with provisioning capability version 1.") }
@@ -127,6 +131,8 @@ public final class TryOmarchyRuntimeHandle: VMRuntimeHandle {
     public init(client: VMRunClient) { self.client = client }
     public var isRunning: Bool { client.isRunning }
     public var recentStandardError: String { client.recentStandardError }
+    public func pause() throws { try client.pause() }
+    public func resume() throws { try client.resume() }
     public func shutDown() { client.shutDown() }
     public func terminate() { client.terminate() }
 }

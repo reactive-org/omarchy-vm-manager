@@ -1,0 +1,60 @@
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -5,10 +5,10 @@
+ # of its own, and that folder's name is its pkgbase so the build and publish
+ # tooling can tell its files from the x86_64 recipe's. The packages it makes
+ # are linux-omarchy and linux-omarchy-headers, the names x86_64 has.
+-pkgbase=linux-omarchy-aarch64
+-_kernel=linux-omarchy
++pkgbase=linux-omarchy-suspend-poc-aarch64
++_kernel=linux-omarchy-suspend-poc
+ pkgver=7.2.8
+-pkgrel=23
++pkgrel=23.1
+ pkgdesc='Omarchy Linux for aarch64 (BORE CPU scheduler, ADIOS I/O scheduler)'
+ url='https://omarchy.org'
+ arch=(
+@@ -1274,7 +1274,9 @@
+ 
+   echo "Setting config..."
+   cp ../config.$CARCH .config
++  scripts/config --enable HIBERNATION
+   make olddefconfig
++  test "$(scripts/config --state HIBERNATION)" = y
+   diff -u ../config.$CARCH .config || :
+ 
+   make -s kernelrelease > version
+@@ -1283,15 +1285,13 @@
+ 
+ build() {
+   cd $_srcname
+-  MAKEFLAGS="-j$(nproc) $MAKEFLAGS"
++  MAKEFLAGS="-j8 $MAKEFLAGS"
+   # N1x boots through ACPI. The Snapdragon laptops get no device tree from
+   # their firmware, so build theirs and skip the other arm64 DTBs that
+   # "make all" would build.
+   local dts=(arch/arm64/boot/dts/qcom/{x1,hamoa,glymur,sc8280xp}*.dts)
+   dts=("${dts[@]#arch/arm64/boot/dts/}")
+   make Image modules "${dts[@]/%.dts/.dtb}"
+-  env -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+-    make -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1
+ }
+ 
+ _package() {
+@@ -1339,7 +1339,7 @@
+     arch/arm64/boot/dts/qcom/{x1,hamoa,glymur,sc8280xp}*.dtb
+ 
+   echo "Installing modules..."
+-  ZSTD_CLEVEL=19 make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 \
++  ZSTD_CLEVEL=6 make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 \
+     DEPMOD=/doesnt/exist modules_install  # Suppress depmod
+ 
+   # remove build link
+@@ -1462,7 +1462,6 @@
+ 
+ pkgname=(
+   "$_kernel"
+-  "$_kernel-headers"
+ )
+ for _p in "${pkgname[@]}"; do
+   eval "package_$_p() {

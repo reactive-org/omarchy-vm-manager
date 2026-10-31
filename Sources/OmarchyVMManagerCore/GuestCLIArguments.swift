@@ -13,15 +13,17 @@ public struct GuestCLIInvocation: Sendable {
       update ID [options]          Change a stopped guest; applies next start
       delete ID                    Move a stopped guest to Trash
       start ID [--wait [ssh|running]]
+      pause ID                     Pause and wait for runtime acknowledgement
+      resume ID                    Resume and wait for runtime acknowledgement
       stop ID [--force] [--wait]
       restart ID [--wait [ssh|running]]
-      wait ID [--for ssh|running|stopped]
+      wait ID [--for ssh|running|stopped|paused]
 
     Config: --config FILE.json, --name NAME, --memory 4GiB (or MiB),
             --memory-mib 4096, --cpus 4, --disk 64GiB, --disk-gib 64,
             --clipboard on|off, --immersive on|off
     Creation only: --ssh on|off, --owner-defaults on|off, --public-key FILE.pub
-    Lifecycle: --start (create), --wait [ssh|running|stopped], --timeout SECONDS
+    Lifecycle: --start (create), --wait [ssh|running|stopped|paused], --timeout SECONDS
 
     JSON replies go to stdout. Exit 0: success; 1: failure; 124: wait timeout.
     Wait timeout or closing this CLI leaves the guest in its current state.
@@ -109,7 +111,7 @@ public struct GuestCLIInvocation: Sendable {
         }
     }
     private static func condition(_ value: String) throws -> GuestWaitCondition {
-        guard let result = GuestWaitCondition(rawValue: value) else { throw commandFailure("usage", "Wait for ssh, running or stopped.") }
+        guard let result = GuestWaitCondition(rawValue: value) else { throw commandFailure("usage", "Wait for ssh, running, paused or stopped.") }
         return result
     }
     private static func readFile(_ path: String, suffix: String?, maximum: Int) throws -> Data {

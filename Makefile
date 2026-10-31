@@ -4,15 +4,18 @@ export SWIFT_MODULECACHE_PATH := $(CURDIR)/.build/module-cache/swift
 export CLANG_MODULE_CACHE_PATH := $(CURDIR)/.build/module-cache/clang
 export MACOSX_DEPLOYMENT_TARGET := 15.0
 
-.PHONY: help build icon test test-ssh app app-preview verify-app verify-preview run fetch-kit patched-kit test-upstream layout-preview verify-layout-preview
+.PHONY: prepare-source help build icon test test-ssh app app-preview verify-app verify-preview run fetch-kit patched-kit test-upstream layout-preview verify-layout-preview
 help:
-	@echo 'make test | test-ssh | build | icon | fetch-kit | patched-kit | app | verify-app | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-ssh | build | icon | fetch-kit | patched-kit | app | verify-app | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
-build:
+prepare-source:
+	python3 Scripts/prepare_runtime_source.py
+
+build: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
 	swift build --disable-sandbox
 
-test:
+test: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
 	swift test --disable-sandbox
 	python3 -m unittest discover -s Tests/ScriptTests -v

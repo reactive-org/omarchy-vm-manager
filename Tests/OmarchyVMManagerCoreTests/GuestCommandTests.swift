@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+import TryOmarchyKitClient
 @testable import OmarchyVMManagerCore
 
 private struct CLIAvailablePort: HostPortProbing { func isAvailable(_ port: Int) -> Bool { true } }
@@ -41,6 +42,11 @@ struct GuestCLIArgumentsTests {
         try Data(#"{"memoryMiB":4096,"cpus":4,"ownerDefaults":false}"#.utf8).write(to: file)
         let configured = try #require(GuestCLIInvocation.parse(["create", "new", "--config", file.path, "--cpus", "8"]).request)
         #expect(configured.config?.memoryMiB == 4096 && configured.config?.cpus == 8 && configured.config?.ownerDefaults == false)
+        for command in ["pause", "resume"] {
+            let execution = try #require(GuestCLIInvocation.parse([command, "work", "--timeout", "5"]).request)
+            #expect(execution.command.rawValue == command && execution.timeoutSeconds == 5)
+        }
+        #expect(try GuestCLIInvocation.parse(["wait", "work", "--for", "paused"]).request?.waitFor == .paused)
         let stopped = try #require(GuestCLIInvocation.parse(["stop", "work", "--wait"]).request)
         #expect(stopped.waitFor == .stopped)
     }
@@ -48,7 +54,7 @@ struct GuestCLIArgumentsTests {
         ["create", "x", "--memory", "9999999999999999999999GiB"], ["create", "x", "--cpus", "-1"],
         ["update", "x", "--ssh", "on"], ["start", "x", "--memory", "4GiB"], ["delete", "x", "--force"],
         ["create", "x", "--wait"], ["get"], ["list", "extra"], ["start", "x", "--timeout", "3601"],
-        ["stop", "x", "--wait", "ssh"], ["start", "x", "--wait", "stopped"], ["list", "--password", "synthetic-secret"]])
+        ["pause", "x", "--wait"], ["resume", "x", "--force"], ["stop", "x", "--wait", "ssh"], ["start", "x", "--wait", "stopped"], ["list", "--password", "synthetic-secret"]])
     func invalid(_ arguments: [String]) {
         #expect(throws: (any Error).self) { try GuestCLIInvocation.parse(arguments) }
     }
@@ -119,6 +125,42 @@ struct GuestCommandTests {
         handle.emit(.exited(status: 0))
         #expect((await stop.value).ok)
         #expect(await f.manager.activeSessionCount == 0)
+    }
+    @Test("pause/resume acknowledge execution, hide cached addresses and keep edits protected")
+    func pauseResume() async throws {
+        let f = try CommandFixture(); defer { f.files.cleanup() }
+        let id = try await f.create(), selector = id.uuidString
+        _ = await f.service.execute(GuestCommandRequest(command: .start, selector: selector))
+        let handle = try #require(f.runtime.startedHandles.first)
+        handle.emit(.ready)
+        #expect(await eventually { await f.manager.snapshots()[0].state == .running })
+        let session = try #require(await f.manager.snapshots()[0].sessionID)
+        await f.manager.receiveSSH(.ready(user: "owner", command: "synthetic"), vmID: id, sessionID: session)
+        var details = GuestCommandRequest(command: .get, selector: selector); details.details = true
+        #expect((await f.service.execute(details)).guest?.network.addressesVerified == true)
+        let paused = Task { await f.service.execute(GuestCommandRequest(command: .pause, selector: selector)) }
+        #expect(await eventually { handle.pauseCount == 1 })
+        let busy = await f.service.execute(GuestCommandRequest(command: .resume, selector: selector))
+        #expect(busy.error?.code == "execution-busy")
+        handle.emit(.executionState(.init(state: .paused, command: .pause)))
+        let result = await paused.value
+        #expect(result.ok && result.guest?.state == "paused" && result.guest?.active == true)
+        #expect(result.guest?.network.guestIPs == [] && result.guest?.ssh.status == "paused")
+        #expect((await f.service.execute(details)).guest?.network.addressesVerified == false)
+        var wait = GuestCommandRequest(command: .wait, selector: selector); wait.waitFor = .paused
+        #expect((await f.service.execute(wait)).ok)
+        wait.waitFor = .ssh
+        #expect((await f.service.execute(wait)).error?.code == "guest-paused")
+        let update = GuestCommandRequest(command: .update, selector: selector, config: .init(cpus: 8))
+        #expect((await f.service.execute(update)).error?.code == "vm-not-editable")
+        let resumed = Task { await f.service.execute(GuestCommandRequest(command: .resume, selector: selector)) }
+        #expect(await eventually { handle.resumeCount == 1 })
+        handle.emit(.executionState(.init(state: .running, command: .resume)))
+        let running = await resumed.value
+        #expect(running.guest?.state == "running")
+        #expect(running.guest?.network.addressesVerified == false)
+        handle.emit(.exited(status: 0))
+        #expect(await eventually { await f.manager.activeSessionCount == 0 })
     }
     @Test("wait timeout returns the active guest without shutting it down")
     func timeout() async throws {

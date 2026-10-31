@@ -91,6 +91,7 @@ esac
                 host_port = port(); names.append(name)
                 command = '''set -eu
 mkdir -p /run/sshd /run/try-omarchy /var/lib/omarchy/provisioning
+install -d -m 700 -o owner -g owner /run/user/1000
 printf 'tryomarchy.ssh_access=1 tryomarchy.managed_ssh=1\\n' > /run/try-omarchy/cmdline
 touch /var/lib/omarchy/provisioning/pending
 TRY_OMARCHY_MANAGED_SHARE=/bootstrap TRY_OMARCHY_SYSTEMCTL=/test-systemctl /usr/lib/try-omarchy/managed-ssh
@@ -99,7 +100,7 @@ rm /var/lib/omarchy/provisioning/pending
 TRY_OMARCHY_MANAGED_SHARE=/bootstrap TRY_OMARCHY_SYSTEMCTL=/test-systemctl /usr/lib/try-omarchy/managed-ssh
 touch /run/ssh-test-ready
 exec sleep infinity'''
-                run("docker", "run", "-d", "--rm", "--name", name, "-p", f"127.0.0.1:{host_port}:22",
+                run("docker", "run", "-d", "--rm", "--name", name, "--tmpfs", "/run:rw,mode=755", "-p", f"127.0.0.1:{host_port}:22",
                     "-v", f"{bootstrap}:/bootstrap:ro", "-v", f"{library}:/usr/lib/try-omarchy:ro",
                     "-v", f"{systemctl}:/test-systemctl:ro", image, "-c", command, stdout=subprocess.DEVNULL)
                 for _ in range(100):

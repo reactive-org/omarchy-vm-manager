@@ -13,6 +13,14 @@ public actor VMManager {
         var reachedReady = false
         var sshTask: Task<Void, Never>?
         var ownerTask: Task<Void, Never>?
+        var sshProbeID = UUID()
+        var powerProbeTask: Task<Void, Never>?
+        var powerOperationTask: Task<Void, Never>?
+        var powerBusy = false
+        var restoreVerificationTimeout: Duration = .seconds(180)
+        var executionCommand: VMRunCommand?
+        var executionCompletion: CheckedContinuation<Void, any Error>?
+        var executionTimeout: Task<Void, Never>?
     }
 
     private let runtime: any VMRuntime
@@ -29,6 +37,11 @@ public actor VMManager {
     private let registry: RegistryStore?
     private let trashService: (any VMTrashService)?
     private let sshProbe: (any SSHReadinessChecking)?
+    private let hibernation: (any GuestHibernating)?
+    private var powerCapabilities: [UUID: GuestHibernationCapability] = [:]
+    private var suspensions: [UUID: ExperimentalSuspension] = [:]
+    private var unsafeSuspensions: Set<UUID> = []
+    private var restoringSuspension: Set<UUID> = []
     private let portProbe: any HostPortProbing
     private let ownerDefaults: OwnerDefaultsStore?
     private var ownerStates: [UUID: OwnerSetupReadiness] = [:]
@@ -49,7 +62,7 @@ public actor VMManager {
                 hostMemoryMiB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 logicalCPUs: Int = ProcessInfo.processInfo.processorCount,
                 registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil,
-                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil) {
+                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil) {
         self.runtime = runtime
         self.profiles = profiles
         self.applicationSupport = applicationSupport
@@ -58,7 +71,12 @@ public actor VMManager {
         self.logicalCPUs = logicalCPUs
         self.registry = registry
         self.trashService = trashService
+        self.hibernation = hibernation
         self.sshProbe = sshProbe; self.portProbe = portProbe; self.ownerDefaults = ownerDefaults
+        for profile in profiles {
+            do { suspensions[profile.id] = try ExperimentalSuspendStore(root: ManagerStorage(applicationSupport: applicationSupport).root(for: profile)).load(vmID: profile.id) }
+            catch { unsafeSuspensions.insert(profile.id) }
+        }
         interruptedDeletions = registry?.pendingDeletions ?? []
         for id in interruptedDeletions {
             let failure = VMFailure(code: "interrupted-deletion", message: "A previous deletion was interrupted. The disk may already be in Trash. Review Delete VM again to finish removing the profile; restore files manually before recovery.")
@@ -75,7 +93,7 @@ public actor VMManager {
             try storage.withLock(profile) { try ManagedOwnerStorage(root: storage.root(for: profile)).clearSeed() }
         }
         return VMManager(runtime: runtime, profiles: profiles, applicationSupport: applicationSupport,
-                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport))
+                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation())
     }
 
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
@@ -201,6 +219,7 @@ public actor VMManager {
     }
 
     private func requireEditable(_ id: UUID) throws {
+        guard suspensions[id] == nil, !unsafeSuspensions.contains(id) else { throw VMFailure(code: "suspended-disk-protected", message: "Restore or recover this experimental suspension before editing or deleting its disk.") }
         guard !quitting, !POCProfiles.ids.contains(id), sessions[id] == nil, !storageTransactions.contains(id),
               (states[id] ?? .stopped).canStart else {
             throw VMFailure(code: "vm-not-editable", message: "Stop the VM before changing it. Retained POC profiles are protected from configuration changes and deletion.")
@@ -219,7 +238,7 @@ public actor VMManager {
             VMSnapshot(profile: $0, state: states[$0.id] ?? .stopped,
                        sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: notices[$0.id],
                        sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped),
-                       ownerSetupReadiness: ownerReadiness($0))
+                       ownerSetupReadiness: ownerReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false)
         }
     }
 
@@ -237,6 +256,9 @@ public actor VMManager {
     }
 
     public func start(_ vmID: UUID) throws {
+        guard !unsafeSuspensions.contains(vmID), suspensions[vmID] == nil || restoringSuspension.contains(vmID) else {
+            throw VMFailure(code: "suspended-disk-protected", message: "Use Restore Experimental Session. Ordinary launch is blocked while a saved session may exist.")
+        }
         try registry?.checkRevision()
         guard !interruptedDeletions.contains(vmID) else { throw VMFailure(code: "interrupted-deletion", message: "Review the interrupted deletion before launching. Missing storage will not be recreated.") }
         guard !quitting, !storageTransactions.contains(vmID) else { throw VMFailure(code: "transaction-busy", message: "A storage transaction or application shutdown is in progress.") }
@@ -267,6 +289,7 @@ public actor VMManager {
         states[vmID] = .validating
         failures[vmID] = nil
         notices[vmID] = nil
+        powerCapabilities[vmID] = nil
         let sessionID = UUID()
         let (events, continuation) = AsyncStream<VMRuntimeEvent>.makeStream()
         sessions[vmID] = Session(id: sessionID, root: root, events: continuation,
@@ -306,7 +329,8 @@ public actor VMManager {
     }
 
     private func checkOwner(_ request: VMStartRequest) {
-        guard sessions[request.profile.id]?.id == request.sessionID else { return }
+        guard sessions[request.profile.id]?.id == request.sessionID,
+              ![.pausing, .paused, .resuming, .hostSleeping, .executionUnknown].contains(states[request.profile.id]) else { return }
         let owner = ManagedOwnerStorage(root: request.storageRoot)
         do {
             if try owner.completed(request.profile) { ownerStates[request.profile.id] = .configured; return }
@@ -324,22 +348,125 @@ public actor VMManager {
     private func beginSSHProbe(_ request: VMStartRequest) {
         guard request.profile.ssh != nil, let sshProbe else { return }
         sessions[request.profile.id]?.sshTask?.cancel()
+        sessions[request.profile.id]?.powerProbeTask?.cancel()
+        powerCapabilities[request.profile.id] = nil
         sshStates[request.profile.id] = .provisioning
+        let probeID = UUID()
+        sessions[request.profile.id]?.sshProbeID = probeID
         sessions[request.profile.id]?.sshTask = Task { [weak self] in
             await sshProbe.monitor(request) { [weak self] status in
-                await self?.receiveSSH(status, vmID: request.profile.id, sessionID: request.sessionID)
+                await self?.receiveSSH(status, vmID: request.profile.id, sessionID: request.sessionID, probeID: probeID)
             }
         }
     }
 
-    func receiveSSH(_ status: SSHReadiness, vmID: UUID, sessionID: UUID) {
-        guard sessions[vmID]?.id == sessionID else { return }
+    func receiveSSH(_ status: SSHReadiness, vmID: UUID, sessionID: UUID, probeID: UUID? = nil) {
+        guard let session = sessions[vmID], session.id == sessionID, !session.shutdownRequested, !session.forceRequested, states[vmID] != .stopping,
+              probeID == nil || probeID == session.sshProbeID,
+              states[vmID] == .running || !session.reachedReady else { return }
         sshStates[vmID] = status
+        if case .ready(let user, _) = status { beginPowerProbe(vmID, user: user) }
+        else if case .failed = status { powerCapabilities[vmID] = nil }
     }
 
     public func retrySSH(_ id: UUID) {
-        guard let session = sessions[id], let profile = profiles.first(where: { $0.id == id }) else { return }
+        guard let session = sessions[id], states[id] == .running, let profile = profiles.first(where: { $0.id == id }) else { return }
         beginSSHProbe(VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id))
+    }
+
+    public func pause(_ id: UUID, timeout: Duration = .seconds(10)) async throws {
+        guard suspensions[id] == nil, sessions[id]?.powerBusy != true else { throw VMFailure(code: "suspend-in-progress", message: "Finish experimental suspension recovery before pausing.") }
+        try await changeExecution(id, command: .pause, timeout: timeout)
+    }
+
+    public func resume(_ id: UUID, timeout: Duration = .seconds(10)) async throws {
+        try await changeExecution(id, command: .resume, timeout: timeout)
+    }
+
+    private func changeExecution(_ id: UUID, command: VMRunCommand, timeout: Duration) async throws {
+        guard !quitting, let session = sessions[id], let handle = session.handle, !session.shutdownRequested, !session.forceRequested else {
+            throw VMFailure(code: "not-running", message: "The guest has no controllable running session.")
+        }
+        guard session.executionCommand == nil else { throw VMFailure(code: "execution-busy", message: "An execution command is awaiting its acknowledgement. Wait or shut down the guest.") }
+        if command == .pause && states[id] == .paused || command == .resume && states[id] == .running { return }
+        guard command == .pause ? states[id] == .running : states[id] == .paused else {
+            throw VMFailure(code: "execution-not-ready", message: "Pause requires a running guest; Resume requires a manually paused guest.")
+        }
+        suspendReadiness(id)
+        states[id] = command == .pause ? .pausing : .resuming
+        try await withCheckedThrowingContinuation { (completion: CheckedContinuation<Void, any Error>) in
+            sessions[id]?.executionCommand = command
+            sessions[id]?.executionCompletion = completion
+            sessions[id]?.executionTimeout = Task { [weak self] in
+                do { try await Task.sleep(for: timeout) } catch { return }
+                await self?.executionTimedOut(id, sessionID: session.id)
+            }
+            do {
+                if command == .pause { try handle.pause() } else { try handle.resume() }
+            } catch { executionTimedOut(id, sessionID: session.id) }
+        }
+    }
+
+    private func executionTimedOut(_ id: UUID, sessionID: UUID) {
+        guard sessions[id]?.id == sessionID, sessions[id]?.executionCommand != nil else { return }
+        sessions[id]?.executionTimeout?.cancel()
+        sessions[id]?.executionTimeout = nil
+        let completion = sessions[id]?.executionCompletion
+        sessions[id]?.executionCompletion = nil
+        if states[id] != .stopping { states[id] = .executionUnknown }
+        let failure = VMFailure(code: "execution-timeout", message: "The execution command was not acknowledged. The guest and its reservations remain active; wait for a late reply or shut it down.")
+        notices[id] = failure.message
+        completion?.resume(throwing: failure)
+    }
+
+    private func cancelExecutionChange(_ id: UUID, code: String) {
+        sessions[id]?.executionTimeout?.cancel()
+        sessions[id]?.executionTimeout = nil
+        let completion = sessions[id]?.executionCompletion
+        sessions[id]?.executionCompletion = nil
+        sessions[id]?.executionCommand = nil
+        completion?.resume(throwing: VMFailure(code: code, message: "The guest is stopping or has exited before its execution command completed."))
+    }
+
+    private func suspendReadiness(_ id: UUID) {
+        sessions[id]?.powerProbeTask?.cancel(); sessions[id]?.powerProbeTask = nil
+        powerCapabilities[id] = nil
+        sessions[id]?.sshTask?.cancel(); sessions[id]?.ownerTask?.cancel()
+        sessions[id]?.sshProbeID = UUID()
+        sshStates[id] = profiles.first(where: { $0.id == id })?.ssh == nil ? .disabled : .paused
+    }
+
+    private func receiveExecution(_ report: VMRunExecutionReport, vmID: UUID) {
+        guard let session = sessions[vmID], states[vmID] != .stopping, !session.shutdownRequested, !session.forceRequested else { return }
+        if let command = report.command {
+            guard session.executionCommand == command else { return }
+            guard report.failure != nil || (command == .pause && report.state == .paused) || (command == .resume && report.state == .running) else {
+                executionTimedOut(vmID, sessionID: session.id)
+                return
+            }
+            sessions[vmID]?.executionTimeout?.cancel()
+            sessions[vmID]?.executionTimeout = nil
+            sessions[vmID]?.executionCommand = nil
+            let completion = sessions[vmID]?.executionCompletion
+            sessions[vmID]?.executionCompletion = nil
+            if let failure = report.failure {
+                let error = VMFailure(code: failure.reportedCode, message: failure.message)
+                notices[vmID] = error.message
+                completion?.resume(throwing: error)
+            } else { notices[vmID] = nil; completion?.resume() }
+        } else if session.executionCommand != nil { return }
+        let previous = states[vmID]
+        switch report.state {
+        case .running: states[vmID] = .running
+        case .paused: states[vmID] = .paused
+        case .hostSleeping: states[vmID] = .hostSleeping
+        case .unknown: states[vmID] = .executionUnknown
+        }
+        if report.state != .running { suspendReadiness(vmID) }
+        else if previous != .running, let profile = profiles.first(where: { $0.id == vmID }) {
+            let request = VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id, startedAt: .distantPast)
+            beginSSHProbe(request); sessions[vmID]?.ownerTask?.cancel(); beginOwnerProbe(request)
+        }
     }
 
     public func shutDown(_ vmID: UUID) {
@@ -347,6 +474,8 @@ public actor VMManager {
         session.shutdownRequested = true
         sessions[vmID] = session
         states[vmID] = .stopping
+        cancelExecutionChange(vmID, code: "guest-stopping")
+        suspendReadiness(vmID)
         session.handle?.shutDown()
     }
 
@@ -358,6 +487,8 @@ public actor VMManager {
         session.forceRequested = true
         sessions[vmID] = session
         states[vmID] = .stopping
+        cancelExecutionChange(vmID, code: "guest-stopping")
+        suspendReadiness(vmID)
         session.handle?.terminate()
     }
 
@@ -368,6 +499,7 @@ public actor VMManager {
     }
 
     public func beginApplicationShutdown() -> Bool {
+        guard !hasActiveSuspensionTransition else { return false }
         quitting = true
         for vmID in Array(sessions.keys) { shutDown(vmID) }
         return isIdle
@@ -378,7 +510,7 @@ public actor VMManager {
         record(Self.describe(event), vmID: vmID, sessionID: sessionID)
         switch event {
         case .progress(let phase, let percent):
-            guard states[vmID] != .stopping else { return }
+            guard !session.reachedReady, states[vmID] != .stopping else { return }
             switch phase {
             case .waitingForDownload, .downloading, .reconnecting, .paused, .verifyingDownload:
                 states[vmID] = .downloading(phase: phase, percent: percent)
@@ -388,15 +520,28 @@ public actor VMManager {
         case .notice(let notice):
             notices[vmID] = notice.message
         case .ready:
+            guard !session.reachedReady else { return }
             sessions[vmID]?.reachedReady = true
-            if states[vmID] != .stopping { states[vmID] = .running }
+            if states[vmID] != .stopping {
+                states[vmID] = .running
+                if case .ready(let user, _) = sshStates[vmID] { beginPowerProbe(vmID, user: user) }
+                if suspensions[vmID]?.stage == .restoring { beginRestoreVerification(vmID) }
+            }
+        case .executionState(let report):
+            receiveExecution(report, vmID: vmID)
         case .stopping:
             states[vmID] = .stopping
+            cancelExecutionChange(vmID, code: "guest-stopping")
+            suspendReadiness(vmID)
         case .error(let error):
             failures[vmID] = VMFailure(code: error.reportedCode, message: error.message)
         case .exited(let status):
+            cancelExecutionChange(vmID, code: "guest-exited")
             session.sshTask?.cancel()
             session.ownerTask?.cancel()
+            session.powerProbeTask?.cancel(); session.powerOperationTask?.cancel()
+            powerCapabilities[vmID] = nil
+            finishSuspensionExit(vmID, status: status, forced: session.forceRequested)
             if let profile = profiles.first(where: { $0.id == vmID }), profile.ownerSetup != nil {
                 checkOwner(VMStartRequest(profile: profile, storageRoot: session.root, sessionID: sessionID, startedAt: .distantPast))
                 do { try ManagerStorage(applicationSupport: applicationSupport).withLock(profile) { try ManagedOwnerStorage(root: session.root).clearSeed() } }
@@ -422,6 +567,7 @@ public actor VMManager {
         case .progress(let phase, let percent): "\(phase.rawValue)" + (percent.map { " \($0)%" } ?? "")
         case .notice(let notice): "Notice: " + notice.message
         case .ready: "Ready"
+        case .executionState(let report): "Execution: " + report.state.rawValue + (report.command.map { " (" + $0.rawValue + ")" } ?? "")
         case .stopping: "Stopping"
         case .error(let error): "Error [\(error.reportedCode)]: " + error.message
         case .exited(let status): "Exited (\(status))"
@@ -432,5 +578,169 @@ public actor VMManager {
         if let failure = error as? VMFailure { return failure }
         if let error = error as? VMRunError { return VMFailure(code: error.reportedCode, message: error.message) }
         return VMFailure(code: "start-failed", message: error.localizedDescription)
+    }
+}
+
+extension VMManager {
+    public var hasActiveSuspensionTransition: Bool {
+        sessions.contains { id, session in suspensions[id] != nil || session.powerBusy }
+    }
+    private func beginPowerProbe(_ id: UUID, user: String) {
+        guard let hibernation, let session = sessions[id], session.powerProbeTask == nil,
+              states[id] == .running, !session.shutdownRequested, !session.forceRequested,
+              let profile = profiles.first(where: { $0.id == id }), suspensions[id] == nil else { return }
+        let request = VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id)
+        let generation = session.sshProbeID
+        sessions[id]?.powerProbeTask = Task { [weak self] in
+            let report = try? await hibernation.capability(request, user: user)
+            guard !Task.isCancelled else { return }
+            await self?.receivePowerCapability(report, request: request, generation: generation)
+        }
+    }
+    private func receivePowerCapability(_ value: GuestHibernationCapability?, request: VMStartRequest, generation: UUID) {
+        let id = request.profile.id
+        guard let session = sessions[id], session.id == request.sessionID, session.sshProbeID == generation,
+              states[id] == .running, !session.shutdownRequested, !session.forceRequested else { return }
+        powerCapabilities[id] = value
+        sessions[id]?.powerProbeTask = nil
+    }
+    public func experimentalSuspend(_ id: UUID, confirmed: Bool, exitTimeout: Duration = .seconds(180)) async throws {
+        guard confirmed else { throw VMFailure(code: "experimental-opt-in-required", message: "Confirm the experimental suspension risks before attempting it.") }
+        guard let hibernation, let session = sessions[id], states[id] == .running, !session.shutdownRequested, !session.forceRequested,
+              !session.powerBusy, suspensions[id] == nil, !unsafeSuspensions.contains(id),
+              let profile = profiles.first(where: { $0.id == id }), case .ready(let user, _) = sshStates[id] else {
+            throw VMFailure(code: "suspend-not-ready", message: "Experimental suspension requires a running guest and authenticated managed SSH.")
+        }
+        sessions[id]?.powerBusy = true
+        defer { if sessions[id]?.id == session.id { sessions[id]?.powerBusy = false } }
+        let request = VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id)
+        let capability = try await hibernation.capability(request, user: user)
+        try requirePowerSession(id, session: session.id)
+        powerCapabilities[id] = capability
+        guard capability.canAttempt else { throw VMFailure(code: "hibernation-unavailable", message: capability.detail) }
+        let proof = try await hibernation.prepare(request, user: user, token: UUID())
+        try requirePowerSession(id, session: session.id)
+        guard proof.kernel == capability.kernel else { throw SSHGuestHibernation.failure() }
+        let storage = ManagerStorage(applicationSupport: applicationSupport)
+        let record = ExperimentalSuspension(schemaVersion: 1, vmID: id, originSession: session.id, user: user, proof: proof,
+            profileDigest: try ExperimentalSuspendStore.digest(profile), runtimeDigest: RuntimePin.lockSHA256,
+            diskIdentity: try storage.suspensionIdentity(profile), stage: .requested)
+        // Publish the guard durably before asking the guest to do anything privileged.
+        do { try ExperimentalSuspendStore(root: session.root).save(record, exclusively: true) }
+        catch { unsafeSuspensions.insert(id); throw error }
+        suspensions[id] = record
+        notices[id] = "Experimental suspension requested. RAM remains allocated until the VM exits."
+        sessions[id]?.powerOperationTask = Task { [weak self] in
+            do { try await Task.sleep(for: exitTimeout) } catch { return }
+            await self?.suspensionTimedOut(id, sessionID: session.id)
+        }
+        do { try await hibernation.hibernate(request, user: user) }
+        catch {
+            if sessions[id] == nil, suspensions[id]?.originSession == session.id, suspensions[id]?.stage == .restorePending { return }
+            // Lost SSH is ambiguous: the kernel may already be freezing or saving.
+            if sessions[id]?.id == session.id { suspensionTimedOut(id, sessionID: session.id) }
+            throw VMFailure(code: "suspend-request-unverified", message: "The hibernation request could not be acknowledged. The guest may still be suspending; its disk remains protected. No automatic force-stop was sent.")
+        }
+    }
+    private func requirePowerSession(_ id: UUID, session: UUID) throws {
+        guard let current = sessions[id], current.id == session, !current.shutdownRequested, !current.forceRequested, states[id] == .running else {
+            throw VMFailure(code: "guest-stopping", message: "The guest changed or stopped before hibernation could be requested.")
+        }
+    }
+    private func suspensionTimedOut(_ id: UUID, sessionID: UUID) {
+        guard sessions[id]?.id == sessionID, var record = suspensions[id] else { return }
+        record.stage = .recoveryRequired; persistSuspension(record)
+        notices[id] = record.restoreAttempted
+            ? "Restore verification could not finish. Keep the guest running and use Recheck Recovery. Stopping an unresolved restore requires manual recovery."
+            : "Experimental suspension did not finish reliably. The VM retains its allocation until exit. Shut down or force-stop explicitly if stalled, then use Restore / Recover."
+    }
+    private func persistSuspension(_ record: ExperimentalSuspension) {
+        guard let profile = profiles.first(where: { $0.id == record.vmID }) else { return }
+        suspensions[record.vmID] = record
+        do { try ExperimentalSuspendStore(root: ManagerStorage(applicationSupport: applicationSupport).root(for: profile)).save(record) }
+        catch { unsafeSuspensions.insert(record.vmID); notices[record.vmID] = "Suspension metadata could not be saved. Disk protection is retained; explicit recovery is required." }
+    }
+    private func finishSuspensionExit(_ id: UUID, status: Int32, forced: Bool) {
+        guard var record = suspensions[id], let profile = profiles.first(where: { $0.id == id }) else { return }
+        let storage = ManagerStorage(applicationSupport: applicationSupport)
+        if record.stage != .coldBootDetected {
+            record.stage = status == 0 && !forced && record.stage == .requested ? .restorePending : .recoveryRequired
+        }
+        do {
+            record.diskStamp = try storage.withLock(profile) { try storage.suspensionStamp(profile) }
+            persistSuspension(record)
+        } catch { unsafeSuspensions.insert(id); notices[id] = "The stopped suspension disk could not be identified safely. Ordinary launch and edits remain blocked." }
+    }
+    public func restoreExperimentalSuspension(_ id: UUID, confirmed: Bool, verificationTimeout: Duration = .seconds(180)) throws {
+        guard confirmed, hibernation != nil, var record = suspensions[id], !unsafeSuspensions.contains(id),
+              sessions[id] == nil, let profile = profiles.first(where: { $0.id == id }) else {
+            throw VMFailure(code: "restore-not-ready", message: "Confirm recovery of one stopped experimental suspension.")
+        }
+        guard !record.restoreAttempted else {
+            throw VMFailure(code: "restore-already-attempted", message: "A previous restore was not resolved. Recheck the running guest, or obtain manual recovery; another boot could apply stale memory to a changed filesystem.")
+        }
+        let storage = ManagerStorage(applicationSupport: applicationSupport)
+        try storage.withLock(profile) {
+            let digest = try ExperimentalSuspendStore.digest(profile)
+            let identity = try storage.suspensionIdentity(profile)
+            let stamp = try storage.suspensionStamp(profile)
+            guard record.runtimeDigest == RuntimePin.lockSHA256, record.profileDigest == digest,
+                  record.diskIdentity == identity, record.diskStamp == nil || record.diskStamp == stamp else {
+                throw VMFailure(code: "suspension-changed", message: "The runtime, configuration or saved-session disk changed. Automatic restore was refused.")
+            }
+        }
+        record.stage = .restoring; record.restoreAttempted = true
+        try ExperimentalSuspendStore(root: storage.root(for: profile)).save(record); suspensions[id] = record
+        restoringSuspension.insert(id); defer { restoringSuspension.remove(id) }
+        do { try start(id); sessions[id]?.restoreVerificationTimeout = verificationTimeout }
+        catch { record.stage = .recoveryRequired; record.restoreAttempted = false; persistSuspension(record); throw error }
+    }
+    public func retryExperimentalRestoreVerification(_ id: UUID) throws {
+        guard let session = sessions[id], states[id] == .running, !session.shutdownRequested, !session.forceRequested,
+              var record = suspensions[id], record.restoreAttempted, record.stage == .recoveryRequired else {
+            throw VMFailure(code: "restore-check-unavailable", message: "A running unresolved restore is required for a read-only recheck.")
+        }
+        record.stage = .restoring; persistSuspension(record)
+        sessions[id]?.powerOperationTask?.cancel(); beginRestoreVerification(id)
+    }
+    private func beginRestoreVerification(_ id: UUID) {
+        guard let hibernation, let session = sessions[id], let record = suspensions[id], record.stage == .restoring,
+              let profile = profiles.first(where: { $0.id == id }) else { return }
+        let request = VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id)
+        let deadline = ContinuousClock.now.advanced(by: session.restoreVerificationTimeout)
+        sessions[id]?.powerOperationTask = Task { [weak self] in
+            while ContinuousClock.now < deadline {
+                if Task.isCancelled { return }
+                if let result = try? await hibernation.verifyRestore(request, user: record.user, origin: record.originSession, proof: record.proof) {
+                    await self?.receiveRestore(result, vmID: id, sessionID: session.id); return
+                }
+                do { try await Task.sleep(until: min(deadline, ContinuousClock.now.advanced(by: .seconds(2))), clock: .continuous) } catch { return }
+            }
+            await self?.suspensionTimedOut(id, sessionID: session.id)
+        }
+    }
+    private func receiveRestore(_ result: GuestRestoreResult, vmID id: UUID, sessionID: UUID) {
+        guard let session = sessions[id], session.id == sessionID, !session.shutdownRequested, !session.forceRequested,
+              states[id] == .running, var record = suspensions[id] else { return }
+        switch result {
+        case .restored:
+            do {
+                try ExperimentalSuspendStore(root: session.root).remove(record); suspensions[id] = nil; unsafeSuspensions.remove(id)
+                notices[id] = "Experimental memory restoration verified. Desktop, devices and fresh SSH readiness still require checks."
+                if case .ready(let user, _) = sshStates[id] { beginPowerProbe(id, user: user) }
+            } catch { unsafeSuspensions.insert(id) }
+        case .coldBoot:
+            record.stage = .coldBootDetected; persistSuspension(record)
+            notices[id] = "The guest cold-booted; its previous memory/session was not restored. Have a guest administrator clear any stale resume image, then acknowledge this running cold boot before returning to normal management."
+        }
+    }
+    public func acceptExperimentalColdBoot(_ id: UUID, confirmed: Bool, guestImageCleared: Bool = false) throws {
+        guard confirmed, guestImageCleared, let record = suspensions[id], record.stage == .coldBootDetected, let session = sessions[id],
+              states[id] == .running, !session.shutdownRequested, !session.forceRequested else {
+            throw VMFailure(code: "recovery-not-verified", message: "A running, verified cold boot and explicit confirmation that a guest administrator cleared any stale resume image are required before releasing saved-session protection.")
+        }
+        try ExperimentalSuspendStore(root: session.root).remove(record); suspensions[id] = nil; unsafeSuspensions.remove(id)
+        notices[id] = "Cold boot acknowledged. The previous session was not restored."
+        if case .ready(let user, _) = sshStates[id] { beginPowerProbe(id, user: user) }
     }
 }

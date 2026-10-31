@@ -37,3 +37,7 @@ Shared folders, USB, camera, authentication bridges, general port-forward editin
 [CLI reference](CLI.md) · [Factory image cache](FactoryCache.md) · [Guest Defaults details](UnattendedDefaults.md) · [Managed SSH](ManagedSSH.md) · [Validation record](Validation.md)
 
 This is a project of [reactive.org enterprises](https://www.reactive.org/). Omarchy is a pending trademark of the [Omacom Foundation](https://omarchy.org/foundation/).
+
+[Pause and resume](PauseResume.md) explains manual execution control, host sleep/wake and shutdown.
+
+[Suspend-to-disk investigation](Suspend.md) records the clarified RAM-release requirement, pinned graphics blocker and proposed disposable hibernation POC.

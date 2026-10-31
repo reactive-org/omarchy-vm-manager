@@ -10,13 +10,14 @@ public struct SSHOptions: Codable, Equatable, Sendable {
 }
 
 public enum SSHReadiness: Equatable, Sendable {
-    case disabled, stopped, provisioning, waitingForOwner, connecting
+    case disabled, stopped, paused, provisioning, waitingForOwner, connecting
     case ready(user: String, command: String)
     case failed(String)
     public var label: String {
         switch self {
         case .disabled: "Off"
         case .stopped: "Available on next launch"
+        case .paused: "Guest execution paused"
         case .provisioning: "Preparing SSH"
         case .waitingForOwner: "Waiting for guest account setup"
         case .connecting: "Checking SSH connection"

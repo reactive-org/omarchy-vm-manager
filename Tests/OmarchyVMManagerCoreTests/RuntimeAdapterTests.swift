@@ -54,6 +54,38 @@ struct RuntimeAdapterTests {
         #expect(!first.isRunning && !second.isRunning)
     }
 
+    @Test("real SDK sends Pause and Resume through the helper command pipe")
+    func executionCommands() async throws {
+        let fixture = try stub(#"""
+        IFS= read -r configuration
+        printf '%s\n' '{"version":1,"event":"ready"}'
+        for expected in pause resume shutdown; do
+          IFS= read -r command
+          case "$command" in
+            *\"command\":\"$expected\"*) ;;
+            *) exit 2 ;;
+          esac
+          case "$expected" in
+            pause) printf '%s\n' '{"version":1,"event":"execution-state","command":"pause","state":"paused"}' ;;
+            resume) printf '%s\n' '{"version":1,"event":"execution-state","command":"resume","state":"running"}' ;;
+            shutdown) printf '%s\n' '{"version":1,"event":"stopping"}' '{"version":1,"event":"exited","status":0}' ;;
+          esac
+        done
+        """#)
+        defer { fixture.cleanup() }
+        let recorder = EventRecorder()
+        let handle = try TryOmarchyRuntime(protocolTestKit: fixture.kit).start(request(fixture), onEvent: recorder.record)
+        #expect(await eventually { recorder.all.contains(.ready) })
+        try handle.pause()
+        #expect(await eventually { recorder.all.contains(.executionState(.init(state: .paused, command: .pause))) })
+        #expect(handle.isRunning)
+        try handle.resume()
+        #expect(await eventually { recorder.all.contains(.executionState(.init(state: .running, command: .resume))) })
+        handle.shutDown()
+        #expect(await eventually { recorder.all.last == .exited(status: 0) })
+        #expect(!handle.isRunning)
+    }
+
     @Test("malformed events produce an error and terminate the stub")
     func malformed() async throws {
         let fixture = try stub("IFS= read -r configuration\nprintf '%s\\n' 'not-json'\nIFS= read -r command")

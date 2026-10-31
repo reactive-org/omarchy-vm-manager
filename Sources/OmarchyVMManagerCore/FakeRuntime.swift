@@ -4,12 +4,18 @@ import TryOmarchyKitClient
 public final class FakeRuntimeHandle: VMRuntimeHandle, @unchecked Sendable {
     private let lock = NSLock()
     private var running = true
+    private var pauses = 0
+    private var resumes = 0
     private var shutdowns = 0
     private var terminations = 0
     private let onEvent: @Sendable (VMRuntimeEvent) -> Void
     public init(onEvent: @escaping @Sendable (VMRuntimeEvent) -> Void) { self.onEvent = onEvent }
     public var isRunning: Bool { lock.withLock { running } }
     public var recentStandardError: String { "" }
+    public var pauseCount: Int { lock.withLock { pauses } }
+    public var resumeCount: Int { lock.withLock { resumes } }
+    public func pause() throws { lock.withLock { pauses += 1 } }
+    public func resume() throws { lock.withLock { resumes += 1 } }
     public var shutdownCount: Int { lock.withLock { shutdowns } }
     public var terminationCount: Int { lock.withLock { terminations } }
     public func shutDown() { lock.withLock { shutdowns += 1 } }

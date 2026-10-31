@@ -25,8 +25,8 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     }
 }
 
-public enum GuestCommand: String, Codable, Sendable { case list, get, create, update, delete, start, stop, restart, wait }
-public enum GuestWaitCondition: String, Codable, Sendable { case running, ssh, stopped }
+public enum GuestCommand: String, Codable, Sendable { case list, get, create, update, delete, start, stop, restart, pause, resume, wait }
+public enum GuestWaitCondition: String, Codable, Sendable { case running, ssh, stopped, paused }
 
 public struct GuestCommandRequest: Codable, Sendable {
     public var version = 1
@@ -107,6 +107,11 @@ public struct GuestCommandRecord: Codable, Sendable {
     public let percent: Int?
     public let ssh: GuestSSHRecord
     public let network: GuestNetworkRecord
+    public let hibernation: GuestHibernationCapability?
+    public let experimentalRestoreAvailable: Bool
+    public let experimentalSuspendAvailable: Bool
+    public let suspension: ExperimentalSuspension.Stage?
+    public let suspensionMetadataUnsafe: Bool
     public let error: GuestCommandFailure?
 }
 public struct GuestCommandResponse: Codable, Sendable {
@@ -158,6 +163,12 @@ public actor GuestCommandService {
                     try await manager.delete(target!, confirmed: true, expectedIdentity: review?.expectedIdentity)
                     cachedConnections[target!] = nil
                     return GuestCommandResponse(requestID: request.requestID, ok: true)
+                case .pause:
+                    cachedConnections[target!] = nil
+                    try await manager.pause(target!, timeout: .seconds(min(10, request.timeoutSeconds)))
+                case .resume:
+                    cachedConnections[target!] = nil
+                    try await manager.resume(target!, timeout: .seconds(min(10, request.timeoutSeconds)))
                 case .start: try await manager.start(target!)
                 case .stop:
                     if request.force { try await manager.forceStop(target!, confirmed: true) }
@@ -207,7 +218,9 @@ public actor GuestCommandService {
                 guard value.state != .stopping else { throw commandFailure("guest-stopping", "The guest is stopping; wait for its exit before starting it again.") }
                 if let failure = value.lastFailure { throw failure }
                 if condition == .running, value.state == .running { return }
+                if condition == .paused, value.state == .paused { return }
                 if condition == .ssh {
+                    guard value.state != .paused, value.state != .hostSleeping, value.state != .pausing, value.state != .resuming, value.state != .executionUnknown else { throw commandFailure("guest-paused", "Resume the guest before waiting for SSH.") }
                     if case .ready = value.sshReadiness { return }
                     if case .failed(let message) = value.sshReadiness { throw commandFailure("ssh-unavailable", message) }
                 }
@@ -218,16 +231,19 @@ public actor GuestCommandService {
     }
     private func refreshConnection(_ id: UUID) async throws {
         let value = try await snapshot(id)
-        guard let session = value.sessionID, case .ready(let user, _) = value.sshReadiness else { return }
+        guard let session = value.sessionID, value.state == .running, case .ready(let user, _) = value.sshReadiness else { cachedConnections[id] = nil; return }
         let request = VMStartRequest(profile: value.profile, storageRoot: ManagerStorage(applicationSupport: support).root(for: value.profile), sessionID: session)
         cachedConnections[id] = nil
         let info = try await connections.check(request, user: user)
         guard info.vmID == id, info.sessionID == session, info.user == user, info.addresses.count <= 64, info.addresses.allSatisfy(SSHGuestConnectionProbe.validAddress),
-              try await snapshot(id).sessionID == session else { throw commandFailure("session-changed", "The guest session changed while checking its connection.") }
+              try await snapshot(id).sessionID == session, try await snapshot(id).state == .running else { throw commandFailure("session-changed", "The guest session changed while checking its connection.") }
         cachedConnections[id] = info
     }
     private func record(_ value: VMSnapshot) -> GuestCommandRecord {
-        let connection = cachedConnections[value.id].flatMap { $0.sessionID == value.sessionID ? $0 : nil }
+        let ready: Bool
+        if case .ready = value.sshReadiness { ready = value.state == .running } else { ready = false }
+        if !ready { cachedConnections[value.id] = nil }
+        let connection = ready ? cachedConnections[value.id].flatMap { $0.sessionID == value.sessionID ? $0 : nil } : nil
         let state: String
         var phase: String?, percent: Int?
         switch value.state {
@@ -236,6 +252,11 @@ public actor GuestCommandService {
         case .downloading(let p, let n): state = "downloading"; phase = p.rawValue; percent = n
         case .starting(let p, let n): state = "starting"; phase = p.rawValue; percent = n
         case .running: state = "running"
+        case .pausing: state = "pausing"
+        case .paused: state = "paused"
+        case .resuming: state = "resuming"
+        case .hostSleeping: state = "host-sleeping"
+        case .executionUnknown: state = "execution-unknown"
         case .stopping: state = "stopping"
         case .deleting: state = "deleting"
         case .failed: state = "failed"
@@ -245,6 +266,7 @@ public actor GuestCommandService {
         switch value.sshReadiness {
         case .disabled: sshState = "disabled"
         case .stopped: sshState = "stopped"
+        case .paused: sshState = "paused"
         case .provisioning: sshState = "provisioning"
         case .waitingForOwner: sshState = "waiting-owner"
         case .connecting: sshState = "connecting"
@@ -258,6 +280,8 @@ public actor GuestCommandService {
             sessionID: value.sessionID, phase: phase, percent: percent,
             ssh: GuestSSHRecord(enabled: value.profile.ssh != nil, status: sshState, host: value.profile.ssh == nil ? nil : "127.0.0.1", port: value.profile.ssh?.hostPort, user: user, command: command),
             network: GuestNetworkRecord(mode: "nat", guestIPs: connection?.addresses ?? [], hostAddress: "127.0.0.1", addressesVerified: connection != nil),
+            hibernation: value.hibernation, experimentalRestoreAvailable: value.canRestoreExperimentalSuspension, experimentalSuspendAvailable: value.canAttemptExperimentalSuspend,
+            suspension: value.suspension?.stage, suspensionMetadataUnsafe: value.suspensionMetadataUnsafe,
             error: value.lastFailure.map { GuestCommandFailure(code: $0.code, message: $0.message) })
     }
 }

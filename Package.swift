@@ -10,7 +10,7 @@ let package = Package(
         .library(name: "OmarchyVMManagerCore", targets: ["OmarchyVMManagerCore"]),
         .executable(name: "OmarchyVMStorageHelper", targets: ["OmarchyVMStorageHelper"])
     ],
-    dependencies: [.package(path: "Vendor/try-omarchy/macos")],
+    dependencies: [.package(path: ".build/runtime-source/macos")],
     targets: [
         .target(name: "OmarchyVMManagerCore", dependencies: [
             .product(name: "TryOmarchyKitClient", package: "macos")

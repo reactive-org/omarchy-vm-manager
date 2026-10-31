@@ -49,6 +49,12 @@ Choose **Assign To → None** to remove the assignment. The manager's **Spaces**
 
 macOS manages this assignment. Persistence across guest restarts remains a documented verification item for the current private build.
 
+## Pause and resume a guest
+
+Open the running guest’s ellipsis menu and choose **Pause**. Wait for **Paused**; its main action changes to **Resume**. Pausing freezes guest execution while keeping its memory and resources reserved. It does not save a suspend image or free RAM. SSH and guest applications cannot respond while paused.
+
+A manual pause survives Mac sleep/wake. **Resume** continues that guest; another guest can keep running independently. Use the paused guest’s ellipsis menu → **Shut Down** to resume it only for graceful shutdown. Configuration and deletion require **Stopped**. See [Pause/Resume behavior](PauseResume.md).
+
 ## Shut down and remove a guest
 
 Save guest work, click **Shut Down**, and wait for **Stopped**. The ellipsis menu's **Force Stop…** requests immediate power-off and asks for confirmation.
@@ -58,3 +64,7 @@ To remove a stopped guest, choose **Delete VM…** at the bottom of its detail p
 A running guest cannot be deleted. The two retained POC profiles are also protected. Trashed files can be recovered through the Mac's normal Trash workflow; automatic restoration into the manager is not implemented.
 
 Quitting the manager with guests running follows its coordinated shutdown flow. Exiting the short-lived CLI leaves guests running under the manager.
+
+## Experimental suspend-to-disk
+
+The guest Home page shows kernel capability and any missing hibernation prerequisites. The official factory kernel lacks hibernation, so **Suspend…** is disabled. A prepared guest can opt into an experimental attempt after confirming the known failure risks. Suspended disks use **Restore / Recover…**, with ordinary launch/configuration/deletion blocked until recovery is verified. A detected cold boot requires a guest administrator to clear any stale resume image before **Accept Cold Boot…**; it is not a successful memory restore. Finish recovery while that guest is running. A stopped unresolved restore needs manual recovery. See [requirements, recovery and current failures](Suspend.md).

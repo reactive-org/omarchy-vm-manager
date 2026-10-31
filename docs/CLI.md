@@ -6,6 +6,8 @@ Build with `make app verify-app`. Run `./bin/omarchy-vm` from this repository, o
 ./bin/omarchy-vm list
 ./bin/omarchy-vm create dev --memory 4GiB --cpus 4 --disk 64GiB --start --wait ssh --timeout 1800
 ./bin/omarchy-vm get dev
+./bin/omarchy-vm pause dev
+./bin/omarchy-vm resume dev
 ./bin/omarchy-vm stop dev --wait
 ./bin/omarchy-vm update dev --memory 5GiB --cpus 6 --disk 128GiB
 ./bin/omarchy-vm start dev --wait ssh
@@ -34,7 +36,7 @@ SSH and owner setup are creation-only. New guests inherit saved Guest Defaults a
 
 ## Readiness and SSH
 
-`start` and `create --start` return after launch admission unless a wait is requested. `--wait running` means the upstream runtime reached its normal ready boundary; it does not prove an owner account or SSH is usable. `--wait ssh` waits for an authenticated pinned connection, then verifies the current owner/VM/session again before returning literal guest addresses. Use `wait ID --for ssh|running|stopped` to continue observing an existing session. Stop accepts `--wait` for matching terminal exit; `--force` explicitly requests forced termination. Restart waits for the old session's matching exit before starting another.
+`start` and `create --start` return after launch admission unless a wait is requested. `--wait running` means the upstream runtime reached its normal ready boundary; it does not prove an owner account or SSH is usable. `--wait ssh` waits for an authenticated pinned connection, then verifies the current owner/VM/session again before returning literal guest addresses. Use `wait ID --for ssh|running|paused|stopped` to continue observing an existing session. Stop accepts `--wait` for matching terminal exit; `--force` explicitly requests forced termination. Restart waits for the old session's matching exit before starting another.
 
 The default wait limit is 600 seconds, configurable from 1 to 3600. The same deadline applies across restart's stop/start waits. Existing manual-setup guests need their owner wizard completed before SSH can become ready. Closing or restarting the GUI manager still follows its normal coordinated shutdown; the CLI is a client of that long-running app. If needed, the CLI opens the bundled manager hidden in the background.
 
@@ -44,7 +46,17 @@ Connection details distinguish the two addresses:
 {"ssh":{"enabled":true,"status":"ready","host":"127.0.0.1","port":2224,"user":"owner","command":"ssh ..."},"network":{"mode":"nat","guestIPs":["10.0.2.15"],"hostAddress":"127.0.0.1","addressesVerified":true}}
 ```
 
-Use `ssh.command` for the generated client configuration, independent managed key and pinned server identity. The private guest IP is informational and may be shared by different NAT guests. `get` refreshes addresses when SSH is ready; list may include the last checked addresses for the same active session. Stopped or replaced sessions have no verified address cache. Passwords, private keys and Keychain references are excluded from replies.
+Use `ssh.command` for the generated client configuration, independent managed key and pinned server identity. The private guest IP is informational and may be shared by different NAT guests. `get` refreshes addresses when SSH is ready; list may include the last checked addresses for the same active session. Paused, stopped or replaced sessions do not report verified addresses. Passwords, private keys and Keychain references are excluded from replies.
+
+## Pause and resume
+
+This is the uninstalled in-memory development candidate. It retains RAM; see [Suspend](Suspend.md) for the clarified RAM-releasing requirement and current runtime blocker.
+
+`pause ID` and `resume ID` wait for a matching helper acknowledgement, with a limit of ten seconds (or a shorter `--timeout`). They do not need `--wait`. `wait ID --for paused` observes a manual pause. Paused replies have `state: "paused"`, `active: true` and SSH status `"paused"`; connection addresses are withheld until running again. `wait --for ssh` fails with `guest-paused` while execution is paused or uncertain.
+
+A pause keeps the process, RAM, disk lock and localhost port. Active edit/delete guards still apply. Mac wake does not resume a manual pause. Stop, restart and application Quit first recover an owned pause to let Linux shut down normally. Force Stop terminates it. See [Pause/Resume](PauseResume.md).
+
+If an execution acknowledgement is lost, the reply fails with `execution-timeout` and the guest stays active with `state: "execution-unknown"`. The command is not repeated automatically. Another Pause/Resume is refused until the late acknowledgement arrives; stop remains available. A disconnected CLI does not undo a command already sent.
 
 ## Local control and deletion
 
@@ -69,3 +81,9 @@ A real one-second wait for stopped returned exit 124 with `wait-timeout` while l
 Abrupt manager/helper crash recovery and unsupported future guest-image behavior retain their earlier documented limits. This CLI milestone does not add general port forwarding or migrate existing SSH/owner enrollment.
 
 New guests share the factory image in `~/Downloads/Omarchy VM Manager/Factory Images/`. The current pinned image is retained; obsolete downloads are pruned after seven days without use. Deleting a guest does not discard the cache. See [factory cache](FactoryCache.md).
+
+## Experimental hibernation status
+
+Guest replies additionally expose `hibernation` when the current authenticated guest check is available, `experimentalSuspendAvailable`, `experimentalRestoreAvailable`, `suspension` and `suspensionMetadataUnsafe`. Kernel support is `supported`, `unsupported` or `unknown`; readiness also requires disk sleep state, persistent swap, resume setup and non-interactive guest permission. No marker token or boot identity is returned. Stopped or unverified capability never enables an attempt.
+
+Experimental suspend/restore is an opt-in **UI** workflow. Ordinary CLI `start`, `restart`, update and delete refuse a protected saved-session disk. Use **Restore / Recover…** in the manager; a verified cold boot requires administrator cleanup of any stale resume image and explicit acknowledgement before protection is released. An unresolved restore cannot automatically boot again. CLI `resume` continues to mean in-memory resume. See [Suspend](Suspend.md).
