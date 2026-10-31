@@ -133,6 +133,10 @@ public struct POCLaunchAdmission: Sendable {
         try signature.run()
         signature.waitUntilExit()
         guard signature.terminationStatus == 0 else { throw VMFailure(code: "kit-signature-invalid", message: "The embedded kit signature is invalid.") }
+        guard request.profile.cpus >= POCHostPolicy.minimumVMCPUs,
+              request.profile.cpus <= ProcessInfo.processInfo.processorCount else {
+            throw VMFailure(code: "unsupported-cpu-count", message: "The pinned runtime requires 4 through the host CPU count per VM.")
+        }
         let required = TryOmarchyStorage.requiredFreeBytes(at: request.storageRoot) + 2_147_483_648
         guard let free = TryOmarchyStorage.freeBytes(at: request.storageRoot), free >= required else {
             throw VMFailure(code: "not-enough-space", message: "The VM requires \(required) free bytes including the manager margin.")
@@ -143,6 +147,7 @@ public struct POCLaunchAdmission: Sendable {
 }
 
 public enum POCHostPolicy {
+    public static let minimumVMCPUs = 4
     public static func validate(memoryMiB: Int, cpus: Int, physicalMemoryMiB: Int, logicalCPUs: Int) throws {
         let reserve = max(4096, physicalMemoryMiB / 4)
         guard memoryMiB <= physicalMemoryMiB - reserve else {

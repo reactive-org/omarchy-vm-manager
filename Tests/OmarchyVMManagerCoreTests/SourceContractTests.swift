@@ -44,3 +44,12 @@ func committedRuntimeProvenance() throws {
     let patch = try Data(contentsOf: repository.appendingPathComponent("Patches/0001-focus-aware-clipboard.patch"))
     #expect(KitVerifier.sha256(patch) == lock.patchSHA256)
 }
+
+@Test("POC CPU defaults satisfy the pinned shell's stricter minimum")
+func runtimeCPUMinimum() throws {
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let source = try String(contentsOf: repository.appendingPathComponent("Vendor/try-omarchy/macos/run-qemu-gpu.sh"), encoding: .utf8)
+    #expect(source.contains("vcpu_count >= 4 && vcpu_count <= host_cpu_count"))
+    #expect(POCHostPolicy.minimumVMCPUs == 4)
+    #expect(POCProfiles.all.allSatisfy { $0.cpus >= POCHostPolicy.minimumVMCPUs })
+}

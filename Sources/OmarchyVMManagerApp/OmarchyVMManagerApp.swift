@@ -99,7 +99,7 @@ final class AppModel: ObservableObject {
             "vms": snapshots.map { snapshot -> [String: Any] in
                 var row: [String: Any] = ["id": snapshot.id.uuidString, "name": snapshot.profile.name,
                     "state": snapshot.state.label, "root": POCProfiles.root(for: snapshot.profile, applicationSupport: support).path,
-                    "active": snapshot.sessionID != nil]
+                    "active": snapshot.sessionID != nil, "memoryMiB": snapshot.profile.memoryMiB, "cpus": snapshot.profile.cpus]
                 row["sessionID"] = snapshot.sessionID?.uuidString
                 row["error"] = snapshot.lastFailure?.message
                 row["stderr"] = snapshot.lastFailure?.diagnostics
@@ -203,7 +203,7 @@ private struct ManagerView: View {
                     Label("Private POC", systemImage: "hammer").padding(10).background(.quaternary, in: Capsule())
                 }
                 GroupBox {
-                    Label(model.approved ? "Disposable POC run approved · NAT · 4 GiB / 2 CPUs per VM" : "VM launch disabled · open with --poc-approved after consent",
+                    Label(model.approved ? "Disposable POC run approved · NAT · 4 GiB / 4 CPUs per VM" : "VM launch disabled · open with --poc-approved after consent",
                           systemImage: model.approved ? "checkmark.shield" : "pause.circle")
                         .frame(maxWidth: .infinity, alignment: .leading).padding(8)
                 }
@@ -213,7 +213,7 @@ private struct ManagerView: View {
                             Image(systemName: "desktopcomputer").font(.title)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(item.profile.name).font(.headline)
-                                Text("4 GiB · 2 CPUs · Clipboard enabled").font(.caption).foregroundStyle(.secondary)
+                                Text("\(item.profile.memoryMiB / 1024) GiB · \(item.profile.cpus) CPUs · Clipboard enabled").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Text(item.state.label).foregroundStyle(.secondary)

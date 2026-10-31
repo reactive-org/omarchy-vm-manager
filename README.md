@@ -34,7 +34,7 @@ The app verifies the compiled lock pin, manifest, helper, protocol and every emb
 
 ## Prepared POC
 
-Two in-memory profiles have distinct stable UUIDs, names, 4096 MiB RAM and two CPUs. Their future paths derive from `~/Library/Application Support/Omarchy VM Manager/VMs/<UUID>`. Roots are created only on an approved start, and an existing root must pass ownership and settings checks. The intended bridge list is explicitly clipboard, battery and timezone, with shared/NAT networking.
+Two in-memory profiles have distinct stable UUIDs, names, 4096 MiB RAM and four CPUs. Their future paths derive from `~/Library/Application Support/Omarchy VM Manager/VMs/<UUID>`. Roots are created only on an approved start, and an existing root must pass ownership and settings checks. The intended bridge list is explicitly clipboard, battery and timezone, with shared/NAT networking.
 
 After approval, start the private app with:
 
@@ -42,7 +42,7 @@ After approval, start the private app with:
 open -n "dist/Omarchy VM Manager.app" --args --poc-approved
 ```
 
-Add `--poc-start-a` to start A automatically. Start B after A is ready and its first-boot desktop is usable. The manager refuses overlapping cold starts, reserves the configured aggregate memory/CPUs through exit, checks free space and exact kit provenance/signatures at every start, and initializes private UUID roots with both ownership markers and explicit null inherited settings. The POC refuses changed or unknown settings instead of decoding arbitrary user configurations: this enforces NAT, no forwards, no shared folder, no USB, 4 GiB and two CPUs. Full effective-settings/resource/port policies belong to Phase 3.
+Add `--poc-start-a` to start A automatically. Start B after A is ready and its first-boot desktop is usable. The manager refuses overlapping cold starts, reserves the configured aggregate memory/CPUs through exit, checks free space and exact kit provenance/signatures at every start, and initializes private UUID roots with both ownership markers and explicit null inherited settings. The POC refuses changed or unknown settings instead of decoding arbitrary user configurations: this enforces NAT, no forwards, no shared folder, no USB, 4 GiB and four CPUs. Full effective-settings/resource/port policies belong to Phase 3.
 
 The actor and production adapter are testable with fake runtimes and executable protocol stubs. Callbacks enter one ordered event stream; session IDs reject stale events. Errors retain handles and allocations until terminal exit. The production adapter requires explicit debug POC admission to launch. The app offers independent shutdown, confirmed force stop, a bounded event log, live state/progress and quit coordination with a pre-shutdown Cancel action. POC evidence is written privately to the manager’s `Logs/POC-status.json`. The storage helper is a refusal-only executable until Phase 2 implements the locked Trash transaction. Registry persistence, general settings/resource/port admission and user management actions are later phases.
 

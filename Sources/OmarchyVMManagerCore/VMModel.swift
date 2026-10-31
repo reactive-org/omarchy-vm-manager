@@ -8,7 +8,7 @@ public struct VMProfile: Identifiable, Equatable, Sendable {
     public var cpus: Int
     public var clipboardEnabled: Bool
 
-    public init(id: UUID, name: String, memoryMiB: Int = 4096, cpus: Int = 2,
+    public init(id: UUID, name: String, memoryMiB: Int = 4096, cpus: Int = 4,
                 clipboardEnabled: Bool = true) {
         self.id = id
         self.name = name

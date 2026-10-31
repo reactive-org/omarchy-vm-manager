@@ -8,7 +8,7 @@ Obtain explicit approval before enabling the POC launch path, downloading the fa
 
 The debug app uses `--poc-approved` to enable the fixed profiles. Admission verifies the compiled provenance lock, full kit file inventory, embedded signature and host preflight before creating a root. Roots use private modes, both ownership markers and seven explicit null inherited settings. Existing changed/unknown settings are refused without writes. The actor enforces aggregate memory/CPU limits and serializes cold starts until `.ready`. Kit storage helpers supply free-space requirements plus a 2 GiB margin. Handles and allocations stay retained until `.exited`. No arbitrary external root or inherited global setting can be selected by this POC path.
 
-Both proposed profiles use 4096 MiB, two CPUs, NAT, no forwards/shared folders/USB, no authentication/camera, and explicit `[clipboard, battery, timezone]`. At least 34,294,967,296 bytes free are required for two new roots plus two 2 GiB margins; recheck immediately before the approved run. The recorded host has sufficient nominal memory/storage, but that is not launch admission.
+Both proposed profiles use 4096 MiB, four CPUs, NAT, no forwards/shared folders/USB, no authentication/camera, and explicit `[clipboard, battery, timezone]`. At least 34,294,967,296 bytes free are required for two new roots plus two 2 GiB margins; recheck immediately before the approved run. The recorded host has sufficient nominal memory/storage, but that is not launch admission.
 
 ## Evidence to record
 
