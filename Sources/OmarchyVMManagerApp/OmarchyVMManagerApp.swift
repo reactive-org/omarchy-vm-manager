@@ -10,9 +10,24 @@ import TryOmarchyKitClient
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var model: AppModel?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DistributedNotificationCenter.default().addObserver(self, selector: #selector(activationRequested(_:)),
+            name: SingleInstanceApplication.activationNotification, object: nil)
         if let url = Bundle.main.url(forResource: "OmarchyVMManager", withExtension: "icns"), let icon = NSImage(contentsOf: url) {
             NSApplication.shared.applicationIconImage = icon
         }
+    }
+    @objc private func activationRequested(_ notification: Notification) { showManagerWindow() }
+    private func showManagerWindow() {
+        NSApplication.shared.unhide(nil)
+        for window in NSApplication.shared.windows where window.canBecomeMain && !(window is NSPanel) {
+            window.deminiaturize(nil)
+            window.makeKeyAndOrderFront(nil)
+        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showManagerWindow()
+        return true
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
@@ -26,7 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct OmarchyVMManagerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var model = AppModel()
+    @StateObject private var model: AppModel
+    private let instanceLock: ManagerInstanceLock
 
     init() {
         if CommandLine.arguments.contains("--diagnostics-json") {
@@ -45,10 +61,12 @@ struct OmarchyVMManagerApp: App {
                 FileHandle.standardError.write(Data("Kit diagnostics failed: \(error.localizedDescription)\n".utf8)); exit(1)
             }
         }
+        instanceLock = SingleInstanceApplication.acquire()
+        _model = StateObject(wrappedValue: AppModel())
     }
 
     var body: some Scene {
-        WindowGroup("Omarchy VM Manager") {
+        Window("Omarchy VM Manager", id: "manager") {
             if AppModel.layoutPreview { LifecycleLayoutPreview() }
             else { ManagerView(model: model).task { delegate.model = model; await model.observe() } }
         }

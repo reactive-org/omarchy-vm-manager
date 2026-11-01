@@ -10,6 +10,7 @@
     <key>CFBundleShortVersionString</key><string>0.9.2</string>
     <key>CFBundleVersion</key><string>15</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>LSMultipleInstancesProhibited</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Allow microphone audio in your Omarchy virtual machines.</string>
 </dict></plist>
