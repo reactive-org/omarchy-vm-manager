@@ -22,11 +22,33 @@ from build_patched_kit import inventory
 from fetch_runtime_kit import archive_manifest, verify, MAX_ARCHIVE_BYTES
 from package_prerelease import validate_tag
 from upstream_source import prepare
+from keychain_profile import decode_profile, profile_entitlements, verify_profile_bytes
 
 REQUIRED_SECRETS = ("MACOS_CERTIFICATE_P12_BASE64", "MACOS_CERTIFICATE_PASSWORD",
                     "MACOS_SIGNING_IDENTITY", "APPLE_TEAM_ID", "APPLE_API_KEY_P8",
-                    "APPLE_API_KEY_ID", "APPLE_API_ISSUER_ID")
+                    "APPLE_API_KEY_ID", "APPLE_API_ISSUER_ID", "MACOS_KEYCHAIN_PROFILE_BASE64")
 REDACTIONS = []
+
+
+@contextmanager
+def provisioning_profile():
+    if os.environ.get("GITHUB_ACTIONS") != "true" or not os.environ.get("RUNNER_TEMP"):
+        raise RuntimeError("Provisioned signing is restricted to the authorized GitHub release job")
+    encoded = os.environ.get("MACOS_KEYCHAIN_PROFILE_BASE64", "")
+    if not encoded.strip():
+        raise ValueError("Missing GitHub secret: MACOS_KEYCHAIN_PROFILE_BASE64")
+    REDACTIONS.extend((encoded, encoded.strip()))
+    raw = base64.b64decode(re.sub(r"\s", "", encoded), validate=True)
+    verify_profile_bytes(raw)
+    with tempfile.TemporaryDirectory(prefix="omarchy-profile-", dir=os.environ["RUNNER_TEMP"]) as temp:
+        path = Path(temp) / "manager.provisionprofile"
+        path.write_bytes(raw)
+        path.chmod(0o600)
+        profile_entitlements(decode_profile(path), os.environ.get("APPLE_TEAM_ID", "").strip(), "dev.omarchy.vm-manager")
+        try:
+            yield path
+        finally:
+            print("Temporary provisioning profile cleaned up", flush=True)
 
 
 def redact(value):
@@ -271,7 +293,7 @@ def release():
     source = json.loads(source_bytes)
     work = ROOT / ".build/signed-release"
     work.mkdir(parents=True, exist_ok=True)
-    with credentials() as (profile, team, identity):
+    with provisioning_profile() as keychain_profile, credentials() as (profile, team, identity):
         lock, lock_path, folder = prepare_runtime(source, source_bytes, profile, team, identity, tag, work)
         pin = ROOT / "Sources/OmarchyVMManagerCore/RuntimePin.swift"
         signed_pin = ROOT / "Sources/OmarchyVMManagerCore/SignedBuildPin.swift"
@@ -287,7 +309,7 @@ def release():
             run("Compile optimized signed-prerelease executables", "make", "build-signed")
             run("Assemble and sign app inside out", "python3", ROOT / "Scripts/assemble_app.py", "--signed-prerelease",
                 "--preserve-runtime-signatures", "--runtime-lock", lock_path, "--runtime-directory", folder,
-                "--output-directory", ROOT / "dist/prerelease-staging")
+                "--output-directory", ROOT / "dist/prerelease-staging", "--keychain-profile", keychain_profile)
             app = ROOT / "dist/prerelease-staging/Omarchy VM Manager.app"
             run("Verify signed bundle without host/guest launch", ROOT / "Scripts/verify-app.sh", "--bundle-only", app, lock_path)
             submission_archive = work / "notary-app.zip"

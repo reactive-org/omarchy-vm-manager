@@ -182,6 +182,13 @@ final class AppModel: ObservableObject {
         } catch { defaultsError = error.localizedDescription; return false }
     }
 
+    func upgradeSavedGuestPassword() async -> Bool {
+        do {
+            try await manager.upgradeSavedGuestPassword()
+            defaultsError = nil; return true
+        } catch { defaultsError = error.localizedDescription; return false }
+    }
+
     func start(_ id: UUID) async {
         guard registryError == nil else { return }
         do { try await manager.start(id, launchIntent: .foreground) } catch { actionError = error.localizedDescription }

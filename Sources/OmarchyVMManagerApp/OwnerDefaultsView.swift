@@ -12,6 +12,8 @@ struct OwnerDefaultsView: View {
     @State private var saving = false
     @State private var error: String?
     @State private var saved = false
+    @State private var passwordUpgraded = false
+    private let protectedPasswordsAvailable = KeychainOwnerSecretStore.supportsProtectedStorage
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Guest Defaults").font(.largeTitle.bold())
@@ -28,7 +30,21 @@ struct OwnerDefaultsView: View {
                     TextField("Git email (optional)", text: $configuration.email)
                     SecureField(model.ownerDefaults?.credentialReference == nil ? "Password" : "New password (leave blank to keep saved)", text: $password)
                     SecureField("Confirm new password", text: $confirmation)
-                    Text("The password is saved in your login Keychain and supplied through a private temporary seed during first boot. It sets the guest owner and root passwords through Omarchy’s setup. SSH uses independent keys.").font(.caption).foregroundStyle(.secondary)
+                    Text("The password is protected in Keychain. Each new guest’s first setup asks once for Touch ID, with your Mac login password as fallback. Completed guests do not ask again. A private temporary seed sets the guest owner and root passwords; SSH uses independent keys.").font(.caption).foregroundStyle(.secondary)
+                    if !protectedPasswordsAvailable {
+                        Label("Touch ID password storage requires a signed, provisioned build. Your existing saved password is preserved.", systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if model.ownerDefaults?.credentialReference != nil {
+                        Button(passwordUpgraded ? "Touch ID protection ready" : "Upgrade Saved Password to Touch ID…") {
+                            error = nil; saving = true
+                            Task {
+                                passwordUpgraded = await model.upgradeSavedGuestPassword()
+                                if !passwordUpgraded { error = model.defaultsError }
+                                saving = false
+                            }
+                        }.disabled(saving || passwordUpgraded || !protectedPasswordsAvailable || model.registryError != nil)
+                        Text("For passwords saved by older versions, this one-time upgrade may request login-Keychain access. It preserves the original entry and pending guest references. Touch ID storage requires a provisioned app build.").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Section("System") {
                     TextField("Hostname prefix", text: $configuration.hostnamePrefix)
@@ -57,7 +73,7 @@ struct OwnerDefaultsView: View {
                     }
                     Text("Added to new SSH-enabled guests alongside the manager’s own per-guest key. Private keys are never imported.").font(.caption).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).fixedSize(horizontal: false, vertical: true)
+            }.formStyle(.grouped).fixedSize(horizontal: false, vertical: true).disabled(saving)
             if let error { Text(error).foregroundStyle(.red) }
             HStack {
                 if saved, configuration == model.ownerDefaults?.configuration, enabled == model.ownerDefaults?.enabled, publicKey == model.ownerDefaults?.sshPublicKey, password.isEmpty, confirmation.isEmpty { Label("Defaults saved", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
@@ -69,6 +85,7 @@ struct OwnerDefaultsView: View {
                     Task {
                         if await model.saveDefaults(enabled: enabled, configuration: configuration, password: password.isEmpty ? nil : Data(password.utf8), publicKey: publicKey) {
                             password = ""; confirmation = ""; saved = true
+                            passwordUpgraded = false
                         } else { error = model.defaultsError }
                         saving = false
                     }

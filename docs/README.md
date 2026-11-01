@@ -44,6 +44,8 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 
 [Guest display activation](GuestForegrounding.md) describes interactive launch intent, background automation and the remaining native macOS checks.
 
+[Touch ID feature preparation](TouchID.md) describes the new password-approval flow and the provisioning profile still required before it can be used.
+
 [Suspend-to-disk investigation](Suspend.md) records the clarified RAM-release requirement, pinned graphics blocker and proposed disposable hibernation POC.
 
 - [Reviewed custom factories](CustomFactories.md): prepared-bundle review, import, creation-time selection and validation limits.

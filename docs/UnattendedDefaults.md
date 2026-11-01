@@ -2,6 +2,8 @@
 
 Status: implemented and verified through an approved fresh first boot, saved owner/system settings, authenticated SSH and a normal shutdown/relaunch. The native form was visually reviewed, and the user confirmed a usable guest desktop without the owner wizard. The test guest has been stopped and moved to Trash at the user’s request; shortcut permission verification is recorded below.
 
+**Subsequent credential-policy change — 1 November 2026:** [Touch ID support](TouchID.md) is prepared for a future provisioned build, with one native authorization flow per new guest's first setup and Mac password fallback. The profile will be supplied later. The login-Keychain and native UI results below describe the historical implementation, not verification of this new biometric flow. Existing saved entries are preserved; upgrading them is an explicit future user action.
+
 ## Evidence and scope
 
 **VERIFIED — official documentation:** [Omarchy unattended installs](https://omarchy.org/manual/unattended-installs/) describes the ISO installer's `cidata` drive with configuration/credential files and optional SSH/Tailscale inputs. The manager uses Try Omarchy's already-installed factory image, not that ISO installer. Attaching an ISO seed alone would not skip this image's owner wizard.

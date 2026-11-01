@@ -52,6 +52,9 @@ def package():
         f"Development build {tag}, source `{commit}`, macOS 15+ on Apple Silicon.\n\n"
         "Download the app ZIP and matching SHA-256 checksum below. The app includes the CLI and storage helper. "
         + distribution +
+        ("Guest setup passwords use a provisioned private Keychain item with Touch ID and Mac login password fallback. "
+         "Use Guest Defaults to explicitly upgrade an older saved password before creating a new unattended guest. "
+         "Native biometric prompts and real guest behavior still require user validation.\n\n" if args.signed else "") +
         f"Embedded runtime source: `{lock['patchCommit']}`; runtime archive SHA-256: `{lock['kitSHA256']}`. " +
         ("The original development runtime is unchanged; this build uses separate signed-runtime provenance. "
          "Custom factories bound to the ad-hoc runtime remain preserved but need a bundle compatible with this signed runtime. "

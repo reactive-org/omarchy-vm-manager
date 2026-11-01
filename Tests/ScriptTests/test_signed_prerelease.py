@@ -1,4 +1,5 @@
 import hashlib
+import datetime
 import base64
 import json
 from pathlib import Path
@@ -49,6 +50,51 @@ class SignedProvenanceTests(unittest.TestCase):
         with patch.dict(signed_prerelease.os.environ, {}, clear=True), self.assertRaisesRegex(RuntimeError, "restricted"):
             with signed_prerelease.credentials():
                 self.fail("Signing credentials were enabled locally")
+
+    def test_profile_staging_is_ci_only_and_requires_a_secret(self):
+        for values, message in [({}, "restricted"), ({"GITHUB_ACTIONS": "true", "RUNNER_TEMP": "/tmp"}, "Missing GitHub secret")]:
+            with patch.dict(os.environ, values, clear=True), self.assertRaisesRegex((RuntimeError, ValueError), message):
+                with signed_prerelease.provisioning_profile():
+                    self.fail("Unconfigured profile staging succeeded")
+
+    def test_profile_staging_validates_scope_and_cleans_up_after_success_or_failure(self):
+        for outcome in ("success", "body-failure", "decode-failure", "wrong-team", "wrong-digest"):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temp:
+                values = dict(GITHUB_ACTIONS="true", RUNNER_TEMP=temp, APPLE_TEAM_ID=self.team,
+                              MACOS_KEYCHAIN_PROFILE_BASE64=base64.b64encode(b"synthetic-profile").decode())
+                profile = dict(TeamIdentifier=[self.team], Platform=["OSX"], ProvisionsAllDevices=True,
+                               DeveloperCertificates=[b"synthetic-certificate"],
+                               ExpirationDate=datetime.datetime.now() + datetime.timedelta(days=90),
+                               Entitlements={"com.apple.application-identifier": self.team + ".dev.omarchy.vm-manager",
+                                             "com.apple.developer.team-identifier": self.team})
+                def decode(path):
+                    self.assertEqual(path.read_bytes(), b"synthetic-profile")
+                    self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                    self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+                    if outcome == "decode-failure":
+                        raise RuntimeError("synthetic-decode-failure")
+                    if outcome == "wrong-team":
+                        return dict(profile, TeamIdentifier=["ZZZ1234567"])
+                    return profile
+                with patch.dict(os.environ, values, clear=True), patch.object(signed_prerelease, "REDACTIONS", []), patch.object(signed_prerelease, "decode_profile", side_effect=decode), patch.object(signed_prerelease, "verify_profile_bytes", side_effect=AssertionError("wrong digest") if outcome == "wrong-digest" else None):
+                    def exercise():
+                        with signed_prerelease.provisioning_profile() as path:
+                            self.assertTrue(path.is_file())
+                            if outcome == "body-failure":
+                                raise RuntimeError("synthetic-body-failure")
+                    if outcome == "success":
+                        exercise()
+                    else:
+                        with self.assertRaises((RuntimeError, AssertionError)):
+                            exercise()
+                self.assertEqual(list(Path(temp).iterdir()), [])
+
+    def test_profile_secret_is_scoped_to_tagged_signing_job(self):
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/test.yml").read_text()
+        unprivileged, release = workflow.split("  prerelease:\n", 1)
+        self.assertNotIn("MACOS_KEYCHAIN_PROFILE_BASE64", unprivileged)
+        self.assertIn("if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'", release)
+        self.assertEqual(release.count("${{ secrets.MACOS_KEYCHAIN_PROFILE_BASE64 }}"), 1)
 
     def test_errors_redact_credentials(self):
         with patch.object(signed_prerelease, "REDACTIONS", ["synthetic-private-key", "synthetic-password"]):

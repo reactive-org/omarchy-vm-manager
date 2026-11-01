@@ -1,44 +1,17 @@
 import Foundation
-import LocalAuthentication
-import Security
 
 public protocol OwnerSecretStoring: Sendable {
     func save(_ value: Data, reference: UUID) throws
     func read(reference: UUID) throws -> Data
     func remove(reference: UUID) throws
+    func requireProtectedCredential(reference: UUID) throws
+    func upgradeLegacyCredential(reference: UUID) throws
 }
 
-public struct KeychainOwnerSecretStore: OwnerSecretStoring {
-    public init() {}
-    private func query(_ reference: UUID) -> [String: Any] {
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        return [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: "dev.omarchy.vm-manager.unattended",
-         kSecAttrAccount as String: reference.uuidString,
-         kSecUseAuthenticationContext as String: context]
+public extension OwnerSecretStoring {
+    func upgradeLegacyCredential(reference: UUID) throws {
+        throw VMFailure(code: "owner-keychain-upgrade-unavailable", message: "This credential store does not support upgrading saved passwords.")
     }
-    public func save(_ value: Data, reference: UUID) throws {
-        try OwnerConfiguration.validatePassword(value)
-        var values = query(reference)
-        values[kSecValueData as String] = value
-        values[kSecAttrLabel as String] = "Omarchy VM Manager guest setup"
-        let result = SecItemAdd(values as CFDictionary, nil)
-        guard result == errSecSuccess else { throw unavailable() }
-    }
-    public func read(reference: UUID) throws -> Data {
-        var values = query(reference)
-        values[kSecReturnData as String] = true; values[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(values as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { throw unavailable() }
-        try OwnerConfiguration.validatePassword(data)
-        return data
-    }
-    public func remove(reference: UUID) throws {
-        let result = SecItemDelete(query(reference) as CFDictionary)
-        guard result == errSecSuccess || result == errSecItemNotFound else { throw unavailable() }
-    }
-    private func unavailable() -> VMFailure { VMFailure(code: "owner-keychain-unavailable", message: "The saved guest password is unavailable in Keychain. Unlock your login keychain or save a new password in Guest Defaults. No credential was replaced.") }
 }
 
 public final class OwnerDefaultsStore: @unchecked Sendable {
@@ -72,8 +45,22 @@ public final class OwnerDefaultsStore: @unchecked Sendable {
             if let revision {
                 guard try PrivateFiles.read(file) == revision else { throw OwnerConfiguration.invalid("Guest Defaults changed outside the manager. Reopen it before creating a guest.") }
             } else if PrivateFiles.exists(file) { throw OwnerConfiguration.invalid("Guest Defaults appeared outside the manager. Reopen it before creating a guest.") }
-            return try value.snapshot(for: id)
+            let snapshot = try value.snapshot(for: id)
+            if let snapshot { try vault.requireProtectedCredential(reference: snapshot.credentialReference) }
+            return snapshot
         }
+    }
+    public func upgradeSavedPassword() throws {
+        let reference = try access.withLock {
+            let value = try load()
+            if let revision {
+                guard try PrivateFiles.read(file) == revision else { throw OwnerConfiguration.invalid("Guest Defaults changed outside the manager. Reopen it before upgrading the saved password.") }
+            } else if PrivateFiles.exists(file) { throw OwnerConfiguration.invalid("Guest Defaults appeared outside the manager. Reopen it before upgrading the saved password.") }
+            guard let reference = value.credentialReference else { throw OwnerConfiguration.invalid("Save a guest password first.") }
+            return reference
+        }
+        // Authentication may wait for the user. Hold no defaults lock while it does.
+        try vault.upgradeLegacyCredential(reference: reference)
     }
     public func save(enabled: Bool, configuration: OwnerConfiguration, password: Data?, sshPublicKey: String? = nil) throws -> OwnerDefaults {
         try access.withLock {

@@ -9,6 +9,7 @@ import sys
 from kit_artifacts import ROOT
 from build_patched_kit import inventory
 from bundle_layout import core_resource_directory
+from keychain_profile import verify_keychain_profile
 
 parser = argparse.ArgumentParser()
 parser.add_argument("app", type=Path)
@@ -39,6 +40,7 @@ assert (contents / "Resources/TryOmarchy-THIRD_PARTY_NOTICES.md").is_file()
 for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", "omarchy-vm"):
     assert (contents / "MacOS" / name).is_file()
 lock = json.loads(args.runtime_lock.read_bytes())
+verify_keychain_profile(app, lock.get("signingTeamID", ""))
 embedded_lock = contents / "Resources/TryOmarchyRuntime.lock.json"
 assert embedded_lock.read_bytes() == args.runtime_lock.read_bytes()
 kit = contents / "Helpers/TryOmarchyKit.bundle"

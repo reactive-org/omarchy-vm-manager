@@ -18,6 +18,10 @@ struct ManagedOwnerStorage: Sendable {
     }
     private struct Identity: Codable, Equatable { let vmID: UUID; let fingerprint: String }
     private struct Seed: Encodable { let password: String }
+    func passwordForLaunch(_ profile: VMProfile, secrets: any OwnerSecretStoring) throws -> Data? {
+        guard let setup = profile.ownerSetup, try !completed(profile) else { return nil }
+        return try secrets.read(reference: setup.credentialReference)
+    }
     func completed(_ profile: VMProfile) throws -> Bool {
         guard let setup = profile.ownerSetup else { return false }
         let path = directory.appendingPathComponent("completed.json")

@@ -10,6 +10,7 @@ import subprocess
 
 from kit_artifacts import ROOT, digest
 from build_patched_kit import inventory
+from keychain_profile import stage_keychain_profile, verify_keychain_profile
 
 
 def run(*args, **kwargs):
@@ -25,8 +26,11 @@ def assemble():
     parser.add_argument("--runtime-lock", type=Path, default=ROOT / "Config/TryOmarchyRuntime.lock.json")
     parser.add_argument("--runtime-directory", type=Path)
     parser.add_argument("--signed-prerelease", action="store_true")
+    parser.add_argument("--keychain-profile", type=Path, help="Explicit Developer ID profile for biometric guest password storage")
     args = parser.parse_args()
     assert not (args.preview and args.layout_preview)
+    assert args.keychain_profile is None or args.signed_prerelease, "a Keychain profile requires authorized Developer ID signing"
+    assert not args.signed_prerelease or args.keychain_profile is not None, "signed prereleases require the pinned Touch ID profile"
     lock_path = args.runtime_lock
     lock = json.loads(lock_path.read_bytes())
     assert lock["kitVersion"] == "development" and lock["focusAwareClipboard"] is True
@@ -59,6 +63,13 @@ def assemble():
             info["CFBundleName"] = info["CFBundleDisplayName"] = "Omarchy VM Manager Layout Preview"
             info["OmarchyLayoutPreview"] = True
         (stage / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
+        entitlements_path = ROOT / "App/OmarchyVMManager.entitlements"
+        if args.keychain_profile:
+            entitlements = stage_keychain_profile(args.keychain_profile, stage, lock["signingTeamID"],
+                                                 info["CFBundleIdentifier"], plistlib.loads(entitlements_path.read_bytes()))
+            # Signing input stays outside the final app's sealed resources.
+            entitlements_path = stage.with_suffix(".keychain-entitlements.plist")
+            entitlements_path.write_bytes(plistlib.dumps(entitlements))
         for stem in ("OmarchyVMManager", "OmarchyGuest"):
             for extension in ("icns", "png"):
                 shutil.copy2(ROOT / "App/Assets" / (stem + "." + extension), stage / "Contents/Resources" / (stem + "." + extension))
@@ -84,8 +95,9 @@ def assemble():
         run(*signing, "--identifier", "dev.omarchy.vm-manager.storage", stage / "Contents/MacOS/OmarchyVMStorageHelper")
         run(*signing, "--identifier", "dev.omarchy.vm-manager.cli", stage / "Contents/MacOS/omarchy-vm")
         run(*signing, "--identifier", info["CFBundleIdentifier"],
-            "--entitlements", ROOT / "App/OmarchyVMManager.entitlements", stage)
+            "--entitlements", entitlements_path, stage)
         run("codesign", "--verify", "--deep", "--strict", stage)
+        verify_keychain_profile(stage, lock.get("signingTeamID", ""))
         run(stage / "Contents/MacOS/OmarchyVMManager", "--verify-bundle-json")
         if app.exists():
             assert app.is_dir() and not app.is_symlink()
@@ -95,6 +107,9 @@ def assemble():
         if stage.exists():
             shutil.rmtree(stage)
         raise
+    finally:
+        if args.keychain_profile:
+            stage.with_suffix(".keychain-entitlements.plist").unlink(missing_ok=True)
     print(f"Built private debug app: {app}")
 
 

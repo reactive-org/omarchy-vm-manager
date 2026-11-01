@@ -105,10 +105,7 @@ public struct TryOmarchyRuntime: VMRuntime {
                 throw VMFailure(code: "not-enough-space", message: "Free at least \(ByteCountFormatter.string(fromByteCount: required, countStyle: .file)) before starting this VM.")
             }
             let owner = ManagedOwnerStorage(root: request.storageRoot)
-            let password: Data?
-            if let setup = request.profile.ownerSetup, try !owner.completed(request.profile) {
-                password = try ownerSecrets.read(reference: setup.credentialReference)
-            } else { password = nil }
+            let password = try owner.passwordForLaunch(request.profile, secrets: ownerSecrets)
             _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password, ownerContract: try catalog.ownerSetupContract(for: request.profile.factory))
         } else { try pocAdmission?.admit(request) }
         var configuration = try Self.configuration(for: request)

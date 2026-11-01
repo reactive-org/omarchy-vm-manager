@@ -8,6 +8,7 @@ final class MemoryOwnerVault: OwnerSecretStoring, @unchecked Sendable {
     var count: Int { lock.withLock { values.count } }
     func save(_ value: Data, reference: UUID) throws { try lock.withLock { guard values[reference] == nil else { throw VMFailure(code: "duplicate-fixture", message: "Duplicate fixture") }; values[reference] = value } }
     func read(reference: UUID) throws -> Data { try lock.withLock { guard let value = values[reference] else { throw VMFailure(code: "missing-fixture", message: "Missing fixture") }; return value } }
+    func requireProtectedCredential(reference: UUID) throws { _ = try read(reference: reference) }
     func remove(reference: UUID) throws { lock.withLock { values[reference] = nil } }
 }
 

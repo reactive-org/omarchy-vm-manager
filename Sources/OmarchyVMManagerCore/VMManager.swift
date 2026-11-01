@@ -234,6 +234,12 @@ public actor VMManager {
         return try ownerDefaults.save(enabled: enabled, configuration: configuration, password: password, sshPublicKey: sshPublicKey)
     }
 
+    public func upgradeSavedGuestPassword() async throws {
+        guard !quitting, let registry, let ownerDefaults else { throw OwnerConfiguration.invalid("Guest Defaults is unavailable while the manager is quitting.") }
+        try registry.checkRevision()
+        try await Task.detached(priority: .userInitiated) { try ownerDefaults.upgradeSavedPassword() }.value
+    }
+
     public func update(_ id: UUID, configuration: GuestConfigurationPatch) throws {
         guard var profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.") }
         guard configuration.ssh == nil, configuration.ownerDefaults == nil, configuration.publicKey == nil, configuration.factory == nil else { throw VMFailure(code: "creation-only", message: "SSH and owner enrollment are chosen at creation.") }

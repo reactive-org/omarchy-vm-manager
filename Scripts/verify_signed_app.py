@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 from kit_artifacts import ROOT
+from keychain_profile import verify_keychain_profile
 
 
 def run(*arguments):
@@ -22,6 +23,7 @@ def verify(app):
     team = lock.get("signingTeamID", "")
     assert re.fullmatch(r"[A-Z0-9]{10}", team), "missing signed runtime team"
     assert not os.environ.get("APPLE_TEAM_ID") or os.environ["APPLE_TEAM_ID"] == team
+    assert verify_keychain_profile(app, team), "signed release is missing its Touch ID provisioning profile"
     kit = app / "Contents/Helpers/TryOmarchyKit.bundle"
     run("python3", ROOT / "Vendor/try-omarchy/scripts/kit_signature.py", "verify", "--team", team, "--require-notarization", kit)
     for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", "omarchy-vm"):
@@ -32,10 +34,18 @@ def verify(app):
         assert re.search(r"flags=0x[0-9a-f]+\([^)]*runtime", details)
         assert "\nTimestamp=" in details
         run("codesign", "--verify", "--strict", "--check-notarization", "-R=notarized", executable)
+        if name != "OmarchyVMManager":
+            entitlement_data = run("codesign", "-d", "--entitlements", ":-", executable).stdout.strip()
+            import plistlib
+            entitlements = plistlib.loads(entitlement_data.encode()) if entitlement_data else {}
+            assert not any(key in entitlements for key in ("com.apple.application-identifier", "keychain-access-groups")), "child executable gained Keychain access"
+    diagnostics = json.loads(run(app / "Contents/MacOS/OmarchyVMManager", "--verify-bundle-json").stdout)
+    assert diagnostics["touchIDProtectedStorageAvailable"] is True, "the signed process cannot see its Touch ID entitlement"
+    assert diagnostics["hostPreflightPerformed"] is False and diagnostics["vmLaunchEnabled"] is False
     run("codesign", "--verify", "--deep", "--strict", app)
     run("xcrun", "stapler", "validate", app)
     run("spctl", "--assess", "--type", "execute", "--verbose=2", app)
-    print("signed-package: PASS; Developer ID, hardened runtime, timestamps, notarization, stapling and Gatekeeper")
+    print("signed-package: PASS; provisioned Touch ID capability, Developer ID, hardened runtime, timestamps, notarization, stapling and Gatekeeper")
 
 
 if __name__ == "__main__":
