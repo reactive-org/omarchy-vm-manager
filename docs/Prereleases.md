@@ -56,6 +56,8 @@ Read-only verification of that downloaded candidate, with macOS trust-service ac
 
 To check this existing submission, dispatch `notarization-status.yml` on `main` with `gh workflow run notarization-status.yml --repo reactive-org/omarchy-vm-manager --ref main`. This release-specific CI job verifies the immutable `v0.9.3-dev.6` source commit, then queries the recorded submission ID using only the three API secrets. It imports no signing identity and creates no new Apple upload. The current status and any rejection log are retained as a seven-day artifact; the temporary API key file is removed on success or failure.
 
+[Status check `41278438740`](https://github.com/reactive-org/omarchy-vm-manager/actions/runs/41278438740) completed successfully and Apple still returned `In Progress` for the same submission. No new upload or signing occurred, so the prerelease remains unpublished. The status-check changes passed 161 manager tests and 34 script tests locally, including CI-only credential refusal, key cleanup on API failure and rejection of a mismatched submission reply.
+
 Signing changes runtime bytes. Existing custom factory receipts/manifests tied to the ad-hoc kit are preserved and refused by the signed build; they need a newly prepared compatible bundle. Existing profiles, writable disks and official factory identity are not migrated or rewritten by packaging. Real guest acceptance of the signed build remains TO PROVE.
 
 ## Verification boundary
