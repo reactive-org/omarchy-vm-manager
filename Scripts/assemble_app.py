@@ -2,6 +2,7 @@
 """Assemble only a private debug app with exact kit content and ad-hoc signing."""
 import argparse
 import json
+import os
 import plistlib
 from pathlib import Path
 import shutil
@@ -21,16 +22,24 @@ def assemble():
     parser.add_argument("--layout-preview", action="store_true", help="Build an isolated no-VM lifecycle layout gallery")
     parser.add_argument("--output-directory", type=Path, default=ROOT / "dist", help="Separate packaging output from the normal local app")
     parser.add_argument("--preserve-runtime-signatures", action="store_true", help="Reuse the exact upstream-pipeline ad-hoc signatures across macOS builder versions")
+    parser.add_argument("--runtime-lock", type=Path, default=ROOT / "Config/TryOmarchyRuntime.lock.json")
+    parser.add_argument("--runtime-directory", type=Path)
+    parser.add_argument("--signed-prerelease", action="store_true")
     args = parser.parse_args()
     assert not (args.preview and args.layout_preview)
-    lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"
+    lock_path = args.runtime_lock
     lock = json.loads(lock_path.read_bytes())
     assert lock["kitVersion"] == "development" and lock["focusAwareClipboard"] is True
     assert digest(lock_path) in (ROOT / "Sources/OmarchyVMManagerCore/RuntimePin.swift").read_text()
-    source = ROOT / ("VendorArtifacts/patched-" + lock["patchCommit"][:12])
+    source = args.runtime_directory or ROOT / ("VendorArtifacts/patched-" + lock["patchCommit"][:12])
     assert digest(source / "TryOmarchyKit.zip") == lock["kitSHA256"], "private archive mismatch"
     assert inventory(source / "TryOmarchyKit.bundle") == lock["files"], "private kit content mismatch"
-    binaries = Path(subprocess.check_output(["swift", "build", "--disable-sandbox", "--show-bin-path"], cwd=ROOT, text=True).strip())
+    configuration = "release" if args.signed_prerelease else "debug"
+    identity = os.environ["MACOS_SIGNING_IDENTITY"] if args.signed_prerelease else "-"
+    if args.signed_prerelease:
+        assert args.preserve_runtime_signatures and lock["signingTeamID"] == os.environ["APPLE_TEAM_ID"]
+        assert identity.startswith("Developer ID Application:") and identity.endswith("(" + lock["signingTeamID"] + ")")
+    binaries = Path(subprocess.check_output(["swift", "build", "--disable-sandbox", "-c", configuration, "--show-bin-path"], cwd=ROOT, text=True).strip())
     name = "Omarchy VM Manager Layout Preview" if args.layout_preview else ("Omarchy VM Manager Preview" if args.preview else "Omarchy VM Manager")
     app = args.output_directory / (name + ".app")
     stage = args.output_directory / ("." + name + ".staging.app")
@@ -53,7 +62,7 @@ def assemble():
         for stem in ("OmarchyVMManager", "OmarchyGuest"):
             for extension in ("icns", "png"):
                 shutil.copy2(ROOT / "App/Assets" / (stem + "." + extension), stage / "Contents/Resources" / (stem + "." + extension))
-        shutil.copy2(lock_path, stage / "Contents/Resources" / lock_path.name)
+        shutil.copy2(lock_path, stage / "Contents/Resources/TryOmarchyRuntime.lock.json")
         for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, stage / "Contents/Resources" / name)
         shutil.copy2(ROOT / "Vendor/try-omarchy/THIRD_PARTY_NOTICES.md",
@@ -64,11 +73,17 @@ def assemble():
         signature = ROOT / "Vendor/try-omarchy/scripts/kit_signature.py"
         if not args.preserve_runtime_signatures:
             run("python3", signature, "sign", "--identity", "-", kit)
-        run("python3", signature, "verify", "--signature-only", kit)
+        if args.signed_prerelease:
+            run("python3", signature, "verify", "--team", lock["signingTeamID"], "--require-notarization", kit)
+        else:
+            run("python3", signature, "verify", "--signature-only", kit)
         assert inventory(kit) == lock["files"], "embedding changed pinned kit bytes"
-        run("codesign", "--force", "--sign", "-", "--identifier", "dev.omarchy.vm-manager.storage", stage / "Contents/MacOS/OmarchyVMStorageHelper")
-        run("codesign", "--force", "--sign", "-", "--identifier", "dev.omarchy.vm-manager.cli", stage / "Contents/MacOS/omarchy-vm")
-        run("codesign", "--force", "--sign", "-", "--identifier", info["CFBundleIdentifier"],
+        signing = ["codesign", "--force", "--sign", identity]
+        if args.signed_prerelease:
+            signing += ["--options", "runtime", "--timestamp"]
+        run(*signing, "--identifier", "dev.omarchy.vm-manager.storage", stage / "Contents/MacOS/OmarchyVMStorageHelper")
+        run(*signing, "--identifier", "dev.omarchy.vm-manager.cli", stage / "Contents/MacOS/omarchy-vm")
+        run(*signing, "--identifier", info["CFBundleIdentifier"],
             "--entitlements", ROOT / "App/OmarchyVMManager.entitlements", stage)
         run("codesign", "--verify", "--deep", "--strict", stage)
         run(stage / "Contents/MacOS/OmarchyVMManager", "--verify-bundle-json")

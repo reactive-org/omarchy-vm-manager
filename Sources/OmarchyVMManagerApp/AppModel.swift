@@ -75,12 +75,7 @@ final class AppModel: ObservableObject {
 
     nonisolated static var lockURL: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/TryOmarchyRuntime.lock.json") }
     nonisolated static func inspect(preflight: () -> VMRunError? = { VMRunClient.preflight() }) throws -> KitDiagnostics {
-        #if DEBUG
-        let policy = KitBuildPolicy.debugPOC
-        #else
-        let policy = KitBuildPolicy.release
-        #endif
-        return try KitVerifier.inspect(kit: .embedded(), lockData: Data(contentsOf: lockURL), expectedLockSHA256: RuntimePin.lockSHA256, policy: policy, preflight: preflight)
+        return try KitVerifier.inspect(kit: .embedded(), lockData: Data(contentsOf: lockURL), expectedLockSHA256: RuntimePin.lockSHA256, policy: .current, preflight: preflight)
     }
 
     func refresh() async {

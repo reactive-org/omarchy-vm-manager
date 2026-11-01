@@ -5,9 +5,9 @@ export CLANG_MODULE_CACHE_PATH := $(CURDIR)/.build/module-cache/clang
 export MACOSX_DEPLOYMENT_TARGET := 15.0
 export RELEASE_TAG
 
-.PHONY: prepare-source help build icon test test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease
+.PHONY: prepare-source help build build-signed icon test test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-factories | test-ssh | build | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -15,6 +15,10 @@ prepare-source:
 build: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
 	swift build --disable-sandbox
+
+build-signed: prepare-source
+	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
+	swift build --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE
 
 test: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
@@ -48,6 +52,9 @@ prerelease: build icon
 	Scripts/build-app.sh --output-directory "$(CURDIR)/dist/prerelease-staging" --preserve-runtime-signatures
 	Scripts/verify-app.sh --bundle-only "$(CURDIR)/dist/prerelease-staging/Omarchy VM Manager.app"
 	python3 Scripts/package_prerelease.py
+
+signed-prerelease: fetch-runtime-kit prepare-source icon
+	python3 Scripts/signed_prerelease.py
 
 run: verify-app
 	open "dist/Omarchy VM Manager.app"

@@ -139,7 +139,7 @@ public struct POCLaunchAdmission: Sendable {
         throw VMFailure(code: "private-build-only", message: "The development kit is refused by release builds.")
         #else
         let diagnostic = try KitVerifier.inspect(kit: kit, lockData: lockData,
-                                                 expectedLockSHA256: RuntimePin.lockSHA256, policy: .debugPOC)
+                                                 expectedLockSHA256: RuntimePin.lockSHA256, policy: .current)
         if let failure = diagnostic.preflightFailure { throw VMFailure(code: "host-preflight-failed", message: failure) }
         let signature = Process()
         signature.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")

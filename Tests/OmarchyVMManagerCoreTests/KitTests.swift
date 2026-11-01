@@ -37,6 +37,22 @@ struct KitFixture {
 
 @Suite("Kit provenance")
 struct KitTests {
+    @Test("signed fork provenance requires a distinct runtime, source pin and signing team")
+    func signedPrereleasePolicy() throws {
+        var fixture = try KitFixture(); defer { fixture.cleanup() }
+        #expect(throws: VMFailure.self) { try KitVerifier.validate(fixture.lock, policy: .signedPrerelease) }
+        fixture.lock.signingTeamID = "ABC1234567"
+        fixture.lock.sourceKitSHA256 = String(repeating: "d", count: 64)
+        fixture.lock.sourceLockSHA256 = String(repeating: "e", count: 64)
+        try KitVerifier.validate(fixture.lock, policy: .signedPrerelease)
+        #expect(throws: VMFailure.self) { try KitVerifier.validate(fixture.lock, policy: .debugPOC) }
+        #expect(throws: VMFailure.self) { try KitVerifier.validate(fixture.lock, policy: .release) }
+        fixture.lock.sourceKitSHA256 = fixture.lock.kitSHA256
+        #expect(throws: VMFailure.self) { try KitVerifier.validate(fixture.lock, policy: .signedPrerelease) }
+        fixture.lock.sourceKitSHA256 = String(repeating: "d", count: 64)
+        fixture.lock.signingTeamID = "unknown"
+        #expect(throws: VMFailure.self) { try KitVerifier.validate(fixture.lock, policy: .signedPrerelease) }
+    }
     @Test("locked development kit is allowed only in a private debug build")
     func developmentPolicy() throws {
         let fixture = try KitFixture(); defer { fixture.cleanup() }

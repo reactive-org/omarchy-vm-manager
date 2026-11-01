@@ -1,13 +1,13 @@
 # Development prereleases
 
-GitHub Actions publishes versioned development builds of Omarchy VM Manager for Apple Silicon and macOS 15+. These are experimental development fork builds using the exact reviewed Try Omarchy source and binary provenance recorded in the repository. They use ad-hoc signing; they are not Developer ID signed or notarized, and Gatekeeper may block a downloaded copy. Trusted signed distribution remains a separate milestone requiring authorized signing credentials and release-runtime policy work.
+GitHub Actions publishes versioned development-fork builds of Omarchy VM Manager for Apple Silicon and macOS 15+. New tagged jobs use the user's explicitly authorized Developer ID and notarization credentials. Publication requires accepted Apple notarization, stapled tickets, exact runtime provenance, code/entitlement verification, Gatekeeper acceptance and verification of the extracted ZIP. Earlier `v0.9.3-dev.3` remains an ad-hoc build. Signing does not establish real-guest behavior or turn this private runtime fork into an official upstream release.
 
 ## Publish a build
 
 1. Confirm `App/Info.plist` has the intended app version.
 2. Create and push a tag `vVERSION-dev.N`, where VERSION matches `CFBundleShortVersionString` and N is a positive integer. For example, `v0.9.3-dev.1`.
 3. CI runs the macOS manager/build/icon/upstream checks and the isolated Ubuntu SSH checks.
-4. Only after both jobs pass, the package job fetches the pinned runtime, builds and ad-hoc signs the debug app through the normal assembly pipeline, verifies it, and publishes a GitHub prerelease with its ZIP and SHA-256 checksum. It never marks the build as the latest stable release.
+4. Only after both jobs pass, the package job prepares or reuses the pinned signed runtime, builds the optimized app with `SIGNED_PRERELEASE`, signs it, submits it to Apple, staples the accepted ticket, and verifies the final ZIP before publishing. It never marks the build as the latest stable release.
 
 The ZIP contains `Omarchy VM Manager.app`, including the CLI, storage helper, runtime, licenses and third-party notices. The release notes record the manager commit and runtime source/archive pins. Only the tagged package job has repository write permission; pull-request jobs remain read-only and cannot publish releases. Existing release assets are not overwritten automatically.
 
@@ -20,6 +20,8 @@ make prerelease RELEASE_TAG=v0.9.3-dev.1
 
 The staged app is under `dist/prerelease-staging/`; the ZIP, checksum and release notes are under `dist/prerelease/`. A pre-existing archive is preserved and must be inspected before packaging the same tag again.
 
+The local commands above remain ad-hoc. `make signed-prerelease` refuses real credentials outside GitHub Actions. The seven configured secrets are `MACOS_CERTIFICATE_P12_BASE64`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER_ID`. They are injected only into the tagged signing step; temporary keychain/password/key files are removed on exit and never uploaded. Tests and pull requests receive none of these credentials. Apple submission status/rejection JSON is retained for seven days on failure, without credential files.
+
 ## Exact runtime dependency
 
 The reviewed runtime archive is hosted as a separate clearly labelled CI dependency prerelease, under tag `runtime-kit-<full kit SHA-256>`. This tag is derived from the committed `Config/TryOmarchyRuntime.lock.json`; it does not mean the stock upstream kit or an arbitrary newly built kit is acceptable.
@@ -29,6 +31,18 @@ The reviewed runtime archive is hosted as a separate clearly labelled CI depende
 Prerelease assembly preserves the kit's existing upstream-pipeline ad-hoc signatures, checks its exact inventory before and after embedding, and runs upstream signature/entitlement verification. Different macOS `codesign` versions can produce different bytes when re-signing the same kit; preserving the verified signatures avoids changing the runtime pin. The manager executables and outer app are signed normally. This applies to ad-hoc development packaging; future Developer ID distribution still needs a deliberately re-signed, reviewed and notarized runtime.
 
 The runtime dependency contains no VM disk, factory image, user registry, credential or guest data. It is fetched only for packaging. No Docker or guest-package rebuild is needed in CI.
+
+## Signed runtime continuity
+
+The first authorized signed job derives a new signed kit from the verified development artifact using upstream `build-kit.sh`: sign the networking payloads, rebuild their pinning daemon from the exact prepared upstream source, then sign all remaining code with the required entitlements, hardened runtime and timestamps. Guest integration, firmware, launch scripts, factory metadata and all other unsigned payloads must remain byte-for-byte identical. Apple must accept the kit before its ticket is stapled and the new archive/inventory recorded.
+
+The job compiles the app against that signed lock and explicit source/team pins in its disposable workspace, restoring the development source pin afterward. Ordinary debug and production release policies remain fail-closed; only the explicit signed-prerelease mode admits the reviewed signed fork. The release includes `TryOmarchySignedKit.zip`, its checksum, `TryOmarchySignedRuntime.lock.json`, the original `SourceRuntime.lock.json`, and Apple acceptance metadata alongside the app ZIP/checksum.
+
+After first-run review, the signed lock is committed separately as `Config/TryOmarchySignedRuntime.lock.json`. Later releases fetch its exact archive from the recorded prerelease and verify source-lock/source-kit continuity, signing team, full inventory and notarization rather than creating fresh signatures each time. The original development lock, compiled development pin and published ad-hoc kit are untouched.
+
+Each Apple submission is polled for up to 45 minutes; status changes and submission IDs appear as CI notices. A pending or rejected submission prevents publication and retains diagnostic JSON. Local preflight passed 160 Swift tests, 30 Python tests, optimized signed-mode compilation without credentials, an ad-hoc package ZIP round trip, and an upstream ad-hoc signing rehearsal that confirmed all unsigned runtime payloads remain unchanged. Actual Developer ID/Apple/Gatekeeper results must be observed on the tagged run.
+
+Signing changes runtime bytes. Existing custom factory receipts/manifests tied to the ad-hoc kit are preserved and refused by the signed build; they need a newly prepared compatible bundle. Existing profiles, writable disks and official factory identity are not migrated or rewritten by packaging. Real guest acceptance of the signed build remains TO PROVE.
 
 ## Verification boundary
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """No guest or helper run: static app assembly contract checks."""
 import json
+import argparse
 from pathlib import Path
 import plistlib
 import sys
@@ -9,7 +10,11 @@ from kit_artifacts import ROOT
 from build_patched_kit import inventory
 from bundle_layout import core_resource_directory
 
-app = Path(sys.argv[1])
+parser = argparse.ArgumentParser()
+parser.add_argument("app", type=Path)
+parser.add_argument("--runtime-lock", type=Path, default=ROOT / "Config/TryOmarchyRuntime.lock.json")
+args = parser.parse_args()
+app = args.app
 contents = app / "Contents"
 info = plistlib.loads((contents / "Info.plist").read_bytes())
 assert info["CFBundleExecutable"] == "OmarchyVMManager"
@@ -33,9 +38,9 @@ assert not (contents / "Library/LaunchDaemons").exists(), "NAT-only app must not
 assert (contents / "Resources/TryOmarchy-THIRD_PARTY_NOTICES.md").is_file()
 for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", "omarchy-vm"):
     assert (contents / "MacOS" / name).is_file()
-lock = json.loads((ROOT / "Config/TryOmarchyRuntime.lock.json").read_bytes())
+lock = json.loads(args.runtime_lock.read_bytes())
 embedded_lock = contents / "Resources/TryOmarchyRuntime.lock.json"
-assert embedded_lock.read_bytes() == (ROOT / "Config/TryOmarchyRuntime.lock.json").read_bytes()
+assert embedded_lock.read_bytes() == args.runtime_lock.read_bytes()
 kit = contents / "Helpers/TryOmarchyKit.bundle"
 assert inventory(kit) == lock["files"]
 guest = kit / "Contents/Resources/guest"

@@ -35,29 +35,43 @@ jobs:
         run: make test-ssh
 
   prerelease:
-    name: Package development prerelease
+    name: Sign and notarize prerelease
     if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
     needs: [test, managed-ssh]
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 120
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: true
-      - name: Fetch exact pinned development runtime
-        run: make fetch-runtime-kit
-      - name: Build, verify and archive the development app
+      - name: Build, sign, notarize, staple and verify prerelease
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: make prerelease
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: make signed-prerelease
+      - name: Retain Apple diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: notarization-diagnostics-${{ github.ref_name }}
+          path: .build/notarization/*.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Publish versioned GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" dist/prerelease/*.zip dist/prerelease/*.sha256 \
+          gh release create "$RELEASE_TAG" dist/prerelease/*.zip dist/prerelease/*.sha256 dist/prerelease/*.json \
             --verify-tag --prerelease --latest=false \
-            --title "Omarchy VM Manager $RELEASE_TAG (development)" \
+            --title "Omarchy VM Manager $RELEASE_TAG (signed and notarized)" \
             --notes-file dist/prerelease/release-notes.md

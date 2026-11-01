@@ -3,7 +3,18 @@ import Darwin
 import Foundation
 import TryOmarchyKitClient
 
-public enum KitBuildPolicy: Sendable { case debugPOC, release }
+public enum KitBuildPolicy: Sendable {
+    case debugPOC, signedPrerelease, release
+    public static var current: Self {
+        #if SIGNED_PRERELEASE
+        .signedPrerelease
+        #elseif DEBUG
+        .debugPOC
+        #else
+        .release
+        #endif
+    }
+}
 
 public struct RuntimeProvenance: Codable, Equatable, Sendable {
     public let format: Int
@@ -22,6 +33,10 @@ public struct RuntimeProvenance: Codable, Equatable, Sendable {
     public var managedSetupVersion: Int? = nil
     public var ownerSetupContractsVersion: Int? = nil
     public var ownerSetupReportVersion: Int? = nil
+    public var signingTeamID: String? = nil
+    public var sourceKitSHA256: String? = nil
+    public var sourceLockSHA256: String? = nil
+    public var artifactTag: String? = nil
     public let composition: String
     public let files: [String: String]
 }
@@ -119,7 +134,20 @@ public enum KitVerifier {
         }
         switch policy {
         case .debugPOC:
-            guard lock.kitVersion == "development" else { throw invalid("This POC requires its exact development kit.") }
+            guard lock.kitVersion == "development", lock.signingTeamID == nil else { throw invalid("This POC requires its exact development kit.") }
+        case .signedPrerelease:
+            guard lock.kitVersion == "development", let team = lock.signingTeamID,
+                  team.range(of: "^[A-Z0-9]{10}$", options: .regularExpression) != nil,
+                  let sourceKit = lock.sourceKitSHA256, hex(sourceKit, count: 64), sourceKit != lock.kitSHA256,
+                  let sourceLock = lock.sourceLockSHA256, hex(sourceLock, count: 64) else {
+                throw invalid("Signed prereleases require their exact reviewed signed-fork provenance.")
+            }
+            #if SIGNED_PRERELEASE
+            guard team == SignedBuildPin.signingTeamID, sourceKit == SignedBuildPin.sourceKitSHA256,
+                  sourceLock == SignedBuildPin.sourceLockSHA256 else {
+                throw invalid("Signed runtime origin or signing team differs from the compiled pin.")
+            }
+            #endif
         case .release:
             throw invalid("Release builds require an official reviewed focus-aware release. The private development kit is refused.")
         }

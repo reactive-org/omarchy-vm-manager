@@ -51,12 +51,7 @@ public struct FactoryCatalog: Sendable {
     let lockData: Data
     let reviewed: Set<String>
     public init(applicationSupport: URL, kit: TryOmarchyKit, lockData: Data) throws {
-        #if DEBUG
-        let policy = KitBuildPolicy.debugPOC
-        #else
-        let policy = KitBuildPolicy.release
-        #endif
-        _ = try KitVerifier.inspect(kit: kit, lockData: lockData, expectedLockSHA256: RuntimePin.lockSHA256, policy: policy, preflight: { nil })
+        _ = try KitVerifier.inspect(kit: kit, lockData: lockData, expectedLockSHA256: RuntimePin.lockSHA256, policy: .current, preflight: { nil })
         let signature = Process()
         signature.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
         signature.arguments = ["--verify", "--deep", "--strict", kit.bundleURL.path]
