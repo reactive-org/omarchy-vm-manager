@@ -236,7 +236,8 @@ struct FactoryTests {
             var inventory = f.lock.files; inventory["Contents/Resources/runtime/bin/Try Omarchy"] = String(repeating: "a", count: 64); f.manifest[key] = inventory
         default: f.manifest[key] = String(repeating: "a", count: 64)
         }
-        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
+        _ = try f.write()
+        let catalog = try f.catalog(reviewed: [])
         #expect(throws: (any Error).self) { try catalog.importBundle(f.source) }
     }
     @Test("extra files, traversal, symlinks and changed image/provisioning hashes fail closed", arguments: ["extra", "symlink", "traversal", "image", "recipe"])
@@ -245,7 +246,8 @@ struct FactoryTests {
         if kind == "traversal" {
             var inventory = f.manifest["files"] as! [String: String]; inventory["../escape"] = String(repeating: "a", count: 64); f.manifest["files"] = inventory
         }
-        let digest = try f.write(), catalog = try f.catalog(reviewed: [])
+        _ = try f.write()
+        let catalog = try f.catalog(reviewed: [])
         if kind == "symlink" {
             let target = f.source.appendingPathComponent("test.img.zst")
             try FileManager.default.moveItem(at: target, to: f.files.support.appendingPathComponent("outside"))

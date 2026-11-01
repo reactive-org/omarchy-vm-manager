@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Security
 
 public protocol OwnerSecretStoring: Sendable {
@@ -10,10 +11,12 @@ public protocol OwnerSecretStoring: Sendable {
 public struct KeychainOwnerSecretStore: OwnerSecretStoring {
     public init() {}
     private func query(_ reference: UUID) -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: "dev.omarchy.vm-manager.unattended",
          kSecAttrAccount as String: reference.uuidString,
-         kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail]
+         kSecUseAuthenticationContext as String: context]
     }
     public func save(_ value: Data, reference: UUID) throws {
         try OwnerConfiguration.validatePassword(value)
