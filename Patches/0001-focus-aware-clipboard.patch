@@ -1,13 +1,14 @@
 diff --git a/Makefile b/Makefile
-index e768c5e..92ae300 100644
+index e768c5e..2ba9dae 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -121,6 +121,8 @@ test-contracts:
+@@ -121,6 +121,9 @@ test-contracts:
  
  test-guest:
  	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_package.py"
 +	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_managed_ssh.py"
 +	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_managed_setup.py"
++	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_owner_report_timer.py"
  
  # The package's contracts with the Omarchy the factory installs today.
  test-upstream:
@@ -61,10 +62,10 @@ index fac6182..a1cd7b1 100644
 +
 +The shared cache holds compressed images, keyed by the pinned factory identity. The normal downloader locks the directory, resumes partial files, verifies part and whole-image digests, and atomically publishes completed images. Each new guest re-verifies a cached image before its own factory preparation. A successful reuse refreshes the image's last-use time. Startup cleanup preserves the current identity and prunes only obsolete owned regular downloads unused for at least seven days. Guest disks and decompressed factories stay in their original UUID roots.
 diff --git a/guest/package/README.md b/guest/package/README.md
-index 2cc716c..4ab481b 100644
+index 2cc716c..0548647 100644
 --- a/guest/package/README.md
 +++ b/guest/package/README.md
-@@ -182,3 +182,17 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
+@@ -182,3 +182,19 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
  window closes, since Omarchy's screensaver shows it as it exits. It also keeps
  the mode in sync with the window through EDID, and applies the pinch and Apple
  keyboard input rules.
@@ -82,6 +83,8 @@ index 2cc716c..4ab481b 100644
 +Opted-in manager setup selects the official or lean-e4fffc6 contract by its reviewed digest. The helper binds that choice to the verified factory; guest metadata cannot authorize another program set. Root-owned, non-writable regular programs and their source dependencies must match before a private snapshot is sourced. The lean adapter preserves the saved full name and email. A finalization warning preserves pending/setup-user so a retry keeps the same account and SSH remains blocked. Managed failures report a bounded code and stop; only unseeded setup uses the interactive program.
 +
 +Managed completion is recorded durably before upstream cleanup removes pending. A matching committed owner can retry interrupted cleanup; another identity is refused. Lean finalization executes the canonical hash-checked program, and SSH waits for a configured owner report from the current seeded VM/session.
++
++For a seeded boot the report timer remains active until shutdown. Before reporting configured, the adapter retains a root-private non-secret receipt in /run, bound to the kernel boot ID and a helper-derived report digest in the boot credential. Host completion still immediately removes the password seed, full manifest and launch marker. Later timer invocations revalidate the receipt, committed identity, owner and cleanup against the immutable boot digest; another session or damaged state cannot be acknowledged. A new boot needs fresh host-authorized context. No failed unit is masked or reset.
 diff --git a/guest/package/tests/fixtures/owner-contracts/LICENSE b/guest/package/tests/fixtures/owner-contracts/LICENSE
 new file mode 100644
 index 0000000..f12cfa7
@@ -391,10 +394,10 @@ index 0000000..b63c486
 +}
 diff --git a/guest/package/tests/test_managed_setup.py b/guest/package/tests/test_managed_setup.py
 new file mode 100644
-index 0000000..dd08acf
+index 0000000..519d66d
 --- /dev/null
 +++ b/guest/package/tests/test_managed_setup.py
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,266 @@
 +import copy
 +import hashlib
 +import importlib.machinery
@@ -416,6 +419,13 @@ index 0000000..dd08acf
 +m = importlib.util.module_from_spec(spec); loader.exec_module(m)
 +CONTRACT = json.loads((ROOT / 'try-omarchy/files/usr/share/try-omarchy/owner-setup-contract.json').read_bytes())
 +LEAN = json.loads((ROOT / 'try-omarchy/files/usr/share/try-omarchy/lean-owner-setup-contract.json').read_bytes())
++
++
++BOOT = '33333333-3333-4333-8333-333333333333'
++
++
++def command_line(manifest):
++    return 'tryomarchy.managed_setup=1 tryomarchy.managed_setup_report=' + m.binding_digest(m.report_binding(manifest))
 +
 +
 +class ManagedSetupTests(unittest.TestCase):
@@ -549,9 +559,9 @@ index 0000000..dd08acf
 +                manifest=self.fixture(m.LEAN)
 +                for name,value in [('manifest.json',manifest),('owner-setup.json',{'password':'synthetic-password'})]:
 +                    p=root/name; p.write_text(json.dumps(value)); p.chmod(0o600)
-+                cmd=root/'cmdline'; cmd.write_text('tryomarchy.managed_setup=1')
++                cmd=root/'cmdline'; cmd.write_text(command_line(manifest))
 +                result=type('Result',(),{'stdout':'disk'})()
-+                with patch.object(m,'SHARE',root),patch.object(m,'PENDING',root/'pending'),patch.object(m,'CMDLINE',cmd),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',side_effect=ValueError if mode=='contract' else None,return_value=(LEAN,'lean-e4fffc6')),patch.object(m,'verified_program',return_value={}),patch.object(m.subprocess,'run',return_value=result),patch.object(m.pwd,'getpwall',return_value=[]),patch.object(m,'status') as status,patch.object(m,'provision',side_effect=ValueError if mode=='provision' else None) as provision,patch.object(m,'matching_identity') as identity,patch.object(m,'cleanup_finished',return_value=True),patch.object(m.os,'execv') as execute:
++                with patch.object(m,'SHARE',root),patch.object(m,'RUN',root),patch.object(m,'boot_id',return_value=BOOT),patch.object(m,'PENDING',root/'pending'),patch.object(m,'CMDLINE',cmd),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',side_effect=ValueError if mode=='contract' else None,return_value=(LEAN,'lean-e4fffc6')),patch.object(m,'verified_program',return_value={}),patch.object(m.subprocess,'run',return_value=result),patch.object(m.pwd,'getpwall',return_value=[]),patch.object(m,'status') as status,patch.object(m,'provision',side_effect=ValueError if mode=='provision' else None) as provision,patch.object(m,'matching_identity') as identity,patch.object(m,'cleanup_finished',return_value=True),patch.object(m,'report_completion',side_effect=lambda binding:m.status(dict(binding,configuration={'username':binding['owner']}),'configured')),patch.object(m.os,'execv') as execute:
 +                    self.assertEqual(m.main(),0 if mode=='success' else 1)
 +                    execute.assert_not_called()
 +                    if mode=='success': identity.assert_called_once_with(manifest); self.assertEqual(status.call_args.args[1:],('configured',))
@@ -568,8 +578,8 @@ index 0000000..dd08acf
 +            identity={k:manifest[k] for k in ('vmID','fingerprint','ownerSetupContractSHA256')}; identity['owner']='owner'
 +            for name,value in [('manifest.json',manifest),('identity',identity)]:
 +                p=root/name;p.write_text(json.dumps(value));p.chmod(0o600)
-+            cmd=root/'cmdline';cmd.write_text('tryomarchy.managed_setup=1')
-+            with patch.object(m,'SHARE',root),patch.object(m,'CMDLINE',cmd),patch.object(m,'PENDING',root/'pending'),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(LEAN,'lean-e4fffc6')),patch.object(m.pwd,'getpwnam',return_value=type('Account',(),{'pw_uid':1000})()),patch.object(m,'status') as status:
++            cmd=root/'cmdline';cmd.write_text(command_line(manifest))
++            with patch.object(m,'SHARE',root),patch.object(m,'RUN',root),patch.object(m,'boot_id',return_value=BOOT),patch.object(m,'CMDLINE',cmd),patch.object(m,'PENDING',root/'pending'),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(LEAN,'lean-e4fffc6')),patch.object(m.pwd,'getpwnam',return_value=type('Account',(),{'pw_uid':1000})()),patch.object(m,'status') as status:
 +                m.acknowledge();self.assertEqual(status.call_args.args[1:],('configured',))
 +                manifest['ownerSetupContractSHA256']=m.OFFICIAL;(root/'manifest.json').write_text(json.dumps(manifest))
 +                with self.assertRaises(ValueError):m.acknowledge()
@@ -613,9 +623,9 @@ index 0000000..dd08acf
 +                root=Path(directory);manifest=self.fixture(digest)
 +                (root/'manifest.json').write_text(json.dumps(manifest));(root/'manifest.json').chmod(0o600)
 +                pending=root/'pending';pending.touch();resume=root/'setup-user';resume.write_text('owner')
-+                cmd=root/'cmdline';cmd.write_text('tryomarchy.managed_setup=1')
++                cmd=root/'cmdline';cmd.write_text(command_line(manifest))
 +                account=type('Account',(),{'pw_uid':1000})()
-+                with patch.object(m,'SHARE',root),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'PENDING',pending),patch.object(m,'CMDLINE',cmd),patch.object(m,'directory'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(CONTRACT,'official')),patch.object(m.pwd,'getpwnam',return_value=account),patch.object(m,'status') as status:
++                with patch.object(m,'SHARE',root),patch.object(m,'RUN',root),patch.object(m,'boot_id',return_value=BOOT),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'PENDING',pending),patch.object(m,'CMDLINE',cmd),patch.object(m,'directory'),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(CONTRACT,'official')),patch.object(m.pwd,'getpwnam',return_value=account),patch.object(m,'status') as status:
 +                    real_fsync = os.fsync
 +                    directory_flushes = []
 +                    def durable(fd):
@@ -626,7 +636,7 @@ index 0000000..dd08acf
 +                    with patch.object(m.os,'fsync',side_effect=durable):
 +                        with self.assertRaises(OSError): m.commit_identity()
 +                        m.commit_identity()
-+                    self.assertEqual(len(directory_flushes),2)
++                    self.assertGreaterEqual(len(directory_flushes),2)
 +                    self.assertTrue(pending.exists());self.assertEqual(json.loads(m.read(root/'identity')),m.identity_value(manifest))
 +                    m.matching_identity(manifest)
 +                    m.commit_identity()  # Idempotent after interruption before cleanup.
@@ -646,10 +656,10 @@ index 0000000..dd08acf
 +            for name,value in [('manifest.json',manifest),('owner-setup.json',{'password':'synthetic-password'}),('identity',m.identity_value(manifest))]:
 +                path=root/name;path.write_text(json.dumps(value));path.chmod(0o600)
 +            pending=root/'pending';pending.touch();resume=root/'setup-user';resume.write_text('owner')
-+            cmd=root/'cmdline';cmd.write_text('tryomarchy.managed_setup=1')
++            cmd=root/'cmdline';cmd.write_text(command_line(manifest))
 +            account=type('Account',(),{'pw_name':'owner','pw_uid':1000,'pw_shell':'/bin/bash'})()
 +            def provision(*args):pending.unlink();resume.unlink()
-+            with patch.object(m,'SHARE',root),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'PENDING',pending),patch.object(m,'CMDLINE',cmd),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(LEAN,'lean-e4fffc6')),patch.object(m,'verified_program',return_value={}),patch.object(m,'reviewed_bytes',return_value=b'owner'),patch.object(m.pwd,'getpwall',return_value=[account]),patch.object(m.subprocess,'run',return_value=type('Result',(),{'stdout':'disk'})()),patch.object(m,'provision',side_effect=provision) as attempt,patch.object(m,'status') as status:
++            with patch.object(m,'SHARE',root),patch.object(m,'RUN',root),patch.object(m,'boot_id',return_value=BOOT),patch.object(m,'IDENTITY',root/'identity'),patch.object(m,'PENDING',pending),patch.object(m,'CMDLINE',cmd),patch.object(m,'mount_share'),patch.object(m,'directory'),patch.object(m,'selected_contract',return_value=(LEAN,'lean-e4fffc6')),patch.object(m,'verified_program',return_value={}),patch.object(m,'reviewed_bytes',return_value=b'owner'),patch.object(m.pwd,'getpwall',return_value=[account]),patch.object(m.pwd,'getpwnam',return_value=account),patch.object(m.subprocess,'run',return_value=type('Result',(),{'stdout':'disk'})()),patch.object(m,'provision',side_effect=provision) as attempt,patch.object(m,'status') as status:
 +                self.assertEqual(m.main(),0);attempt.assert_called_once()
 +                self.assertEqual(status.call_args.args[1:],('configured',))
 +
@@ -838,8 +848,178 @@ index 0000000..8bcfa6d
 +
 +
 +if __name__ == "__main__": unittest.main()
+diff --git a/guest/package/tests/test_owner_report_timer.py b/guest/package/tests/test_owner_report_timer.py
+new file mode 100644
+index 0000000..d0b9005
+--- /dev/null
++++ b/guest/package/tests/test_owner_report_timer.py
+@@ -0,0 +1,164 @@
++import copy
++import json
++import os
++from pathlib import Path
++import stat
++import tempfile
++import unittest
++from contextlib import ExitStack, contextmanager
++from types import SimpleNamespace
++from unittest.mock import patch
++import uuid
++import test_managed_setup as setup_tests
++from test_managed_setup import m, ROOT, CONTRACT, LEAN
++
++
++@contextmanager
++def fixture(digest):
++    with tempfile.TemporaryDirectory(prefix='owner-report-timer-') as directory, ExitStack() as stack:
++        root = Path(directory)
++        share, run, persistent, provisioning = [root / name for name in ('share', 'run', 'identity', 'provisioning')]
++        for path in (share, run, persistent, provisioning): path.mkdir(mode=0o700)
++        manifest = setup_tests.ManagedSetupTests().fixture(digest)
++        for name, value in [('manifest.json', manifest), ('owner-setup.json', {'password': 'synthetic-secret-password'})]:
++            path = share / name; path.write_text(json.dumps(value)); path.chmod(0o600)
++        marker = root / 'launch.json'; marker.write_text(json.dumps(manifest)); marker.chmod(0o600)
++        cmdline = root / 'cmdline'
++        cmdline.write_text('tryomarchy.managed_setup=1 tryomarchy.managed_setup_report=' + m.binding_digest(m.report_binding(manifest)))
++        boot = root / 'boot-id'; boot.write_text(str(uuid.uuid4()))
++        pending = provisioning / 'pending'; pending.touch()
++        warning = root / 'warning'
++        contracts = {m.OFFICIAL: (ROOT / 'try-omarchy/files/usr/share/try-omarchy/owner-setup-contract.json', 'official'),
++                     m.LEAN: (ROOT / 'try-omarchy/files/usr/share/try-omarchy/lean-owner-setup-contract.json', 'lean-e4fffc6')}
++        def private(path): path.mkdir(mode=0o700, exist_ok=True, parents=True)
++        for name, value in dict(SHARE=share, RUN=run, IDENTITY=persistent/'identity.json', PENDING=pending, CMDLINE=cmdline, BOOT_ID=boot, CONTRACTS=contracts).items():
++            stack.enter_context(patch.object(m, name, value))
++        stack.enter_context(patch.object(m, 'directory', side_effect=private))
++        stack.enter_context(patch.object(m, 'mount_share'))
++        stack.enter_context(patch.object(m, 'reviewed_bytes', side_effect=lambda path, **kwargs: Path(path).read_bytes()))
++        stack.enter_context(patch.object(m.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=1000)))
++        original_cleanup = m.cleanup_finished
++        stack.enter_context(patch.object(m, 'cleanup_finished', side_effect=lambda: original_cleanup() and not warning.exists()))
++        yield SimpleNamespace(root=root, share=share, run=run, manifest=manifest, marker=marker, pending=pending, boot=boot, warning=warning, cmdline=cmdline)
++
++
++def completed(f):
++    m.commit_identity()
++    f.pending.unlink()
++    m.acknowledge()
++
++
++def host_cleanup(f):
++    for path in [f.share/'owner-setup.json', f.share/'manifest.json', f.marker]: path.unlink()
++
++
++class OwnerReportTimerTests(unittest.TestCase):
++    def test_completion_host_cleanup_and_repeated_timer_reports_for_both_contracts(self):
++        for digest in (m.OFFICIAL, m.LEAN):
++            with self.subTest(contract=digest), fixture(digest) as f:
++                completed(f)
++                before = (f.run/'status.json').read_bytes()
++                host_cleanup(f)
++                for _ in range(4):
++                    m.acknowledge()
++                    self.assertEqual((f.run/'status.json').read_bytes(), before)
++                receipt = f.run/m.REPORT_NAME
++                self.assertEqual(stat.S_IMODE(receipt.stat().st_mode),0o600)
++                self.assertNotIn('synthetic-secret-password',receipt.read_text())
++                self.assertNotIn('configuration',receipt.read_text())
++                self.assertEqual(list(f.share.iterdir()),[])
++
++    def test_timer_racing_host_manifest_unlink_uses_only_validated_receipt(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            with self.subTest(contract=digest),fixture(digest) as f:
++                completed(f)
++                original=m.read
++                def racing_read(path,*args,**kwargs):
++                    if path==f.share/'manifest.json':
++                        host_cleanup(f)
++                        raise FileNotFoundError('synthetic host cleanup race')
++                    return original(path,*args,**kwargs)
++                with patch.object(m,'read',side_effect=racing_read):m.acknowledge()
++                self.assertEqual(json.loads((f.run/'status.json').read_bytes())['state'],'configured')
++
++    def test_wrong_vm_session_owner_fingerprint_contract_and_schema_are_rejected(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            for field,value in [('vmID',str(uuid.uuid4()).upper()),('sessionToken',str(uuid.uuid4()).upper()),('owner','another'),('fingerprint','b'*64),('ownerSetupContractSHA256',m.LEAN if digest==m.OFFICIAL else m.OFFICIAL),('ownerSetupContractSHA256','c'*64),('schemaVersion',True)]:
++                with self.subTest(contract=digest,field=field),fixture(digest) as f:
++                    completed(f);host_cleanup(f)
++                    path=f.run/m.REPORT_NAME;receipt=json.loads(path.read_bytes());receipt['binding'][field]=value;path.write_text(json.dumps(receipt))
++                    before=(f.run/'status.json').read_bytes()
++                    with self.assertRaises((ValueError,TypeError,KeyError)):m.acknowledge()
++                    self.assertEqual((f.run/'status.json').read_bytes(),before)
++
++    def test_committed_identity_cannot_change_vm_owner_fingerprint_or_contract(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            for field,value in [('vmID',str(uuid.uuid4()).upper()),('owner','another'),('fingerprint','b'*64),('ownerSetupContractSHA256',m.LEAN if digest==m.OFFICIAL else m.OFFICIAL)]:
++                with self.subTest(contract=digest,field=field),fixture(digest) as f:
++                    completed(f);host_cleanup(f)
++                    identity=json.loads(m.IDENTITY.read_bytes());identity[field]=value;m.IDENTITY.write_text(json.dumps(identity))
++                    with self.assertRaises(ValueError):m.acknowledge()
++
++    def test_old_boot_and_new_session_credentials_cannot_reuse_receipt(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            for mode in ('boot','session','missing','duplicate'):
++                with self.subTest(contract=digest,mode=mode),fixture(digest) as f:
++                    completed(f);host_cleanup(f)
++                    if mode=='boot':f.boot.write_text(str(uuid.uuid4()))
++                    if mode=='session':
++                        other=copy.deepcopy(f.manifest);other['sessionToken']=str(uuid.uuid4()).upper()
++                        f.cmdline.write_text('tryomarchy.managed_setup=1 tryomarchy.managed_setup_report='+m.binding_digest(m.report_binding(other)))
++                    if mode=='missing':f.cmdline.write_text('tryomarchy.managed_setup=1')
++                    if mode=='duplicate':f.cmdline.write_text(f.cmdline.read_text()+' '+f.cmdline.read_text().split()[-1])
++                    with self.assertRaises(ValueError):m.acknowledge()
++
++    def test_damaged_identity_receipt_missing_receipt_and_unsafe_files_fail_closed(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            for mode in ('identity','receipt','missing-receipt','permissions','symlink','hardlink'):
++                with self.subTest(contract=digest,mode=mode),fixture(digest) as f:
++                    completed(f);host_cleanup(f);path=f.run/m.REPORT_NAME
++                    if mode=='identity':m.IDENTITY.write_text('{}')
++                    elif mode=='receipt':path.write_text('broken')
++                    elif mode=='missing-receipt':path.unlink()
++                    elif mode=='permissions':path.chmod(0o644)
++                    elif mode=='hardlink':os.link(path,f.run/'outside-link')
++                    else:
++                        held=f.run/'held';path.rename(held);path.symlink_to(held)
++                    with self.assertRaises((ValueError,OSError,KeyError)):m.acknowledge()
++
++    def test_incomplete_cleanup_and_warning_never_publish_configured(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            for name in ('pending','setup-user','authorized_keys','luks-rekey.state','warning'):
++                with self.subTest(contract=digest,marker=name),fixture(digest) as f:
++                    completed(f);host_cleanup(f)
++                    path=f.warning if name=='warning' else f.pending.parent/name;path.touch()
++                    with patch.object(m,'status') as status:
++                        if name=='pending':m.acknowledge()
++                        else:
++                            with self.assertRaises(ValueError):m.acknowledge()
++                        status.assert_not_called()
++
++    def test_interrupted_receipt_commit_keeps_pending_and_cannot_publish_success(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            with self.subTest(contract=digest),fixture(digest) as f:
++                actual=m.os.fsync
++                def flush(fd):
++                    if stat.S_ISDIR(os.fstat(fd).st_mode) and os.fstat(fd).st_ino==f.run.stat().st_ino:raise OSError('synthetic report flush failure')
++                    return actual(fd)
++                with patch.object(m.os,'fsync',side_effect=flush),patch.object(m,'status') as status:
++                    with self.assertRaises(OSError):m.commit_identity()
++                    self.assertTrue(f.pending.exists());m.acknowledge();status.assert_not_called()
++                m.commit_identity();f.pending.unlink();m.acknowledge();host_cleanup(f);m.acknowledge()
++
++    def test_retained_manifest_is_checked_and_not_ignored_when_damaged(self):
++        for digest in (m.OFFICIAL,m.LEAN):
++            with self.subTest(contract=digest),fixture(digest) as f:
++                completed(f);f.share.joinpath('manifest.json').write_text('{}')
++                with self.assertRaises((ValueError,KeyError)):m.acknowledge()
++
++    def test_digest_matches_helper_golden_vector(self):
++        manifest=setup_tests.ManagedSetupTests().fixture(m.OFFICIAL)
++        manifest.update(vmID='11111111-1111-4111-8111-111111111111',sessionToken='22222222-2222-4222-8222-222222222222',fingerprint='a'*64)
++        self.assertEqual(m.binding_digest(m.report_binding(manifest)),'0ac533376504c0de084483efbf7551061ac7cad0eb857f178e1ecc2f236b7c9a')
++
++if __name__=='__main__':unittest.main()
 diff --git a/guest/package/try-omarchy/PKGBUILD b/guest/package/try-omarchy/PKGBUILD
-index 8426f5d..f383db2 100644
+index 8426f5d..4c2bef6 100644
 --- a/guest/package/try-omarchy/PKGBUILD
 +++ b/guest/package/try-omarchy/PKGBUILD
 @@ -8,7 +8,7 @@
@@ -847,7 +1027,7 @@ index 8426f5d..f383db2 100644
  pkgname=try-omarchy
  pkgver=0.1.0
 -pkgrel=36
-+pkgrel=42
++pkgrel=43
  pkgdesc='Mac host integration for Omarchy running in Try Omarchy'
  arch=('aarch64')
  url='https://github.com/omacom/try-omarchy'
@@ -872,12 +1052,12 @@ index 0000000..7497bbb
 +ExecStart=/usr/lib/try-omarchy/managed-owner-setup
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service
 new file mode 100644
-index 0000000..a88d97a
+index 0000000..79bdc69
 --- /dev/null
 +++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service
 @@ -0,0 +1,9 @@
 +[Unit]
-+Description=Acknowledge previously completed manager owner setup
++Description=Report completed owner setup for the current managed boot
 +After=try-omarchy-host-config.service try-omarchy-package-install.service
 +ConditionPathExists=/run/try-omarchy/managed-setup.enabled
 +
@@ -887,12 +1067,12 @@ index 0000000..a88d97a
 +TimeoutStartSec=20
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.timer b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.timer
 new file mode 100644
-index 0000000..367780d
+index 0000000..0cfc0fe
 --- /dev/null
 +++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.timer
 @@ -0,0 +1,12 @@
 +[Unit]
-+Description=Report completed owner setup for a matching manager session
++Description=Report owner setup for this seeded boot using its verified public receipt
 +After=try-omarchy-host-config.service
 +ConditionPathExists=/run/try-omarchy/managed-setup.enabled
 +
@@ -985,10 +1165,10 @@ index 1ee48ee..6632cdd 100755
 +fi
 diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup
 new file mode 100755
-index 0000000..2dc46ec
+index 0000000..12dbd8b
 --- /dev/null
 +++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup
-@@ -0,0 +1,351 @@
+@@ -0,0 +1,433 @@
 +#!/usr/bin/python3 -I
 +"""Use reviewed Omarchy OEM functions for an explicitly seeded new guest."""
 +import hashlib
@@ -1013,14 +1193,16 @@ index 0000000..2dc46ec
 +PENDING = Path('/var/lib/omarchy/provisioning/pending')
 +CMDLINE = Path('/run/try-omarchy/cmdline')
 +IDENTITY = Path('/var/lib/try-omarchy/managed-setup/identity.json')
++BOOT_ID = Path('/proc/sys/kernel/random/boot_id')
++REPORT_NAME = 'report-session.json'
 +FAILURE = 'invalid-seed'
 +
 +
-+def read(path, maximum=16384):
++def read(path, maximum=16384, owned=False):
 +    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
 +    try:
 +        info = os.fstat(fd)
-+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > maximum or info.st_mode & 0o077:
++        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > maximum or info.st_mode & 0o077 or (owned and info.st_uid != os.geteuid()):
 +            raise ValueError('private-file')
 +        with os.fdopen(fd, 'rb', closefd=False) as stream:
 +            value = stream.read(maximum + 1)
@@ -1256,29 +1438,108 @@ index 0000000..2dc46ec
 +        finally:
 +            os.close(fd)
 +
++    retain_report_binding(report_binding(manifest))
++
 +
 +def cleanup_finished():
 +    return not any(path.exists() for path in [PENDING, PENDING.parent / 'setup-user', PENDING.parent / 'authorized_keys', PENDING.parent / 'luks-rekey.state', Path('/run/omarchy-provision-owner.finalize-warning')])
 +
 +
-+def acknowledge():
-+    if not CMDLINE.exists() or 'tryomarchy.managed_setup=1' not in CMDLINE.read_text().split() or PENDING.exists() or not IDENTITY.exists():
-+        return
-+    if not cleanup_finished():
-+        raise ValueError('cleanup-state')
-+    mount_share()
-+    manifest = json.loads(read(SHARE / 'manifest.json'))
++def boot_id():
++    with BOOT_ID.open() as stream:
++        return str(uuid.UUID(stream.read(128).strip()))
++
++
++def report_binding(manifest):
++    if not isinstance(manifest, dict) or not isinstance(manifest.get('configuration'), dict) or any(not isinstance(manifest.get(key), str) for key in ('vmID', 'sessionToken', 'fingerprint')):
++        raise ValueError('report-manifest')
++    return {'schemaVersion': manifest['schemaVersion'], 'vmID': str(uuid.UUID(manifest['vmID'])).upper(),
++            'sessionToken': str(uuid.UUID(manifest['sessionToken'])).upper(), 'fingerprint': manifest['fingerprint'],
++            'owner': manifest['configuration']['username'], 'ownerSetupContractSHA256': manifest.get('ownerSetupContractSHA256', OFFICIAL)}
++
++
++def binding_digest(binding):
++    return hashlib.sha256(json.dumps(binding, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
++
++
++def validate_report_binding(binding):
++    if set(binding) != {'schemaVersion', 'vmID', 'sessionToken', 'fingerprint', 'owner', 'ownerSetupContractSHA256'} or type(binding['schemaVersion']) is not int or binding['schemaVersion'] != 1:
++        raise ValueError('report-schema')
++    for key in ('vmID', 'sessionToken'):
++        if not isinstance(binding[key], str) or str(uuid.UUID(binding[key])).upper() != binding[key]:
++            raise ValueError('report-uuid')
++    if not isinstance(binding['fingerprint'], str) or not re.fullmatch('[0-9a-f]{64}', binding['fingerprint']):
++        raise ValueError('report-fingerprint')
++    if not isinstance(binding['owner'], str) or not re.fullmatch('[a-z_][a-z0-9_-]{0,31}', binding['owner']) or binding['owner'] == 'root':
++        raise ValueError('report-owner')
++    selected_contract(binding)
++    tokens = [token.partition('=')[2] for token in CMDLINE.read_text().split() if token.startswith('tryomarchy.managed_setup_report=')]
++    if len(tokens) != 1 or not re.fullmatch('[0-9a-f]{64}', tokens[0]) or tokens[0] != binding_digest(binding):
++        raise ValueError('report-session')
++
++
++def local_report_binding():
++    directory(RUN)
++    receipt = json.loads(read(RUN / REPORT_NAME, owned=True))
++    if not isinstance(receipt, dict) or set(receipt) != {'bootID', 'binding'} or receipt['bootID'] != boot_id():
++        raise ValueError('report-boot')
++    binding = receipt['binding']
++    validate_report_binding(binding)
++    return binding
++
++
++def retain_report_binding(binding):
++    validate_report_binding(binding)
++    directory(RUN)
++    path = RUN / REPORT_NAME
++    if os.path.lexists(path):
++        if local_report_binding() != binding:
++            raise ValueError('report-changed')
++    else:
++        fd, temporary = tempfile.mkstemp(dir=RUN, prefix='.report-')
++        try:
++            os.fchmod(fd, 0o600)
++            with os.fdopen(fd, 'w', closefd=False) as stream:
++                json.dump({'bootID': boot_id(), 'binding': binding}, stream); stream.flush(); os.fsync(fd)
++            os.replace(temporary, path)
++        finally:
++            os.close(fd)
++            if os.path.exists(temporary): os.unlink(temporary)
++    for target in (path, RUN):
++        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
++        try: os.fsync(fd)
++        finally: os.close(fd)
++
++
++def report_completion(binding):
++    validate_report_binding(binding)
++    if not cleanup_finished(): raise ValueError('cleanup-state')
 +    directory(IDENTITY.parent)
-+    identity = json.loads(read(IDENTITY))
-+    selected_contract(manifest)
-+    if identity.get('ownerSetupContractSHA256', OFFICIAL) != manifest.get('ownerSetupContractSHA256', OFFICIAL):
-+        raise ValueError('identity')
-+    if manifest.get('schemaVersion') != 1 or any(identity.get(k) != manifest.get(k) for k in ('vmID', 'fingerprint')) or identity.get('owner') != manifest.get('configuration', {}).get('username'):
-+        raise ValueError('identity')
-+    owner = pwd.getpwnam(identity['owner'])
-+    if not 1000 <= owner.pw_uid < 60000:
-+        raise ValueError('owner')
++    identity = json.loads(read(IDENTITY, owned=True))
++    if not isinstance(identity, dict): raise ValueError('identity')
++    identity.setdefault('ownerSetupContractSHA256', OFFICIAL)
++    expected = {key: binding[key] for key in ('vmID', 'fingerprint', 'owner', 'ownerSetupContractSHA256')}
++    if identity != expected: raise ValueError('identity')
++    owner = pwd.getpwnam(binding['owner'])
++    if not 1000 <= owner.pw_uid < 60000: raise ValueError('owner')
++    retain_report_binding(binding)
++    manifest = dict(binding, configuration={'username': binding['owner']})
 +    status(manifest, 'configured')
++
++
++def acknowledge():
++    if not CMDLINE.exists() or 'tryomarchy.managed_setup=1' not in CMDLINE.read_text().split() or PENDING.exists():
++        return
++    if not cleanup_finished(): raise ValueError('cleanup-state')
++    mount_share()
++    manifest_path = SHARE / 'manifest.json'
++    try:
++        manifest_data = read(manifest_path)
++    except FileNotFoundError:
++        binding = local_report_binding()
++    else:
++        binding = report_binding(json.loads(manifest_data))
++    report_completion(binding)
 +
 +
 +def main():
@@ -1300,6 +1561,7 @@ index 0000000..2dc46ec
 +        seed = json.loads(read(SHARE / 'owner-setup.json'))
 +        FAILURE = 'contract-mismatch'; contract, adapter = selected_contract(manifest)
 +        FAILURE = 'invalid-seed'; keyboard = validate(manifest, seed, contract)
++        validate_report_binding(report_binding(manifest))
 +        FAILURE = 'contract-mismatch'; programs = verified_program(contract)
 +        FAILURE = 'encrypted-image'
 +        output = subprocess.run(['/usr/bin/lsblk', '-nr', '-o', 'TYPE'], check=True, capture_output=True, text=True).stdout
@@ -1317,7 +1579,7 @@ index 0000000..2dc46ec
 +        matching_identity(manifest)
 +        if not cleanup_finished():
 +            raise ValueError('cleanup-state')
-+        status(manifest, 'configured')
++        report_completion(report_binding(manifest))
 +        return 0
 +    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
 +        if manifest:
@@ -2534,10 +2796,11 @@ index 0000000..e798599
 +}
 diff --git a/macos/Sources/OmarchyVMHelper/ManagedSetupLaunch.swift b/macos/Sources/OmarchyVMHelper/ManagedSetupLaunch.swift
 new file mode 100644
-index 0000000..a7c30b4
+index 0000000..7763f0c
 --- /dev/null
 +++ b/macos/Sources/OmarchyVMHelper/ManagedSetupLaunch.swift
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,76 @@
++import CryptoKit
 +import Darwin
 +import Foundation
 +import TryOmarchyKitClient
@@ -2552,10 +2815,26 @@ index 0000000..a7c30b4
 +        var ownerSetupContractSHA256: String? = nil
 +        let fingerprint: String; let configuration: Configuration; let hostname: String
 +    }
++    struct ReportBinding: Encodable {
++        let schemaVersion = 1
++        let vmID: UUID; let sessionToken: UUID; let fingerprint: String
++        let owner: String; let ownerSetupContractSHA256: String
++        init(_ manifest: Manifest) {
++            vmID = manifest.vmID; sessionToken = manifest.sessionToken; fingerprint = manifest.fingerprint
++            owner = manifest.configuration.username
++            ownerSetupContractSHA256 = manifest.ownerSetupContractSHA256 ?? VMOwnerSetupContract.official
++        }
++        func digest() throws -> String {
++            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
++            return SHA256.hash(data: try encoder.encode(self)).map { String(format: "%02x", $0) }.joined()
++        }
++    }
++    static let reportEnvironmentKey = "OMARCHY_MANAGED_SETUP_REPORT"
 +    static let environmentKey = "OMARCHY_MANAGED_SETUP_ROOT"
 +    static func environment(root: URL, base: [String: String], contract: String = VMOwnerSetupContract.official) throws -> [String: String] {
 +        var environment = base
 +        environment.removeValue(forKey: environmentKey)
++        environment.removeValue(forKey: reportEnvironmentKey)
 +        let path = root.appendingPathComponent(".omarchy-managed-setup.json")
 +        var info = stat()
 +        guard lstat(path.path, &info) == 0 else {
@@ -2577,6 +2856,7 @@ index 0000000..a7c30b4
 +        let seed = try JSONDecoder().decode(Seed.self, from: ManagedSSHLaunch.read(bootstrap.appendingPathComponent("owner-setup.json")))
 +        guard (8...1024).contains(seed.password.utf8.count), !seed.password.contains(where: { $0 == "\n" || $0 == "\r" || $0 == "\0" }) else { throw HelperError.io("Invalid owner setup seed") }
 +        environment[environmentKey] = bootstrap.path
++        environment[reportEnvironmentKey] = try ReportBinding(value).digest()
 +        return environment
 +    }
 +    static func clearSeed(root: URL, expected: Manifest) throws {
@@ -3435,17 +3715,17 @@ index f199020..961c03a 100644
          exit(0)
 diff --git a/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 new file mode 100644
-index 0000000..3d72b20
+index 0000000..88e9c08
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,144 @@
 +import CryptoKit
 +import Darwin
 +import Foundation
 +
 +public struct VMFactorySelection: Codable, Equatable, Sendable {
 +    public static let capabilityVersion = 1
-+    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-42-aarch64.pkg.tar.zst"
++    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-43-aarch64.pkg.tar.zst"
 +    public let bundlePath: String
 +    public let manifestSHA256: String
 +    public init(bundlePath: String, manifestSHA256: String) {
@@ -3528,11 +3808,11 @@ index 0000000..3d72b20
 +                  compatibility.packages["try-omarchy"] == VMOwnerSetupContract.leanIntegrationVersion,
 +                  build.try_commit == manifest.imageIntegrationSourceCommit else { throw VMRunProtocolError.invalidConfiguration }
 +
-+            struct Provenance: Decodable { let version: Int; let sourceCommit: String; let contracts: [String: String] }
++            struct Provenance: Decodable { let version: Int; let reportVersion: Int; let sourceCommit: String; let contracts: [String: String] }
 +            let data = try Self.readMetadata(runtimeBundle.appendingPathComponent(VMOwnerSetupContract.provenancePath))
 +            let provenance = try JSONDecoder().decode(Provenance.self, from: data)
 +            guard Self.dataDigest(data) == manifest.runtimeFiles[VMOwnerSetupContract.provenancePath],
-+                  provenance.version == VMOwnerSetupContract.capabilityVersion,
++                  provenance.version == VMOwnerSetupContract.capabilityVersion, provenance.reportVersion == VMOwnerSetupContract.reportVersion,
 +                  provenance.sourceCommit == manifest.imageIntegrationSourceCommit,
 +                  provenance.contracts == ["official": VMOwnerSetupContract.official, "lean-e4fffc6": VMOwnerSetupContract.lean] else { throw VMRunProtocolError.invalidConfiguration }
 +        }
@@ -3548,6 +3828,7 @@ index 0000000..3d72b20
 +    public let customFactoryVersion: Int
 +    public let managedSSHVersion: Int
 +    public let managedSetupVersion: Int
++    public let ownerSetupReportVersion: Int
 +    public let integrationPackageSHA256: String
 +    public let ownerSetupContractSHA256: String
 +    public var ownerSetupEvidence: String? = nil
@@ -3569,7 +3850,7 @@ index 0000000..3d72b20
 +    public func validate() throws {
 +        let required: Set<String> = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy", "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", VMFactorySelection.packagePath]
 +        guard format == 1, architecture == "aarch64", boot == "uefi-limine", customFactoryVersion == 1,
-+              managedSSHVersion == 1, managedSetupVersion == 1,
++              managedSSHVersion == 1, managedSetupVersion == 1, ownerSetupReportVersion == VMOwnerSetupContract.reportVersion,
 +              !name.isEmpty, name.utf8.count <= 128, !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
 +              (2...32).contains(files.count), files["factory.json"] != nil, files["reviewed-factory.json"] == nil,
 +              files.keys.allSatisfy(Self.safeName), files.values.allSatisfy(VMFactorySelection.isDigest),
@@ -3584,18 +3865,19 @@ index 0000000..3d72b20
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
 new file mode 100644
-index 0000000..6ac7b6a
+index 0000000..549fb83
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
-@@ -0,0 +1,16 @@
+@@ -0,0 +1,17 @@
 +import Foundation
 +
 +public enum VMOwnerSetupContract {
 +    public static let capabilityVersion = 1
++    public static let reportVersion = 1
 +    public static let official = "d381667f407b5f82cfb9f9c391eccf2898ba8a064bc6b2f082e28f959e76aef8"
 +    public static let lean = "1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310"
 +    public static let provenancePath = "Contents/Resources/owner-setup-provenance.json"
-+    public static let leanIntegrationVersion = "0.1.0-42.1"
++    public static let leanIntegrationVersion = "0.1.0-43.1"
 +    public static let leanPrograms = [
 +        "/usr/bin/omarchy-provision-owner": "b81202f7b6f58f4e670c8f3509e1eb952807b92ad24d0c0e87b75bd03004d0ca",
 +        "/usr/share/omarchy/install/provisioning/setup-form.sh": "b3ae7c22c8c8de91590d3a0e7d037b75734b7d886c8dceb012a3bbdf546045c5",
@@ -4041,10 +4323,10 @@ index 0000000..08c920d
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift
 new file mode 100644
-index 0000000..0e860e0
+index 0000000..15b630e
 --- /dev/null
 +++ b/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,72 @@
 +import Darwin
 +import Foundation
 +import Testing
@@ -4056,7 +4338,7 @@ index 0000000..0e860e0
 +    @Test("an environment override cannot attach a setup share")
 +    func ignoresEnvironment() throws {
 +        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-+        #expect(try ManagedSetupLaunch.environment(root: root, base: [ManagedSetupLaunch.environmentKey: "/unsafe"]) == [:])
++        #expect(try ManagedSetupLaunch.environment(root: root, base: [ManagedSetupLaunch.environmentKey: "/unsafe", ManagedSetupLaunch.reportEnvironmentKey: "untrusted"]) == [:])
 +    }
 +    @Test("matching private seed identity is required and cleanup refuses another session")
 +    func launchAndCleanup() throws {
@@ -4074,6 +4356,8 @@ index 0000000..0e860e0
 +        try write(JSONEncoder().encode(manifest), bootstrap.appendingPathComponent("manifest.json"))
 +        try write(Data(#"{"password":"synthetic-password"}"#.utf8), seed)
 +        #expect(try ManagedSetupLaunch.environment(root: root, base: [:])[ManagedSetupLaunch.environmentKey] == bootstrap.path)
++        let environment = try ManagedSetupLaunch.environment(root: root, base: [:])
++        #expect(environment[ManagedSetupLaunch.reportEnvironmentKey] == (try ManagedSetupLaunch.ReportBinding(manifest).digest()))
 +        var lean = manifest
 +        lean.ownerSetupContractSHA256 = VMOwnerSetupContract.lean
 +        try write(JSONEncoder().encode(lean), marker)
@@ -4095,6 +4379,14 @@ index 0000000..0e860e0
 +        try ManagedSetupLaunch.clearSeed(root: root, expected: manifest)
 +        #expect(!FileManager.default.fileExists(atPath: seed.path))
 +        #expect(!FileManager.default.fileExists(atPath: marker.path))
++    }
++    @Test("report credential has the same canonical digest as the guest")
++    func reportDigest() throws {
++        let config = ManagedSetupLaunch.Configuration(username: "owner", fullName: "Excluded from report", email: "excluded@example.invalid", hostnamePrefix: "work", timezone: "UTC", keyboardID: "English (US)")
++        let manifest = ManagedSetupLaunch.Manifest(schemaVersion: 1, vmID: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!, sessionToken: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!, fingerprint: String(repeating: "a", count: 64), configuration: config, hostname: "work-11111111")
++        #expect(try ManagedSetupLaunch.ReportBinding(manifest).digest() == "0ac533376504c0de084483efbf7551061ac7cad0eb857f178e1ecc2f236b7c9a")
++        var another = manifest; another.ownerSetupContractSHA256 = VMOwnerSetupContract.lean
++        #expect(try ManagedSetupLaunch.ReportBinding(another).digest() != ManagedSetupLaunch.ReportBinding(manifest).digest())
 +    }
 +    @Test("guest setup status accepts only known non-secret fields")
 +    func guestStatus() throws {
@@ -4492,7 +4784,7 @@ index df1e815..b8f2824 100644
 +    }
 +}
 diff --git a/macos/Tests/run-mode.test.sh b/macos/Tests/run-mode.test.sh
-index fb2be66..4c13b6d 100755
+index fb2be66..6f6fba9 100755
 --- a/macos/Tests/run-mode.test.sh
 +++ b/macos/Tests/run-mode.test.sh
 @@ -119,7 +119,8 @@ if not marker.exists():
@@ -4540,7 +4832,7 @@ index fb2be66..4c13b6d 100755
 +(custom / "factory.json").write_text(json.dumps(factory))
 +(custom / "omarchy.img.zst").write_bytes(image)
 +(custom / "provisioning.json").write_text('{"fixture":"no VM"}')
-+package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-42-aarch64.pkg.tar.zst"
++package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-43-aarch64.pkg.tar.zst"
 +required = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy",
 +            "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", package_path]
 +for name in required:
@@ -4550,7 +4842,7 @@ index fb2be66..4c13b6d 100755
 +        path.write_bytes(b"no VM fixture")
 +def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 +manifest = {"format": 1, "name": "Custom fixture", "architecture": "aarch64", "boot": "uefi-limine",
-+            "customFactoryVersion": 1, "managedSSHVersion": 1, "managedSetupVersion": 1,
++            "customFactoryVersion": 1, "managedSSHVersion": 1, "managedSetupVersion": 1, "ownerSetupReportVersion": 1,
 +            "integrationPackageSHA256": sha(kit / package_path), "ownerSetupContractSHA256": "d381667f407b5f82cfb9f9c391eccf2898ba8a064bc6b2f082e28f959e76aef8",
 +            "files": {p.name: sha(p) for p in custom.iterdir()},
 +            "provisioning": {"provisioning.json": sha(custom / "provisioning.json")},
@@ -4620,10 +4912,10 @@ index b496be7..d93a979 100755
          builder = BUILDER.read_text(encoding="utf-8")
          expected = re.search(r"^identity_patch_sha256=([a-f0-9]{64})$", builder, re.M)
 diff --git a/macos/run-qemu-gpu.sh b/macos/run-qemu-gpu.sh
-index cf3bb8f..efc60b4 100755
+index cf3bb8f..7e48430 100755
 --- a/macos/run-qemu-gpu.sh
 +++ b/macos/run-qemu-gpu.sh
-@@ -290,6 +290,17 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
+@@ -290,6 +290,19 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
    host_options+=" tryomarchy.ssh_access=1 tryomarchy.ssh_from=any"
  fi
  [[ $QEMU_NETWORK_MODE == nat ]] || port_forwarding_summary='inactive in bridged mode'
@@ -4636,12 +4928,14 @@ index cf3bb8f..efc60b4 100755
 +managed_setup=${OMARCHY_MANAGED_SETUP_ROOT:-}
 +if [[ -n $managed_setup ]]; then
 +  [[ $QEMU_NETWORK_MODE == nat && -d $managed_setup && ! -L $managed_setup ]] || fail "owner setup requires NAT and its validated provisioning share"
-+  host_options+=" tryomarchy.managed_setup=1"
++  setup_report=${OMARCHY_MANAGED_SETUP_REPORT:-}
++  [[ $setup_report =~ ^[0-9a-f]{64}$ ]] || fail "owner setup requires its validated report-session binding"
++  host_options+=" tryomarchy.managed_setup=1 tryomarchy.managed_setup_report=$setup_report"
 +fi
  
  keyboard=$("$native_bridge" --host-keyboard-geometry) || fail "cannot detect the Mac keyboard geometry"
  case $keyboard in ansi | iso | jis) host_options+=" tryomarchy.keyboard=$keyboard" ;; *) fail "invalid keyboard geometry" ;; esac
-@@ -450,8 +461,13 @@ shared_factory=${OMARCHY_QEMU_GPU_FACTORY_CACHE:-}
+@@ -450,8 +463,13 @@ shared_factory=${OMARCHY_QEMU_GPU_FACTORY_CACHE:-}
  [[ -z $shared_factory || ($shared_factory == /* && $shared_factory != *$'\n'*) ]] ||
    fail "OMARCHY_QEMU_GPU_FACTORY_CACHE must be an absolute path"
  prepare_factory_disk() {
@@ -4657,7 +4951,7 @@ index cf3bb8f..efc60b4 100755
      local shared="$shared_factory/$factory_identity.img"
      if [[ -f $shared && ! -L $shared ]] && cp -c "$shared" "$factory_disk.partial" 2>/dev/null; then
        mv -f "$factory_disk.partial" "$factory_disk"
-@@ -482,6 +498,9 @@ prepare_factory_disk() {
+@@ -482,6 +500,9 @@ prepare_factory_disk() {
      fail "could not decompress the factory disk"
    fi
    [[ $(stat -f %z "$factory_disk.partial") == "$disk_bytes" ]] || fail "the factory disk has the wrong size"
@@ -4667,7 +4961,7 @@ index cf3bb8f..efc60b4 100755
    chmod 600 "$factory_disk.partial"
    echo '[qemu-gpu] Launch phase: finishing' >&2
    # zstd leaves much of the filesystem's free space allocated on APFS where
-@@ -595,7 +614,11 @@ make_product_app() { # app
+@@ -595,7 +616,11 @@ make_product_app() { # app
      /usr/bin/plutil -insert CFBundleExecutable -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleName -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleDisplayName -string "$product_name" "$plist" &&
@@ -4680,7 +4974,7 @@ index cf3bb8f..efc60b4 100755
  }
  qemu_exec=$qemu_bin
  case $product_name in
-@@ -758,6 +781,20 @@ if bridge_enabled settings; then
+@@ -758,6 +783,20 @@ if bridge_enabled settings; then
    )
  fi
  

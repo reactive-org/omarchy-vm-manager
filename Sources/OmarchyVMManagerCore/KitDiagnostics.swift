@@ -21,6 +21,7 @@ public struct RuntimeProvenance: Codable, Equatable, Sendable {
     public var customFactoryVersion: Int? = nil
     public var managedSetupVersion: Int? = nil
     public var ownerSetupContractsVersion: Int? = nil
+    public var ownerSetupReportVersion: Int? = nil
     public let composition: String
     public let files: [String: String]
 }
@@ -93,6 +94,9 @@ public enum KitVerifier {
               lock.files.keys.contains(TryOmarchyKit.manifestPath),
               lock.files.values.allSatisfy({ hex($0, count: 64) }) else {
             throw invalid("The runtime provenance or focus-aware clipboard capability is unproven.")
+        }
+        if let version = lock.ownerSetupReportVersion, version != VMOwnerSetupContract.reportVersion {
+            throw invalid("Owner completion reporting capability is unknown.")
         }
         if let version = lock.ownerSetupContractsVersion {
             guard version == VMOwnerSetupContract.capabilityVersion, lock.files[VMOwnerSetupContract.provenancePath] != nil else { throw invalid("Reviewed owner contract selection is unproven.") }

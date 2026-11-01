@@ -84,7 +84,7 @@ public struct TryOmarchyRuntime: VMRuntime {
             }
             if request.profile.ownerSetup != nil {
                 let provenance = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
-                guard provenance.managedSetupVersion == 1 else { throw VMFailure(code: "unproven-owner-runtime", message: "Unattended setup requires the exact reviewed provisioning-capable runtime. This guest was not launched.") }
+                guard provenance.managedSetupVersion == 1, provenance.ownerSetupReportVersion == VMOwnerSetupContract.reportVersion else { throw VMFailure(code: "unproven-owner-runtime", message: "Unattended setup requires the exact reviewed provisioning-capable runtime. This guest was not launched.") }
             }
             guard storage.matchesRoot(request.storageRoot, profile: request.profile) else {
                 throw VMFailure(code: "invalid-storage-root", message: "Only this profile’s manager-owned root may launch.")

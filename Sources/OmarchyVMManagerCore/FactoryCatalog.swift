@@ -116,7 +116,7 @@ public struct FactoryCatalog: Sendable {
     private func verifyCandidate(_ url: URL, digest: String) throws -> FactoryIdentity {
         try Task.checkCancellation()
         let lock = try JSONDecoder().decode(RuntimeProvenance.self, from: lockData)
-        guard lock.customFactoryVersion == 1, lock.managedSSHVersion == 1, lock.managedSetupVersion == 1 else { throw Self.invalid("The runtime lacks the reviewed custom-factory and provisioning capabilities.") }
+        guard lock.customFactoryVersion == 1, lock.managedSSHVersion == 1, lock.managedSetupVersion == 1, lock.ownerSetupReportVersion == VMOwnerSetupContract.reportVersion else { throw Self.invalid("The runtime lacks the reviewed custom-factory and provisioning capabilities.") }
         let selection = VMFactorySelection(bundlePath: url.path, manifestSHA256: digest)
         let manifest: VMFactoryManifest
         do { manifest = try selection.verified(runtimeBundle: kit.bundleURL) }

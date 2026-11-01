@@ -22,7 +22,7 @@ class FactoryPreparationTests(unittest.TestCase):
             'disk': {'path': 'test.img', 'bytes': 21474836480, 'sha256': 'a' * 64},
         }))
         lock = folder / 'runtime.json'
-        lock.write_text(json.dumps({'customFactoryVersion': 1, 'managedSSHVersion': 1, 'managedSetupVersion': 1,
+        lock.write_text(json.dumps({'customFactoryVersion': 1, 'managedSSHVersion': 1, 'managedSetupVersion': 1, 'ownerSetupReportVersion': 1,
                                     'files': {name: 'b' * 64 for name in [module.PACKAGE, 'Contents/MacOS/omarchy-vm-helper', 'Contents/Resources/runtime/bin/Try Omarchy', 'Contents/Resources/firmware/edk2-aarch64-code.fd', 'Contents/Resources/scripts/run-qemu-gpu.sh']}}))
         return bundle, lock
 
@@ -50,7 +50,7 @@ class FactoryPreparationTests(unittest.TestCase):
                 self.assertFalse((bundle / 'reviewed-factory.json').exists())
 
     def test_preparer_rejects_metadata_the_importer_cannot_accept(self):
-        for case in ('boolean-format', 'disk-path', 'large-metadata', 'control-name', 'runtime-capability', 'runtime-path'):
+        for case in ('boolean-format', 'disk-path', 'large-metadata', 'control-name', 'runtime-capability', 'runtime-report', 'runtime-path'):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temp:
                 bundle, lock = self.fixture(Path(temp))
                 image = json.loads((bundle / 'factory.json').read_bytes())
@@ -60,6 +60,7 @@ class FactoryPreparationTests(unittest.TestCase):
                 (bundle / 'factory.json').write_text(json.dumps(image))
                 runtime = json.loads(lock.read_bytes())
                 if case == 'runtime-capability': runtime['customFactoryVersion'] = True
+                if case == 'runtime-report': del runtime['ownerSetupReportVersion']
                 if case == 'runtime-path': runtime['files']['Contents/../outside'] = 'a' * 64
                 lock.write_text(json.dumps(runtime))
                 with self.assertRaises(ValueError):
@@ -110,7 +111,7 @@ class LeanPreparationTests(unittest.TestCase):
                 expected = json.loads((ROOT / 'Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json').read_bytes())['programs']
                 del expected['/usr/share/omarchy/install/provisioning/progress-icon.sh']
                 if case == 'mixed': expected['/usr/bin/omarchy-provision-owner'] = 'a' * 64
-                (bundle / 'compatibility.json').write_text(json.dumps({'owner_programs': expected, 'packages': {'try-omarchy': '0.1.0-36.1' if case == 'old-package' else '0.1.0-42.1'}}))
+                (bundle / 'compatibility.json').write_text(json.dumps({'owner_programs': expected, 'packages': {'try-omarchy': '0.1.0-36.1' if case == 'old-package' else '0.1.0-43.1'}}))
                 (bundle / 'image-build.json').write_text(json.dumps({'try_commit': 'f' * 40 if case == 'wrong-source' else lock['patchCommit']}))
                 if case == 'capability': del lock['ownerSetupContractsVersion']
                 lock_path.write_text(json.dumps(lock))
@@ -118,7 +119,7 @@ class LeanPreparationTests(unittest.TestCase):
                 if case == 'success':
                     module.prepare(bundle, 'Lean fixture', ['compatibility.json','image-build.json'], **kwargs)
                     value = json.loads((bundle / 'reviewed-factory.json').read_bytes())
-                    self.assertEqual(value['imageIntegrationVersion'], '0.1.0-42.1')
+                    self.assertEqual(value['imageIntegrationVersion'], '0.1.0-43.1')
                     self.assertEqual(value['ownerSetupContractSHA256'], module.digest(ROOT / 'Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json'))
                 else:
                     with self.assertRaises(ValueError): module.prepare(bundle, 'Lean fixture', ['compatibility.json','image-build.json'], **kwargs)

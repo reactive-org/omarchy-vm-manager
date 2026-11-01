@@ -22,7 +22,7 @@ The official contract remains byte-for-byte unchanged in `Sources/OmarchyVMManag
 
 **The supplied disk needs rebuilding for managed lean setup.** Its integration package lacks this adapter and managed SSH. Injecting the old manager package would also restore software-rendering policy. Do not patch the existing disk or alter an official cache.
 
-The reviewed integration source is commit **`aab6bd82b279cc81c2627be73f7b206ae6dadfc0`**, reproduced by `make prepare-source` at `.build/runtime-source`. It retains the exact stock factory builder and descends from Try Omarchy v1.3.0. The complete kit offers `try-omarchy 0.1.0-42`. The dev-vm builder's existing, checked hardware-policy transformation produces **0.1.0-42.1** from the same source, retaining the managed adapter/SSH/contracts while removing its documented software-rendering wrappers. The existing installer compares package versions and preserves this newer variant rather than overwriting it with 42. Factory admission requires evidence of that source/version; the evidence remains a declaration until live validation.
+The reviewed integration source is commit **`1ecd8499d271cd761e8b4be0e49747de96e57768`**, reproduced by `make prepare-source` at `.build/runtime-source`. It retains the exact stock factory builder and descends from Try Omarchy v1.3.0. The complete kit offers `try-omarchy 0.1.0-43`. The dev-vm builder's existing, checked hardware-policy transformation produces **0.1.0-43.1** from the same source, retaining the managed adapter/SSH/contracts while removing its documented software-rendering wrappers. The existing installer compares package versions and preserves this newer variant rather than overwriting it with 43. Factory admission requires evidence of that source/version; the evidence remains a declaration until live validation.
 
 Use the existing builder and tools; these commands do not install host tools:
 
@@ -35,7 +35,7 @@ git -C "$integration_source" rev-parse HEAD
 cd /Users/danwas/Development/Projects/dev-vm
 make build-omarchy-image \
   OMARCHY_IMAGE_TRY_SOURCE="$integration_source" \
-  OMARCHY_IMAGE_TRY_COMMIT=aab6bd82b279cc81c2627be73f7b206ae6dadfc0 \
+  OMARCHY_IMAGE_TRY_COMMIT=1ecd8499d271cd761e8b4be0e49747de96e57768 \
   OMARCHY_IMAGE_SIZE_GIB=20
 ```
 
@@ -65,7 +65,7 @@ python3 Scripts/prepare_factory_bundle.py "$bundle" \
   --provisioning user-provisioning-check.json
 ```
 
-Use the CLI from the matching reviewed 0.9.1 app with its matching manager running; an older running manager will not acquire the new contract from a newer CLI. Installation does not open the app or issue guest commands. After the operator has opened the matching manager, run:
+Use the CLI from the matching reviewed 0.9.2 app with its matching manager running; an older running manager will not acquire the new contract from a newer CLI. Installation does not open the app or issue guest commands. After the operator has opened the matching manager, run:
 
 ```sh
 cli='/absolute/path/to/matching/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm'
@@ -83,3 +83,5 @@ Creation records metadata only and requires previously saved Guest Defaults. It 
 **VERIFIED:** source/hash/interface review and synthetic tests exercise both adapter paths, keyboard failures, same-owner retry, warning-marker protection, secret transport, contract/evidence tampering and SSH gating. Complete-kit inventories, pins, package contents and ad-hoc signatures are checked by the normal pipeline.
 
 **TO PROVE:** live lean unattended setup and retry, successful first boot, authenticated SSH with this rebuilt disk, hardware rendering, dynamic display/clipboard, playbook execution/idempotence, reboot and crash/sleep behavior. No image was booted or rebuilt during this manager work. A provenance record does not independently prove the raw disk's contents or a publisher's identity.
+
+**DESIGN DECISION — completion reporting:** the 43/43.1 adapter retains only a private non-secret boot/session receipt before host cleanup. Repeated timer invocations validate it against the helper-provided boot credential and durable identity; the host still removes the password seed, full manifest and launch marker promptly. See [timer lifetime, trusted inputs, exact pins and fresh acceptance](OwnerCompletionReporting.md). This build is not installed and has isolated validation only.

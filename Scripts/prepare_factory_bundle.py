@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-42-aarch64.pkg.tar.zst'
+PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-43-aarch64.pkg.tar.zst'
 
 
 def read_regular(path, maximum=None):
@@ -78,7 +78,7 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
     if not isinstance(disk, dict) or not safe_name(disk.get('path')) or not disk['path'].endswith('.img') or type(disk.get('bytes')) is not int or not 0 < disk['bytes'] <= 8192 * 1073741824 or not is_digest(disk.get('sha256')):
         raise ValueError('Invalid prepared disk size or digest')
     lock = metadata(Path(runtime_lock))
-    if not isinstance(lock, dict) or any(type(lock.get(key)) is not int or lock[key] != 1 for key in ('customFactoryVersion', 'managedSSHVersion', 'managedSetupVersion')):
+    if not isinstance(lock, dict) or any(type(lock.get(key)) is not int or lock[key] != 1 for key in ('customFactoryVersion', 'managedSSHVersion', 'managedSetupVersion', 'ownerSetupReportVersion')):
         raise ValueError('Build the reviewed factory/provisioning capable kit first')
     runtime_files = lock.get('files')
     required = {PACKAGE, 'Contents/MacOS/omarchy-vm-helper', 'Contents/Resources/runtime/bin/Try Omarchy',
@@ -103,14 +103,14 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
         build = metadata(bundle / image_build)
         expected = metadata(selected)['programs'].copy()
         del expected['/usr/share/omarchy/install/provisioning/progress-icon.sh']
-        if (evidence.get('owner_programs') != expected or evidence.get('packages', {}).get('try-omarchy') != '0.1.0-42.1'
+        if (evidence.get('owner_programs') != expected or evidence.get('packages', {}).get('try-omarchy') != '0.1.0-43.1'
                 or build.get('try_commit') != lock.get('patchCommit') or not re.fullmatch('[0-9a-f]{40}', str(build.get('try_commit', '')))):
             raise ValueError('Rebuild the lean disk from this reviewed manager integration source; owner programs, package or source differ')
         extra = {'ownerSetupEvidence': compatibility, 'imageBuildEvidence': image_build,
-                 'imageIntegrationVersion': '0.1.0-42.1', 'imageIntegrationSourceCommit': build['try_commit']}
+                 'imageIntegrationVersion': '0.1.0-43.1', 'imageIntegrationSourceCommit': build['try_commit']}
     value = {
         'format': 1, 'name': name, 'architecture': 'aarch64', 'boot': 'uefi-limine',
-        'customFactoryVersion': 1, 'managedSSHVersion': 1, 'managedSetupVersion': 1,
+        'customFactoryVersion': 1, 'managedSSHVersion': 1, 'managedSetupVersion': 1, 'ownerSetupReportVersion': 1,
         'integrationPackageSHA256': lock['files'][PACKAGE],
         'ownerSetupContractSHA256': digest(selected),
         'runtimeFiles': lock['files'], 'files': files,

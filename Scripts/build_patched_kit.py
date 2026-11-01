@@ -56,12 +56,12 @@ def build():
     shutil.copy2(source / "macos/.build/release/omarchy-vm-helper", contents / "MacOS/omarchy-vm-helper")
     assert (source / "guest/package/try-omarchy/files/usr/share/try-omarchy/owner-setup-contract.json").read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json").read_bytes(), "owner setup contracts differ"
     assert (source / "guest/package/try-omarchy/files/usr/share/try-omarchy/lean-owner-setup-contract.json").read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json").read_bytes(), "lean owner contracts differ"
-    owner_provenance = {"version": 1, "sourceCommit": patch["commit"], "contracts": {
+    owner_provenance = {"version": 1, "reportVersion": 1, "sourceCommit": patch["commit"], "contracts": {
         "official": digest(ROOT / "Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json"),
         "lean-e4fffc6": digest(ROOT / "Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json")}}
     (contents / "Resources/owner-setup-provenance.json").write_text(json.dumps(owner_provenance, indent=2, sort_keys=True) + "\n")
     packages = list((source / "dist/guest/packages").glob("try-omarchy-*.pkg.tar.zst"))
-    assert len(packages) == 1 and packages[0].name == "try-omarchy-0.1.0-42-aarch64.pkg.tar.zst"
+    assert len(packages) == 1 and packages[0].name == "try-omarchy-0.1.0-43-aarch64.pkg.tar.zst"
     for old in (contents / "Resources/guest-packages").iterdir():
         assert old.is_file() and not old.is_symlink()
         old.unlink()
@@ -80,9 +80,9 @@ def build():
         "patchSHA256": patch["patchSHA256"], "referenceKitSHA256": baseline["kitSHA256"],
         "kitSHA256": digest(destination / "TryOmarchyKit.zip"),
         "kitVersion": value["version"], "runProtocolVersion": value["runProtocolVersion"],
-        "buildDate": value["buildDate"], "focusAwareClipboard": True, "managedSSHVersion": 1, "managedSetupVersion": 1, "manualPauseVersion": 1, "customFactoryVersion": 1, "ownerSetupContractsVersion": 1,
-        "guestPackageVersion": "0.1.0-42",
-        "composition": "Source-built helper and guest adapter with reviewed official/lean owner contracts, verified factory selection, manual Pause/Resume and manager Downloads cache, guest integration package 0.1.0-42 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
+        "buildDate": value["buildDate"], "focusAwareClipboard": True, "managedSSHVersion": 1, "managedSetupVersion": 1, "manualPauseVersion": 1, "customFactoryVersion": 1, "ownerSetupContractsVersion": 1, "ownerSetupReportVersion": 1,
+        "guestPackageVersion": "0.1.0-43",
+        "composition": "Source-built helper and guest adapter with reviewed official/lean owner contracts, verified factory selection, manual Pause/Resume and manager Downloads cache, guest integration package 0.1.0-43 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
         "files": inventory(destination / "TryOmarchyKit.bundle")
     }
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"

@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-01T16:00:00+11:00",
+  "authorDate": "2026-11-01T17:00:00+11:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-01T16:00:00+11:00",
-  "subject": "Bind managed finalization and durable completion to the reviewed owner",
-  "commit": "aab6bd82b279cc81c2627be73f7b206ae6dadfc0",
-  "patchSHA256": "ae48d3c5ca62bc41d000bd6cdfa123325f629125e81830e333addaa04b807f84"
+  "committerDate": "2026-11-01T17:00:00+11:00",
+  "subject": "Keep owner completion reporting bound to its seeded boot after host cleanup",
+  "commit": "1ecd8499d271cd761e8b4be0e49747de96e57768",
+  "patchSHA256": "02d9ff27a0e5861a07c383b5d115228d713f69890f8187b7b79e146cc15b8a6b"
 }

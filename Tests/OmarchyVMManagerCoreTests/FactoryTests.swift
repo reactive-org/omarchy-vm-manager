@@ -19,7 +19,7 @@ struct FactoryFixture {
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data(path.utf8).write(to: target)
         }
-        let contractProvenance: [String: Any] = ["version": 1, "sourceCommit": kit.lock.patchCommit,
+        let contractProvenance: [String: Any] = ["version": 1, "reportVersion": 1, "sourceCommit": kit.lock.patchCommit,
             "contracts": ["official": VMOwnerSetupContract.official, "lean-e4fffc6": VMOwnerSetupContract.lean]]
         try JSONSerialization.data(withJSONObject: contractProvenance, options: .sortedKeys).write(to: kit.kit.bundleURL.appendingPathComponent(VMOwnerSetupContract.provenancePath))
         var provenance = kit.lock
@@ -28,7 +28,7 @@ struct FactoryFixture {
         provenance = RuntimeProvenance(format: provenance.format, upstreamBase: provenance.upstreamBase, patchCommit: provenance.patchCommit,
             patchSHA256: provenance.patchSHA256, referenceKitSHA256: provenance.referenceKitSHA256, kitSHA256: provenance.kitSHA256,
             kitVersion: provenance.kitVersion, runProtocolVersion: provenance.runProtocolVersion, buildDate: provenance.buildDate,
-            focusAwareClipboard: true, managedSSHVersion: 1, manualPauseVersion: 1, customFactoryVersion: 1, managedSetupVersion: 1, ownerSetupContractsVersion: 1,
+            focusAwareClipboard: true, managedSSHVersion: 1, manualPauseVersion: 1, customFactoryVersion: 1, managedSetupVersion: 1, ownerSetupContractsVersion: 1, ownerSetupReportVersion: 1,
             composition: "synthetic no-VM factory fixture", files: try KitVerifier.inventory(at: kit.kit.bundleURL))
         lock = provenance
         let compressed = Data("synthetic compressed image; never booted".utf8)
@@ -42,7 +42,7 @@ struct FactoryFixture {
         try recipe.write(to: source.appendingPathComponent("provisioning.json"))
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         manifest = ["format": 1, "name": "Reviewed test image", "architecture": "aarch64", "boot": "uefi-limine", "customFactoryVersion": 1,
-            "managedSSHVersion": 1, "managedSetupVersion": 1, "integrationPackageSHA256": lock.files[VMFactorySelection.packagePath]!,
+            "managedSSHVersion": 1, "managedSetupVersion": 1, "ownerSetupReportVersion": 1, "integrationPackageSHA256": lock.files[VMFactorySelection.packagePath]!,
             "ownerSetupContractSHA256": try VMFactorySelection.digest(repository.appendingPathComponent("Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json")),
             "files": ["factory.json": KitVerifier.sha256(imageData), "test.img.zst": KitVerifier.sha256(compressed), "provisioning.json": KitVerifier.sha256(recipe)],
             "provisioning": ["provisioning.json": KitVerifier.sha256(recipe)], "runtimeFiles": lock.files]
@@ -224,13 +224,13 @@ struct FactoryTests {
         #expect(throws: (any Error).self) { try catalog.selection(for: identity) }
         #expect(!FileManager.default.fileExists(atPath: f.files.storage.vms.path))
     }
-    @Test("incompatible image, runtime, package and provisioning are refused", arguments: ["architecture", "boot", "customFactoryVersion", "managedSSHVersion", "managedSetupVersion", "integrationPackageSHA256", "ownerSetupContractSHA256", "provisioning", "runtimeFiles"])
+    @Test("incompatible image, runtime, package and provisioning are refused", arguments: ["architecture", "boot", "customFactoryVersion", "managedSSHVersion", "managedSetupVersion", "ownerSetupReportVersion", "integrationPackageSHA256", "ownerSetupContractSHA256", "provisioning", "runtimeFiles"])
     func incompatible(_ key: String) throws {
         var f = try FactoryFixture(); defer { f.cleanup() }
         switch key {
         case "architecture": f.manifest[key] = "x86_64"
         case "boot": f.manifest[key] = "bios"
-        case "customFactoryVersion", "managedSSHVersion", "managedSetupVersion": f.manifest[key] = 2
+        case "customFactoryVersion", "managedSSHVersion", "managedSetupVersion", "ownerSetupReportVersion": f.manifest[key] = 2
         case "provisioning": f.manifest[key] = ["provisioning.json": String(repeating: "a", count: 64)]
         case "runtimeFiles":
             var inventory = f.lock.files; inventory["Contents/Resources/runtime/bin/Try Omarchy"] = String(repeating: "a", count: 64); f.manifest[key] = inventory
