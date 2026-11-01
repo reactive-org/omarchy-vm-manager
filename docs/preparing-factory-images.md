@@ -172,6 +172,8 @@ that the evidence produced the disk.
 
 ## Import and select
 
+![The current Import Factory form explaining bundle verification, before any bundle is chosen](media/import-factory.webp)
+
 Open the matching manager app. An older running manager does not gain new
 contracts from a newer CLI. In the app, choose **Import Factory**, select the
 prepared directory and wait for verification. Then select the imported image

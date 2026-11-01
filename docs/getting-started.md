@@ -8,7 +8,7 @@ Use an Apple Silicon Mac running macOS 15 or later. Open **Omarchy VM Manager.ap
 
 **Virtual Machines** is your library. Select a guest in the sidebar to inspect it. Opening the app restores the list without starting guests. Scroll the library to see additional entries.
 
-![The manager library, showing four stopped guests and one already-running guest](media/library.webp)
+![The current manager library, showing two stopped guests](media/library.webp)
 
 ## Set up defaults once
 
@@ -32,6 +32,8 @@ Give the guest a distinct name, such as **Development**, then choose its options
 
 | Option | What it does |
 | --- | --- |
+| Factory image | Choose the official image or a verified compatible custom factory |
+| Disk capacity | Choose the guest’s sparse disk capacity; new guests default to 64 GiB |
 | Memory and processor cores | Start with 4 GiB and four cores; allocate more when needed and within your Mac's available budget |
 | Clipboard integration | Share text with the Mac while this guest is focused |
 | Immersive Mode | Open full screen with the Mac menu bar and Dock hidden |
@@ -45,15 +47,15 @@ Click **Create VM**. This saves the profile; the guest disk is created on its fi
 
 Select the guest and click **Launch**. The manager selects its Home card and scrolls to the top so preparation and download progress are visible. Launching through the CLI selects the same card when the manager observes the new session. You can switch to another guest or page while startup continues.
 
-![The stopped guest Home page with its Launch button and Quick Settings](media/guest-home.webp)
+![The stopped guest Home page with Launch, experimental suspend readiness and Quick Settings](media/guest-home.webp)
 
 On first launch, the manager downloads the official factory image if it is not already cached, verifies it, and prepares the guest disk. Progress appears beside the guest's icon. The shared image is kept in `~/Downloads/Omarchy VM Manager/Factory Images/` for reuse by later guests. See [cache behavior](FactoryCache.md) for retention and disk-space details.
 
 With saved owner defaults, setup continues automatically. Otherwise, complete the normal setup wizard in the guest window. **Running** means the VM has reached its runtime-ready boundary; account setup and SSH can still be finishing.
 
-![The manager Home page for the already-running Dev Omarchy guest, with Shut Down controls and configuration disabled](media/running.webp)
+![The current Virtual Machine tab showing CPU, memory, disk capacity and recorded factory](media/resources.webp)
 
-The running example above was already in use during capture; no guest was started for these screenshots. Its 20 GiB allocation illustrates an existing configuration, not the suggested starting size.
+Both guests remained stopped during capture. The example’s 20 GiB allocation illustrates an existing configuration, not the suggested starting size. The Home page’s experimental suspend panel does not establish that this guest can hibernate; see [suspend requirements and limitations](Suspend.md).
 
 For terminal access, open the guest's **SSH** tab. Once its connection is verified, choose **Copy SSH Command** and paste the command into Terminal on your Mac. See [SSH and networking](managing-guests.md#connect-over-ssh).
 

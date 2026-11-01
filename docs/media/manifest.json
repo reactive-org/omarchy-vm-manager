@@ -1,6 +1,6 @@
 {
-  "appVersion": "0.5.1 (8)",
-  "captureDate": "2026-10-31",
+  "appVersion": "0.9.3 (16)",
+  "captureDate": "2026-11-01",
   "timezone": "Australia/Melbourne",
   "source": "real manager window captured through Computer Use",
   "tourKind": "captioned still-screen walkthrough, not a continuous recording",
@@ -9,99 +9,109 @@
       "file": "library.webp",
       "title": "Your virtual machines",
       "dimensions": "1280x891",
-      "bytes": 44568,
-      "sha256": "cf7ef5682cf14a29eab179972189f81f7673d651a7ae3b33ccfe1f7013552640",
-      "sourceSHA256": "0e1253291e4999c39841a0ec9a664d0cdf4a06ad27fd84850d7f44e79f72fad5"
+      "bytes": 36178,
+      "sha256": "fe1d8f07168c9635d470101c5bcd206cef4995d16ba35d2b9ca5e76176bd9b5a",
+      "sourceSHA256": "74e6c0dcd854a3e692c543cc7da2247815e0ba572a8eb3dc6ee82ff6071db1ba"
     },
     {
       "file": "new-vm.webp",
       "title": "Create a guest",
-      "dimensions": "1040x1244",
-      "bytes": 56998,
-      "sha256": "0fdf0606cc8ae7a300595220a890c4c4b396d13eb2daf671137f0d9fd336b50c",
-      "sourceSHA256": "1d0c06291197d79349cb5c5250aa2355f12bb2f8f30b49308b2ea30a08e65b8e"
+      "dimensions": "1040x1376",
+      "bytes": 62410,
+      "sha256": "f2012efed7d388be55cacda66f56c15f9b3c5dc3b1205e3bcb5196de07073bb8",
+      "sourceSHA256": "d24d8a49aa687ad4c1b0f61060d05da8e87362ffea6963d9267075ccfbd38bf0"
     },
     {
       "file": "guest-home.webp",
       "title": "Guest Home",
       "dimensions": "1280x891",
-      "bytes": 46574,
-      "sha256": "4b4a36c8c63d2f0bed0b0f5f670f6d3982f417af39a8c4dc75540dba056cba7e",
-      "sourceSHA256": "86dcffb4f959d9b5404c47324a7d5210bc22f084c4fa2a042a0e90f9db5057cd"
+      "bytes": 42066,
+      "sha256": "0690d484151c17e2c50fc6896647a9d10ce06c0269758908aa4a186ba549c3f1",
+      "sourceSHA256": "c7a0e945c6f0c10e957f370130aa7a66f74af09d81e570541a9a8672966e2ca9"
     },
     {
-      "file": "running.webp",
-      "title": "A running guest",
+      "file": "resources.webp",
+      "title": "Resources and factory",
       "dimensions": "1280x891",
-      "bytes": 46236,
-      "sha256": "b91ec2d0a4ad02976ddfbc8b872b785cbf4e22afa62e08ac03a1bad78940ae1a",
-      "sourceSHA256": "f965c0d5ccaf301f56751a4405f9532abbd3e3ee2a0fda05034d06255814ddbf"
+      "bytes": 37794,
+      "sha256": "f6db9a3d431b138752b48e2ca9dc0cb869cfe5446c7d880c5e52f7f7cb054279",
+      "sourceSHA256": "2e388ea2d8dbcf453e0079cc02ca97e9190103d80ba954cf098b1735cf49cae6"
     },
     {
       "file": "configure.webp",
       "title": "Configure a stopped guest",
-      "dimensions": "1040x934",
-      "bytes": 36524,
-      "sha256": "d9d41a888faca09793bc6c74697d67c19c700e9e264e77549c41467f108d32bc",
-      "sourceSHA256": "66055043c9328a5f0d8863a289b4bba744391fb3b2a05cd274e3b2a323179211"
+      "dimensions": "1040x695",
+      "bytes": 22092,
+      "sha256": "f857ea107e7860963f46b335188cae48933cb9bfee02c2ce8b988bd9b4f3a00c",
+      "sourceSHA256": "b52626f04dd6723d3825eb5fe09f3dde0ebc793c669b1d9e20454b84385a9c2b",
+      "sourceCrop": "1040x695+0+0"
     },
     {
       "file": "network.webp",
       "title": "Networking",
       "dimensions": "1280x891",
-      "bytes": 47348,
-      "sha256": "ecd60aca96296690d2999b2f2f9ec87862a96d2a043a3a999a9198293feac132",
-      "sourceSHA256": "607a6893e4ba3d50a676d5b7fe54f629082c3c24b57c700523e8593aab7f0e0b"
+      "bytes": 41360,
+      "sha256": "5cea31a74fd2adeea440f9681108a27e8cb12c8e511cff888f7830cee98b420f",
+      "sourceSHA256": "3a40e265500be90a2dc1871c75460fcbf146623b338ce452c7e1bd9e4e8256e8"
     },
     {
       "file": "startup.webp",
       "title": "Startup and display",
       "dimensions": "1280x891",
-      "bytes": 45914,
-      "sha256": "089151e1725995ee1d6aa9acd888efae3113d9e028da2ec19053629a3d8ed18f",
-      "sourceSHA256": "9c9670cf57372709caf8eedb8297e074812ad826901abf6e080dca4d5b58eda6"
+      "bytes": 39920,
+      "sha256": "591cc89c56d1c6578c9e7833b1e33fcda784d0eb06510f1d32ec29b3b995ca15",
+      "sourceSHA256": "f96a3f052933e65790958a12c4c99aed7d9611063a3dc298e58b42720f41bef8"
     },
     {
       "file": "ssh.webp",
       "title": "SSH from this Mac",
-      "dimensions": "1280x891",
-      "bytes": 46950,
-      "sha256": "b6974461d3a5479c158531f15a047a00c905e10dd5aec7862b8500a688e7758f",
-      "sourceSHA256": "bff75694704c2f8ca9c867d3c792493f58a376ceeaad32e785edce8527f53da1"
+      "dimensions": "1280x417",
+      "bytes": 28836,
+      "sha256": "cf098f4fc550d729bd48fce1112a7b3203a536080396c971c8c800caf61796e7",
+      "sourceSHA256": "756e9b4aad5450b461e872a9427ec0d7243653852fad9dc7721c7416d6d2c8c4",
+      "sourceCrop": "2240x730+0+0"
     },
     {
       "file": "spaces.webp",
       "title": "Mission Control Spaces",
       "dimensions": "1280x891",
-      "bytes": 54636,
-      "sha256": "17d21d63849b53d0275bdf5d903dbce254ccf5acd785e0eea38d7671aaa974c6",
-      "sourceSHA256": "a2ec84035366596c1bdbcf21839976687ff16fcf5590a27adb3494c52236db4c"
+      "bytes": 51068,
+      "sha256": "e499b586acf257fb0f0ecfd3b354361470c775fac866fb0de1313e627e1d1a15",
+      "sourceSHA256": "351adc72020525085154a526fce9c235f1f71b62a7ebae4eb3624af7b746a077"
+    },
+    {
+      "file": "import-factory.webp",
+      "title": "Import a prepared factory",
+      "dimensions": "1000x592",
+      "bytes": 27444,
+      "sha256": "b78d6708d16cbb8d6120939247ba1463ca3c058d7d3a82175b3c51525a4cf793",
+      "sourceSHA256": "17c45406d3383255c2697282bb58c8e82326e5ce4ca2d6be6f11d890aa94e1d6"
     },
     {
       "file": "permissions.webp",
       "title": "Super shortcuts",
       "dimensions": "1280x891",
-      "bytes": 39682,
-      "sha256": "4a981f6fe99576aeee54c34d1a161daac72a549d9885bda7a07c19746d4bb60c",
-      "sourceSHA256": "d8c7aadcd47717f50ef0233041b6be954b179e57047aabaeab63f8db98800e0d"
+      "bytes": 34942,
+      "sha256": "74b4aa9d6387bfc768603c7df0bbc9f9ba5638c673ec2b4e4077e688d49e9b63",
+      "sourceSHA256": "72e5dab38b1eb2b0f0f3342f7431f0725274f44a15c3ff257be31ed9ac3edb50"
     },
     {
       "file": "runtime.webp",
       "title": "Runtime and troubleshooting",
       "dimensions": "1280x891",
-      "bytes": 34892,
-      "sha256": "6c12bb7c85e4e7077c86844c312f6c9e03f5c03bbd727d78661137db78b18bb1",
-      "sourceSHA256": "2953bfa59d6c6d28e6263cfbf5ccdab50a741133e84320089730f1afba535be3"
+      "bytes": 30196,
+      "sha256": "89d1f8263174c5a4aeb65db9948ccdfa6fcb741c0c03440503c1bab5cbee8e5b",
+      "sourceSHA256": "c26485737fb6db2e6dd0a2d4b8c40036dfa712458882b7b6e731fbf215877eae"
     }
   ],
   "video": {
     "file": "quick-tour.mp4",
-    "bytes": 663272,
-    "durationSeconds": 44,
+    "bytes": 747929,
+    "durationSeconds": 48,
     "dimensions": "1280x960",
     "codec": "H.264",
     "audio": false,
-    "sha256": "ac48161f03d53f3c762a83e133da06952653642dbaab40144c956404441633d7"
+    "sha256": "43ab381527b4ade66f650f20c62831ad5d60e347f5b3ecfa369054e739edcfe1"
   },
-  "screenshotsAndVideoBytes": 1163594
+  "screenshotsAndVideoBytes": 1202235
 }

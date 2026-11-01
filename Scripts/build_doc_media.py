@@ -8,16 +8,25 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
+APP_VERSION = "0.9.3 (16)"
+CAPTURE_DATE = "2026-11-01"
+# Preserve real pixels while excluding the personal key fingerprint and guest hostname.
+# Expected input dimensions make these privacy crops fail closed on a new capture size.
+SOURCE_CROPS = {
+    "configure": ("1040x1176", "1040x695+0+0"),
+    "ssh": ("2240x1560", "2240x730+0+0"),
+}
 SCREENS = [
     ("01-library", "library", "Your virtual machines", "Browse guest states, configured resources and total allocated memory."),
     ("02-new-vm", "new-vm", "Create a guest", "Choose a name, resources, owner setup and SSH. This example was cancelled."),
-    ("03-guest-home", "guest-home", "Guest Home", "Select a guest to inspect its state, resources, clipboard and storage."),
-    ("12-running", "running", "A running guest", "The current guest shows Shut Down controls. Configuration is locked until it stops."),
-    ("05-configure", "configure", "Configure a stopped guest", "Save CPU, memory and display changes for the next start. This form was cancelled."),
+    ("03-guest-home", "guest-home", "Guest Home", "Inspect launch readiness and experimental suspend capability. Both guests stayed stopped."),
+    ("04-resources", "resources", "Resources and factory", "Inspect CPU, memory, disk capacity and the guest's recorded factory image."),
+    ("05-configure", "configure", "Configure a stopped guest", "Edit resources, clipboard and immersive mode while stopped. This form was cancelled."),
     ("06-network", "network", "Networking", "Each SSH-enabled guest has a distinct localhost port. Networking uses NAT."),
     ("07-startup", "startup", "Startup and display", "Choose windowed or immersive mode. Opening the manager does not start guests."),
     ("08-ssh", "ssh", "SSH from this Mac", "A stopped guest is available on next launch. Copy SSH Command appears after verification."),
     ("09-spaces", "spaces", "Mission Control Spaces", "Use the running guest's Dock icon: Options, Assign To, This Desktop."),
+    ("12-import-factory", "import-factory", "Import a prepared factory", "Choose a reviewed compatible bundle. This form was cancelled without an import."),
     ("10-permissions", "permissions", "Super shortcuts", "Enable the manager in Accessibility yourself before starting guests."),
     ("11-runtime", "runtime", "Runtime and troubleshooting", "Check host readiness and the known graphics startup limitation."),
 ]
@@ -43,23 +52,32 @@ def main():
     stage.mkdir(parents=True, exist_ok=True)
     font = Path("/System/Library/Fonts/Supplemental/Arial.ttf")
     if not font.is_file(): parser.error("The macOS Arial font is required for tour captions")
-    manifest = {"appVersion": "0.5.1 (8)", "captureDate": "2026-10-31", "timezone": "Australia/Melbourne", "source": "real manager window captured through Computer Use", "tourKind": "captioned still-screen walkthrough, not a continuous recording", "screens": []}
+    manifest = {"appVersion": APP_VERSION, "captureDate": CAPTURE_DATE, "timezone": "Australia/Melbourne", "source": "real manager window captured through Computer Use", "tourKind": "captioned still-screen walkthrough, not a continuous recording", "screens": []}
     concat = ["ffconcat version 1.0"]
     subtitles = ["WEBVTT", ""]
     for index, (raw, name, title, caption) in enumerate(SCREENS):
         source = args.captures / (raw + ".png")
         if not source.is_file(): parser.error(f"Missing capture: {source}")
         image = output / (name + ".webp")
-        run("magick", source, "-colorspace", "sRGB", "-resize", "1280x>", "-strip", "-quality", "90", "-define", "webp:method=6", image)
+        crop_args = []
+        if name in SOURCE_CROPS:
+            expected_size, crop = SOURCE_CROPS[name]
+            source_size = subprocess.check_output(["magick", "identify", "-format", "%wx%h", str(source)], text=True)
+            if source_size != expected_size:
+                parser.error(f"Review the privacy crop for {name}: expected {expected_size}, got {source_size}")
+            crop_args = ["-crop", crop, "+repage"]
+        run("magick", source, *crop_args, "-colorspace", "sRGB", "-resize", "1280x>", "-strip", "-quality", "90", "-define", "webp:method=6", image)
         frame = stage / f"frame-{index:02}.png"
         run("magick", "-size", "1280x960", "xc:#17191d", "(", image, "-resize", "1160x800>", ")", "-gravity", "center", "-geometry", "+0+20", "-composite",
             "-font", font, "-fill", "#f5f6f8", "-gravity", "northwest", "-pointsize", "28", "-annotate", "+52+18", f"{index + 1:02} / {len(SCREENS):02}   {title}",
             "-fill", "#b7bdc8", "-pointsize", "16", "-annotate", "+52+57", caption,
-            "-gravity", "southwest", "-pointsize", "14", "-annotate", "+52+22", "Omarchy VM Manager 0.5.1  |  Captured screens  |  No guest lifecycle actions performed", "-strip", frame)
+            "-gravity", "southwest", "-pointsize", "14", "-annotate", "+52+22", f"Omarchy VM Manager {APP_VERSION}  |  Captured screens  |  No guest lifecycle actions performed", "-strip", frame)
         concat.extend([f"file '{frame.name}'", "duration 4"])
         subtitles.extend([str(index + 1), f"{timestamp(index * 4)} --> {timestamp((index + 1) * 4)}", title + ". " + caption, ""])
         size = subprocess.check_output(["magick", "identify", "-format", "%wx%h", str(image)], text=True)
         manifest["screens"].append({"file": image.name, "title": title, "dimensions": size, "bytes": image.stat().st_size, "sha256": hashlib.sha256(image.read_bytes()).hexdigest(), "sourceSHA256": hashlib.sha256(source.read_bytes()).hexdigest()})
+        if crop_args:
+            manifest["screens"][-1]["sourceCrop"] = crop
     concat.append(f"file 'frame-{len(SCREENS) - 1:02}.png'")
     playlist = stage / "tour.ffconcat"
     playlist.write_text("\n".join(concat) + "\n")

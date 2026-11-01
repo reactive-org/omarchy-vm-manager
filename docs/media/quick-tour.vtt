@@ -10,15 +10,15 @@ Create a guest. Choose a name, resources, owner setup and SSH. This example was 
 
 3
 00:00:08.000 --> 00:00:12.000
-Guest Home. Select a guest to inspect its state, resources, clipboard and storage.
+Guest Home. Inspect launch readiness and experimental suspend capability. Both guests stayed stopped.
 
 4
 00:00:12.000 --> 00:00:16.000
-A running guest. The current guest shows Shut Down controls. Configuration is locked until it stops.
+Resources and factory. Inspect CPU, memory, disk capacity and the guest's recorded factory image.
 
 5
 00:00:16.000 --> 00:00:20.000
-Configure a stopped guest. Save CPU, memory and display changes for the next start. This form was cancelled.
+Configure a stopped guest. Edit resources, clipboard and immersive mode while stopped. This form was cancelled.
 
 6
 00:00:20.000 --> 00:00:24.000
@@ -38,8 +38,12 @@ Mission Control Spaces. Use the running guest's Dock icon: Options, Assign To, T
 
 10
 00:00:36.000 --> 00:00:40.000
-Super shortcuts. Enable the manager in Accessibility yourself before starting guests.
+Import a prepared factory. Choose a reviewed compatible bundle. This form was cancelled without an import.
 
 11
 00:00:40.000 --> 00:00:44.000
+Super shortcuts. Enable the manager in Accessibility yourself before starting guests.
+
+12
+00:00:44.000 --> 00:00:48.000
 Runtime and troubleshooting. Check host readiness and the known graphics startup limitation.

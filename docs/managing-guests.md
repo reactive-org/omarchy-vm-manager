@@ -6,9 +6,9 @@
 
 Shut down the guest and wait for **Stopped**. Select it in the sidebar, open **Virtual Machine**, then click **Configure…**. **Rename or Configure…** opens the same form.
 
-![The configuration form for a stopped guest, with editable name, memory, CPU, clipboard and immersive mode](media/configure.webp)
+![A crop of the current configuration form showing name, factory, memory, CPU, disk capacity, clipboard and immersive mode](media/configure.webp)
 
-Change its name, memory, CPU count, clipboard integration or immersive mode, then click **Save Changes**. Changes apply the next time you launch it, with its existing disk preserved. Running guests cannot be edited. Entries marked **Retained POC** keep their original configuration and cannot be edited.
+Change its name, memory, CPU count, grow-only disk capacity, clipboard integration or immersive mode, then click **Save Changes**. Changes apply the next time you launch it, with its existing disk preserved. Running guests cannot be edited. Entries marked **Retained POC** keep their original configuration and cannot be edited.
 
 SSH enrollment and the owner setup snapshot are fixed at guest creation. Create another guest if you need a different enrollment choice.
 
@@ -16,7 +16,7 @@ SSH enrollment and the owner setup snapshot are fixed at guest creation. Create 
 
 Choose the guest's **SSH** tab. A stopped guest shows **Available on next launch**. After launch and account setup, the manager verifies its host key, authenticates, and makes **Copy SSH Command** available. Paste that command into a Mac terminal.
 
-![The current SSH page for a stopped guest, showing its localhost port and managed login-key information](media/ssh.webp)
+![The upper portion of the current SSH page for a stopped guest, showing its localhost port and managed login-key information](media/ssh.webp)
 
 Every SSH-enabled guest has an independent managed key and a distinct localhost port. The generated command selects the correct key and pinned host identity. An optional personal public key can be chosen when creating the guest; private keys are not imported.
 

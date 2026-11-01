@@ -1,8 +1,8 @@
 # Omarchy VM Manager user guide
 
-Create independent Omarchy guests, configure their resources, and connect from your Mac over SSH. This guide describes the current private macOS build, **0.5.1 (8)**.
+Create independent Omarchy guests, configure their resources, and connect from your Mac over SSH. This guide describes the current private macOS build, **0.9.3 (16)**.
 
-![The manager library with four stopped guests, one running guest and the New VM button in the toolbar](media/library.webp)
+![The current manager library with two stopped guests, Import Factory and New VM controls](media/library.webp)
 
 ## Start here
 
@@ -14,11 +14,11 @@ Create independent Omarchy guests, configure their resources, and connect from y
 
 ## A quick look
 
-[Watch or download the 44-second MP4 tour](media/quick-tour.mp4) · approximately **663 KB**.
+[Watch or download the 48-second MP4 tour](media/quick-tour.mp4) · approximately **748 KB**.
 
-The silent tour is assembled from real screenshots of the running manager. It shows stopped-guest settings and the manager controls for an already-running guest; it is not a continuous recording of installation or guest startup. The eleven screenshots and video together are approximately **1.2 MB**. [Captions and a text transcript](media/README.md) are included.
+The silent tour is assembled from real screenshots of the running manager. It shows stopped-guest settings, experimental suspend readiness and the factory import form; it is not a continuous recording of installation or guest startup. The twelve screenshots and video together are approximately **1.2 MB**. [Captions and a text transcript](media/README.md) are included.
 
-Screenshots were captured on 31 October 2026. Guest names and the illustrated SSH port belong to this installation; yours will differ. The New VM example was cancelled. No guest was launched, changed, shut down or deleted for these captures. The separately added Dev Omarchy guest was already running and was left running.
+Screenshots were captured on 1 November 2026. Guest names and the illustrated SSH port belong to this installation; yours will differ. The New VM, configuration and factory import forms were cancelled. No guest was launched, changed, shut down or deleted for these captures. Both existing guests remained stopped. The SSH and configuration images are cropped to omit a personal public-key fingerprint and generated guest hostname.
 
 ## Current capabilities
 
