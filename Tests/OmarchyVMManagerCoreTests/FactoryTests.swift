@@ -483,7 +483,8 @@ struct LocalFactoryManagerTests {
         let digest = try f.write(), catalog = try f.catalog(reviewed: [])
         let registry = try RegistryStore(applicationSupport: f.files.support); _ = try registry.load()
         let runtime = FakeRuntime()
-        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: f.files.support, registry: registry)
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: f.files.support,
+                                hostMemoryMiB: 32768, logicalCPUs: 8, registry: registry)
         await manager.installFactoryCatalog(catalog)
         let service = GuestCommandService(manager: manager, applicationSupport: f.files.support)
         let response = await service.execute(GuestCommandRequest(command: .importFactory, selector: f.source.path))

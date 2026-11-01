@@ -5,6 +5,15 @@ import Testing
 
 @Suite("Private same-user command transport")
 struct CommandSocketTests {
+    // The synchronous client waits for an async server. Keep that wait off Swift's
+    // cooperative pool so the server can respond even on a small CI runner.
+    private func send(_ request: GuestCommandRequest, using client: ManagerCommandClient) async throws -> GuestCommandResponse {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global().async {
+                continuation.resume(with: Result { try client.send(request) })
+            }
+        }
+    }
     @Test("bounded requests round-trip with matching IDs and private socket permissions")
     func roundTrip() async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
@@ -16,13 +25,15 @@ struct CommandSocketTests {
         #expect(lstat(endpoint.directory.path, &info) == 0 && info.st_mode & 0o7777 == 0o700)
         let client = ManagerCommandClient(endpoint: endpoint)
         for _ in 0..<30 {
-            let request = GuestCommandRequest(command: .list)
-            let response = try await Task.detached { try client.send(request) }.value
+            var request = GuestCommandRequest(command: .list)
+            request.timeoutSeconds = 2
+            let response = try await send(request, using: client)
             #expect(response.ok && response.requestID == request.requestID && response.guests?.isEmpty == true)
         }
         #expect(throws: VMFailure.self) { try ManagerCommandServer(endpoint: endpoint) { await service.execute($0) } }
-        let request = GuestCommandRequest(command: .list)
-        #expect(try await Task.detached { try client.send(request) }.value.ok)
+        var request = GuestCommandRequest(command: .list)
+        request.timeoutSeconds = 2
+        #expect(try await send(request, using: client).ok)
     }
     @Test("unsafe or symlinked endpoints are refused without overwriting them")
     func unsafe() async throws {

@@ -17,7 +17,9 @@ build: prepare-source
 
 test: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift test --disable-sandbox
+	# Run cases serially: synchronous gate fixtures can exhaust small cooperative pools.
+	# Each lifecycle test still exercises its own concurrent tasks and sessions.
+	swift test --disable-sandbox --no-parallel
 	python3 -m unittest discover -s Tests/ScriptTests -v
 
 fetch-kit:
