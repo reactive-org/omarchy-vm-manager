@@ -38,7 +38,7 @@ The Python scripts refuse optimized execution (`PYTHONOPTIMIZE` or `python -O`) 
 
 ### GitHub CI
 
-The [build and no-VM workflow](.github/workflows/test.yml) runs on pushes and pull requests. On the `macos-15` runner it runs `make test`, explicitly compiles the SwiftUI app, CLI and storage helper with `make build`, regenerates the native icons, and runs `make test-upstream`. An Ubuntu job runs the isolated container-based SSH checks with `make test-ssh`.
+The [build and no-VM workflow](.github/workflows/test.yml) runs on pushes and pull requests. On the `macos-15` runner it runs `make test`, explicitly compiles the SwiftUI app, CLI and storage helper with `make build`, regenerates the native icons, and runs `make test-upstream`. An `ubuntu-24.04` job runs the isolated container-based SSH checks with `make test-ssh`. OS labels are explicit to avoid automatic major-version migrations; checkout uses the Node 24 runtime.
 
 `make test` runs Swift test cases serially because several fixtures deliberately block synchronous runtime/progress callbacks. Running those cases together can exhaust a small runner's cooperative thread pool. Lifecycle and race tests still run concurrent tasks and independent sessions within each case. Resource-policy fixtures supply synthetic host budgets rather than relying on the runner's CPU/RAM.
 

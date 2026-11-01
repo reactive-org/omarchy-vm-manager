@@ -417,6 +417,11 @@ private struct VMEditor: View {
                     Picker("Factory image", selection: $factory) {
                         ForEach(model.factories, id: \.selector) { image in Text(image.displayName).tag(image.selector) }
                     }
+                    if let notice = model.factorySelectionNotice {
+                        Label(notice, systemImage: "info.circle")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Button("Import Factory…") { importingFactory = true }
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
                 } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
