@@ -29,8 +29,8 @@ test: prepare-source
 
 test-build-policies: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift test --disable-sandbox -c release --filter compiledLaunchAdmission
-	swift test --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE --filter compiledLaunchAdmission
+	swift test --disable-sandbox -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
+	swift test --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
 
 fetch-kit:
 	Scripts/fetch-try-omarchy-kit.sh

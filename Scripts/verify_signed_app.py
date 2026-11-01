@@ -41,6 +41,7 @@ def verify(app):
             assert not any(key in entitlements for key in ("com.apple.application-identifier", "keychain-access-groups")), "child executable gained Keychain access"
     diagnostics = json.loads(run(app / "Contents/MacOS/OmarchyVMManager", "--verify-bundle-json").stdout)
     assert diagnostics["touchIDProtectedStorageAvailable"] is True, "the signed process cannot see its Touch ID entitlement"
+    assert diagnostics["developmentKeychainCompatibility"] is False, "a signed release selected the development Keychain store"
     assert diagnostics["hostPreflightPerformed"] is False and diagnostics["vmLaunchEnabled"] is False
     run("codesign", "--verify", "--deep", "--strict", app)
     run("xcrun", "stapler", "validate", app)

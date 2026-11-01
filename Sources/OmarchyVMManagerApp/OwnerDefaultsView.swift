@@ -14,6 +14,7 @@ struct OwnerDefaultsView: View {
     @State private var saved = false
     @State private var passwordUpgraded = false
     private let protectedPasswordsAvailable = KeychainOwnerSecretStore.supportsProtectedStorage
+    private let developmentPasswords = KeychainOwnerSecretStore.usesDevelopmentKeychain
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Guest Defaults").font(.largeTitle.bold())
@@ -30,11 +31,16 @@ struct OwnerDefaultsView: View {
                     TextField("Git email (optional)", text: $configuration.email)
                     SecureField(model.ownerDefaults?.credentialReference == nil ? "Password" : "New password (leave blank to keep saved)", text: $password)
                     SecureField("Confirm new password", text: $confirmation)
-                    Text("The password is protected in Keychain. Each new guest’s first setup asks once for Touch ID, with your Mac login password as fallback. Completed guests do not ask again. A private temporary seed sets the guest owner and root passwords; SSH uses independent keys.").font(.caption).foregroundStyle(.secondary)
-                    if !protectedPasswordsAvailable {
+                    if developmentPasswords {
+                        Text("This development build uses your existing login Keychain password. macOS may ask for your login password or permission to access it. Completed guests do not read the password again.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("The password is protected in Keychain. Each new guest’s first setup asks once for Touch ID, with your Mac login password as fallback. Completed guests do not ask again.").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("A private temporary seed sets the guest owner and root passwords; SSH uses independent keys.").font(.caption).foregroundStyle(.secondary)
+                    if !protectedPasswordsAvailable && !developmentPasswords {
                         Label("Touch ID password storage requires a signed, provisioned build. Your existing saved password is preserved.", systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
                     }
-                    if model.ownerDefaults?.credentialReference != nil {
+                    if model.ownerDefaults?.credentialReference != nil && protectedPasswordsAvailable {
                         Button(passwordUpgraded ? "Touch ID protection ready" : "Upgrade Saved Password to Touch ID…") {
                             error = nil; saving = true
                             Task {

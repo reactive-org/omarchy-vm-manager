@@ -33,6 +33,103 @@ private final class FixtureOwnerKeychain: OwnerKeychainAccessing, @unchecked Sen
     func delete(_ query: [String: Any]) -> OSStatus { deletions.append(query); return errSecSuccess }
 }
 
+@Test("compiled credential policy keeps release modes on the protected store")
+func compiledCredentialStoragePolicy() {
+    #if DEBUG && !SIGNED_PRERELEASE
+    #expect(KeychainOwnerSecretStore.usesDevelopmentKeychain == !KeychainOwnerSecretStore.supportsProtectedStorage)
+    #else
+    #expect(!KeychainOwnerSecretStore.usesDevelopmentKeychain)
+    #endif
+}
+
+@Suite("Development Keychain compatibility — synthetic credentials only")
+struct DevelopmentOwnerSecretTests {
+    private let secret = Data("synthetic-legacy-owner-password".utf8)
+
+    @Test("only unprovisioned debug builds choose the login Keychain")
+    func storageSelection() {
+        for debugBuild in [false, true] {
+            for signedPrerelease in [false, true] {
+                for entitlements in [false, true] {
+                    let mode = OwnerCredentialStorage.select(debugBuild: debugBuild, signedPrerelease: signedPrerelease, protectedEntitlements: entitlements)
+                    #expect((mode == .loginKeychain) == (debugBuild && !signedPrerelease && !entitlements))
+                }
+            }
+        }
+    }
+
+    @Test("development reads the original service and UUID once without migrating or replacing it")
+    func originalCredential() throws {
+        let keychain = FixtureOwnerKeychain(), reference = UUID()
+        keychain.replies = [(errSecSuccess, secret as CFData)]
+        let store = KeychainOwnerSecretStore(keychain: keychain, storage: .loginKeychain)
+        #expect(try store.read(reference: reference) == secret)
+        #expect(keychain.copies.count == 1)
+        let query = keychain.copies[0]
+        #expect(query[kSecUseDataProtectionKeychain as String] as? Bool == false)
+        #expect(query[kSecAttrService as String] as? String == KeychainOwnerSecretStore.legacyService)
+        #expect(query[kSecAttrAccount as String] as? String == reference.uuidString)
+        #expect(query[kSecReturnData as String] as? Bool == true)
+        #expect(keychain.copyContexts[0].interactionNotAllowed == false)
+        #expect(keychain.additions.isEmpty && keychain.deletions.isEmpty)
+    }
+
+    @Test("saving development defaults uses legacy protection and snapshot creation reads no credentials")
+    func defaultsCompatibility() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let keychain = FixtureOwnerKeychain()
+        let store = OwnerDefaultsStore(applicationSupport: f.support, vault: KeychainOwnerSecretStore(keychain: keychain, storage: .loginKeychain))
+        let defaults = try store.save(enabled: true, configuration: OwnerConfiguration(), password: secret)
+        let metadata = f.storage.directory.appendingPathComponent("guest-defaults.json")
+        let before = try PrivateFiles.read(metadata)
+        let snapshot = try #require(try store.snapshot(for: UUID()))
+        #expect(snapshot.credentialReference == defaults.credentialReference)
+        #expect(try PrivateFiles.read(metadata) == before)
+        #expect(keychain.copies.isEmpty && keychain.deletions.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: f.storage.vms.path))
+        let query = try #require(keychain.additions.first)
+        #expect(query[kSecUseDataProtectionKeychain as String] as? Bool == false)
+        #expect(query[kSecAttrService as String] as? String == KeychainOwnerSecretStore.legacyService)
+        #expect(query[kSecAttrAccount as String] as? String == defaults.credentialReference?.uuidString)
+        #expect(query[kSecAttrAccessControl as String] == nil)
+        #expect(query[kSecAttrAccessible as String] == nil)
+        #expect(query[kSecAttrSynchronizable as String] == nil)
+        #expect(keychain.addContexts[0].interactionNotAllowed == false)
+    }
+
+    @Test("legacy failures do not probe the protected store or alter either credential")
+    func failuresPreserveCredentials() throws {
+        for status in [errSecUserCanceled, errSecAuthFailed, errSecItemNotFound, errSecInteractionNotAllowed] {
+            let keychain = FixtureOwnerKeychain()
+            keychain.replies = [(status, nil)]
+            let store = KeychainOwnerSecretStore(keychain: keychain, storage: .loginKeychain)
+            do {
+                _ = try store.read(reference: UUID())
+                Issue.record("A failed legacy read returned a password")
+            } catch let failure as VMFailure {
+                #expect(failure.code == (status == errSecUserCanceled ? "owner-authentication-cancelled" : "owner-keychain-unavailable"))
+            }
+            #expect(keychain.copies.count == 1)
+            #expect(keychain.copies[0][kSecUseDataProtectionKeychain as String] as? Bool == false)
+            #expect(keychain.additions.isEmpty && keychain.deletions.isEmpty)
+        }
+        let keychain = FixtureOwnerKeychain()
+        keychain.addStatus = errSecDuplicateItem
+        let store = KeychainOwnerSecretStore(keychain: keychain, storage: .loginKeychain)
+        #expect(throws: VMFailure.self) { try store.save(secret, reference: UUID()) }
+        #expect(keychain.additions.count == 1)
+        #expect(keychain.copies.isEmpty && keychain.deletions.isEmpty)
+    }
+
+    @Test("a development build cannot upgrade or create a biometric copy implicitly")
+    func noUpgradeInDevelopment() throws {
+        let keychain = FixtureOwnerKeychain()
+        let store = KeychainOwnerSecretStore(keychain: keychain, storage: .loginKeychain)
+        #expect(throws: VMFailure.self) { try store.upgradeLegacyCredential(reference: UUID()) }
+        #expect(keychain.copies.isEmpty && keychain.additions.isEmpty && keychain.deletions.isEmpty)
+    }
+}
+
 @Suite("Biometric guest password policy — no real Keychain or authentication UI")
 struct KeychainOwnerSecretTests {
     private let secret = Data("synthetic-owner-password".utf8)

@@ -1,12 +1,22 @@
 # Touch ID for guest setup
 
-Status: the supplied profile has passed read-only validation and the user has authorized CI integration and a signed release. Native authentication checks remain pending. No installed app or saved password has been changed.
+Status: the development compatibility build was installed on 2 November 2026 without retaining a backup, while the provisioned release awaits Apple notarization. Saved credentials and VM data are unchanged. Native authentication checks remain pending.
 
-**DESIGN DECISION:** an automatically configured new VM authorizes its setup-password retrieval once on first launch. macOS offers Touch ID with the Mac login password as fallback. Creating a profile without starting it reads only protected-item metadata. Manual setup and completed guests do not read a password. Retrying interrupted setup requires another approval; there is no shared unlock session across guests.
+**DESIGN DECISION — provisioned builds:** an automatically configured new VM authorizes its setup-password retrieval once on first launch. macOS offers Touch ID with the Mac login password as fallback. Creating a profile without starting it reads only protected-item metadata. Manual setup and completed guests do not read a password. Retrying interrupted setup requires another approval; there is no shared unlock session across guests.
+
+## Development compatibility — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** the user requested restoring the existing login-Keychain flow in development builds while retaining Touch ID for provisioned releases and preserving credentials/VM data. An unprovisioned `DEBUG` build without `SIGNED_PRERELEASE` selects the original file-based service, `dev.omarchy.vm-manager.unattended`, before any credential operation. Provisioned debug builds, optimized release builds and every `SIGNED_PRERELEASE` build select the protected service. There is no environment override or retry into the other service after an authorization error.
+
+The development path reads the original credential UUID at first launch and allows macOS to request login-Keychain access. Saving a newly entered password uses the original service and its normal access policy, under a fresh UUID as before. It supplies no data-protection access-control/accessibility/synchronization attributes. Creating a development profile uses saved non-secret metadata without probing either Keychain store. It does not copy, migrate, delete or replace saved items, alter metadata schemas or rewrite existing profiles/disks. Completed/manual guests continue to bypass password retrieval.
+
+The defaults form describes the active password flow and offers biometric upgrade only when protected-storage entitlements are available. Development builds cannot invoke that upgrade. An item that exists only in the protected store is not exported or downgraded for development: its lookup fails without probing the other service. Native login-Keychain prompts can still occur, especially after a binary change; this compatibility fix restores usability and does not claim to eliminate those prompts.
+
+Bundle diagnostics report `developmentKeychainCompatibility` so an uninstalled debug candidate can demonstrate its compiled selection without reading a password. Signed package verification requires that flag to be false in addition to the protected-storage capability being true. Optimized build-policy checks exercise both the launch policy and credential-store selection. Exact checks and limitations are recorded in [Validation](Validation.md#development-keychain-compatibility--2-november-2026).
 
 ## Native protection
 
-The manager uses `kSecUseDataProtectionKeychain: true`, the service `dev.omarchy.vm-manager.unattended.biometric.v1`, and a generic password indexed by its existing credential UUID. `SecAccessControlCreateWithFlags` specifies `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and `.userPresence`. The item is not synchronized to iCloud.
+In protected-storage mode, the manager uses `kSecUseDataProtectionKeychain: true`, the service `dev.omarchy.vm-manager.unattended.biometric.v1`, and a generic password indexed by its existing credential UUID. `SecAccessControlCreateWithFlags` specifies `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and `.userPresence`. The item is not synchronized to iCloud.
 
 Each read creates one interactive `LAContext`, with no recent-device-unlock reuse, and passes it directly to one `SecItemCopyMatching` call. The context is invalidated afterward. There is no separate `evaluatePolicy` prompt, automatic authentication retry, shared context or legacy lookup on failure. Authorization completes before storage preparation or helper launch. Cancellation and missing entitlements have distinct, non-secret error messages.
 
@@ -18,7 +28,7 @@ In a provisioned build, **Guest Defaults → Upgrade Saved Password to Touch ID�
 
 The UUID remains unchanged, so pending snapshots referencing that credential can use the upgraded item. The original entry is retained, including its original Keychain ACL; older copies have not acquired biometric protection. Repeated upgrade actions check metadata and return without reading either password. If migration fails, the original and Guest Defaults file remain untouched. Saving a freshly entered password also writes to the protected service, under a new UUID as before.
 
-New profiles using unattended defaults are refused until the saved credential is protected. Older pending guests whose snapshots reference a different historical credential also fail closed; upgrading the current defaults does not silently replace their original passwords. Completed guests continue to bypass password retrieval.
+In protected-storage mode, new profiles using unattended defaults are refused until the saved credential is protected. Older pending guests whose snapshots reference a different historical credential also fail closed; upgrading the current defaults does not silently replace their original passwords. Completed guests continue to bypass password retrieval.
 
 ## Provisioning profile
 
@@ -32,7 +42,7 @@ The user authorized storing this validated profile as `MACOS_KEYCHAIN_PROFILE_BA
 
 The assembler and final extracted-ZIP verification require the pinned embedded profile, exact manager-only entitlements and an app signing certificate authorized by that profile. Final signed verification runs only bundle diagnostics and checks the actual process reports its protected-storage entitlement, with host preflight and VM launch disabled. The CLI/storage helper must have no Keychain application/access-group entitlement. macOS remains responsible for Apple profile/certificate validity at launch; diagnostics do not read a password or exercise a biometric prompt.
 
-Ad-hoc builds retain empty entitlements. They can be assembled and verified, and the form explains that protected storage is unavailable. They cannot save/read/upgrade protected passwords or create new unattended snapshots. They can still prepare manual profiles and launch completed guests through the existing admission policy; no such launch was performed here.
+Ad-hoc debug builds retain empty entitlements and use the authorized development compatibility path above. They can prepare unattended profiles using the saved login-Keychain credential reference without a biometric upgrade. Ordinary optimized release builds retain their existing runtime-admission refusal and do not gain the development credential mode. No real guest was launched for these checks.
 
 ## Validation
 

@@ -55,6 +55,7 @@ struct OmarchyVMManagerApp: App {
                     "focusAwareClipboard": value.focusAwareClipboard,
                     "ownerSetupContractVersion": OwnerSetupContract.current.schemaVersion,
                     "touchIDProtectedStorageAvailable": KeychainOwnerSecretStore.supportsProtectedStorage,
+                    "developmentKeychainCompatibility": KeychainOwnerSecretStore.usesDevelopmentKeychain,
                     "hostPreflightPerformed": !bundleOnly,
                     "preflight": bundleOnly ? "not performed (bundle verification only)" : (value.preflightFailure ?? "passed"),
                     "vmLaunchEnabled": !bundleOnly && !AppModel.layoutPreview, "launchScope": AppModel.layoutPreview ? "synthetic-layout-preview" : "registered-manager-owned-private-build"

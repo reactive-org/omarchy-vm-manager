@@ -19,13 +19,41 @@ private struct SystemOwnerKeychain: OwnerKeychainAccessing {
     func delete(_ query: [String: Any]) -> OSStatus { SecItemDelete(query as CFDictionary) }
 }
 
+enum OwnerCredentialStorage: Equatable {
+    case loginKeychain, protectedKeychain
+
+    static func select(debugBuild: Bool, signedPrerelease: Bool, protectedEntitlements: Bool) -> Self {
+        debugBuild && !signedPrerelease && !protectedEntitlements ? .loginKeychain : .protectedKeychain
+    }
+
+    static var current: Self {
+        #if DEBUG
+        let debugBuild = true
+        #else
+        let debugBuild = false
+        #endif
+        #if SIGNED_PRERELEASE
+        let signedPrerelease = true
+        #else
+        let signedPrerelease = false
+        #endif
+        return select(debugBuild: debugBuild, signedPrerelease: signedPrerelease,
+                      protectedEntitlements: KeychainOwnerSecretStore.supportsProtectedStorage)
+    }
+}
+
 public struct KeychainOwnerSecretStore: OwnerSecretStoring {
     static let service = "dev.omarchy.vm-manager.unattended.biometric.v1"
     static let legacyService = "dev.omarchy.vm-manager.unattended"
     private let keychain: any OwnerKeychainAccessing
+    private let storage: OwnerCredentialStorage
 
-    public init() { keychain = SystemOwnerKeychain() }
-    init(keychain: any OwnerKeychainAccessing) { self.keychain = keychain }
+    public init() { keychain = SystemOwnerKeychain(); storage = .current }
+    init(keychain: any OwnerKeychainAccessing, storage: OwnerCredentialStorage = .protectedKeychain) {
+        self.keychain = keychain; self.storage = storage
+    }
+
+    public static var usesDevelopmentKeychain: Bool { OwnerCredentialStorage.current == .loginKeychain }
 
     public static var supportsProtectedStorage: Bool {
         guard let task = SecTaskCreateFromSelf(nil),
@@ -36,8 +64,8 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
 
     private func query(_ reference: UUID, context: LAContext) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecUseDataProtectionKeychain as String: true,
-         kSecAttrService as String: Self.service,
+         kSecUseDataProtectionKeychain as String: storage == .protectedKeychain,
+         kSecAttrService as String: storage == .protectedKeychain ? Self.service : Self.legacyService,
          kSecAttrAccount as String: reference.uuidString,
          kSecUseAuthenticationContext as String: context]
     }
@@ -55,18 +83,24 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
 
     public func save(_ value: Data, reference: UUID) throws {
         try OwnerConfiguration.validatePassword(value)
-        let context = context(interactive: false)
+        let context = context(interactive: storage == .loginKeychain)
         defer { context.invalidate() }
-        guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .userPresence, nil) else {
-            throw Self.failure(errSecNotAvailable)
-        }
         var values = query(reference, context: context)
-        values[kSecAttrAccessControl as String] = access
-        values[kSecAttrSynchronizable as String] = false
-        values[kSecAttrLabel as String] = "Omarchy VM Manager guest setup (Touch ID)"
+        if storage == .protectedKeychain {
+            guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .userPresence, nil) else {
+                throw Self.failure(errSecNotAvailable)
+            }
+            values[kSecAttrAccessControl as String] = access
+            values[kSecAttrSynchronizable as String] = false
+            values[kSecAttrLabel as String] = "Omarchy VM Manager guest setup (Touch ID)"
+        } else {
+            // Keep the original service, UUID and login-Keychain access policy.
+            // Data-protection attributes must be absent from this file-based query.
+            values[kSecAttrLabel as String] = "Omarchy VM Manager guest setup"
+        }
         values[kSecValueData as String] = value
         let status = keychain.add(values)
-        guard status == errSecSuccess else { throw Self.failure(status) }
+        guard status == errSecSuccess else { throw operationFailure(status) }
     }
 
     public func read(reference: UUID) throws -> Data {
@@ -75,15 +109,18 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
         var values = query(reference, context: context)
         values[kSecReturnData as String] = true
         values[kSecMatchLimit as String] = kSecMatchLimitOne
-        // Keychain performs user-presence authentication itself: no preliminary
-        // evaluatePolicy prompt and no second context or legacy retry on failure.
+        // The store is selected before this operation. Never retry a failed or
+        // cancelled protected read against the login Keychain.
         let (status, item) = keychain.copy(values)
-        guard status == errSecSuccess, let data = item as? Data else { throw Self.failure(status) }
+        guard status == errSecSuccess, let data = item as? Data else { throw operationFailure(status) }
         try OwnerConfiguration.validatePassword(data)
         return data
     }
 
     public func requireProtectedCredential(reference: UUID) throws {
+        // Development profiles retain the original metadata-only creation path.
+        // Read/authenticate the existing login-Keychain item only at first launch.
+        guard storage == .protectedKeychain else { return }
         let status = protectedCredentialStatus(reference)
         guard status == errSecSuccess else { throw Self.failure(status) }
     }
@@ -97,9 +134,10 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
         return keychain.copy(values).0
     }
 
-    /// Only an explicit Guest Defaults action may read an old login-Keychain item.
+    /// Only an explicit Guest Defaults upgrade copies an old item into protected storage.
     /// Keep its reference and original item so pending guest snapshots remain valid.
     public func upgradeLegacyCredential(reference: UUID) throws {
+        guard storage == .protectedKeychain else { throw Self.failure(errSecMissingEntitlement) }
         let status = protectedCredentialStatus(reference)
         if status == errSecSuccess { return }
         guard status == errSecItemNotFound else { throw Self.failure(status) }
@@ -123,7 +161,12 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
         let context = context(interactive: false)
         defer { context.invalidate() }
         let status = keychain.delete(query(reference, context: context))
-        guard status == errSecSuccess || status == errSecItemNotFound else { throw Self.failure(status) }
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw operationFailure(status) }
+    }
+
+    private func operationFailure(_ status: OSStatus) -> VMFailure {
+        if storage == .protectedKeychain || status == errSecUserCanceled { return Self.failure(status) }
+        return VMFailure(code: "owner-keychain-unavailable", message: "The saved guest password is unavailable in your login Keychain. Allow the manager access or unlock the login Keychain and retry. You can save a new password in Guest Defaults; existing credentials were preserved.")
     }
 
     static func failure(_ status: OSStatus) -> VMFailure {
