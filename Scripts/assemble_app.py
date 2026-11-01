@@ -19,6 +19,7 @@ def assemble():
     parser = argparse.ArgumentParser()
     parser.add_argument("--preview", action="store_true", help="Build a sibling app without replacing the running manager")
     parser.add_argument("--layout-preview", action="store_true", help="Build an isolated no-VM lifecycle layout gallery")
+    parser.add_argument("--output-directory", type=Path, default=ROOT / "dist", help="Separate packaging output from the normal local app")
     args = parser.parse_args()
     assert not (args.preview and args.layout_preview)
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"
@@ -30,8 +31,8 @@ def assemble():
     assert inventory(source / "TryOmarchyKit.bundle") == lock["files"], "private kit content mismatch"
     binaries = Path(subprocess.check_output(["swift", "build", "--disable-sandbox", "--show-bin-path"], cwd=ROOT, text=True).strip())
     name = "Omarchy VM Manager Layout Preview" if args.layout_preview else ("Omarchy VM Manager Preview" if args.preview else "Omarchy VM Manager")
-    app = ROOT / "dist" / (name + ".app")
-    stage = ROOT / "dist" / ("." + name + ".staging.app")
+    app = args.output_directory / (name + ".app")
+    stage = args.output_directory / ("." + name + ".staging.app")
     assert not stage.exists(), "existing assembly stage; inspect before retrying"
     for name in ("MacOS", "Resources", "Helpers"):
         (stage / "Contents" / name).mkdir(parents=True, exist_ok=True)
@@ -67,7 +68,7 @@ def assemble():
         run("codesign", "--force", "--sign", "-", "--identifier", info["CFBundleIdentifier"],
             "--entitlements", ROOT / "App/OmarchyVMManager.entitlements", stage)
         run("codesign", "--verify", "--deep", "--strict", stage)
-        run(stage / "Contents/MacOS/OmarchyVMManager", "--diagnostics-json")
+        run(stage / "Contents/MacOS/OmarchyVMManager", "--verify-bundle-json")
         if app.exists():
             assert app.is_dir() and not app.is_symlink()
             shutil.rmtree(app)

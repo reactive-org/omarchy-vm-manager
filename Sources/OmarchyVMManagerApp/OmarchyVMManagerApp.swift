@@ -45,14 +45,17 @@ struct OmarchyVMManagerApp: App {
     private let instanceLock: ManagerInstanceLock
 
     init() {
-        if CommandLine.arguments.contains("--diagnostics-json") {
+        let bundleOnly = CommandLine.arguments.contains("--verify-bundle-json")
+        if bundleOnly || CommandLine.arguments.contains("--diagnostics-json") {
             do {
-                let value = try AppModel.inspect()
+                let value = try AppModel.inspect(preflight: { bundleOnly ? nil : VMRunClient.preflight() })
                 let json: [String: Any] = [
                     "kitPath": value.kitPath, "version": value.version, "runProtocolVersion": value.runProtocolVersion,
                     "supported": value.supported, "patchCommit": value.patchCommit, "kitSHA256": value.archiveSHA256,
-                    "focusAwareClipboard": value.focusAwareClipboard, "preflight": value.preflightFailure ?? "passed",
-                    "vmLaunchEnabled": !AppModel.layoutPreview, "launchScope": AppModel.layoutPreview ? "synthetic-layout-preview" : "registered-manager-owned-private-build"
+                    "focusAwareClipboard": value.focusAwareClipboard,
+                    "hostPreflightPerformed": !bundleOnly,
+                    "preflight": bundleOnly ? "not performed (bundle verification only)" : (value.preflightFailure ?? "passed"),
+                    "vmLaunchEnabled": !bundleOnly && !AppModel.layoutPreview, "launchScope": AppModel.layoutPreview ? "synthetic-layout-preview" : "registered-manager-owned-private-build"
                 ]
                 FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]))
                 FileHandle.standardOutput.write(Data("\n".utf8))

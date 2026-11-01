@@ -3,10 +3,11 @@ export PATH := /opt/homebrew/bin:$(PATH)
 export SWIFT_MODULECACHE_PATH := $(CURDIR)/.build/module-cache/swift
 export CLANG_MODULE_CACHE_PATH := $(CURDIR)/.build/module-cache/clang
 export MACOSX_DEPLOYMENT_TARGET := 15.0
+export RELEASE_TAG
 
-.PHONY: prepare-source help build icon test test-ssh app app-preview verify-app verify-preview run fetch-kit patched-kit test-upstream layout-preview verify-layout-preview
+.PHONY: prepare-source help build icon test test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease
 help:
-	@echo 'make prepare-source | test | test-factories | test-ssh | build | icon | fetch-kit | patched-kit | app | verify-app | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-factories | test-ssh | build | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -25,6 +26,9 @@ test: prepare-source
 fetch-kit:
 	Scripts/fetch-try-omarchy-kit.sh
 
+fetch-runtime-kit:
+	python3 Scripts/fetch_runtime_kit.py
+
 patched-kit:
 	Scripts/build-patched-try-omarchy-kit.sh
 
@@ -36,6 +40,14 @@ app: build icon
 
 verify-app:
 	Scripts/verify-app.sh
+
+verify-bundle:
+	Scripts/verify-app.sh --bundle-only
+
+prerelease: build icon
+	Scripts/build-app.sh --output-directory "$(CURDIR)/dist/prerelease-staging"
+	Scripts/verify-app.sh --bundle-only "$(CURDIR)/dist/prerelease-staging/Omarchy VM Manager.app"
+	python3 Scripts/package_prerelease.py
 
 run: verify-app
 	open "dist/Omarchy VM Manager.app"

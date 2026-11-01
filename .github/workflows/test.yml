@@ -1,5 +1,9 @@
 name: Build and no-VM checks
-on: [push, pull_request]
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
 permissions:
   contents: read
 jobs:
@@ -29,3 +33,31 @@ jobs:
           submodules: true
       - name: Real SSH with synthetic credentials and isolated containers
         run: make test-ssh
+
+  prerelease:
+    name: Package development prerelease
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    needs: [test, managed-ssh]
+    runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Fetch exact pinned development runtime
+        run: make fetch-runtime-kit
+      - name: Build, verify and archive the development app
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: make prerelease
+      - name: Publish versioned GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/prerelease/*.zip dist/prerelease/*.sha256 \
+            --verify-tag --prerelease --latest=false \
+            --title "Omarchy VM Manager $RELEASE_TAG (development)" \
+            --notes-file dist/prerelease/release-notes.md
