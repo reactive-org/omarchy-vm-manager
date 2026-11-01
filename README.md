@@ -36,6 +36,14 @@ make run
 
 The Python scripts refuse optimized execution (`PYTHONOPTIMIZE` or `python -O`) so validation assertions cannot be disabled.
 
+### GitHub CI
+
+The [build and no-VM workflow](.github/workflows/test.yml) runs on pushes and pull requests. On the `macos-15` runner it runs `make test`, explicitly compiles the SwiftUI app, CLI and storage helper with `make build`, regenerates the native icons, and runs `make test-upstream`. An Ubuntu job runs the isolated container-based SSH checks with `make test-ssh`.
+
+CI compiles the debug executables; it does not assemble a distributable `.app`. Bundle assembly needs the exact verified patched kit, whose source build also requires the upstream ARM Linux guest-package builder. CI downloads no factory image and starts no guest. Real guest, focus, sleep/wake and crash validation remain separate observed checks on a real Mac; GitHub's ARM macOS runners do not support nested virtualization. Standard GitHub-hosted macOS runners are [free for public repositories](https://docs.github.com/en/actions/reference/runners/github-hosted-runners); larger runners have separate billing.
+
+The intended distribution path is a signed, notarized release. That needs a separate release workflow and packaging support for a Developer ID identity, the runtime's required signing order/entitlements, notarization and stapling. Current assembly supports ad-hoc debug signing only, and release builds reject the private development kit. Resolve release kit provenance before publishing; keep signing and notarization credentials restricted to approved release jobs and unavailable to pull-request checks.
+
 ## Provenance
 
 - `Config/TryOmarchyUpstream.lock.json`: exact stock tag, source commit, zip digest and unsafe stock clipboard capability.

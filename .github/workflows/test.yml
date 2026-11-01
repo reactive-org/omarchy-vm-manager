@@ -1,9 +1,10 @@
-name: No-VM checks
+name: Build and no-VM checks
 on: [push, pull_request]
 permissions:
   contents: read
 jobs:
   test:
+    name: macOS build and tests
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -12,6 +13,8 @@ jobs:
           submodules: true
       - name: Manager and artifact contracts
         run: make test
+      - name: Build app, CLI and storage helper
+        run: make build
       - name: Render and validate native app icon
         run: make icon
       - name: Exact patched upstream suite
