@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 import unittest
 import tempfile
+import os
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -76,9 +78,29 @@ class SignedProvenanceTests(unittest.TestCase):
                           MACOS_SIGNING_IDENTITY=identity, MACOS_CERTIFICATE_P12_BASE64=base64.b64encode(b"synthetic-p12").decode())
             def command(label, *arguments):
                 return SimpleNamespace(stdout=('"/synthetic/login.keychain-db"' if arguments[:2] == ("security", "list-keychains") else identity))
-            with patch.dict(signed_prerelease.os.environ, values, clear=True), patch.object(signed_prerelease, "REDACTIONS", []), patch.object(signed_prerelease, "run", side_effect=command), patch.object(signed_prerelease.subprocess, "run") as cleanup:
+            with patch.dict(signed_prerelease.os.environ, values, clear=True), patch.object(signed_prerelease, "REDACTIONS", []), patch.object(signed_prerelease, "run", side_effect=command), patch.object(signed_prerelease, "compatible_certificate", return_value=(Path(temp)/"synthetic.p12", "transfer-fixture")), patch.object(signed_prerelease.subprocess, "run") as cleanup:
                 with self.assertRaisesRegex(RuntimeError, "synthetic failure"):
                     with signed_prerelease.credentials():
                         raise RuntimeError("synthetic failure")
                 self.assertTrue(any(call.args[0][:2] == ["security", "delete-keychain"] for call in cleanup.call_args_list))
             self.assertEqual(list(Path(temp).iterdir()), [])
+
+    @unittest.skipUnless(Path("/opt/homebrew/opt/openssl@3/bin/openssl").is_file(), "macOS OpenSSL container compatibility check")
+    def test_pkcs12_rewrap_preserves_certificate_and_rejects_wrong_password(self):
+        openssl = "/opt/homebrew/opt/openssl@3/bin/openssl"
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            key, certificate, archive = folder/"fixture.key", folder/"fixture.crt", folder/"fixture.p12"
+            def execute(*args, env=None):
+                return subprocess.run([openssl, *map(str,args)], env=env, check=True, capture_output=True).stdout
+            execute("req", "-x509", "-newkey", "rsa:2048", "-noenc", "-days", "1", "-subj", "/CN=Omarchy synthetic CI fixture", "-keyout", key, "-out", certificate)
+            with patch.dict(os.environ, {"MACOS_CERTIFICATE_PASSWORD": "synthetic-export-password"}), patch.object(signed_prerelease, "REDACTIONS", []):
+                execute("pkcs12", "-export", "-inkey", key, "-in", certificate, "-out", archive, "-passout", "env:MACOS_CERTIFICATE_PASSWORD")
+                normalized, password = signed_prerelease.compatible_certificate(archive, folder)
+                self.assertFalse((folder/"identity.pem").exists())
+                values = dict(os.environ, OMARCHY_FIXTURE_PASSWORD=password)
+                public = execute("pkcs12", "-in", normalized, "-passin", "env:OMARCHY_FIXTURE_PASSWORD", "-nokeys", env=values)
+                self.assertIn(certificate.read_bytes().strip(), public)
+                with patch.dict(os.environ, {"MACOS_CERTIFICATE_PASSWORD": "wrong-synthetic-password"}), self.assertRaisesRegex(RuntimeError, "could not be decrypted"):
+                    signed_prerelease.compatible_certificate(archive, folder)
+                self.assertFalse((folder/"identity.pem").exists())

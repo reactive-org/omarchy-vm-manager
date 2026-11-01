@@ -22,6 +22,8 @@ The staged app is under `dist/prerelease-staging/`; the ZIP, checksum and releas
 
 The local commands above remain ad-hoc. `make signed-prerelease` refuses real credentials outside GitHub Actions. The seven configured secrets are `MACOS_CERTIFICATE_P12_BASE64`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER_ID`. They are injected only into the tagged signing step; temporary keychain/password/key files are removed on exit and never uploaded. Tests and pull requests receive none of these credentials. Apple submission status/rejection JSON is retained for seven days on failure, without credential files.
 
+Before importing into the older macOS runner, OpenSSL 3 verifies/decrypts the configured PKCS#12 and rewraps the same certificate/private key into a compatible temporary container with a random transfer password. The intermediate PEM is inside the private credential directory and immediately removed. This handles modern Keychain Access export formats without changing the signing identity or bypassing password/integrity checks. A real password/decryption failure stops the job and asks for both certificate and password secrets to be updated.
+
 ## Exact runtime dependency
 
 The reviewed runtime archive is hosted as a separate clearly labelled CI dependency prerelease, under tag `runtime-kit-<full kit SHA-256>`. This tag is derived from the committed `Config/TryOmarchyRuntime.lock.json`; it does not mean the stock upstream kit or an arbitrary newly built kit is acceptable.

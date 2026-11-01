@@ -67,6 +67,40 @@ def validate_payload(source_files, signed_files, code_paths):
             assert signed_files[name] == value, "unsigned runtime payload changed: " + name
 
 
+def compatible_certificate(certificate, directory):
+    # Recent Keychain Access exports can use PKCS#12 algorithms the older
+    # runner's SecKeychainItemImport cannot decode. Verify/decrypt with OpenSSL
+    # first, then rewrap the same cert/key using a random ASCII transfer password.
+    openssl = Path("/opt/homebrew/opt/openssl@3/bin/openssl")
+    if not openssl.is_file():
+        raise RuntimeError("The release runner needs its bundled Homebrew OpenSSL 3")
+    pem, normalized = directory / "identity.pem", directory / "compatible.p12"
+    transfer_password = secrets.token_urlsafe(32)
+    REDACTIONS.append(transfer_password)
+    previous = os.environ.get("OMARCHY_P12_TRANSFER_PASSWORD")
+    os.environ["OMARCHY_P12_TRANSFER_PASSWORD"] = transfer_password
+    try:
+        try:
+            run("Validate PKCS12 password and decode certificate container", openssl, "pkcs12", "-legacy", "-in", certificate,
+                "-passin", "env:MACOS_CERTIFICATE_PASSWORD", "-noenc", "-out", pem)
+        except RuntimeError as error:
+            raise RuntimeError("The configured PKCS12 could not be decrypted. Re-export the certificate/private key and update both "
+                               "MACOS_CERTIFICATE_P12_BASE64 and MACOS_CERTIFICATE_PASSWORD. " + str(error)) from None
+        pem.chmod(0o600)
+        run("Rewrap the same certificate/key for macOS importer compatibility", openssl, "pkcs12", "-export", "-in", pem,
+            "-out", normalized, "-passout", "env:OMARCHY_P12_TRANSFER_PASSWORD",
+            "-keypbe", "PBE-SHA1-3DES", "-certpbe", "PBE-SHA1-3DES", "-macalg", "sha1")
+        normalized.chmod(0o600)
+        print("::notice title=Signing certificate::PKCS12 password validated; identity container normalized for runner compatibility", flush=True)
+        return normalized, transfer_password
+    finally:
+        pem.unlink(missing_ok=True)
+        if previous is None:
+            os.environ.pop("OMARCHY_P12_TRANSFER_PASSWORD", None)
+        else:
+            os.environ["OMARCHY_P12_TRANSFER_PASSWORD"] = previous
+
+
 @contextmanager
 def credentials():
     if os.environ.get("GITHUB_ACTIONS") != "true" or not os.environ.get("RUNNER_TEMP"):
@@ -96,7 +130,8 @@ def credentials():
             created = True
             run("Configure release keychain", "security", "set-keychain-settings", "-lut", "21600", keychain)
             run("Unlock release keychain", "security", "unlock-keychain", "-p", password, keychain)
-            run("Import Developer ID certificate", "security", "import", certificate, "-P", os.environ["MACOS_CERTIFICATE_PASSWORD"],
+            compatible, transfer_password = compatible_certificate(certificate, directory)
+            run("Import Developer ID certificate", "security", "import", compatible, "-P", transfer_password,
                 "-k", keychain, "-T", "/usr/bin/codesign", "-T", "/usr/bin/security")
             run("Allow noninteractive signing in isolated runner", "security", "set-key-partition-list", "-S", "apple-tool:,apple:", "-s", "-k", password, keychain)
             run("Select release keychain", "security", "list-keychains", "-d", "user", "-s", keychain, *original)
