@@ -7,17 +7,20 @@ import sys
 
 from kit_artifacts import ROOT
 from build_patched_kit import inventory
+from bundle_layout import core_resource_directory
 
 app = Path(sys.argv[1])
 contents = app / "Contents"
 info = plistlib.loads((contents / "Info.plist").read_bytes())
 assert info["CFBundleExecutable"] == "OmarchyVMManager"
-contract = contents / "Resources/OmarchyVMManager_OmarchyVMManagerCore.bundle/Contents/Resources/OwnerSetupContract.json"
+resources = core_resource_directory(contents / "Resources/OmarchyVMManager_OmarchyVMManagerCore.bundle")
+contract = resources / "OwnerSetupContract.json"
 assert contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json").read_bytes()
 assert json.loads(contract.read_bytes())["schemaVersion"] == 1
 lean_contract = contract.with_name("LeanOwnerSetupContract.json")
 assert lean_contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json").read_bytes()
 assert json.loads(lean_contract.read_bytes())["keyboards"] == json.loads(contract.read_bytes())["keyboards"]
+assert (resources / "ReviewedFactories.json").read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/ReviewedFactories.json").read_bytes()
 assert info["CFBundleIdentifier"] == ("dev.omarchy.vm-manager.layout-preview" if info.get("OmarchyLayoutPreview") is True else "dev.omarchy.vm-manager")
 assert info["LSMinimumSystemVersion"] == "15.0"
 assert info["CFBundleIconFile"] == "OmarchyVMManager"

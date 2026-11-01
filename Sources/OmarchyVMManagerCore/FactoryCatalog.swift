@@ -63,7 +63,7 @@ public struct FactoryCatalog: Sendable {
         signature.standardInput = FileHandle.nullDevice; signature.standardOutput = FileHandle.nullDevice; signature.standardError = FileHandle.nullDevice
         try signature.run(); signature.waitUntilExit()
         guard signature.terminationStatus == 0 else { throw Self.invalid("The embedded kit failed normal signature verification.") }
-        let url = Bundle.module.url(forResource: "ReviewedFactories", withExtension: "json")!
+        let url = ManagerResources.bundle.url(forResource: "ReviewedFactories", withExtension: "json")!
         self.init(applicationSupport: applicationSupport, kit: kit, lockData: lockData,
                   reviewed: try Self.decodeReviews(VMFactorySelection.readMetadata(url), expectedSHA256: FactoryReviewPin.sha256))
     }

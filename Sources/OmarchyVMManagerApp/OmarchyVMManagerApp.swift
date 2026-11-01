@@ -53,6 +53,7 @@ struct OmarchyVMManagerApp: App {
                     "kitPath": value.kitPath, "version": value.version, "runProtocolVersion": value.runProtocolVersion,
                     "supported": value.supported, "patchCommit": value.patchCommit, "kitSHA256": value.archiveSHA256,
                     "focusAwareClipboard": value.focusAwareClipboard,
+                    "ownerSetupContractVersion": OwnerSetupContract.current.schemaVersion,
                     "hostPreflightPerformed": !bundleOnly,
                     "preflight": bundleOnly ? "not performed (bundle verification only)" : (value.preflightFailure ?? "passed"),
                     "vmLaunchEnabled": !bundleOnly && !AppModel.layoutPreview, "launchScope": AppModel.layoutPreview ? "synthetic-layout-preview" : "registered-manager-owned-private-build"

@@ -12,6 +12,7 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "Scripts"
 sys.path.insert(0, str(SCRIPTS))
 import fetch_runtime_kit
 from package_prerelease import validate_tag
+from bundle_layout import core_resource_directory
 
 
 class LockedRuntimeTests(unittest.TestCase):
@@ -103,3 +104,19 @@ class PrereleaseVersionTests(unittest.TestCase):
         for tag in ["", "v0.9.3", "v0.9.3-dev.0", "v0.9.3-dev.01", "v1.0.0-dev.1", "v0.9.3-dev.1/extra", "v0.9.3-dev.$(id)"]:
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 validate_tag(tag, "0.9.3")
+
+    def test_flat_and_contents_resource_layouts(self):
+        for relative in [".", "Contents/Resources"]:
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp:
+                bundle = Path(temp) / "Core.bundle"
+                resources = bundle / relative
+                resources.mkdir(parents=True)
+                (resources / "OwnerSetupContract.json").write_text("{}")
+                self.assertEqual(core_resource_directory(bundle), resources)
+                other = bundle / ("Contents/Resources" if relative == "." else ".")
+                other.mkdir(parents=True, exist_ok=True)
+                (other / "OwnerSetupContract.json").write_text("{}")
+                with self.assertRaises(ValueError):
+                    core_resource_directory(bundle)
+        with tempfile.TemporaryDirectory() as temp, self.assertRaises(ValueError):
+            core_resource_directory(Path(temp))

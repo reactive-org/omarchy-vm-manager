@@ -12,7 +12,7 @@ public struct OwnerSetupContract: Codable, Sendable {
     public let programs: [String: String]
     public let keyboards: [OwnerKeyboard]
     public static let current: OwnerSetupContract = {
-        guard let url = Bundle.module.url(forResource: "OwnerSetupContract", withExtension: "json"),
+        guard let url = ManagerResources.bundle.url(forResource: "OwnerSetupContract", withExtension: "json"),
               let data = try? Data(contentsOf: url), let value = try? JSONDecoder().decode(Self.self, from: data), value.schemaVersion == 1 else {
             preconditionFailure("Missing reviewed owner setup contract")
         }
