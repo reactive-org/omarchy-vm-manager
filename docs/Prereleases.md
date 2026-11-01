@@ -44,6 +44,8 @@ After first-run review, the signed lock is committed separately as `Config/TryOm
 
 Each Apple submission is polled for up to 45 minutes; status changes and submission IDs appear as CI notices. A pending or rejected submission prevents publication and retains diagnostic JSON. Local preflight passed 160 Swift tests, 30 Python tests, optimized signed-mode compilation without credentials, an ad-hoc package ZIP round trip, and an upstream ad-hoc signing rehearsal that confirmed all unsigned runtime payloads remain unchanged. Actual Developer ID/Apple/Gatekeeper results must be observed on the tagged run.
 
+The initial signed attempts stopped before signing or notarization because the configured certificate/password pair failed both macOS PKCS#12 import and OpenSSL MAC verification. [The `v0.9.3-dev.5` run](https://github.com/reactive-org/omarchy-vm-manager/actions/runs/41272350870) passed all 160 manager Swift tests, 31 Python tests and 550 upstream tests; credential files and the temporary keychain were removed after the failed decryption. No signed release was published. Correct the certificate export/password secrets, then rerun the failed signing job; the tests need not be rerun for a secret-only correction.
+
 Signing changes runtime bytes. Existing custom factory receipts/manifests tied to the ad-hoc kit are preserved and refused by the signed build; they need a newly prepared compatible bundle. Existing profiles, writable disks and official factory identity are not migrated or rewritten by packaging. Real guest acceptance of the signed build remains TO PROVE.
 
 ## Verification boundary
