@@ -175,8 +175,13 @@ public actor VMManager {
 
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
                        clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true,
-                       publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true, factory: String = "official") async throws -> UUID {
+                       publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true, factory: String = "official",
+                       ownerOverrides: GuestOwnerOverrides? = nil) async throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
+        if let ownerOverrides {
+            guard useOwnerDefaults != false, ownerDefaults != nil else { throw OwnerConfiguration.invalid("Owner overrides require enabled, saved Guest Defaults.") }
+            _ = try ownerOverrides.applying(to: OwnerConfiguration())
+        }
         if factory != "official" {
             guard factoryDeletionOperation?.selector != factory else { throw VMFailure(code: "factory-busy", message: "This factory is being deleted.") }
             pendingFactoryCreations[factory, default: 0] += 1
@@ -205,7 +210,7 @@ public actor VMManager {
         if useOwnerDefaults != false, let ownerDefaults {
             let defaults = try ownerDefaults.load()
             if useOwnerDefaults == true, !defaults.enabled { throw OwnerConfiguration.invalid("Enable and save Guest Defaults before choosing unattended setup.") }
-            profile.ownerSetup = try ownerDefaults.snapshot(for: profile.id)
+            profile.ownerSetup = try ownerDefaults.snapshot(for: profile.id, overrides: ownerOverrides)
             if profile.ownerSetup != nil, chosenPublicKey == nil, inheritDefaultPublicKey { chosenPublicKey = defaults.sshPublicKey }
         } else if useOwnerDefaults == true { throw OwnerConfiguration.invalid("Guest Defaults is unavailable.") }
         if sshEnabled {
@@ -242,7 +247,7 @@ public actor VMManager {
 
     public func update(_ id: UUID, configuration: GuestConfigurationPatch) throws {
         guard var profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.") }
-        guard configuration.ssh == nil, configuration.ownerDefaults == nil, configuration.publicKey == nil, configuration.factory == nil else { throw VMFailure(code: "creation-only", message: "SSH and owner enrollment are chosen at creation.") }
+        guard configuration.ssh == nil, configuration.ownerDefaults == nil, configuration.ownerOverrides == nil, configuration.publicKey == nil, configuration.inheritDefaultPublicKey == nil, configuration.factory == nil else { throw VMFailure(code: "creation-only", message: "SSH and owner enrollment are chosen at creation.") }
         if let value = configuration.name { profile.name = value }
         if let value = configuration.memoryMiB { profile.memoryMiB = value }
         if let value = configuration.cpus { profile.cpus = value }

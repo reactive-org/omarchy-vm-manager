@@ -2,6 +2,8 @@
 
 New profiles offer **Enable SSH from this Mac**, on by default, and an optional **Add my SSH public key…** chooser. Creation stores metadata only. First launch generates distinct per-guest Ed25519 client and server identities. Complete the normal Omarchy owner-account setup; no console bootstrap, guest password capture or clipboard step is required for enrollment. The SSH page reports provisioning separately from VM startup and offers **Copy SSH Command** only after authenticated verification.
 
+CLI creation inherits an optional personal public key from enabled Guest Defaults unless `--inherit-default-public-key off` is supplied (JSON: top-level `"inheritDefaultPublicKey": false`). This omits only the saved personal key; automatic owner setup and the manager's separate SSH identity remain enabled. An explicitly selected `--public-key FILE.pub` still applies. To enroll only the manager key, disable inheritance and supply no explicit public key. This choice is creation-only and does not remove keys from existing guests or change saved defaults. See [CLI key selection](CLI.md#personal-ssh-public-key-inheritance).
+
 Existing profiles stay unchanged. SSH enrollment changes for existing disks need a separately reviewed stopped-VM migration. The retained POC profiles remain protected and have no managed SSH configuration.
 
 ## Trust and storage

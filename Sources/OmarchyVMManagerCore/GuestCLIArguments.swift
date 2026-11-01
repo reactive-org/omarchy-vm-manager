@@ -26,6 +26,13 @@ public struct GuestCLIInvocation: Sendable {
             --memory-mib 4096, --cpus 4, --disk 64GiB, --disk-gib 64,
             --clipboard on|off, --immersive on|off
     Creation only: --factory official|MANIFEST_SHA256, --ssh on|off, --owner-defaults on|off, --public-key FILE.pub
+            --inherit-default-public-key on|off (default on)
+    Use --inherit-default-public-key off to omit the saved personal SSH key;
+    managed SSH stays enabled. An explicitly supplied --public-key still applies.
+    Owner overrides (create): --username USER, --full-name NAME, --email EMAIL,
+            --hostname-prefix PREFIX, --timezone ZONE, --keyboard LAYOUT
+    Owner overrides inherit enabled Guest Defaults and its saved password;
+    they never change Guest Defaults. Empty full name/email clears the inherited value.
     Lifecycle: --start (create), --wait [ssh|running|stopped|paused], --timeout SECONDS
 
     JSON replies go to stdout. Exit 0: success; 1: failure; 124: wait timeout.
@@ -39,7 +46,7 @@ public struct GuestCLIInvocation: Sendable {
         guard let command = GuestCommand(rawValue: aliases[arguments[0]] ?? arguments[0]) else { throw commandFailure("usage", "Unknown command. Run omarchy-vm --help.") }
         var config = GuestConfigurationPatch(), selector: String?, positional: String?
         var values: [String: String] = [:], flags: Set<String> = [], index = 1
-        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--clipboard", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--factory", "--timeout", "--for"]
+        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--clipboard", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard"]
         while index < arguments.count {
             let key = arguments[index]; index += 1
             if key == "--wait" {
@@ -76,6 +83,17 @@ public struct GuestCLIInvocation: Sendable {
         if command == .importFactory, let path = positional { selector = URL(fileURLWithPath: NSString(string: path).expandingTildeInPath).standardizedFileURL.path }
         if let value = values["--ssh"] { config.ssh = try boolean(value) }
         if let value = values["--owner-defaults"] { config.ownerDefaults = try boolean(value) }
+        if let value = values["--inherit-default-public-key"] { config.inheritDefaultPublicKey = try boolean(value) }
+        let ownerFlags: [(String, WritableKeyPath<GuestOwnerOverrides, String?>)] = [
+            ("--username", \.username), ("--full-name", \.fullName), ("--email", \.email),
+            ("--hostname-prefix", \.hostnamePrefix), ("--timezone", \.timezone), ("--keyboard", \.keyboardID)
+        ]
+        for (flag, field) in ownerFlags {
+            if let value = values[flag] {
+                if config.ownerOverrides == nil { config.ownerOverrides = GuestOwnerOverrides() }
+                config.ownerOverrides?[keyPath: field] = value
+            }
+        }
         if let value = values["--public-key"] { config.publicKey = try SSHPublicKey.canonical(String(decoding: readFile(value, suffix: "pub", maximum: 16384), as: UTF8.self)) }
         let configOptions = Set(values.keys).subtracting(["--timeout", "--for", "--wait"])
         guard configOptions.isEmpty || command == .create || command == .update else { throw commandFailure("usage", "Configuration options apply only to create or update.") }

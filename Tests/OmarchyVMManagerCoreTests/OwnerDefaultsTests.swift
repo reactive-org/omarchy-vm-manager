@@ -98,6 +98,145 @@ struct OwnerDefaultsTests {
 
 @Suite("Owner defaults at guest creation")
 struct OwnerDefaultsCreationTests {
+    @Test("CLI can omit the saved personal key while retaining managed SSH and owner defaults")
+    func publicKeyInheritance() async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
+        struct AvailablePort: HostPortProbing { func isAvailable(_ port: Int) -> Bool { true } }
+        func key(_ byte: UInt8) -> String {
+            let blob = Data([0, 0, 0, 11]) + Data("ssh-ed25519".utf8) + Data([0, 0, 0, 32]) + Data(repeating: byte, count: 32)
+            return "ssh-ed25519 " + blob.base64EncodedString()
+        }
+        let savedKey = key(1), explicitKey = key(2)
+        let vault = MemoryOwnerVault(), defaults = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
+        let saved = try defaults.save(enabled: true, configuration: .init(username: "owner"),
+            password: Data("synthetic-password".utf8), sshPublicKey: savedKey)
+        let defaultsFile = f.storage.directory.appendingPathComponent("guest-defaults.json")
+        let defaultsBytes = try PrivateFiles.read(defaultsFile)
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: f.support,
+            hostMemoryMiB: 65536, logicalCPUs: 64, registry: registry, portProbe: AvailablePort(), ownerDefaults: defaults)
+        let service = GuestCommandService(manager: manager, applicationSupport: f.support)
+        let request = try #require(GuestCLIInvocation.parse(["create", "Isolated", "--inherit-default-public-key", "off", "--username", "isolated"]).request)
+        let response = await service.execute(request)
+        #expect(response.ok && response.guest?.ssh.enabled == true && response.guest?.unattended == true)
+        let isolated = try #require(await manager.snapshots().first?.profile)
+        #expect(isolated.ssh?.publicKeyFingerprint == nil)
+        #expect(isolated.ownerSetup?.credentialReference == saved.credentialReference)
+        #expect(isolated.ownerSetup?.configuration.username == "isolated")
+        #expect(!PrivateFiles.exists(SelectedPublicKeyStore(applicationSupport: f.support).directory))
+        #expect(!PrivateFiles.exists(f.storage.vms))
+        for (name, inherit, selected) in [("Default", nil as Bool?, nil as String?), ("On", true, nil), ("Explicit", false, explicitKey)] {
+            let result = await service.execute(GuestCommandRequest(command: .create, config: .init(name: name,
+                publicKey: selected, inheritDefaultPublicKey: inherit)))
+            #expect(result.ok)
+            let profile = try #require(await manager.snapshots().last?.profile)
+            #expect(profile.ssh?.publicKeyFingerprint == (try SSHPublicKey.fingerprint(selected ?? savedKey)))
+            #expect(try SelectedPublicKeyStore(applicationSupport: f.support).read(profile.id) == selected ?? savedKey)
+        }
+        let bytes = try PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json"))
+        let update = await service.execute(GuestCommandRequest(command: .update, selector: isolated.id.uuidString,
+            config: .init(cpus: 8, inheritDefaultPublicKey: false)))
+        #expect(update.error?.code == "creation-only")
+        await #expect(throws: VMFailure.self) { try await manager.update(isolated.id, configuration: .init(inheritDefaultPublicKey: false)) }
+        #expect(try PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json")) == bytes)
+        #expect(try PrivateFiles.read(defaultsFile) == defaultsBytes && defaults.load() == saved)
+        #expect(!PrivateFiles.exists(f.storage.vms) && runtime.startedHandles.isEmpty)
+
+        // Prepare only the disposable fixture's bootstrap to check actual enrollment content.
+        let root = try f.storage.prepare(isolated, ownerPassword: Data("synthetic-password".utf8))
+        let ssh = ManagedSSHStorage(root: root)
+        let manifest = try JSONDecoder().decode(ManagedSSHStorage.Bootstrap.self, from: PrivateFiles.read(ssh.bootstrap.appendingPathComponent("manifest.json")))
+        let managedKey = try SSHPublicKey.canonical(String(decoding: PrivateFiles.read(ssh.directory.appendingPathComponent("client.pub")), as: UTF8.self))
+        #expect(manifest.publicKeys == [managedKey])
+        #expect(!manifest.publicKeys.contains(savedKey))
+        #expect(!PrivateFiles.exists(ssh.directory.appendingPathComponent("owner.pub")))
+        #expect(runtime.startedHandles.isEmpty)
+    }
+
+    @Test("CLI owner overrides snapshot only a disposable profile, preserving defaults, credentials and later inheritance")
+    func cliOverrides() async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
+        let vault = MemoryOwnerVault(), defaults = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
+        let saved = try defaults.save(enabled: true, configuration: .init(username: "saved", fullName: "Saved Name",
+            email: "saved@example.invalid", hostnamePrefix: "saved", timezone: "UTC"), password: Data("synthetic-password".utf8))
+        let file = f.storage.directory.appendingPathComponent("guest-defaults.json")
+        let bytes = try PrivateFiles.read(file)
+        let partialID = UUID()
+        let partial = try #require(try defaults.snapshot(for: partialID, overrides: .init(username: "partial")))
+        var expectedPartial = saved.configuration; expectedPartial.username = "partial"
+        #expect(partial.configuration == expectedPartial)
+        #expect(partial.hostname == "saved-" + partialID.uuidString.prefix(8).lowercased())
+        #expect(partial.credentialReference == saved.credentialReference)
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: f.support,
+            hostMemoryMiB: 65536, logicalCPUs: 64, registry: registry, ownerDefaults: defaults)
+        let service = GuestCommandService(manager: manager, applicationSupport: f.support)
+        let request = try #require(GuestCLIInvocation.parse(["create", "Override", "--username", "developer",
+            "--full-name", "", "--email", "", "--hostname-prefix", "work", "--timezone", "Australia/Melbourne",
+            "--keyboard", "English (UK)", "--ssh", "off"]).request)
+        let response = await service.execute(request)
+        #expect(response.ok && response.guest?.unattended == true && response.guest?.active == false)
+        let profile = try #require(await manager.snapshots().first?.profile)
+        let owner = try #require(profile.ownerSetup)
+        #expect(owner.configuration == OwnerConfiguration(username: "developer", fullName: "", email: "",
+            hostnamePrefix: "work", timezone: "Australia/Melbourne", keyboardID: "English (UK)"))
+        #expect(owner.defaultsRevision == saved.revision && owner.credentialReference == saved.credentialReference)
+        #expect(owner.hostname == "work-" + profile.id.uuidString.prefix(8).lowercased())
+        try owner.validate(for: profile.id)
+        let later = await service.execute(GuestCommandRequest(command: .create, config: .init(name: "Later", ssh: false)))
+        #expect(later.ok)
+        #expect(await manager.snapshots().last?.profile.ownerSetup?.configuration == saved.configuration)
+        struct SavedProfiles: Decodable { let profiles: [VMProfile] }
+        let persisted = try JSONDecoder().decode(SavedProfiles.self, from: PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json")))
+        #expect(persisted.profiles.first?.ownerSetup == owner)
+        #expect(try PrivateFiles.read(file) == bytes)
+        #expect(try defaults.load() == saved)
+        #expect(vault.count == 1)
+        let reply = String(decoding: try JSONEncoder().encode(response), as: UTF8.self)
+        for excluded in ["credentialReference", "synthetic-password", owner.credentialReference.uuidString] { #expect(!reply.contains(excluded)) }
+        #expect(runtime.startedHandles.isEmpty)
+        #expect(!PrivateFiles.exists(f.storage.vms))
+        await #expect(throws: VMFailure.self) { try await manager.update(profile.id, configuration: .init(ownerOverrides: .init(username: "other"))) }
+        #expect(await manager.snapshots().first?.profile == profile)
+    }
+
+    @Test("unavailable, disabled, opted-out or unprotected defaults cannot silently discard overrides")
+    func rejectedOverrides() async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
+        let registryBytes = try PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json"))
+        let vault = MemoryOwnerVault(), defaults = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: f.support,
+            hostMemoryMiB: 65536, logicalCPUs: 64, registry: registry, ownerDefaults: defaults)
+        let service = GuestCommandService(manager: manager, applicationSupport: f.support)
+        var request = GuestCommandRequest(command: .create, config: .init(name: "Rejected", ssh: false, ownerOverrides: .init(username: "other")))
+        #expect(!(await service.execute(request)).ok)
+        let saved = try defaults.save(enabled: true, configuration: .init(), password: Data("synthetic-password".utf8))
+        request.config?.ownerOverrides = .init(username: "root")
+        #expect(!(await service.execute(request)).ok)
+        request.config?.ownerOverrides = .init(username: "other")
+        request.config?.ownerDefaults = false
+        #expect(!(await service.execute(request)).ok)
+        await #expect(throws: VMFailure.self) {
+            try await manager.create(name: "Rejected direct", memoryMiB: 4096, cpus: 4, clipboardEnabled: true,
+                immersiveMode: false, sshEnabled: false, useOwnerDefaults: false, ownerOverrides: .init(username: "other"))
+        }
+        request.config?.ownerDefaults = nil
+        try vault.remove(reference: #require(saved.credentialReference))
+        #expect(!(await service.execute(request)).ok)
+        let noDefaults = VMManager(runtime: runtime, profiles: [], applicationSupport: f.support, registry: registry)
+        await #expect(throws: VMFailure.self) {
+            try await noDefaults.create(name: "Unavailable", memoryMiB: 4096, cpus: 4, clipboardEnabled: true,
+                immersiveMode: false, sshEnabled: false, ownerOverrides: .init(username: "other"))
+        }
+        #expect(await manager.snapshots().isEmpty)
+        #expect(try PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json")) == registryBytes)
+        #expect(runtime.startedHandles.isEmpty && !PrivateFiles.exists(f.storage.vms))
+    }
+
     @Test("new profiles inherit snapshots; existing and opted-out guests stay unchanged")
     func createsSnapshots() async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }

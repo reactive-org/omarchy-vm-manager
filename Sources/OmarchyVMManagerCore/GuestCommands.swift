@@ -10,19 +10,25 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     public var immersive: Bool?
     public var ssh: Bool?
     public var ownerDefaults: Bool?
+    public var ownerOverrides: GuestOwnerOverrides?
     public var factory: String?
     public var publicKey: String?
+    public var inheritDefaultPublicKey: Bool?
     public init(name: String? = nil, memoryMiB: Int? = nil, cpus: Int? = nil, diskGiB: Int? = nil,
                 clipboard: Bool? = nil, immersive: Bool? = nil,
-                ssh: Bool? = nil, ownerDefaults: Bool? = nil, publicKey: String? = nil, factory: String? = nil) {
+                ssh: Bool? = nil, ownerDefaults: Bool? = nil, publicKey: String? = nil, factory: String? = nil,
+                ownerOverrides: GuestOwnerOverrides? = nil, inheritDefaultPublicKey: Bool? = nil) {
         self.name = name; self.memoryMiB = memoryMiB; self.cpus = cpus; self.diskGiB = diskGiB
         self.clipboard = clipboard; self.immersive = immersive
         self.ssh = ssh; self.ownerDefaults = ownerDefaults; self.publicKey = publicKey; self.factory = factory
+        self.ownerOverrides = ownerOverrides
+        self.inheritDefaultPublicKey = inheritDefaultPublicKey
     }
     public static func decodeStrict(_ data: Data) throws -> Self {
         guard data.count <= 32768, let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              Set(object.keys).isSubset(of: ["name", "memoryMiB", "cpus", "diskGiB", "clipboard", "immersive", "ssh", "ownerDefaults", "publicKey", "factory"]),
+              Set(object.keys).isSubset(of: ["name", "memoryMiB", "cpus", "diskGiB", "clipboard", "immersive", "ssh", "ownerDefaults", "ownerOverrides", "publicKey", "inheritDefaultPublicKey", "factory"]),
               !object.values.contains(where: { $0 is NSNull }) else { throw commandFailure("invalid-config", "Configuration must contain only supported, non-null guest settings.") }
+        if let overrides = object["ownerOverrides"] { try GuestOwnerOverrides.validateJSON(overrides) }
         return try JSONDecoder().decode(Self.self, from: data)
     }
 }
@@ -64,6 +70,12 @@ public struct GuestCommandRequest: Codable, Sendable {
         if command == .deleteFactory { try FactoryCatalog.validateDeletionSelector(selector!) }
         if command == .importFactory, selector?.hasPrefix("/") != true { throw FactoryCatalog.invalid("A prepared factory bundle requires an absolute path.") }
         if command == .create, config?.name == nil { throw commandFailure("invalid-config", "A guest name is required.") }
+        if config?.inheritDefaultPublicKey != nil, command != .create { throw commandFailure("creation-only", "Saved public-key inheritance is chosen at guest creation.") }
+        if let overrides = config?.ownerOverrides {
+            guard command == .create else { throw commandFailure("creation-only", "Owner overrides are chosen at guest creation.") }
+            guard config?.ownerDefaults != false else { throw commandFailure("invalid-config", "Owner overrides cannot be combined with owner defaults off.") }
+            _ = try overrides.applying(to: OwnerConfiguration())
+        }
         if command == .update, config?.factory != nil { throw commandFailure("creation-only", "Factory selection is fixed at creation.") }
         if command == .create, let factory = config?.factory, factory != "official", !VMFactorySelection.isDigest(factory) { throw FactoryCatalog.invalid("Select official or an imported manifest SHA-256.") }
         if command == .update, let config {
@@ -175,7 +187,8 @@ public actor GuestCommandService {
                 target = try await manager.create(name: c.name!, memoryMiB: c.memoryMiB ?? 4096, cpus: c.cpus ?? 4,
                     diskGiB: c.diskGiB ?? 64,
                     clipboardEnabled: c.clipboard ?? true, immersiveMode: c.immersive ?? false, sshEnabled: c.ssh ?? true,
-                    publicKey: c.publicKey, useOwnerDefaults: c.ownerDefaults, factory: c.factory ?? "official")
+                    publicKey: c.publicKey, useOwnerDefaults: c.ownerDefaults, inheritDefaultPublicKey: c.inheritDefaultPublicKey ?? true,
+                    factory: c.factory ?? "official", ownerOverrides: c.ownerOverrides)
                 if request.start { try await manager.start(target!, launchIntent: .background) }
             } else {
                 target = try await resolve(request.selector!)

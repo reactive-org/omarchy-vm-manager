@@ -10,7 +10,7 @@ This project is based heavily on the work of the [Try Omarchy team](https://gith
 - **Official or custom factory images.** Use the official **Try Omarchy v1.3.0 ARM64 edge factory image**, or import a compatible custom factory and select it when creating a guest. Official downloads are checked against pinned SHA-256 checksums; custom bundles are checked against their recorded image, provisioning and runtime hashes. See [Factory images](#factory-images) and the [preparation and customisation guide](docs/preparing-factory-images.md).
 - **Automatic setup, ready in minutes.** Save your owner and system defaults once, then create guests that set themselves up with a usable desktop and SSH access. The shared image cache speeds up subsequent guests; first-download and setup time depend on your connection and Mac.
 - **Your developer environment, configured your way.** Pair with [reactive.org/dev-vm](https://reactive.org/dev-vm) for a declarative, fully configured developer environment inside the guest. Get each environment set up just the way you like it.
-- **A CLI for automation.** Import and select factory images, create guests with custom resources, start, pause, resume and stop them individually, wait for authenticated SSH, inspect connection details, and update stopped guests through concise JSON responses.
+- **A CLI for automation.** Import and select factory images, create guests with custom resources and per-VM owner overrides, start, pause, resume and stop them individually, wait for authenticated SSH, inspect connection details, and update stopped guests through concise JSON responses.
 
 The native SwiftUI app requires macOS 15 or later. The current private debug build provides a persistent guest library, configuration and safe deletion through macOS Trash. Guests start when you choose **Launch** or issue a CLI start command. The two retained POC profiles keep their original configuration and can be moved to Trash through the normal confirmed deletion flow.
 
@@ -64,7 +64,7 @@ Open `dist/Omarchy VM Manager.app` and choose **New VM**. The native sidebar lis
 
 Preparing measures unpacking, reaching 100% when decompression and the disk-size check finish. Finishing then covers disk verification and compaction before startup. Sparse images may pause at one unpacking percentage while trailing empty space is processed. See [preparation progress](docs/PreparationProgress.md) for validation and the runtime compatibility change.
 
-**Guest Defaults** saves owner setup for future guests: username, password, optional name/Git email, keyboard, timezone, hostname prefix and optional public key. Enable and save it once, then leave **Use saved owner setup defaults** checked in New VM. Passwords stay in the login Keychain; profiles hold immutable snapshots and credential references. Each hostname gets a unique suffix. Existing guests are unchanged. The prepared image uses a reviewed adapter to Omarchy's owner setup, rather than the ISO disk/encryption installer. See [unattended defaults and validation](docs/UnattendedDefaults.md). A fresh unattended guest passed owner/settings, pinned SSH and restart checks; the known intermittent graphics issue remains open.
+**Guest Defaults** saves owner setup for future guests: username, password, optional name/Git email, keyboard, timezone, hostname prefix and optional public key. Enable and save it once, then leave **Use saved owner setup defaults** checked in New VM. Passwords stay in the manager's scoped macOS Keychain storage; profiles hold immutable snapshots and credential references. Credential access follows the build’s [Keychain policy](docs/TouchID.md#development-compatibility--2-november-2026): development builds can reuse saved login-Keychain passwords, while provisioned releases use protected storage. Each hostname gets a unique suffix. The CLI can override non-secret owner fields for one new VM without changing Guest Defaults. Existing guests are unchanged. The prepared image uses a reviewed adapter to Omarchy's owner setup, rather than the ISO disk/encryption installer. See [unattended defaults and validation](docs/UnattendedDefaults.md). A fresh unattended guest passed owner/settings, pinned SSH and restart checks under the historical credential policy; the known intermittent graphics issue remains open.
 
 The schema-versioned private registry lives at `~/Library/Application Support/Omarchy VM Manager/registry.json`. UUID roots derive beneath the sibling `VMs` directory. Reopening restores profiles as stopped. The existing POC roots are validated and registered without modifying their files. Their profiles cannot be reconfigured or renamed, but stopped guests can be deleted through the normal confirmed Move to Trash flow.
 
@@ -107,6 +107,27 @@ Guest artwork uses the official Omarchy mark in monochrome, with pending-tradema
 ./bin/omarchy-vm stop dev --wait
 ./bin/omarchy-vm delete dev
 ```
+
+For a VM with different owner settings, keep Guest Defaults enabled and saved,
+then override only the fields that differ. This example creates a stopped
+profile when executed; it does not launch the guest or prepare its disk:
+
+```sh
+./bin/omarchy-vm create work --username developer --hostname-prefix work \
+  --full-name "Dev User" --email "dev@example.com" \
+  --timezone Australia/Melbourne --keyboard "English (US)" \
+  --inherit-default-public-key off
+```
+
+Omitted settings and the saved password are inherited. Use `--full-name ""` or
+`--email ""` to clear those optional fields. `--inherit-default-public-key off`
+omits the saved personal SSH key while keeping the manager's per-VM SSH access.
+An explicitly supplied `--public-key` still applies. Owner overrides are creation-only;
+they cannot be combined with `--owner-defaults off` or applied by `update`.
+Flags and the equivalent `ownerOverrides` JSON are covered in the
+[CLI quick start](docs/cli-quickstart.md#override-owner-settings-for-one-vm).
+These overrides require a manager and CLI built from the updated source;
+they are not installed by editing or building the source alone.
 
 Import a prepared custom factory, then copy its exact manifest SHA-256 from the
 `factories` response into the creation command:

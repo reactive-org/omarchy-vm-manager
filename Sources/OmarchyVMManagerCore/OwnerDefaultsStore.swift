@@ -39,13 +39,20 @@ public final class OwnerDefaultsStore: @unchecked Sendable {
             let value = OwnerDefaults(); cached = value; return value
         }
     }
-    public func snapshot(for id: UUID) throws -> OwnerSetupOptions? {
+    public func snapshot(for id: UUID, overrides: GuestOwnerOverrides? = nil) throws -> OwnerSetupOptions? {
         try access.withLock {
             let value = try load()
             if let revision {
                 guard try PrivateFiles.read(file) == revision else { throw OwnerConfiguration.invalid("Guest Defaults changed outside the manager. Reopen it before creating a guest.") }
             } else if PrivateFiles.exists(file) { throw OwnerConfiguration.invalid("Guest Defaults appeared outside the manager. Reopen it before creating a guest.") }
-            let snapshot = try value.snapshot(for: id)
+            var snapshot = try value.snapshot(for: id)
+            if let overrides {
+                guard let inherited = snapshot else { throw OwnerConfiguration.invalid("Owner overrides require enabled, saved Guest Defaults.") }
+                let configuration = try overrides.applying(to: inherited.configuration)
+                snapshot = OwnerSetupOptions(defaultsRevision: inherited.defaultsRevision, configuration: configuration,
+                    credentialReference: inherited.credentialReference,
+                    hostname: configuration.hostnamePrefix + "-" + id.uuidString.prefix(8).lowercased())
+            }
             if let snapshot { try vault.requireProtectedCredential(reference: snapshot.credentialReference) }
             return snapshot
         }

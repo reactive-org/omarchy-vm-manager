@@ -31,6 +31,30 @@ private struct CommandFixture {
 
 @Suite("CLI arguments and bounded configuration")
 struct GuestCLIArgumentsTests {
+    @Test("saved public-key inheritance is independently configurable and creation-only")
+    func publicKeyInheritance() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let file = f.support.appendingPathComponent("key-config.json")
+        try Data(#"{"inheritDefaultPublicKey":false}"#.utf8).write(to: file)
+        let request = try #require(GuestCLIInvocation.parse(["create", "isolated", "--inherit-default-public-key", "off"]).request)
+        #expect(request.config?.inheritDefaultPublicKey == false)
+        #expect(request.config?.ssh == nil && request.config?.ownerDefaults == nil && !request.start)
+        #expect(try GuestCommandRequest.decodeStrict(JSONEncoder().encode(request)).config == request.config)
+        #expect(try GuestCLIInvocation.parse(["create", "file", "--config", file.path]).request?.config?.inheritDefaultPublicKey == false)
+        #expect(try GuestCLIInvocation.parse(["create", "flag", "--config", file.path, "--inherit-default-public-key", "on"]).request?.config?.inheritDefaultPublicKey == true)
+        for args in [
+            ["update", "existing", "--inherit-default-public-key", "off"],
+            ["update", "existing", "--cpus", "8", "--inherit-default-public-key", "on"],
+            ["get", "existing", "--inherit-default-public-key", "off"],
+            ["create", "invalid", "--inherit-default-public-key", "none"],
+            ["create", "invalid", "--inherit-default-public-key"],
+            ["create", "invalid", "--inherit-default-public-key", "off", "--inherit-default-public-key", "on"]
+        ] { #expect(throws: (any Error).self) { try GuestCLIInvocation.parse(args) } }
+        for json in [#"{"inheritDefaultPublicKey":null}"#, #"{"inheritDefaultPublicKey":"off"}"#, #"{"inheritDefaultPublicKey":0}"#] {
+            #expect(throws: (any Error).self) { try GuestConfigurationPatch.decodeStrict(Data(json.utf8)) }
+        }
+    }
+
     @Test("create options produce a validated request; JSON config is overridden explicitly")
     func createOptions() throws {
         let request = try #require(GuestCLIInvocation.parse(["create", "work", "--memory", "8GiB", "--cpus", "8", "--disk", "128GiB", "--clipboard", "off", "--start", "--wait", "ssh", "--timeout", "1800"]).request)
@@ -68,6 +92,46 @@ struct GuestCLIArgumentsTests {
         try Data("{}".utf8).write(to: file)
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
         #expect(throws: VMFailure.self) { try GuestCLIInvocation.parse(["create", "x", "--config", link.path]) }
+    }
+    @Test("owner flags override individual JSON fields and allow clearing optional text")
+    func ownerOverrides() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let file = f.support.appendingPathComponent("owner-config.json")
+        try Data(#"{"ownerOverrides":{"username":"fileowner","fullName":"File Name","email":"file@example.invalid","hostnamePrefix":"file","timezone":"UTC","keyboardID":"English (US)"}}"#.utf8).write(to: file)
+        let request = try #require(GuestCLIInvocation.parse(["create", "Work", "--config", file.path,
+            "--username", "developer", "--full-name", "", "--email", "", "--hostname-prefix", "work",
+            "--timezone", "Australia/Melbourne", "--keyboard", "English (UK)"]).request)
+        #expect(request.config?.ownerOverrides == GuestOwnerOverrides(username: "developer", fullName: "", email: "",
+            hostnamePrefix: "work", timezone: "Australia/Melbourne", keyboardID: "English (UK)"))
+        let partial = try #require(GuestCLIInvocation.parse(["create", "Work", "--config", file.path, "--username", "developer"]).request)
+        #expect(partial.config?.ownerOverrides?.username == "developer")
+        #expect(partial.config?.ownerOverrides?.fullName == "File Name")
+        #expect(!request.start)
+        let decoded = try GuestCommandRequest.decodeStrict(JSONEncoder().encode(request))
+        #expect(decoded.config == request.config)
+        #expect(try GuestCLIInvocation.parse(["create", "Work", "--timezone", "UTC"]).request?.config?.ownerOverrides?.timezone == "UTC")
+    }
+    @Test("owner overrides reject incompatible commands, opt-out and invalid values")
+    func invalidOwnerOverrides() throws {
+        for args in [
+            ["update", "work", "--cpus", "8", "--username", "owner"],
+            ["get", "work", "--username", "owner"], ["create", "work", "--owner-defaults", "off", "--username", "owner"],
+            ["create", "work", "--username", "root"], ["create", "work", "--hostname-prefix", "../unsafe"],
+            ["create", "work", "--timezone", "unsupported"], ["create", "work", "--keyboard", "unsupported"],
+            ["create", "work", "--email", "bad email"], ["create", "work", "--full-name", "bad\nname"],
+            ["create", "work", "--username", "one", "--username", "two"], ["create", "work", "--timezone"]
+        ] { #expect(throws: (any Error).self) { try GuestCLIInvocation.parse(args) } }
+        for json in [#"{"ownerOverrides":{"password":"synthetic-secret"}}"#,
+                     #"{"ownerOverrides":{"credentialReference":"synthetic-secret"}}"#,
+                     #"{"ownerOverrides":{"username":null}}"#, #"{"ownerOverrides":{"username":true}}"#,
+                     #"{"ownerOverrides":[]}"#, #"{"ownerOverrides":null}"#] {
+            #expect(throws: (any Error).self) { try GuestConfigurationPatch.decodeStrict(Data(json.utf8)) }
+        }
+        var empty = GuestCommandRequest(command: .create, config: .init(name: "Work", ownerOverrides: .init()))
+        #expect(throws: VMFailure.self) { try empty.validate() }
+        empty.config?.ownerOverrides = .init(username: "owner")
+        empty.command = .update; empty.selector = "work"
+        #expect(throws: VMFailure.self) { try empty.validate() }
     }
 }
 

@@ -20,7 +20,9 @@ Choose **Guest Defaults** in the sidebar to reuse your preferred owner setup for
 4. Optionally choose an existing SSH **public** key using **Choose .pub…**.
 5. Click **Save Defaults**.
 
-The password stays in your login Keychain. New guests receive a snapshot of these settings and a unique hostname suffix; changing defaults leaves existing guests unchanged. You can choose manual setup separately for each new guest.
+The password stays in the manager's scoped macOS Keychain storage. Development builds can use saved login-Keychain credentials; provisioned builds use protected credentials and may need an explicit upgrade of older passwords. See [Touch ID setup and build requirements](TouchID.md). New guests receive a snapshot of these settings and a unique hostname suffix; changing defaults leaves existing guests unchanged. You can choose manual setup separately for each new guest.
+
+For different owner settings on just one VM, the updated CLI supports [per-VM owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm). It inherits the saved password and any omitted settings without saving changes to Guest Defaults. These flags require a matching manager and CLI build, included in the local 0.9.4 (17) update; the pictured New VM form does not expose individual owner overrides.
 
 ## Create a guest
 

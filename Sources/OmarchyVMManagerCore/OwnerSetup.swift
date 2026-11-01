@@ -49,6 +49,42 @@ public struct OwnerConfiguration: Codable, Equatable, Sendable {
     static func invalid(_ message: String) -> VMFailure { VMFailure(code: "invalid-owner-defaults", message: message) }
 }
 
+/// Creation-only, non-secret changes layered over a saved Guest Defaults snapshot.
+public struct GuestOwnerOverrides: Codable, Equatable, Sendable {
+    public var username: String?
+    public var fullName: String?
+    public var email: String?
+    public var hostnamePrefix: String?
+    public var timezone: String?
+    public var keyboardID: String?
+    public init(username: String? = nil, fullName: String? = nil, email: String? = nil,
+                hostnamePrefix: String? = nil, timezone: String? = nil, keyboardID: String? = nil) {
+        self.username = username; self.fullName = fullName; self.email = email
+        self.hostnamePrefix = hostnamePrefix; self.timezone = timezone; self.keyboardID = keyboardID
+    }
+    public func applying(to saved: OwnerConfiguration) throws -> OwnerConfiguration {
+        guard username != nil || fullName != nil || email != nil || hostnamePrefix != nil || timezone != nil || keyboardID != nil else {
+            throw OwnerConfiguration.invalid("Supply at least one owner override.")
+        }
+        var value = saved
+        if let username { value.username = username }
+        if let fullName { value.fullName = fullName }
+        if let email { value.email = email }
+        if let hostnamePrefix { value.hostnamePrefix = hostnamePrefix }
+        if let timezone { value.timezone = timezone }
+        if let keyboardID { value.keyboardID = keyboardID }
+        try value.validate()
+        return value
+    }
+    static func validateJSON(_ object: Any) throws {
+        guard let fields = object as? [String: Any],
+              Set(fields.keys).isSubset(of: ["username", "fullName", "email", "hostnamePrefix", "timezone", "keyboardID"]),
+              fields.values.allSatisfy({ $0 is String }) else {
+            throw commandFailure("invalid-config", "Owner overrides must contain only supported, non-null text settings.")
+        }
+    }
+}
+
 public struct OwnerDefaults: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let revision: UUID

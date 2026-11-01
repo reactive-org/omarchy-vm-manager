@@ -22,7 +22,7 @@ Replies are one compact JSON object on stdout. `--help` prints human-readable us
 
 ## Configuration
 
-Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `clipboard`, `immersive`, `ssh`, `ownerDefaults`, `publicKey` and creation-only `factory`. Unknown keys and nulls are rejected. For example:
+Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `clipboard`, `immersive`, `ssh`, `ownerDefaults`, `ownerOverrides`, `publicKey`, `inheritDefaultPublicKey` and creation-only `factory`. Unknown keys and nulls are rejected. For example:
 
 ```json
 {"memoryMiB":8192,"cpus":8,"diskGiB":64,"clipboard":true,"immersive":false}
@@ -31,6 +31,74 @@ Use flags or `--config FILE.json`. Explicit flags override file settings. Suppor
 The current policy requires at least 4 CPU cores and 4 GiB RAM, with RAM in whole GiB, within the Mac's existing guest budget. New guests use a 64 GiB sparse disk. `--disk 64GiB` and `--disk-gib 64` set capacity from 64 through 8192 GiB; an existing disk can only grow. `--memory` accepts MiB or GiB suffixes; a plain integer means MiB. `--memory-mib` is also available. Boolean flags take `on`/`off` or `true`/`false`.
 
 Factory selection, SSH and owner setup are creation-only. New guests inherit saved Guest Defaults and enable managed SSH by default. `--owner-defaults off` selects the normal guest owner wizard. `--ssh off` disables SSH enrollment. `--public-key FILE.pub` imports only an explicitly selected public key; no personal credentials are scanned. Configure reusable passwords locally in the app's Guest Defaults page; no CLI password argument or secret field is supported.
+
+### Per-VM owner overrides
+
+For one guest, override the saved owner settings with `--username`, `--full-name`, `--email`, `--hostname-prefix`, `--timezone` or `--keyboard`. Unspecified fields and the saved password reference are inherited from enabled, saved Guest Defaults. Overrides never save changes to Guest Defaults or alter existing profiles. Empty strings clear the optional full name or email. Hostnames keep the stable per-VM UUID suffix; `--hostname-prefix` changes only the prefix. Timezone accepts a supported zone such as `Australia/Melbourne`, `UTC`, or `Same as macOS`; keyboard uses the exact Guest Defaults layout label, such as `English (US)` or `English (UK)`.
+
+| Creation flag | Key inside `ownerOverrides` | Example value |
+| --- | --- | --- |
+| `--username` | `username` | `developer` (a non-system Linux username) |
+| `--full-name` | `fullName` | `Dev User`, or `""` to clear |
+| `--email` | `email` | `dev@example.com`, or `""` to clear |
+| `--hostname-prefix` | `hostnamePrefix` | `work` (the manager appends the UUID suffix) |
+| `--timezone` | `timezone` | `Australia/Melbourne`, `UTC`, or `Same as macOS` |
+| `--keyboard` | `keyboardID` | `English (US)` or another exact supported layout label |
+
+Example for future use (creates a stopped profile when executed; no `--start`):
+
+```sh
+./bin/omarchy-vm create work --username developer --hostname-prefix work \
+  --full-name "Dev User" --email "dev@example.com" \
+  --timezone Australia/Melbourne --keyboard "English (US)" \
+  --inherit-default-public-key off
+```
+
+For the equivalent file-based configuration, save this as `work.json`:
+
+```json
+{
+  "name": "work",
+  "inheritDefaultPublicKey": false,
+  "ownerOverrides": {
+    "username": "developer",
+    "hostnamePrefix": "work",
+    "fullName": "Dev User",
+    "email": "dev@example.com",
+    "timezone": "Australia/Melbourne",
+    "keyboardID": "English (US)"
+  }
+}
+```
+
+Use that file as-is, or override individual fields with flags. These are alternative creation commands; choose one:
+
+```sh
+./bin/omarchy-vm create --config work.json
+./bin/omarchy-vm create --config work.json --username contractor --email ""
+```
+
+The second command inherits the file's full name, hostname prefix, timezone and keyboard, but changes the username and clears the email for this VM. To inherit everything except a name/email opt-out directly from Guest Defaults:
+
+```sh
+./bin/omarchy-vm create private-work --full-name "" --email ""
+```
+
+Explicit owner flags override individual fields in `ownerOverrides`, preserving its other fields. The object must contain at least one supported text field. Invalid owner values, unknown/secret fields, nulls, updates, `--owner-defaults off`, disabled/missing defaults and unavailable protected credentials are rejected before a profile is saved. This feature adds no password input or credential upgrade path; first-launch authentication retains its existing policy. Build the manager and CLI together with `make app verify-app`; an older running manager rejects the new configuration field.
+
+Development compatibility builds can reuse saved login-Keychain credentials. Protected Touch ID credentials require a provisioned build; ad-hoc app assembly does not enable their use. Upgrade older saved passwords only through the explicit Guest Defaults action in a compatible build. See [Touch ID requirements](TouchID.md) and [override troubleshooting](troubleshooting.md#cli-owner-overrides-are-rejected).
+
+### Personal SSH public-key inheritance
+
+Use `--inherit-default-public-key off` to omit the personal SSH public key saved in Guest Defaults for just this new VM. The JSON equivalent is the top-level boolean `"inheritDefaultPublicKey": false`, alongside `ownerOverrides`, not inside it. Managed SSH remains enabled, with its own per-VM key and pinned host identity. Owner/password defaults are still inherited. No saved key or existing VM enrollment is changed.
+
+```sh
+./bin/omarchy-vm create isolated --inherit-default-public-key off
+```
+
+This saves only a stopped profile when executed. Omission or `on` preserves existing inheritance behavior: the saved personal key is inherited when saved owner defaults apply. `--public-key FILE.pub` explicitly selects a key even when inheritance is off. To enroll only the manager's key, turn inheritance off and omit `--public-key` (and the JSON `publicKey` field). An explicit flag overrides the configuration file's inheritance setting. The setting is creation-only and cannot be used with `update`; it is independent of `--ssh` and `--owner-defaults`, so manual setup can also turn inheritance off. This flag does not disable SSH or remove keys from an existing guest.
+
+### Update an existing guest
 
 `update` refuses active, stopping or otherwise busy guests and retained POC profiles. An external runtime-compatible storage lock also prevents edits. Changes apply on the next start. Disk capacity can grow but never shrink; growth uses the official runtime and guest root-growth service on the next boot. SSH enrollment, owner snapshots, disk paths and general port forwarding cannot be changed by update.
 
@@ -67,6 +135,12 @@ The manager keeps the registry lock and all runtime clients. The CLI uses a boun
 The guest record's `protected` field identifies retained POC configuration protection. It does not prohibit confirmed deletion of a stopped guest. Lifecycle and saved-session guards are checked when the command executes.
 
 ## Validation status
+
+**VERIFIED — per-VM owner override source checks, 2 November 2026:** `make test build` passed 184 Swift tests in 33 suites, 43 Python script tests and the debug build. Synthetic fixtures cover flag/JSON precedence, strict nested fields, inheritance/clearing, snapshot persistence, unchanged Guest Defaults, credential-reference preservation and rejection without registry mutation or VM storage creation. CLI help was checked directly. The historical live checks below predate this feature.
+
+**VERIFIED — user-authorized local installation, 2 November 2026:** built and installed ad-hoc 0.9.4 (17) at `~/Applications/Omarchy VM Manager.app` and the repository's `dist/Omarchy VM Manager.app`, retaining both prior bundles as recoverable backups. All 64 files and bundle modes match the verified candidate; backup inventories match the originals. Both installed paths pass signatures, exact runtime provenance, macOS compatibility, host preflight and layout checks. Installed CLI and `./bin/omarchy-vm` help/version report the update and new flags. The previous manager quit normally after a fresh read-only check of one stopped guest, zero active sessions and no helper/QEMU processes. Registry/defaults bytes and checked VM-tree metadata/settings hashes are unchanged. The manager remains closed; no profile, guest disk or VM was created or launched, and no credential or permission was used/changed. **TO PROVE:** packaged creation and real first boot with overrides. Protected password use still requires a provisioned build, which this ad-hoc installation does not provide.
+
+**VERIFIED — personal-key suppression correction, 2 November 2026:** `make test build` passes 186 Swift tests and 43 Python tests. CLI/file/JSON and disposable creation tests prove that `inheritDefaultPublicKey: false` keeps owner defaults and managed SSH while excluding the saved personal key from profile metadata, selected-key storage and the generated SSH bootstrap. Default inheritance and explicit replacement remain supported; defaults bytes are unchanged. The corrected ad-hoc app/CLI are installed at both paths above with new recoverable backups. Both bundles match the verified 64-file candidate and pass signatures, provenance, compatibility, host preflight and layout checks; both CLI help outputs include the flag. After replacement, the installed manager was observed running again and left running with one stopped guest, zero active guests and no VM runtime process. Guest data remains unchanged. No real VM was created or launched; real-guest enrollment and protected-password use remain **TO PROVE**.
 
 **VERIFIED — no-VM checks:** 93 Swift tests in 21 suites and 9 artifact checks pass. Fake-runtime tests cover CRUD, immutable creation fields, active/protected guards, grow-only disk capacity, external locks, session-bound waits, timeout behavior and restart sequencing. Real Unix-socket tests cover private permissions, bounded same-user request/response exchange, live endpoint refusal, malformed schemas and client disconnect. Normal app/CLI signature, compatibility, layout and host-preflight checks pass.
 
