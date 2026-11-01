@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-01T06:19:45+00:00",
+  "authorDate": "2026-11-01T07:58:27+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-01T06:19:45+00:00",
-  "subject": "Complete sparse factory preparation before disk verification",
-  "commit": "80156396a5daa795487c0f4a8308eee53f6ea68b",
-  "patchSHA256": "751d75e9ccd1e0e64681a3fa539872a356e8859310fea79e3763f59d25101be2"
+  "committerDate": "2026-11-01T07:58:27+00:00",
+  "subject": "Report exact guest display identity for explicit launch intent",
+  "commit": "85f5e561e5a277ccec08d7725c8714cb090c9011",
+  "patchSHA256": "7a402c8771dd180a411b71675dbea1425218593e7562c120996d597b3549dae5"
 }

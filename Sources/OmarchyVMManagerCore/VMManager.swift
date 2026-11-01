@@ -364,9 +364,9 @@ public actor VMManager {
         profiles.filter { sessions[$0.id] != nil }.reduce(0) { $0 + $1.memoryMiB }
     }
 
-    public func start(_ vmID: UUID) async throws { try await start(vmID, restoreVerificationTimeout: nil) }
+    public func start(_ vmID: UUID, launchIntent: VMLaunchIntent = .background) async throws { try await start(vmID, restoreVerificationTimeout: nil, launchIntent: launchIntent) }
 
-    private func start(_ vmID: UUID, restoreVerificationTimeout: Duration?) async throws {
+    private func start(_ vmID: UUID, restoreVerificationTimeout: Duration?, launchIntent: VMLaunchIntent = .background) async throws {
         guard !unsafeSuspensions.contains(vmID), suspensions[vmID] == nil || restoreVerificationTimeout != nil else {
             throw VMFailure(code: "suspended-disk-protected", message: "Use Restore Experimental Session. Ordinary launch is blocked while a saved session may exist.")
         }
@@ -409,7 +409,7 @@ public actor VMManager {
         record("Start requested", vmID: vmID, sessionID: sessionID)
         do {
             if let error = runtime.preflight() { throw error }
-            let request = VMStartRequest(profile: profile, storageRoot: root, sessionID: sessionID)
+            let request = VMStartRequest(profile: profile, storageRoot: root, sessionID: sessionID, launchIntent: launchIntent)
             let runtime = self.runtime
             let handle = try await Task.detached(priority: .userInitiated) {
                 try runtime.start(request) { continuation.yield($0) }
@@ -636,6 +636,8 @@ public actor VMManager {
             }
         case .notice(let notice):
             notices[vmID] = notice.message
+        case .displayReady:
+            break
         case .ready:
             guard !session.reachedReady else { return }
             sessions[vmID]?.reachedReady = true
@@ -684,6 +686,7 @@ public actor VMManager {
         case .progress(let phase, let percent): "\(phase.rawValue)" + (percent.map { " \($0)%" } ?? "")
         case .notice(let notice): "Notice: " + notice.message
         case .ready: "Ready"
+        case .displayReady: "Display ready"
         case .executionState(let report): "Execution: " + report.state.rawValue + (report.command.map { " (" + $0.rawValue + ")" } ?? "")
         case .stopping: "Stopping"
         case .error(let error): "Error [\(error.reportedCode)]: " + error.message
@@ -788,7 +791,7 @@ extension VMManager {
             persistSuspension(record)
         } catch { unsafeSuspensions.insert(id); notices[id] = "The stopped suspension disk could not be identified safely. Ordinary launch and edits remain blocked." }
     }
-    public func restoreExperimentalSuspension(_ id: UUID, confirmed: Bool, verificationTimeout: Duration = .seconds(180)) async throws {
+    public func restoreExperimentalSuspension(_ id: UUID, confirmed: Bool, verificationTimeout: Duration = .seconds(180), launchIntent: VMLaunchIntent = .background) async throws {
         guard confirmed, hibernation != nil, var record = suspensions[id], !unsafeSuspensions.contains(id),
               sessions[id] == nil, let profile = profiles.first(where: { $0.id == id }) else {
             throw VMFailure(code: "restore-not-ready", message: "Confirm recovery of one stopped experimental suspension.")
@@ -808,7 +811,7 @@ extension VMManager {
         }
         record.stage = .restoring; record.restoreAttempted = true
         try ExperimentalSuspendStore(root: storage.root(for: profile)).save(record); suspensions[id] = record
-        do { try await start(id, restoreVerificationTimeout: verificationTimeout) }
+        do { try await start(id, restoreVerificationTimeout: verificationTimeout, launchIntent: launchIntent) }
         catch { record.stage = .recoveryRequired; record.restoreAttempted = false; persistSuspension(record); throw error }
     }
     public func retryExperimentalRestoreVerification(_ id: UUID) throws {

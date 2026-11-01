@@ -205,6 +205,7 @@ struct GuestCommandTests {
         f.runtime.startedHandles[0].emit(.ready)
         await f.manager.receiveSSH(.ready(user: "owner", command: "ssh synthetic"), vmID: value.id, sessionID: session)
         let result = await resultTask.value
+        #expect(f.runtime.startRequests.map(\.launchIntent) == [.background])
         #expect(result.ok == !wrongSession)
         if wrongSession { #expect(result.error?.code == "session-changed") }
         else {
@@ -266,6 +267,7 @@ struct GuestCommandStorageTests {
         let result = await restart.value
         #expect(result.ok && result.guest?.sessionID != original)
         #expect(f.runtime.startedHandles.count == 2)
+        #expect(f.runtime.startRequests.map(\.launchIntent) == [.background, .background])
         f.runtime.startedHandles[1].emit(.exited(status: 0))
         #expect(await eventually { await f.manager.activeSessionCount == 0 })
     }

@@ -1,16 +1,20 @@
 import Foundation
 import TryOmarchyKitClient
 
+public enum VMLaunchIntent: Sendable { case background, foreground }
+
 public struct VMStartRequest: Sendable {
     public let profile: VMProfile
     public let storageRoot: URL
     public let sessionID: UUID
     public let startedAt: Date
+    public let launchIntent: VMLaunchIntent
 
-    public init(profile: VMProfile, storageRoot: URL, sessionID: UUID = UUID(), startedAt: Date = Date()) {
+    public init(profile: VMProfile, storageRoot: URL, sessionID: UUID = UUID(), startedAt: Date = Date(), launchIntent: VMLaunchIntent = .background) {
         self.profile = profile
         self.storageRoot = storageRoot
         self.sessionID = sessionID; self.startedAt = startedAt
+        self.launchIntent = launchIntent
     }
 }
 
@@ -37,6 +41,7 @@ public struct TryOmarchyRuntime: VMRuntime {
     private let pocAdmission: POCLaunchAdmission?
     private let ownerSecrets: any OwnerSecretStoring = KeychainOwnerSecretStore()
     private var managedStorage: ManagerStorage? = nil
+    private var testForeground: GuestLaunchForegrounding? = nil
 
     public init(kit: TryOmarchyKit) {
         self.kit = kit
@@ -44,10 +49,11 @@ public struct TryOmarchyRuntime: VMRuntime {
         pocAdmission = nil
     }
 
-    init(protocolTestKit: TryOmarchyKit) {
+    init(protocolTestKit: TryOmarchyKit, foreground: GuestLaunchForegrounding? = nil) {
         kit = protocolTestKit
         protocolTestMode = true
         pocAdmission = nil
+        testForeground = foreground
     }
     public init(approvedPOCKit: TryOmarchyKit, lockData: Data, applicationSupport: URL) {
         kit = approvedPOCKit
@@ -77,6 +83,7 @@ public struct TryOmarchyRuntime: VMRuntime {
             factorySelection = try catalog.selection(for: request.profile.factory)
             if let factory = request.profile.factory { try catalog.validateCapacity(factory, diskGiB: request.profile.diskGiB ?? 64) }
             let execution = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
+            guard execution.launchIntentVersion == 1 else { throw VMFailure(code: "unproven-launch-intent-runtime", message: "Guest display activation requires the exact reviewed runtime.") }
             guard execution.manualPauseVersion == 1 else { throw VMFailure(code: "unproven-execution-runtime", message: "Manual execution control requires the exact reviewed runtime.") }
             if request.profile.ssh != nil {
                 let provenance = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
@@ -108,12 +115,26 @@ public struct TryOmarchyRuntime: VMRuntime {
         guard managedStorage != nil || request.profile.factory?.kind != .custom else { throw FactoryCatalog.invalid("Custom factories require the verified managed runtime.") }
         configuration.factory = factorySelection
         let client = VMRunClient(kit: kit)
-        do { try client.start(configuration, onEvent: onEvent) }
+        let foreground = testForeground ?? GuestLaunchForegrounding(intent: request.launchIntent, unavailable: {
+            onEvent(.notice(VMRunNotice(code: .displayUnavailable, message: "The guest display could not be brought forward. Open its Dock entry to focus it.")))
+        })
+        do {
+            try client.start(configuration) { event in
+                if case .displayReady(let process) = event { foreground.displayReady(process); return }
+                switch event {
+                case .error, .stopping, .exited: foreground.cancel()
+                case .executionState(let report) where report.state != .running: foreground.cancel()
+                default: break
+                }
+                onEvent(event)
+            }
+        }
         catch {
+            foreground.cancel()
             if request.profile.ownerSetup != nil, let storage = managedStorage { try? storage.withLock(request.profile) { try ManagedOwnerStorage(root: request.storageRoot).clearSeed() } }
             throw error
         }
-        return TryOmarchyRuntimeHandle(client: client)
+        return TryOmarchyRuntimeHandle(client: client, foreground: foreground)
     }
 
     public static func configuration(for request: VMStartRequest, guestIcon: URL? = Bundle.main.url(forResource: "OmarchyGuest", withExtension: "icns")) throws -> VMRunConfiguration {
@@ -125,7 +146,8 @@ public struct TryOmarchyRuntime: VMRuntime {
         if request.profile.clipboardEnabled { bridges.insert(.clipboard, at: 0) }
         let configuration = VMRunConfiguration(
             productName: request.profile.name, iconPath: guestIcon?.path, storageRoot: request.storageRoot.path,
-            bridges: bridges, memoryMiB: request.profile.memoryMiB, cpus: request.profile.cpus, network: .shared
+            bridges: bridges, memoryMiB: request.profile.memoryMiB, cpus: request.profile.cpus, network: .shared,
+            launchIntent: request.launchIntent == .foreground ? .foreground : .background
         )
         try configuration.validate()
         return configuration
@@ -134,11 +156,12 @@ public struct TryOmarchyRuntime: VMRuntime {
 
 public final class TryOmarchyRuntimeHandle: VMRuntimeHandle {
     private let client: VMRunClient
-    public init(client: VMRunClient) { self.client = client }
+    private let foreground: GuestLaunchForegrounding
+    init(client: VMRunClient, foreground: GuestLaunchForegrounding) { self.client = client; self.foreground = foreground }
     public var isRunning: Bool { client.isRunning }
     public var recentStandardError: String { client.recentStandardError }
-    public func pause() throws { try client.pause() }
+    public func pause() throws { foreground.cancel(); try client.pause() }
     public func resume() throws { try client.resume() }
-    public func shutDown() { client.shutDown() }
-    public func terminate() { client.terminate() }
+    public func shutDown() { foreground.cancel(); client.shutDown() }
+    public func terminate() { foreground.cancel(); client.terminate() }
 }

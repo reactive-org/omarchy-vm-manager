@@ -49,10 +49,10 @@ index 02d9082..f36319a 100644
 +
 +The manager holds reusable passwords in Keychain. Metadata never contains them. The host removes the staging seed after a matching completion report and on exit; the helper also removes it when the manager is gone. A root-owned completion identity lets a later boot acknowledge a setup that finished while its manager was unavailable. This status is separate from runtime readiness and authenticated SSH readiness. Manual guests get the normal Omarchy owner wizard.
 diff --git a/docs/vm-kit.md b/docs/vm-kit.md
-index fac6182..a1cd7b1 100644
+index fac6182..9ab3570 100644
 --- a/docs/vm-kit.md
 +++ b/docs/vm-kit.md
-@@ -159,3 +159,17 @@ A fetched kit lives outside the embedding app's bundle, and the registered daemo
+@@ -159,3 +159,21 @@ A fetched kit lives outside the embedding app's bundle, and the registered daemo
  ## Sharing a VM
  
  The full app and an embedding app open the same VM in the default folder ([finding the VM](#finding-the-vm)), never at once: the VM folder's lock refuses the second. The run mode reports `vm-already-open`, and the full app says that Omarchy is open in another app, such as Omarchy Installer. Either can boot a VM the other made. The `try-omarchy` package only upgrades, so an older kit never downgrades the guest. A launcher refuses a VM whose `vm.json` names a storage layout it does not know (`storage-layout-unknown`).
@@ -70,6 +70,10 @@ index fac6182..a1cd7b1 100644
 +The private manager extension recognizes the protected `.omarchy-vm-manager.json` marker with a matching UUID root. Only these roots download into `~/Downloads/Omarchy VM Manager/Factory Images/`. Other kit users retain their existing storage-local download behavior. No client protocol or environment override is added.
 +
 +The shared cache holds compressed images, keyed by the pinned factory identity. The normal downloader locks the directory, resumes partial files, verifies part and whole-image digests, and atomically publishes completed images. Each new guest re-verifies a cached image before its own factory preparation. A successful reuse refreshes the image's last-use time. Startup cleanup preserves the current identity and prunes only obsolete owned regular downloads unused for at least seven days. Guest disks and decompressed factories stay in their original UUID roots.
++
++## Manager launch intent extension
++
++The private manager kit accepts `launchIntent` (`background` by default, or `foreground`) in the existing configuration. Once QMP is ready, a foreground run additionally reports `display-ready` with the kernel-authenticated QMP peer PID and process birth time. Background runs do not inspect the display process. The embedding manager owns a bounded, single activation request for that exact process after its Cocoa display window appears. Errors and stopping cancel it; readiness, resume and host wake do not request activation again. No QEMU, guest, window placement or clipboard behavior is changed. Protocol 1 alone does not prove this extension; the manager requires its exact source/binary provenance and launch-intent capability version 1.
 diff --git a/guest/package/README.md b/guest/package/README.md
 index 2cc716c..0548647 100644
 --- a/guest/package/README.md
@@ -3139,6 +3143,50 @@ index 39b07ba..127de5a 100644
          }
      }
  }
+diff --git a/macos/Sources/OmarchyVMHelper/QMPConnection.swift b/macos/Sources/OmarchyVMHelper/QMPConnection.swift
+index 9d64a0c..f598a13 100644
+--- a/macos/Sources/OmarchyVMHelper/QMPConnection.swift
++++ b/macos/Sources/OmarchyVMHelper/QMPConnection.swift
+@@ -193,6 +193,19 @@ final class QMPConnection: @unchecked Sendable {
+         Darwin.close(descriptor)
+     }
+ 
++    static func displayProcess(socketPath: String) throws -> KernelProcessIdentity {
++        let descriptor = try connectSecureSocket(path: socketPath, nonblocking: true)
++        defer { Darwin.close(descriptor) }
++        var pid: pid_t = 0
++        var length = socklen_t(MemoryLayout<pid_t>.size)
++        guard getsockopt(descriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &length) == 0,
++              length == MemoryLayout<pid_t>.size,
++              let identity = KernelProcessIdentity.capture(processIdentifier: pid) else {
++            throw HelperError.io("The guest display process is unavailable")
++        }
++        return identity
++    }
++
+     private static func validatePeer(descriptor: Int32, expectedPID: pid_t?) throws {
+         guard let expectedPID else { return }
+         var peerPID: pid_t = 0
+@@ -204,7 +217,7 @@ final class QMPConnection: @unchecked Sendable {
+         }
+     }
+ 
+-    private static func connectSecureSocket(path: String) throws -> Int32 {
++    private static func connectSecureSocket(path: String, nonblocking: Bool = false) throws -> Int32 {
+         guard path.hasPrefix("/"), !path.utf8.contains(0) else {
+             throw HelperError.io("QMP socket path must be an absolute pathname")
+         }
+@@ -253,6 +266,10 @@ final class QMPConnection: @unchecked Sendable {
+             Darwin.close(fileDescriptor)
+             throw HelperError.io("cannot make QMP socket resilient to guest exit")
+         }
++        if nonblocking, fcntl(fileDescriptor, F_SETFL, O_NONBLOCK) != 0 {
++            Darwin.close(fileDescriptor)
++            throw HelperError.io("cannot make the display identity probe nonblocking")
++        }
+         let offset = MemoryLayout.offset(of: \sockaddr_un.sun_path) ?? 0
+         let length = socklen_t(offset + pathBytes.count + 1)
+         let result = withUnsafePointer(to: &address) {
 diff --git a/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift b/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift
 index 273876f..88ba7a6 100644
 --- a/macos/Sources/OmarchyVMHelper/ShellGuestStatus.swift
@@ -3348,7 +3396,7 @@ index b6cb53b..608031f 100644
          }
      }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..0d24369 100644
+index c959f32..bf81c63 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -3470,7 +3518,7 @@ index c959f32..0d24369 100644
          return environment
      }
  
-@@ -244,6 +281,8 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -244,9 +281,20 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
              if let phase = VMRunPhase(rawValue: progress.phase.rawValue) {
                  emit(.progress(phase, percent: progress.percent))
              }
@@ -3479,7 +3527,19 @@ index c959f32..0d24369 100644
          case .ready(let qmpSocketPath):
              startSettingsBridge(qmpSocketPath: qmpSocketPath)
              emit(.ready)
-@@ -275,6 +314,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
++            if configuration.launchIntent == .foreground, !shutdownRequested, !finished {
++                do {
++                    let identity = try QMPConnection.displayProcess(socketPath: qmpSocketPath)
++                    emit(.displayReady(VMRunDisplayProcess(processIdentifier: identity.processIdentifier,
++                        startSeconds: identity.startSeconds, startMicroseconds: identity.startMicroseconds)))
++                } catch {
++                    emit(.notice(VMRunNotice(code: .displayUnavailable, message: "The guest display process could not be identified. Open its Dock entry to focus it.")))
++                }
++            }
+         case .launchFailed(let error):
+             fail(VMRunFailure.error(for: error, productName: configuration.productName))
+         case .hostWakeFailed(let error):
+@@ -275,6 +323,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
      private func finish(status: Int32) {
          guard !finished else { return }
          finished = true
@@ -3490,7 +3550,7 @@ index c959f32..0d24369 100644
          emit(.exited(status: min(255, max(0, status))))
          Darwin.exit(status == 0 ? 0 : 1)
      }
-@@ -337,12 +380,14 @@ enum VMRunInput {
+@@ -337,12 +389,14 @@ enum VMRunInput {
          return try VMRunConfiguration.decode(line: Data(line.utf8))
      }
  
@@ -3506,7 +3566,7 @@ index c959f32..0d24369 100644
                  case .failure:
                      fputs("omarchy-vm-helper: ignoring an unknown run mode command\n", stderr)
                  }
-@@ -407,3 +452,30 @@ enum VMRunFailure {
+@@ -407,3 +461,30 @@ enum VMRunFailure {
          return VMRunError(code: code, message: message)
      }
  }
@@ -3931,10 +3991,28 @@ index 81aef76..5eb9717 100644
      /// Omarchy to shut down: unsaved work in Omarchy is lost. The helper reads
      /// a first signal as `shutDown()` and a second as stop now, so this sends
 diff --git a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
-index 4e1af8d..ab777c9 100644
+index 4e1af8d..18cdc3a 100644
 --- a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
 +++ b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
-@@ -37,6 +37,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -8,6 +8,17 @@ public enum VMRunProtocol {
+     public static let maximumLineBytes = 16_384
+ }
+ 
++public enum VMRunLaunchIntent: String, Sendable { case background, foreground }
++
++public struct VMRunDisplayProcess: Equatable, Sendable {
++    public let processIdentifier: Int32
++    public let startSeconds: UInt64
++    public let startMicroseconds: UInt64
++    public init(processIdentifier: Int32, startSeconds: UInt64, startMicroseconds: UInt64) {
++        self.processIdentifier = processIdentifier; self.startSeconds = startSeconds; self.startMicroseconds = startMicroseconds
++    }
++}
++
+ public enum VMRunBridge: String, CaseIterable, Codable, Sendable {
+     case clipboard
+     case authentication
+@@ -37,6 +48,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
      /// The VM's storage folder, whatever folder Try Omarchy chose. Nil is the
      /// folder chosen in Try Omarchy, else its default folder.
      public var storageRoot: String?
@@ -3942,24 +4020,62 @@ index 4e1af8d..ab777c9 100644
      public var bridges: [VMRunBridge]
      /// Used when no resources are stored. Nil leaves the size to the
      /// launcher's automatic choice.
-@@ -72,6 +73,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -45,6 +57,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+     /// Used when no network is stored. A bridged one that cannot start fails
+     /// with `bridgedNetworkUnavailable`.
+     public var network: VMRunNetwork
++    public var launchIntent: VMRunLaunchIntent
+ 
+     public init(
+         productName: String,
+@@ -53,7 +66,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+         bridges: [VMRunBridge] = VMRunBridge.allCases,
+         memoryMiB: Int? = nil,
+         cpus: Int? = nil,
+-        network: VMRunNetwork = .shared
++        network: VMRunNetwork = .shared,
++        launchIntent: VMRunLaunchIntent = .background
+     ) {
+         self.productName = productName
+         self.iconPath = iconPath
+@@ -62,6 +76,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+         self.memoryMiB = memoryMiB
+         self.cpus = cpus
+         self.network = network
++        self.launchIntent = launchIntent
+     }
+ 
+     public func encodedLine() throws -> Data {
+@@ -72,6 +87,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
              "bridges": bridges.map(\.rawValue),
              "network": network.rawValue,
          ]
++        object["launchIntent"] = launchIntent.rawValue
 +        if let factory { object["factory"] = ["bundlePath": factory.bundlePath, "manifestSHA256": factory.manifestSHA256] }
          if let iconPath { object["iconPath"] = iconPath }
          if let storageRoot { object["storageRoot"] = storageRoot }
          if let memoryMiB { object["memoryMiB"] = memoryMiB }
-@@ -81,7 +83,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -81,7 +98,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
  
      public static func decode(line: Data) throws -> Self {
          let object = try VMRunLine.decode(line)
 -        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network"]
-+        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network", "factory"]
++        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network", "factory", "launchIntent"]
          guard Set(object.keys).isSubset(of: allowed),
                VMRunLine.integer(object["version"]) == VMRunProtocol.version,
                let productName = object["productName"] as? String,
-@@ -113,11 +115,16 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -97,6 +114,10 @@ public struct VMRunConfiguration: Equatable, Sendable {
+             bridges.append(bridge)
+         }
+         var configuration = Self(productName: productName, bridges: bridges, network: network)
++        if let value = object["launchIntent"] {
++            guard let name = value as? String, let intent = VMRunLaunchIntent(rawValue: name) else { throw VMRunProtocolError.invalidConfiguration }
++            configuration.launchIntent = intent
++        }
+         if let value = object["iconPath"] {
+             guard let path = value as? String else { throw VMRunProtocolError.invalidConfiguration }
+             configuration.iconPath = path
+@@ -113,11 +134,16 @@ public struct VMRunConfiguration: Equatable, Sendable {
              guard let cpus = VMRunLine.integer(value) else { throw VMRunProtocolError.invalidConfiguration }
              configuration.cpus = cpus
          }
@@ -3976,7 +4092,7 @@ index 4e1af8d..ab777c9 100644
          guard (1...64).contains(productName.count), productName.utf8.count <= 255,
                productName == productName.trimmingCharacters(in: .whitespaces),
                productName.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
-@@ -144,6 +151,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -144,6 +170,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
  public enum VMRunCommand: String, Sendable {
      /// Ask Omarchy to shut down, then stop the VM if it has not within a minute.
      case shutdown
@@ -3985,7 +4101,15 @@ index 4e1af8d..ab777c9 100644
  
      public func encodedLine() throws -> Data {
          try VMRunLine.encode(["version": VMRunProtocol.version, "command": rawValue])
-@@ -229,11 +238,27 @@ public struct VMRunNotice: Equatable, Sendable {
+@@ -213,6 +241,7 @@ public struct VMRunError: Error, Equatable, Sendable, LocalizedError {
+ /// What the run mode did differently from what was asked, while Omarchy
+ /// starts anyway. Codes do not change between versions; messages may.
+ public enum VMRunNoticeCode: String, CaseIterable, Sendable {
++    case displayUnavailable = "display-unavailable"
+     /// Bridged networking was chosen but cannot start, so Omarchy starts with
+     /// shared networking. An embedding app that registers the kit's
+     /// networking daemon can offer to set it up.
+@@ -229,11 +258,28 @@ public struct VMRunNotice: Equatable, Sendable {
      }
  }
  
@@ -4009,11 +4133,12 @@ index 4e1af8d..ab777c9 100644
      case progress(VMRunPhase, percent: Int?)
      case notice(VMRunNotice)
      case ready
++    case displayReady(VMRunDisplayProcess)
 +    case executionState(VMRunExecutionReport)
      case stopping
      case error(VMRunError)
      /// The last event. Status 0 is a clean shutdown.
-@@ -250,6 +275,14 @@ public enum VMRunEvent: Equatable, Sendable {
+@@ -250,6 +296,20 @@ public enum VMRunEvent: Equatable, Sendable {
              object["event"] = "notice"
              object["code"] = notice.code.rawValue
              object["message"] = String(notice.message.prefix(4_096))
@@ -4025,10 +4150,16 @@ index 4e1af8d..ab777c9 100644
 +                object["errorCode"] = String(failure.reportedCode.prefix(64))
 +                object["errorMessage"] = String(failure.message.prefix(4096))
 +            }
++        case .displayReady(let process):
++            guard process.processIdentifier > 1, process.startSeconds > 0, process.startSeconds <= UInt64(Int.max), process.startMicroseconds < 1_000_000 else { throw VMRunProtocolError.invalidEvent }
++            object["event"] = "display-ready"
++            object["pid"] = Int(process.processIdentifier)
++            object["startSeconds"] = process.startSeconds
++            object["startMicroseconds"] = process.startMicroseconds
          case .ready:
              object["event"] = "ready"
          case .stopping:
-@@ -295,6 +328,23 @@ public enum VMRunEvent: Equatable, Sendable {
+@@ -295,6 +355,28 @@ public enum VMRunEvent: Equatable, Sendable {
              guard let code = VMRunNoticeCode(rawValue: codeName) else { throw VMRunProtocolError.unknownEvent }
              try require(["code", "message"])
              return .notice(VMRunNotice(code: code, message: message))
@@ -4049,6 +4180,11 @@ index 4e1af8d..ab777c9 100644
 +            guard Set(object.keys).isSubset(of: allowed),
 +                  failure != nil || command == nil || (command == .pause && state == .paused) || (command == .resume && state == .running) else { throw VMRunProtocolError.invalidEvent }
 +            return .executionState(VMRunExecutionReport(state: state, command: command, failure: failure))
++        case "display-ready":
++            guard let pid = VMRunLine.integer(object["pid"]), (2...Int(Int32.max)).contains(pid),
++                  let seconds = VMRunLine.integer(object["startSeconds"]), seconds > 0,
++                  let micros = VMRunLine.integer(object["startMicroseconds"]), (0..<1_000_000).contains(micros) else { throw VMRunProtocolError.invalidEvent }
++            return .displayReady(VMRunDisplayProcess(processIdentifier: Int32(pid), startSeconds: UInt64(seconds), startMicroseconds: UInt64(micros)))
          case "ready":
              try require([])
              return .ready
@@ -4124,6 +4260,50 @@ index 0000000..b2a45c9
 +        #expect(id.hasPrefix("dev.tryomarchy.guest."))
 +        #expect(!id.contains("/"))
 +        #expect(id == GuestApplicationIdentity.identifier(for: a.appendingPathComponent("child/..")))
++    }
++}
+diff --git a/macos/Tests/OmarchyVMHelperTests/LaunchIntentProtocolTests.swift b/macos/Tests/OmarchyVMHelperTests/LaunchIntentProtocolTests.swift
+new file mode 100644
+index 0000000..712bff5
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/LaunchIntentProtocolTests.swift
+@@ -0,0 +1,38 @@
++import Foundation
++import Testing
++import TryOmarchyKitClient
++
++@Suite("Guest launch intent protocol")
++struct LaunchIntentProtocolTests {
++    @Test("intent defaults to background and round trips explicitly")
++    func configurations() throws {
++        var configuration = VMRunConfiguration(productName: "Guest")
++        #expect(configuration.launchIntent == .background)
++        for intent in [VMRunLaunchIntent.background, .foreground] {
++            configuration.launchIntent = intent
++            #expect(try VMRunConfiguration.decode(line: configuration.encodedLine()) == configuration)
++        }
++        var object = try JSONSerialization.jsonObject(with: configuration.encodedLine()) as! [String: Any]
++        object.removeValue(forKey: "launchIntent")
++        #expect(try VMRunConfiguration.decode(line: JSONSerialization.data(withJSONObject: object)).launchIntent == .background)
++        for value: Any in ["other", 1, true, NSNull()] {
++            object["launchIntent"] = value
++            #expect(throws: VMRunProtocolError.self) { try VMRunConfiguration.decode(line: JSONSerialization.data(withJSONObject: object)) }
++        }
++    }
++
++    @Test("display identity round trips and malformed identities fail closed")
++    func identities() throws {
++        let event = VMRunEvent.displayReady(VMRunDisplayProcess(processIdentifier: 123, startSeconds: 1000, startMicroseconds: 123456))
++        #expect(try VMRunEvent.decode(line: event.encodedLine()) == event)
++        var object = try JSONSerialization.jsonObject(with: event.encodedLine()) as! [String: Any]
++        for (key, values) in [("pid", [0, 1, -1, 2147483648, true] as [Any]), ("startSeconds", [0, -1, true]), ("startMicroseconds", [-1, 1000000, true])] {
++            for value in values {
++                var broken = object; broken[key] = value
++                #expect(throws: VMRunProtocolError.self) { try VMRunEvent.decode(line: JSONSerialization.data(withJSONObject: broken)) }
++            }
++        }
++        object.removeValue(forKey: "startSeconds")
++        #expect(throws: VMRunProtocolError.self) { try VMRunEvent.decode(line: JSONSerialization.data(withJSONObject: object)) }
 +    }
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedFactoryCacheTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedFactoryCacheTests.swift
@@ -4676,6 +4856,60 @@ index 814cebc..13363bb 100644
 +        }
 +    }
 +}
+diff --git a/macos/Tests/OmarchyVMHelperTests/QMPMonitorReadinessTests.swift b/macos/Tests/OmarchyVMHelperTests/QMPMonitorReadinessTests.swift
+index 7fbacc5..a81b9fa 100644
+--- a/macos/Tests/OmarchyVMHelperTests/QMPMonitorReadinessTests.swift
++++ b/macos/Tests/OmarchyVMHelperTests/QMPMonitorReadinessTests.swift
+@@ -108,3 +108,49 @@ struct QMPMonitorReadinessTests {
+         #expect(sawEOF)
+     }
+ }
++
++@Suite("Display monitor peer identity")
++struct DisplayMonitorPeerTests {
++    @Test("the exact kernel peer is captured and a full monitor backlog never blocks control")
++    func peerAndBusyMonitor() throws {
++        let folder = URL(fileURLWithPath: "/tmp").appendingPathComponent("display-peer-" + UUID().uuidString)
++        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
++        defer { try? FileManager.default.removeItem(at: folder) }
++        let path = folder.appendingPathComponent("qmp").path
++        let listener = socket(AF_UNIX, SOCK_STREAM, 0)
++        try #require(listener >= 0)
++        defer { close(listener) }
++        var address = sockaddr_un()
++        address.sun_family = sa_family_t(AF_UNIX)
++        let bytes = Array(path.utf8)
++        try #require(bytes.count < MemoryLayout.size(ofValue: address.sun_path))
++        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
++        func withAddress<T>(_ action: (UnsafePointer<sockaddr>, socklen_t) -> T) -> T {
++            withUnsafePointer(to: &address) { pointer in
++                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
++                    action($0, socklen_t(MemoryLayout<sockaddr_un>.size))
++                }
++            }
++        }
++        try #require(withAddress { bind(listener, $0, $1) } == 0)
++        try #require(listen(listener, 1) == 0)
++        #expect(try QMPConnection.displayProcess(socketPath: path) == KernelProcessIdentity.capture(processIdentifier: getpid()))
++        let accepted = accept(listener, nil, nil)
++        try #require(accepted >= 0)
++        close(accepted)
++        var clients: [Int32] = []
++        defer { for descriptor in clients { close(descriptor) } }
++        var full = false
++        for _ in 0..<16 {
++            let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
++            try #require(descriptor >= 0)
++            clients.append(descriptor)
++            try #require(fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0)
++            if withAddress({ connect(descriptor, $0, $1) }) != 0 { full = true; break }
++        }
++        try #require(full)
++        let started = ContinuousClock.now
++        #expect(throws: HelperError.self) { try QMPConnection.displayProcess(socketPath: path) }
++        #expect(ContinuousClock.now - started < .seconds(1))
++    }
++}
 diff --git a/macos/Tests/OmarchyVMHelperTests/VMHostSleepControllerTests.swift b/macos/Tests/OmarchyVMHelperTests/VMHostSleepControllerTests.swift
 index df1e815..b8f2824 100644
 --- a/macos/Tests/OmarchyVMHelperTests/VMHostSleepControllerTests.swift
@@ -4841,9 +5075,18 @@ index ccb3ffa..f67b972 100644
          #expect(VMResetPhase.finishing.title == "Finishing reset")
          #expect(VMProgress(phase: VMLaunchPhase.preparing, percent: 42).caption == "42%")
 diff --git a/macos/Tests/run-mode.test.sh b/macos/Tests/run-mode.test.sh
-index fb2be66..6f6fba9 100755
+index fb2be66..610aea0 100755
 --- a/macos/Tests/run-mode.test.sh
 +++ b/macos/Tests/run-mode.test.sh
+@@ -102,7 +102,7 @@ def record(entry):
+ def say(line):
+     print(f"[qemu-gpu] {line}", file=sys.stderr, flush=True)
+ 
+-record({"environment": {key: value for key, value in os.environ.items()
++record({"pid": os.getpid(), "environment": {key: value for key, value in os.environ.items()
+                         if key.startswith(("OMARCHY_", "TRYOMARCHY_"))}})
+ say("Launch phase: checking")
+ failure = os.environ.get("FAKE_LAUNCHER", "")
 @@ -119,7 +119,8 @@ if not marker.exists():
  (root / "shell").mkdir(mode=0o700, exist_ok=True)
  disk = root / "shell/disk.img"
@@ -4863,7 +5106,27 @@ index fb2be66..6f6fba9 100755
  if "OMARCHY_QEMU_GPU_DRY_RUN" in environment or "OMARCHY_QEMU_GPU_INSPECT_ONLY" in environment:
      fail("the run mode passed the launcher's test settings on")
  if {"factory": image_sha} not in entries:
-@@ -459,7 +462,11 @@ for permissions in (0o600, 0o644):
+@@ -301,6 +304,19 @@ settings = vm / "settings.json"
+ settings.write_text(json.dumps({"schemaVersion": 1, "settings": {
+     "fullscreenPreferences": {"schemaVersion": 1, "isImmersive": False, "usesNotch": True}}}))
+ settings.chmod(0o600)
++# Foreground intent reports the exact monitor peer; this fixture opens no UI.
++foreground = {**configuration, "launchIntent": "foreground"}
++run = RunMode(foreground)
++run.until("ready")
++display = run.until("display-ready")
++entries = launcher_log()
++if display.get("pid") != entries[0]["pid"] or display.get("startSeconds", 0) <= 0 or not 0 <= display.get("startMicroseconds", -1) < 1000000:
++    fail(f"display identity differs from the launched monitor peer: {display}")
++run.send("shutdown")
++if run.next()["event"] != "stopping" or run.finish(0) != 0:
++    fail("foreground run did not shut down cleanly")
++launcher_log()
++
+ run = RunMode(configuration)
+ run.until("ready")
+ if {"downloading", "verifying-download"} & set(run.phases()):
+@@ -459,7 +475,11 @@ for permissions in (0o600, 0o644):
      run.send("shutdown")
      run.until("exited")
      run.process.wait(timeout=10)
@@ -4876,7 +5139,7 @@ index fb2be66..6f6fba9 100755
      if root != str(vm) or other.exists():
          fail(f"a named folder with a {permissions:o} pointer started in {root!r}; {run.diagnostics()}")
  run = RunMode(configuration, OMARCHY_QEMU_GPU_STATE_ROOT="")
-@@ -506,6 +513,55 @@ for line, code, status in [
+@@ -506,6 +526,55 @@ for line, code, status in [
      if log.exists():
          fail(f"{line} started the launcher")
  

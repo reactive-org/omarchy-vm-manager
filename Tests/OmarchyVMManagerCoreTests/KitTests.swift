@@ -37,6 +37,14 @@ struct KitFixture {
 
 @Suite("Kit provenance")
 struct KitTests {
+    @Test("unknown launch-intent capability is refused even with protocol 1")
+    func launchIntentCapability() throws {
+        var fixture = try KitFixture(); defer { fixture.cleanup() }
+        fixture.lock.launchIntentVersion = 1
+        _ = try fixture.inspect()
+        fixture.lock.launchIntentVersion = 2
+        #expect(throws: VMFailure.self) { try fixture.inspect() }
+    }
     @Test("compiled launch admission applies the build policy before touching storage")
     func compiledLaunchAdmission() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

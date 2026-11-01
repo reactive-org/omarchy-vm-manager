@@ -29,6 +29,7 @@ public struct RuntimeProvenance: Codable, Equatable, Sendable {
     public let focusAwareClipboard: Bool
     public var managedSSHVersion: Int? = nil
     public var manualPauseVersion: Int? = nil
+    public var launchIntentVersion: Int? = nil
     public var customFactoryVersion: Int? = nil
     public var managedSetupVersion: Int? = nil
     public var ownerSetupContractsVersion: Int? = nil
@@ -121,6 +122,9 @@ public enum KitVerifier {
         }
         if let version = lock.manualPauseVersion, version != 1 {
             throw invalid("Manual execution control capability is unknown.")
+        }
+        if let version = lock.launchIntentVersion, version != 1 {
+            throw invalid("Guest launch intent capability is unknown.")
         }
         if let version = lock.managedSSHVersion {
             guard version == 1, lock.files.keys.contains(VMFactorySelection.packagePath) else {

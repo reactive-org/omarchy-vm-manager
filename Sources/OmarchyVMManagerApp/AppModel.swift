@@ -184,7 +184,7 @@ final class AppModel: ObservableObject {
 
     func start(_ id: UUID) async {
         guard registryError == nil else { return }
-        do { try await manager.start(id) } catch { actionError = error.localizedDescription }
+        do { try await manager.start(id, launchIntent: .foreground) } catch { actionError = error.localizedDescription }
         await update()
     }
     func recheckExperimentalRecovery(_ id: UUID) async {
@@ -195,7 +195,7 @@ final class AppModel: ObservableObject {
         do {
             switch review.action {
             case .suspend: try await manager.experimentalSuspend(review.id, confirmed: true)
-            case .restore: try await manager.restoreExperimentalSuspension(review.id, confirmed: true)
+            case .restore: try await manager.restoreExperimentalSuspension(review.id, confirmed: true, launchIntent: .foreground)
             case .acceptColdBoot: try await manager.acceptExperimentalColdBoot(review.id, confirmed: true, guestImageCleared: true)
             }
         } catch { actionError = error.localizedDescription }

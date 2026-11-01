@@ -176,7 +176,7 @@ public actor GuestCommandService {
                     diskGiB: c.diskGiB ?? 64,
                     clipboardEnabled: c.clipboard ?? true, immersiveMode: c.immersive ?? false, sshEnabled: c.ssh ?? true,
                     publicKey: c.publicKey, useOwnerDefaults: c.ownerDefaults, factory: c.factory ?? "official")
-                if request.start { try await manager.start(target!) }
+                if request.start { try await manager.start(target!, launchIntent: .background) }
             } else {
                 target = try await resolve(request.selector!)
                 switch request.command {
@@ -193,14 +193,14 @@ public actor GuestCommandService {
                 case .resume:
                     cachedConnections[target!] = nil
                     try await manager.resume(target!, timeout: .seconds(min(10, request.timeoutSeconds)))
-                case .start: try await manager.start(target!)
+                case .start: try await manager.start(target!, launchIntent: .background)
                 case .stop:
                     if request.force { try await manager.forceStop(target!, confirmed: true) }
                     else { await manager.shutDown(target!) }
                 case .restart:
                     await manager.shutDown(target!)
                     try await wait(target!, condition: .stopped, deadline: deadline)
-                    try await manager.start(target!)
+                    try await manager.start(target!, launchIntent: .background)
                 default: break
                 }
             }

@@ -42,6 +42,8 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 
 [Pause and resume](PauseResume.md) explains manual execution control, host sleep/wake and shutdown.
 
+[Guest display activation](GuestForegrounding.md) describes interactive launch intent, background automation and the remaining native macOS checks.
+
 [Suspend-to-disk investigation](Suspend.md) records the clarified RAM-release requirement, pinned graphics blocker and proposed disposable hibernation POC.
 
 - [Reviewed custom factories](CustomFactories.md): prepared-bundle review, import, creation-time selection and validation limits.

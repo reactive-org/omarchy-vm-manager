@@ -29,6 +29,7 @@ public final class FakeRuntimeHandle: VMRuntimeHandle, @unchecked Sendable {
 public final class FakeRuntime: VMRuntime, @unchecked Sendable {
     private let lock = NSLock()
     private var handles: [FakeRuntimeHandle] = []
+    private var requests: [VMStartRequest] = []
     private let startFailure: VMRunError?
     private let initialEvents: [VMRuntimeEvent]
     public init(startFailure: VMRunError? = nil, initialEvents: [VMRuntimeEvent] = []) {
@@ -37,11 +38,12 @@ public final class FakeRuntime: VMRuntime, @unchecked Sendable {
     }
     public func preflight() -> VMRunError? { nil }
     public var startedHandles: [FakeRuntimeHandle] { lock.withLock { handles } }
+    public var startRequests: [VMStartRequest] { lock.withLock { requests } }
     public func start(_ request: VMStartRequest,
                       onEvent: @escaping @Sendable (VMRuntimeEvent) -> Void) throws -> any VMRuntimeHandle {
         if let startFailure { throw startFailure }
         let handle = FakeRuntimeHandle(onEvent: onEvent)
-        lock.withLock { handles.append(handle) }
+        lock.withLock { handles.append(handle); requests.append(request) }
         for event in initialEvents { handle.emit(event) }
         return handle
     }

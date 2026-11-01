@@ -6,6 +6,15 @@ import Testing
 struct SourceContractTests {
     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
+    @Test("UI opts into guest foregrounding while CLI opens the lifecycle owner in the background")
+    func launchEntryPoints() throws {
+        let model = try String(contentsOf: repository.appendingPathComponent("Sources/OmarchyVMManagerApp/AppModel.swift"), encoding: .utf8)
+        #expect(model.contains("manager.start(id, launchIntent: .foreground)"))
+        #expect(model.contains("confirmed: true, launchIntent: .foreground"))
+        let cli = try String(contentsOf: repository.appendingPathComponent("Sources/OmarchyVMCLI/main.swift"), encoding: .utf8)
+        #expect(cli.contains("[\"-g\", \"-j\""))
+    }
+
     @Test("upstream source and stock lock name the reviewed baseline")
     func baseline() throws {
         let lock = try JSONSerialization.jsonObject(with: Data(contentsOf: repository.appendingPathComponent("Config/TryOmarchyUpstream.lock.json"))) as! [String: Any]
@@ -63,4 +72,5 @@ func matchingExecutionSDK() throws {
     #expect(head == metadata["commit"])
     let lock = try JSONDecoder().decode(RuntimeProvenance.self, from: Data(contentsOf: repository.appendingPathComponent("Config/TryOmarchyRuntime.lock.json")))
     #expect(lock.manualPauseVersion == 1)
+    #expect(lock.launchIntentVersion == 1)
 }

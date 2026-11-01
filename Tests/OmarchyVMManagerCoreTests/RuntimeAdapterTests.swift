@@ -12,6 +12,77 @@ private final class EventRecorder: @unchecked Sendable {
 
 @Suite("Real client with protocol stubs")
 struct RuntimeAdapterTests {
+    @Test("background intent reaches the helper and ignores display activation events") @MainActor
+    func backgroundConfiguration() async throws {
+        let fixture = try stub(#"""
+        IFS= read -r configuration
+        case "$configuration" in *'"launchIntent":"background"'*) ;; *) exit 22 ;; esac
+        printf '%s\n' '{"version":1,"event":"display-ready","pid":12345,"startSeconds":100,"startMicroseconds":0}' '{"version":1,"event":"ready"}'
+        IFS= read -r command
+        """#)
+        defer { fixture.cleanup() }
+        let display = CleanupDisplay()
+        let foreground = GuestLaunchForegrounding(intent: .background, probe: { _ in .ready }, activate: { _ in display.count += 1; return true })
+        let recorder = EventRecorder()
+        let handle = try TryOmarchyRuntime(protocolTestKit: fixture.kit, foreground: foreground).start(request(fixture), onEvent: recorder.record)
+        #expect(await foregroundEventually { recorder.all.contains(.ready) })
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(display.count == 0)
+        handle.shutDown()
+        #expect(await foregroundEventually { !handle.isRunning })
+    }
+
+    @Test("SDK transmits intent and lifecycle changes cancel delayed foregrounding", arguments: ["error", "stopping", "exited", "shutdown", "terminate", "pause", "sleep"])
+    @MainActor func foregroundCleanup(_ boundary: String) async throws {
+        let configuration = VMRunDisplayProcess(processIdentifier: 12345, startSeconds: 100, startMicroseconds: 10)
+        let displayLine = String(decoding: try VMRunEvent.displayReady(configuration).encodedLine(), as: UTF8.self).trimmingCharacters(in: .newlines)
+        let terminal: String
+        switch boundary {
+        case "error": terminal = #"{"version":1,"event":"error","code":"launch-failed","message":"synthetic"}"#
+        case "stopping": terminal = #"{"version":1,"event":"stopping"}"#
+        case "exited": terminal = #"{"version":1,"event":"exited","status":1}"#
+        case "sleep": terminal = #"{"version":1,"event":"execution-state","state":"host-sleeping"}"#
+        default: terminal = ""
+        }
+        let fixture = try stub("""
+        IFS= read -r configuration
+        case "$configuration" in *'"launchIntent":"foreground"'*) ;; *) exit 22 ;; esac
+        printf '%s\\n' '\(displayLine)' '\(terminal.isEmpty ? #"{"version":1,"event":"ready"}"# : terminal)'
+        \(boundary == "exited" ? "exit 1" : "IFS= read -r command")
+        """)
+        defer { fixture.cleanup() }
+        let display = CleanupDisplay()
+        let foreground = GuestLaunchForegrounding(intent: .foreground, probe: { _ in display.ready ? .ready : .waiting }, activate: { _ in display.count += 1; return true })
+        let runtime = TryOmarchyRuntime(protocolTestKit: fixture.kit, foreground: foreground)
+        let recorder = EventRecorder()
+        let base = request(fixture)
+        let handle = try runtime.start(VMStartRequest(profile: base.profile, storageRoot: base.storageRoot, launchIntent: .foreground), onEvent: recorder.record)
+        #expect(await foregroundEventually { !recorder.all.isEmpty })
+        if boundary == "shutdown" { handle.shutDown() }
+        if boundary == "terminate" { handle.terminate() }
+        if boundary == "pause" { try handle.pause() }
+        display.ready = true
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(display.count == 0)
+        #expect(!recorder.all.contains { if case .displayReady = $0 { true } else { false } })
+        handle.terminate()
+        #expect(await foregroundEventually { !handle.isRunning })
+    }
+
+    @Test("synchronous launch failure cancels its foreground request") @MainActor
+    func foregroundSynchronousFailure() async throws {
+        let fixture = try stub("exit 0"); defer { fixture.cleanup() }
+        try FileManager.default.removeItem(at: fixture.kit.bundleURL.appendingPathComponent(TryOmarchyKit.helperPath))
+        let display = CleanupDisplay(); display.ready = true
+        let foreground = GuestLaunchForegrounding(intent: .foreground, probe: { _ in .ready }, activate: { _ in display.count += 1; return true })
+        #expect(throws: VMRunError.self) {
+            try TryOmarchyRuntime(protocolTestKit: fixture.kit, foreground: foreground).start(request(fixture)) { _ in }
+        }
+        foreground.displayReady(VMRunDisplayProcess(processIdentifier: 12345, startSeconds: 100, startMicroseconds: 0))
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(display.count == 0)
+    }
+
     private func stub(_ script: String) throws -> KitFixture {
         let fixture = try KitFixture()
         let helper = fixture.kit.bundleURL.appendingPathComponent(TryOmarchyKit.helperPath)
@@ -132,4 +203,9 @@ struct RuntimeAdapterTests {
         handle.terminate()
         #expect(await eventually { !handle.isRunning })
     }
+}
+
+@MainActor private final class CleanupDisplay {
+    var ready = false
+    var count = 0
 }
