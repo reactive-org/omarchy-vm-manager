@@ -9,8 +9,6 @@ The sheet shows verification/copy progress, supports cancellation before publica
 
 **Offical Try Omarchy** remains the default and an explicit selection. New guest profiles record the factory name, kind, manifest digest and source disk digest. That selection is fixed at creation. Older profiles retain their existing metadata and disks; an absent factory field remains absent. New roots also record the identity in a private `.omarchy-factory.json` marker, which must agree with the profile. Image selection never resets or replaces an existing disk.
 
-Imports from an older runtime, or images that fail verification, remain preserved and unavailable for new selection. **New VM → Factory image** shows a nonblocking informational notice when any such imports exist; they do not trigger a startup error popup. Verified compatible choices remain usable. Actual import, catalog-access and runtime-verification failures still report errors. The notice does not approve, modify or delete an incompatible bundle.
-
 ## Prepared bundle
 
 Prepare the image outside the manager. This feature does not build a kernel, customize a running guest or create a factory from an existing user's disk. The flat bundle directory contains:

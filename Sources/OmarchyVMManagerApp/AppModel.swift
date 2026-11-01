@@ -17,7 +17,7 @@ final class AppModel: ObservableObject {
     @Published var factoryImportProgress = FactoryImportProgress.verifying
     @Published private var factoryLibrary = FactoryLibraryCache()
     var factories: [FactoryIdentity] { factoryLibrary.factories }
-    var factorySelectionNotice: String? { factoryLibrary.selectionNotice }
+    private static let factoryIssueMessage = "Some imported factories failed verification and cannot be selected."
     @Published var ownerDefaults: OwnerDefaults?
     @Published var defaultsError: String?
     @Published var diagnostics: KitDiagnostics?
@@ -99,7 +99,7 @@ final class AppModel: ObservableObject {
                 let request = factoryLibrary.beginRefresh()
                 do {
                     let listing = try await manager.factoryListing()
-                    factoryLibrary.apply(listing, for: request)
+                    if factoryLibrary.apply(listing, for: request), !listing.issues.isEmpty { actionError = Self.factoryIssueMessage }
                 } catch {
                     if factoryLibrary.isCurrent(request) { actionError = error.localizedDescription }
                 }
@@ -163,6 +163,7 @@ final class AppModel: ObservableObject {
             }
         }
         factoryLibrary.imported(identity)
+        if factoryLibrary.issues.isEmpty, configurationError == Self.factoryIssueMessage { configurationError = nil }
         return identity
     }
 
@@ -170,7 +171,9 @@ final class AppModel: ObservableObject {
         let request = factoryLibrary.beginRefresh()
         do {
             let listing = try await manager.factoryListing()
-            factoryLibrary.apply(listing, for: request)
+            guard factoryLibrary.apply(listing, for: request) else { return }
+            if !listing.issues.isEmpty { configurationError = Self.factoryIssueMessage }
+            else if configurationError == Self.factoryIssueMessage { configurationError = nil }
         } catch {
             if factoryLibrary.isCurrent(request) { configurationError = error.localizedDescription }
         }

@@ -7,9 +7,6 @@ public struct FactoryLibraryCache: Sendable {
     }
     public private(set) var factories: [FactoryIdentity] = [.official]
     public private(set) var issues: [FactoryCatalogIssue] = []
-    public var selectionNotice: String? {
-        issues.isEmpty ? nil : "Some imported factory images are incompatible with this app or failed verification. Only verified compatible images are listed."
-    }
     private var revision = UUID()
     private var refresh: Refresh?
 
