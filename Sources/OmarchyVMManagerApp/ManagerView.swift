@@ -18,7 +18,10 @@ struct ManagerView: View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 List(selection: $destination) {
-                    Label("Virtual Machines", systemImage: "square.stack.3d.up").tag(Destination.library)
+                    HStack(spacing: 9) {
+                        ManagerArtwork(size: 26)
+                        Text("Omarchy VM Manager").fixedSize(horizontal: false, vertical: true)
+                    }.padding(.vertical, 5).tag(Destination.library)
                     Section("Guests") {
                         ForEach(model.snapshots) { snapshot in
                             HStack(spacing: 9) {
@@ -36,18 +39,12 @@ struct ManagerView: View {
                         Label("Runtime", systemImage: "checkmark.shield").tag(Destination.runtime)
                     }
                 }.listStyle(.sidebar)
-                HStack(spacing: 10) {
-                    ManagerArtwork(size: 42)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Omarchy VM Manager").font(.caption.bold())
-                        Text("Private build · " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")").font(.caption).foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("A project of").foregroundStyle(.secondary)
-                            Link("reactive.org enterprises", destination: URL(string: "https://www.reactive.org/")!)
-                                .lineLimit(1).minimumScaleFactor(0.85)
-                        }.font(.caption).padding(.top, 5)
-                    }
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Omarchy VM Manager " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")")
+                        .bold()
+                    Text("A project of [reactive.org enterprises](https://www.reactive.org/)").foregroundStyle(.secondary)
+                }.font(.caption).lineLimit(1).minimumScaleFactor(0.75)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(18)
             }.navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
         } detail: {
             ScrollView {
