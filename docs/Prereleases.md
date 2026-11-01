@@ -48,6 +48,12 @@ The initial signed attempts stopped before signing or notarization because the c
 
 `make test-build-policies` now runs launch-admission checks in both optimized configurations: ordinary release still refuses the private runtime, while `SIGNED_PRERELEASE` reaches the exact provenance checks and refuses an unpinned runtime before touching storage. Legacy fixed-root POC admission remains debug-only. These checks start no VM and use no signing credentials.
 
+[The corrected `v0.9.3-dev.6` run](https://github.com/reactive-org/omarchy-vm-manager/actions/runs/41274695838), from commit `88bb8679934fdb286461f5a9a08198f54d7f159e`, passed 161 manager Swift tests, 31 Python tests, both optimized admission checks, all 550 upstream tests, the app/icon builds and the isolated SSH job. Signing, Apple acceptance and final package verification are separate gates after those checks.
+
+Runtime signing and API authentication succeeded. Apple received submission `78d5ad92-c756-4e67-a0f1-87dec516c5d4` at `2026-11-01T04:57:16.237Z` and still reported `In Progress` at the 45-minute limit (`05:42:38Z`). CI cleaned up credentials, retained artifact `13072336103` (`notarization-diagnostics-v0.9.3-dev.6`) and skipped publication. No `v0.9.3-dev.6` release exists. The retained runtime ZIP has SHA-256 `b6dbfb08c213458b9d57486f30b699ecf9e2fccfb430276ad2fd9d7cbaccad4b`.
+
+Read-only verification of that downloaded candidate, with macOS trust-service access, passed all 22 Mach-O Developer ID/team, hardened-runtime, timestamp, entitlement, deep-signature and networking-pin checks. Every unsigned runtime payload matches the original locked kit. Apple acceptance, fresh stapling, the signed app/ZIP and Gatekeeper remain unverified; no accepted signed-runtime lock has been committed. Preserve the candidate and submission ID when diagnosing the pending submission rather than assuming another upload fixes an Apple processing delay. The user chose to keep the release in CI; no local credential use was authorized or performed.
+
 Signing changes runtime bytes. Existing custom factory receipts/manifests tied to the ad-hoc kit are preserved and refused by the signed build; they need a newly prepared compatible bundle. Existing profiles, writable disks and official factory identity are not migrated or rewritten by packaging. Real guest acceptance of the signed build remains TO PROVE.
 
 ## Verification boundary
