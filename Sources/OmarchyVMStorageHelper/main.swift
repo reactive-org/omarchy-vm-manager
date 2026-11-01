@@ -10,8 +10,8 @@ func reply(_ object: [String: Any], status: Int32) -> Never {
 do {
     let args = CommandLine.arguments
     guard args.count == 4, args[1] == "--trash", let id = UUID(uuidString: args[2]),
-          args[2] == id.uuidString, args[3].utf8.count <= 256, !POCProfiles.ids.contains(id) else {
-        throw VMFailure(code: "invalid-request", message: "A registered, unprotected UUID and reviewed storage identity are required.")
+          args[2] == id.uuidString, args[3].utf8.count <= 256 else {
+        throw VMFailure(code: "invalid-request", message: "A registered UUID and reviewed storage identity are required.")
     }
     let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
     let storage = ManagerStorage(applicationSupport: support)

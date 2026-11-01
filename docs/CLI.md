@@ -62,7 +62,9 @@ If an execution acknowledgement is lost, the reply fails with `execution-timeout
 
 The manager keeps the registry lock and all runtime clients. The CLI uses a bounded, versioned JSON protocol on an owned mode-0600 Unix socket inside a mode-0700 directory under `/private/tmp`; both peers check the local UID. The socket directory includes a digest of the fixed application-support location and UID. No TCP command listener, authentication bypass or arbitrary storage-root override is exposed.
 
-`delete` requests the manager's existing reviewed whole-root Trash transaction. It never recursively erases a VM. Running and retained POC guests stay protected. A profile without initialized storage is removed as metadata only. Inspect and restore any trashed VM files using the Mac's normal Trash workflow; automatic restoration is outside this CLI.
+`delete` requests the manager's existing reviewed whole-root Trash transaction. It never recursively erases a VM. Running guests and protected saved sessions cannot be deleted. Stopped retained POC guests use the same reviewed deletion flow as other guests. A profile without initialized storage is removed as metadata only. Inspect and restore any trashed VM files using the Mac's normal Trash workflow; automatic restoration is outside this CLI.
+
+The guest record's `protected` field identifies retained POC configuration protection. It does not prohibit confirmed deletion of a stopped guest. Lifecycle and saved-session guards are checked when the command executes.
 
 ## Validation status
 

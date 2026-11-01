@@ -8,7 +8,7 @@ Shut down the guest and wait for **Stopped**. Select it in the sidebar, open **V
 
 ![The configuration form for a stopped guest, with editable name, memory, CPU, clipboard and immersive mode](media/configure.webp)
 
-Change its name, memory, CPU count, clipboard integration or immersive mode, then click **Save Changes**. Changes apply the next time you launch it, with its existing disk preserved. Running guests cannot be edited. Entries marked **Retained POC** are protected from edits and deletion.
+Change its name, memory, CPU count, clipboard integration or immersive mode, then click **Save Changes**. Changes apply the next time you launch it, with its existing disk preserved. Running guests cannot be edited. Entries marked **Retained POC** keep their original configuration and cannot be edited.
 
 SSH enrollment and the owner setup snapshot are fixed at guest creation. Create another guest if you need a different enrollment choice.
 
@@ -61,7 +61,7 @@ Save guest work, click **Shut Down**, and wait for **Stopped**. The ellipsis men
 
 To remove a stopped guest, choose **Delete VM…** at the bottom of its detail page and confirm the reviewed guest. Its entire guest folder moves to macOS Trash, and its library entry is removed. The shared factory-image download remains cached for other guests. A guest that has never initialized storage has only its profile removed.
 
-A running guest cannot be deleted. The two retained POC profiles are also protected. Trashed files can be recovered through the Mac's normal Trash workflow; automatic restoration into the manager is not implemented.
+A running guest or a disk protected by an unresolved saved session cannot be deleted. Stopped retained POC guests use the same confirmed Trash flow as other guests. Trashed files can be recovered through the Mac's normal Trash workflow; automatic restoration into the manager is not implemented.
 
 Quitting the manager with guests running follows its coordinated shutdown flow. Exiting the short-lived CLI leaves guests running under the manager.
 

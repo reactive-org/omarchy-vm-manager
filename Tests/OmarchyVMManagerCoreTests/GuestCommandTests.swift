@@ -73,6 +73,27 @@ struct GuestCLIArgumentsTests {
 
 @Suite("JSON guest commands through the existing lifecycle owner")
 struct GuestCommandTests {
+    @Test("CLI can Trash stopped POC fixtures while their configuration stays protected", arguments: POCProfiles.all)
+    func deleteRetainedPOC(profile: VMProfile) async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let root = try POCStorage(applicationSupport: f.support).prepare(profile)
+        let store = try RegistryStore(applicationSupport: f.support); #expect(try store.load() == [profile])
+        let runtime = FakeRuntime(), trash = PausingTrash(storage: f.storage, pauses: false)
+        let manager = VMManager(runtime: runtime, profiles: [profile], applicationSupport: f.support, registry: store, trashService: trash)
+        let commands = GuestCommandService(manager: manager, applicationSupport: f.support)
+        let before = await commands.execute(GuestCommandRequest(command: .get, selector: profile.id.uuidString))
+        #expect(before.ok && before.guest?.protected == true)
+        let edit = await commands.execute(GuestCommandRequest(command: .update, selector: profile.id.uuidString, config: GuestConfigurationPatch(name: "Changed")))
+        #expect(!edit.ok && edit.error?.code == "vm-not-editable")
+        let deleted = await commands.execute(GuestCommandRequest(command: .delete, selector: profile.id.uuidString))
+        #expect(deleted.ok)
+        #expect(!PrivateFiles.exists(root))
+        #expect(PrivateFiles.exists(f.support.appendingPathComponent("simulated-trash/settings.json")))
+        #expect(await manager.snapshots().isEmpty)
+        #expect(store.pendingDeletions.isEmpty)
+        #expect(runtime.startedHandles.isEmpty)
+    }
+
     @Test("CRUD uses persistent profiles, merges updates and never exposes credential references")
     func crud() async throws {
         let f = try CommandFixture(); defer { f.files.cleanup() }
@@ -92,7 +113,7 @@ struct GuestCommandTests {
         #expect(removed.ok)
         #expect(await f.manager.snapshots().isEmpty)
     }
-    @Test("names must be unique and retained POC protection cannot be bypassed")
+    @Test("names must be unique and retained POC configuration protection cannot be bypassed")
     func selectorAndProtected() async throws {
         let f = try CommandFixture(); defer { f.files.cleanup() }
         _ = try await f.create("Same")
@@ -103,7 +124,6 @@ struct GuestCommandTests {
         let service = GuestCommandService(manager: core, applicationSupport: f.files.support)
         let result = await service.execute(GuestCommandRequest(command: .update, selector: POCProfiles.all[0].id.uuidString, config: GuestConfigurationPatch(cpus: 8)))
         #expect(!result.ok && result.error?.code == "vm-not-editable")
-        #expect(!(await service.execute(GuestCommandRequest(command: .delete, selector: POCProfiles.all[0].id.uuidString))).ok)
     }
     @Test("active updates and deletion fail; error events and a disconnected wait never release the VM")
     func activeGuards() async throws {

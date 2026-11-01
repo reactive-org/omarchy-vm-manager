@@ -280,7 +280,7 @@ public actor VMManager {
     }
 
     public func deletionRequest(_ id: UUID) throws -> TrashRequest? {
-        try requireEditable(id)
+        try requireStopped(id)
         guard let profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.") }
         let storage = ManagerStorage(applicationSupport: applicationSupport)
         guard PrivateFiles.exists(storage.root(for: profile)) else { return nil }
@@ -289,7 +289,7 @@ public actor VMManager {
 
     public func delete(_ id: UUID, confirmed: Bool, expectedIdentity: String?) async throws {
         guard confirmed else { throw VMFailure(code: "confirmation-required", message: "Confirm moving this VM to Trash.") }
-        try requireEditable(id)
+        try requireStopped(id)
         guard let registry, let profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable.") }
         let storage = ManagerStorage(applicationSupport: applicationSupport)
         let exists = PrivateFiles.exists(storage.root(for: profile))
@@ -318,10 +318,20 @@ public actor VMManager {
     }
 
     private func requireEditable(_ id: UUID) throws {
+        try requireStopped(id)
+        guard !POCProfiles.ids.contains(id) else {
+            throw VMFailure(code: "vm-not-editable", message: "Retained POC profiles are protected from configuration changes.")
+        }
+    }
+
+    private func requireStopped(_ id: UUID) throws {
         guard suspensions[id] == nil, !unsafeSuspensions.contains(id) else { throw VMFailure(code: "suspended-disk-protected", message: "Restore or recover this experimental suspension before editing or deleting its disk.") }
-        guard !quitting, !POCProfiles.ids.contains(id), sessions[id] == nil, !storageTransactions.contains(id),
+        if let profile = profiles.first(where: { $0.id == id }) {
+            try ManagerStorage(applicationSupport: applicationSupport).requireNoSavedSession(profile)
+        }
+        guard !quitting, sessions[id] == nil, !storageTransactions.contains(id),
               (states[id] ?? .stopped).canStart else {
-            throw VMFailure(code: "vm-not-editable", message: "Stop the VM before changing it. Retained POC profiles are protected from configuration changes and deletion.")
+            throw VMFailure(code: "vm-not-editable", message: "Stop the VM before changing or deleting it.")
         }
     }
 

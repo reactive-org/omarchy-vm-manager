@@ -231,14 +231,21 @@ public struct ManagerStorage: Sendable {
         return "\(s.st_dev):\(s.st_ino)"
     }
 
+    func requireNoSavedSession(_ profile: VMProfile) throws {
+        guard !PrivateFiles.exists(root(for: profile).appendingPathComponent(".manager-suspension.json")) else {
+            throw VMFailure(code: "suspended-disk-protected", message: "Restore or recover this experimental suspension before editing or deleting its disk.")
+        }
+    }
+
     public func trash(_ profile: VMProfile, expectedIdentity: String,
                       recycle: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }) throws {
-        guard !profile.isRetainedPOC else { throw VMFailure(code: "retained-poc", message: "The retained POC disks are protected from deletion.") }
         try validate(profile)
         try withLock(profile) {
+            try requireNoSavedSession(profile)
             guard try deletionIdentity(profile) == expectedIdentity else { throw PrivateFiles.failure("The selected VM changed since confirmation. Nothing was moved.") }
             try rejectUnsafeTree(root(for: profile))
             guard try deletionIdentity(profile) == expectedIdentity else { throw PrivateFiles.failure("The selected VM changed during validation. Nothing was moved.") }
+            try requireNoSavedSession(profile)
             try recycle(root(for: profile))
         }
     }

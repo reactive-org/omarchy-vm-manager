@@ -155,7 +155,7 @@ struct ManagerView: View {
             }.frame(height: 64, alignment: .top)
             Picker("Guest settings", selection: $page) { ForEach(GuestPage.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
             if snapshot.profile.isRetainedPOC {
-                Label("This POC disk is retained. Configuration changes and deletion are disabled.", systemImage: "lock.shield").font(.callout).foregroundStyle(.secondary)
+                Label("This POC disk keeps its original configuration. Delete VM moves it to Trash after confirmation.", systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
             }
             switch page {
             case .home: guestHome(snapshot)
@@ -182,12 +182,12 @@ struct ManagerView: View {
                     ForEach(Array(events.suffix(30).reversed())) { Text("\($0.date.formatted(date: .omitted, time: .standard))  \($0.text)").font(.system(.caption, design: .monospaced)).textSelection(.enabled) }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
             }.disabled(events.isEmpty)
-            if !snapshot.profile.isRetainedPOC {
-                HStack {
+            HStack {
+                if !snapshot.profile.isRetainedPOC {
                     Button("Rename or Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
-                    Spacer()
-                    Button("Delete VM…", role: .destructive) { Task { await model.reviewDeletion(snapshot) } }.disabled(!editable(snapshot))
                 }
+                Spacer()
+                Button("Delete VM…", role: .destructive) { Task { await model.reviewDeletion(snapshot) } }.disabled(!deletable(snapshot))
             }
         }
     }
@@ -347,7 +347,8 @@ struct ManagerView: View {
         page = .home
         detailPresentation = UUID()
     }
-    private func editable(_ snapshot: VMSnapshot) -> Bool { snapshot.sessionID == nil && snapshot.suspension == nil && !snapshot.suspensionMetadataUnsafe && snapshot.state.canStart && !snapshot.profile.isRetainedPOC && !model.shuttingDown }
+    private func deletable(_ snapshot: VMSnapshot) -> Bool { snapshot.sessionID == nil && snapshot.suspension == nil && !snapshot.suspensionMetadataUnsafe && snapshot.state.canStart && !model.shuttingDown }
+    private func editable(_ snapshot: VMSnapshot) -> Bool { deletable(snapshot) && !snapshot.profile.isRetainedPOC }
 }
 
 private struct TileIcon: View {

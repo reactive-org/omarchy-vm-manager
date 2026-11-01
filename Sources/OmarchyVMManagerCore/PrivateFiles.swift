@@ -110,7 +110,7 @@ public final class RegistryStore: @unchecked Sendable {
             guard (1...4).contains(registry.schemaVersion) else { throw PrivateFiles.failure("Unknown registry version. The original file was preserved.") }
             try Self.validate(registry.profiles)
             let pending = registry.pendingDeletions ?? []
-            guard pending.isSubset(of: Set(registry.profiles.map(\.id))), pending.isDisjoint(with: POCProfiles.ids) else { throw PrivateFiles.failure("Invalid pending deletion metadata; the registry was preserved.") }
+            guard pending.isSubset(of: Set(registry.profiles.map(\.id))) else { throw PrivateFiles.failure("Invalid pending deletion metadata; the registry was preserved.") }
             self.pending = pending; cachedProfiles = registry.profiles; schemaVersion = registry.schemaVersion
             revision = data; loaded = true
             return registry.profiles

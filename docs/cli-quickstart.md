@@ -46,7 +46,7 @@ Use a full guest UUID instead of its exact name for scripts. Configuration edits
 ./bin/omarchy-vm delete Development
 ```
 
-`delete` moves a stopped guest's folder to recoverable Trash. It does not delete the shared image cache. Retained POC guests are protected.
+`delete` moves a stopped guest's folder to recoverable Trash. It does not delete the shared image cache. Stopped retained POC guests can be deleted through the same flow.
 
 Successful commands return exit code `0`; failures return `1`. A bounded wait timeout returns `124` and leaves the guest under the manager's control. You can wait again without starting a second session:
 

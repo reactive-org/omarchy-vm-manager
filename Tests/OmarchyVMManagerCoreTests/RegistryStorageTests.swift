@@ -149,18 +149,15 @@ struct RegistryStorageTests {
         #expect(try Data(contentsOf: file) == applied)
     }
 
-    @Test("retained POC adoption changes no files and rejects deletion")
-    func retainedPOC() throws {
+    @Test("retained POC adoption changes no files", arguments: POCProfiles.all)
+    func retainedPOC(poc: VMProfile) throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
-        let poc = POCProfiles.all[0]
         let root = try POCStorage(applicationSupport: f.support).prepare(poc)
         let before = try Data(contentsOf: root.appendingPathComponent("settings.json"))
         let store = try RegistryStore(applicationSupport: f.support)
         #expect(try store.load().map(\.id) == [poc.id])
         _ = try f.storage.prepare(poc)
         #expect(try Data(contentsOf: root.appendingPathComponent("settings.json")) == before)
-        let identity = try f.storage.deletionIdentity(poc)
-        #expect(throws: VMFailure.self) { try f.storage.trash(poc, expectedIdentity: identity) { _ in Issue.record("POC must never reach Trash") } }
     }
 
     @Test("links, settings changes and ownership-marker mismatch fail closed", arguments: ["root-link", "disk-link", "settings", "marker", "tree-link", "identity"])
@@ -222,10 +219,11 @@ struct RegistryStorageTests {
         else { await #expect(throws: VMFailure.self) { try await service.moveToTrash(request) } }
     }
 
-    @Test("runtime-compatible lock held by another process prevents Trash")
-    func busyLock() throws {
+    @Test("runtime-compatible lock held by another process prevents Trash", arguments: [VMProfile(id: UUID(), name: "Lock fixture")] + POCProfiles.all)
+    func busyLock(profile: VMProfile) throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
-        let profile = f.profile(); let root = try f.storage.prepare(profile)
+        let root = try profile.isRetainedPOC ? POCStorage(applicationSupport: f.support).prepare(profile) : f.storage.prepare(profile)
+        try PrivateFiles.directory(root.appendingPathComponent("shell"), create: true)
         let identity = try f.storage.deletionIdentity(profile)
         let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/lockf")
         process.arguments = ["-t", "0", root.appendingPathComponent("shell/lock").path, "/bin/sleep", "10"]
@@ -238,12 +236,13 @@ struct RegistryStorageTests {
 
 actor PausingTrash: VMTrashService {
     let storage: ManagerStorage
+    let pauses: Bool
     var continuation: CheckedContinuation<Void, any Error>?
     var entered = false
-    init(storage: ManagerStorage) { self.storage = storage }
+    init(storage: ManagerStorage, pauses: Bool = true) { self.storage = storage; self.pauses = pauses }
     func moveToTrash(_ request: TrashRequest) async throws {
         entered = true
-        try await withCheckedThrowingContinuation { continuation = $0 }
+        if pauses { try await withCheckedThrowingContinuation { continuation = $0 } }
         try storage.trash(request.profile, expectedIdentity: request.expectedIdentity) {
             try FileManager.default.moveItem(at: $0, to: storage.applicationSupport.appendingPathComponent("simulated-trash"))
         }
@@ -257,6 +256,47 @@ actor PausingTrash: VMTrashService {
 
 @Suite("Registry lifecycle transactions")
 struct RegistryLifecycleTests {
+    @Test("saved-session guards block Trash even when added after opening or review", arguments: ["before-open", "before-review", "after-review", "helper"], [VMProfile(id: UUID(), name: "Saved-session fixture")] + POCProfiles.all)
+    func savedSessionDeletion(point: String, profile: VMProfile) async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let store = try RegistryStore(applicationSupport: f.support); _ = try store.load(); try store.save([profile])
+        let root = try profile.isRetainedPOC ? POCStorage(applicationSupport: f.support).prepare(profile) : f.storage.prepare(profile)
+        try PrivateFiles.directory(root.appendingPathComponent("shell"), create: true)
+        try PrivateFiles.write(Data("synthetic disk".utf8), name: "disk.img", in: root.appendingPathComponent("shell"))
+        let identity = try f.storage.deletionIdentity(profile)
+        let settings = try PrivateFiles.read(root.appendingPathComponent("settings.json"))
+        func addGuard() throws { try PrivateFiles.write(Data("{}".utf8), name: ".manager-suspension.json", in: root) }
+        if point == "before-open" { try addGuard() }
+        let trash = PausingTrash(storage: f.storage, pauses: point == "helper")
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [profile], applicationSupport: f.support, registry: store, trashService: trash)
+        if point == "before-review" { try addGuard() }
+        if point == "before-open" || point == "before-review" {
+            await #expect(throws: VMFailure.self) { _ = try await manager.deletionRequest(profile.id) }
+        } else {
+            #expect(try await manager.deletionRequest(profile.id)?.expectedIdentity == identity)
+        }
+        if point == "after-review" { try addGuard() }
+        if point == "helper" {
+            let task = Task { try await manager.delete(profile.id, confirmed: true, expectedIdentity: identity) }
+            #expect(await eventually { await trash.entered })
+            try addGuard()
+            await trash.finish()
+            await #expect(throws: VMFailure.self) { try await task.value }
+        } else {
+            await #expect(throws: VMFailure.self) { try await manager.delete(profile.id, confirmed: true, expectedIdentity: identity) }
+            #expect(!(await trash.entered))
+        }
+        #expect(try f.storage.deletionIdentity(profile) == identity)
+        #expect(try PrivateFiles.read(root.appendingPathComponent("settings.json")) == settings)
+        #expect(try PrivateFiles.read(root.appendingPathComponent("shell/disk.img")) == Data("synthetic disk".utf8))
+        #expect(try PrivateFiles.read(root.appendingPathComponent(".manager-suspension.json")) == Data("{}".utf8))
+        #expect(!PrivateFiles.exists(f.support.appendingPathComponent("simulated-trash")))
+        #expect(await manager.snapshots().map(\.id) == [profile.id])
+        #expect(store.pendingDeletions.isEmpty)
+        #expect(runtime.startedHandles.isEmpty)
+    }
+
     @Test("registry edits after opening prevent launch before a runtime or storage is touched")
     func editedRegistryBeforeLaunch() async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
@@ -291,14 +331,21 @@ struct RegistryLifecycleTests {
         #expect(!String(decoding: data, as: UTF8.self).contains("sessionID"))
     }
 
-    @Test("delete blocks concurrent start/configuration until helper result and preserves failures", arguments: [false, true])
-    func deleting(failure: Bool) async throws {
+    @Test("delete blocks concurrent start/configuration until helper result and preserves failures", arguments: [false, true], [VMProfile(id: UUID(), name: "Deletion fixture")] + POCProfiles.all)
+    func deleting(failure: Bool, profile: VMProfile) async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let store = try RegistryStore(applicationSupport: f.support); _ = try store.load()
-        let profile = f.profile(); try store.save([profile]); _ = try f.storage.prepare(profile)
+        let other = f.profile(name: "Keep this guest")
+        try store.save([profile, other])
+        _ = try profile.isRetainedPOC ? POCStorage(applicationSupport: f.support).prepare(profile) : f.storage.prepare(profile)
+        let otherRoot = try f.storage.prepare(other)
+        let otherIdentity = try f.storage.deletionIdentity(other)
         let service = PausingTrash(storage: f.storage)
-        let manager = VMManager(runtime: FakeRuntime(), profiles: [profile], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: store, trashService: service)
+        let manager = VMManager(runtime: FakeRuntime(), profiles: [profile, other], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: store, trashService: service)
         let review = try #require(await manager.deletionRequest(profile.id))
+        await #expect(throws: VMFailure.self) { try await manager.delete(profile.id, confirmed: false, expectedIdentity: review.expectedIdentity) }
+        await #expect(throws: VMFailure.self) { try await manager.delete(profile.id, confirmed: true, expectedIdentity: nil) }
+        #expect(!(await service.entered))
         let task = Task { try await manager.delete(profile.id, confirmed: true, expectedIdentity: review.expectedIdentity) }
         #expect(await eventually { await service.entered })
         await #expect(throws: VMFailure.self) { try await manager.start(profile.id) }
@@ -308,18 +355,25 @@ struct RegistryLifecycleTests {
         await service.finish(fail: failure)
         if failure {
             do { try await task.value; Issue.record("Expected failure") } catch {}
-            #expect(await manager.snapshots().count == 1)
+            #expect(await manager.snapshots().map(\.id) == [profile.id, other.id])
             #expect(FileManager.default.fileExists(atPath: f.storage.root(for: profile).path))
         } else {
-            try await task.value; #expect(await manager.snapshots().isEmpty)
+            try await task.value; #expect(await manager.snapshots().map(\.id) == [other.id])
+            #expect(!FileManager.default.fileExists(atPath: f.storage.root(for: profile).path))
+            #expect(FileManager.default.fileExists(atPath: f.support.appendingPathComponent("simulated-trash/settings.json").path))
         }
+        struct SavedRegistry: Decodable { let profiles: [VMProfile] }
+        let saved = try JSONDecoder().decode(SavedRegistry.self, from: Data(contentsOf: f.storage.directory.appendingPathComponent("registry.json")))
+        #expect(saved.profiles.map(\.id) == (failure ? [profile.id, other.id] : [other.id]))
+        #expect(store.pendingDeletions.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: otherRoot.path))
+        #expect(try f.storage.deletionIdentity(other) == otherIdentity)
         #expect(await manager.isIdle)
     }
 
-    @Test("an interrupted Trash operation survives relaunch and cannot recreate the missing disk")
-    func interruptedDeletion() async throws {
+    @Test("an interrupted Trash operation survives relaunch and cannot recreate the missing disk", arguments: [VMProfile(id: UUID(), name: "Interrupted fixture")] + POCProfiles.all)
+    func interruptedDeletion(profile: VMProfile) async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
-        let profile = f.profile()
         try seedInterruptedDeletion(f, profile: profile)
         let store = try reopenRegistry(f)
         let manager = VMManager(runtime: FakeRuntime(), profiles: try store.load(), applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: store)
@@ -331,17 +385,19 @@ struct RegistryLifecycleTests {
         #expect(store.pendingDeletions.isEmpty)
     }
 
-    @Test("active and protected VMs cannot be edited or deleted; quitting refuses new work")
-    func protections() async throws {
+    @Test("active VMs cannot be edited or deleted; POC configuration stays protected; quitting refuses new work", arguments: [VMProfile(id: UUID(), name: "Active fixture")] + POCProfiles.all)
+    func protections(profile: VMProfile) async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let store = try RegistryStore(applicationSupport: f.support); _ = try store.load()
-        let profile = f.profile(); let poc = POCProfiles.all[0]; try store.save([profile,poc])
+        try store.save([profile])
+        if profile.isRetainedPOC { _ = try POCStorage(applicationSupport: f.support).prepare(profile) }
         let runtime = FakeRuntime()
-        let manager = VMManager(runtime: runtime, profiles: [profile,poc], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: store)
-        await #expect(throws: VMFailure.self) { try await manager.configure(poc) }
-        await #expect(throws: VMFailure.self) { try await manager.delete(poc.id, confirmed: true, expectedIdentity: nil) }
+        let manager = VMManager(runtime: runtime, profiles: [profile], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: store)
+        if profile.isRetainedPOC { await #expect(throws: VMFailure.self) { try await manager.configure(profile) } }
         try await manager.start(profile.id)
         await #expect(throws: VMFailure.self) { try await manager.configure(profile) }
+        await #expect(throws: VMFailure.self) { _ = try await manager.deletionRequest(profile.id) }
+        runtime.startedHandles[0].emit(.error(.init(code: .launchFailed, message: "Synthetic error; session still owns disk")))
         await #expect(throws: VMFailure.self) { try await manager.delete(profile.id, confirmed: true, expectedIdentity: nil) }
         #expect(!(await manager.beginApplicationShutdown()))
         await #expect(throws: VMFailure.self) { _ = try await manager.create(name: "Late", memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false) }
@@ -353,7 +409,7 @@ struct RegistryLifecycleTests {
 private func seedInterruptedDeletion(_ fixture: RegistryFixture, profile: VMProfile) throws {
     let store = try RegistryStore(applicationSupport: fixture.support)
     _ = try store.load(); try store.save([profile])
-    let root = try fixture.storage.prepare(profile)
+    let root = try profile.isRetainedPOC ? POCStorage(applicationSupport: fixture.support).prepare(profile) : fixture.storage.prepare(profile)
     try store.markDeletion(profile.id)
     try FileManager.default.moveItem(at: root, to: fixture.support.appendingPathComponent("simulated-trash"))
 }

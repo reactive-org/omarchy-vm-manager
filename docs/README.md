@@ -32,7 +32,7 @@ Screenshots were captured on 31 October 2026. Guest names and the illustrated SS
 | Choose a factory | Official image or a verified compatible custom bundle, selected when creating a guest |
 | Reuse downloads | Shared verified factory-image cache in Downloads |
 
-Shared folders, USB, camera, authentication bridges, general port-forward editing, snapshots and importing existing VMs are unavailable in this build. The library's retained POC entries are protected from editing and deletion.
+Shared folders, USB, camera, authentication bridges, general port-forward editing, snapshots and importing existing VMs are unavailable in this build. The library's retained POC entries keep their original configuration; stopped entries can be moved to Trash through the normal confirmed deletion flow.
 
 ## Further reference
 

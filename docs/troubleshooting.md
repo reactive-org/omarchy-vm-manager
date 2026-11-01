@@ -42,7 +42,7 @@ A CLI wait timeout leaves the guest running. Use `wait` to continue observing it
 
 ## Launch, Configure or Delete is unavailable
 
-Configuration and deletion require a stopped guest. Retained POC profiles stay protected. Launch also requires compatible verified runtime files, host resources, free disk space and a free managed SSH port.
+Configuration and deletion require a stopped guest without an unresolved saved session. Retained POC profiles keep their original configuration but can use the normal confirmed Trash flow. Launch also requires compatible verified runtime files, host resources, free disk space and a free managed SSH port.
 
 Read the guest's error and **Session activity** before retrying. If files or settings changed outside the manager, preserve them and resolve the reported conflict; replacing or deleting the guest is not an automatic recovery step.
 

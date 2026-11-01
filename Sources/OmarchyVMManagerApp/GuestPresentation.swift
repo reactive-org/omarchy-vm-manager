@@ -80,7 +80,7 @@ struct GuestLibraryRow<Controls: View>: View {
                         } else if let failure = snapshot.lastFailure {
                             Text(failure.message).foregroundStyle(.red).lineLimit(2).help(failure.message)
                         } else if snapshot.profile.isRetainedPOC {
-                            Label("Retained POC disk", systemImage: "lock.shield").foregroundStyle(.secondary)
+                            Label("Retained POC disk", systemImage: "internaldrive").foregroundStyle(.secondary)
                         } else { Color.clear }
                     }.font(.caption).frame(maxWidth: .infinity, alignment: .topLeading).frame(height: 28, alignment: .top)
                 }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 120, alignment: .top)
