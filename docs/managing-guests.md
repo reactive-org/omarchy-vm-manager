@@ -24,7 +24,7 @@ The **Network** tab shows the mapping. In this screenshot, `127.0.0.1:2222` on t
 
 ![The Network tab showing shared NAT, a guest-specific localhost SSH forward and disabled host sharing](media/network.webp)
 
-Use the generated command or localhost endpoint to connect from the Mac. The private guest IP reported by the CLI is informational: two NAT guests can both report `10.0.2.15`. General port-forward editing and shared folders are unavailable in this build.
+Use the generated command or localhost endpoint to connect from the Mac. The private guest IP reported by the CLI is informational: two NAT guests can both report `10.0.2.15`. General port-forward editing remains unavailable. Native [host-folder sharing](SharedFolders.md) is opt-in: Configure a stopped guest to share a dedicated host folder (default `~/Shared`) at `/mnt/mac`, with read-write access. The Network page reports the exposed path and mount status. The screenshot predates this control.
 
 ## Choose windowed or immersive mode
 

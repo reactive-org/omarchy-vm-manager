@@ -12,6 +12,7 @@ public actor VMManager {
         var coldStart = false
         var reachedReady = false
         var sshTask: Task<Void, Never>?
+        var sharingTask: Task<Void, Never>?
         var ownerTask: Task<Void, Never>?
         var sshProbeID = UUID()
         var powerProbeTask: Task<Void, Never>?
@@ -39,6 +40,8 @@ public actor VMManager {
     private let trashService: (any VMTrashService)?
     private let sshProbe: (any SSHReadinessChecking)?
     private let hibernation: (any GuestHibernating)?
+    private let sharingProbe: (any SharedFolderChecking)?
+    private var sharingStates: [UUID: SharedFolderReadiness] = [:]
     private var powerCapabilities: [UUID: GuestHibernationCapability] = [:]
     private var suspensions: [UUID: ExperimentalSuspension] = [:]
     private var unsafeSuspensions: Set<UUID> = []
@@ -64,7 +67,7 @@ public actor VMManager {
                 hostMemoryMiB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 logicalCPUs: Int = ProcessInfo.processInfo.processorCount,
                 registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil,
-                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService()) {
+                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService(), sharingProbe: (any SharedFolderChecking)? = nil) {
         self.factoryTrashService = factoryTrashService
         self.runtime = runtime
         self.profiles = profiles
@@ -75,6 +78,7 @@ public actor VMManager {
         self.registry = registry
         self.trashService = trashService
         self.hibernation = hibernation
+        self.sharingProbe = sharingProbe
         self.sshProbe = sshProbe; self.portProbe = portProbe; self.ownerDefaults = ownerDefaults
         for profile in profiles {
             do { suspensions[profile.id] = try ExperimentalSuspendStore(root: ManagerStorage(applicationSupport: applicationSupport).root(for: profile)).load(vmID: profile.id) }
@@ -96,7 +100,7 @@ public actor VMManager {
             try storage.withLock(profile) { try ManagedOwnerStorage(root: storage.root(for: profile)).clearSeed() }
         }
         return VMManager(runtime: runtime, profiles: profiles, applicationSupport: applicationSupport,
-                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation())
+                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation(), sharingProbe: SSHSharedFolderProbe())
     }
 
     private var factoryCatalog: FactoryCatalog? = nil
@@ -176,7 +180,7 @@ public actor VMManager {
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
                        clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true,
                        publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true, factory: String = "official",
-                       ownerOverrides: GuestOwnerOverrides? = nil) async throws -> UUID {
+                       ownerOverrides: GuestOwnerOverrides? = nil, sharedFolder: SharedFolderMapping? = nil) async throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
         if let ownerOverrides {
             guard useOwnerDefaults != false, ownerDefaults != nil else { throw OwnerConfiguration.invalid("Owner overrides require enabled, saved Guest Defaults.") }
@@ -194,6 +198,11 @@ public actor VMManager {
         }
         var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus, diskGiB: diskGiB,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
+        try sharedFolder?.validate()
+        if let sharedFolder, sharedFolder.enabled {
+            guard sshEnabled else { throw SharedFolderPolicy.failure("Native sharing requires managed SSH to verify the mount.") }
+            try SharedFolderPolicy.validateHost(sharedFolder)
+        }
         if factory == "official" { profile.factory = .official }
         else {
             guard let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
@@ -221,6 +230,7 @@ public actor VMManager {
             let fingerprint = try chosenPublicKey.map { try SelectedPublicKeyStore(applicationSupport: applicationSupport).save($0, id: profile.id) }
             profile.ssh = SSHOptions(hostPort: port, publicKeyFingerprint: fingerprint)
         }
+        profile.sharedFolder = sharedFolder
         try validateResources(profile)
         do { try registry.save(profiles + [profile]) }
         catch { SelectedPublicKeyStore(applicationSupport: applicationSupport).remove(profile.id); throw error }
@@ -254,6 +264,7 @@ public actor VMManager {
         if let value = configuration.diskGiB { profile.diskGiB = value }
         if let value = configuration.clipboard { profile.clipboardEnabled = value }
         if let value = configuration.immersive { profile.immersiveMode = value }
+        profile.sharedFolder = try configuration.sharing(replacing: profile.sharedFolder)
         try configure(profile)
     }
 
@@ -271,6 +282,7 @@ public actor VMManager {
             }
         }
         try validateResources(profile)
+        if let share = profile.sharedFolder, share.enabled { try SharedFolderPolicy.validateHost(share) }
         var edited = profile
         let storage = ManagerStorage(applicationSupport: applicationSupport)
         func save() throws {
@@ -358,7 +370,7 @@ public actor VMManager {
             VMSnapshot(profile: $0, state: states[$0.id] ?? .stopped,
                        sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: notices[$0.id],
                        sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped),
-                       ownerSetupReadiness: ownerReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false)
+                       ownerSetupReadiness: ownerReadiness($0), sharedFolderReadiness: sharingReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false)
         }
     }
 
@@ -475,6 +487,8 @@ public actor VMManager {
     private func beginSSHProbe(_ request: VMStartRequest) {
         guard request.profile.ssh != nil, let sshProbe else { return }
         sessions[request.profile.id]?.sshTask?.cancel()
+        sessions[request.profile.id]?.sharingTask?.cancel(); sessions[request.profile.id]?.sharingTask = nil
+        sharingStates[request.profile.id] = .waitingForSSH
         sessions[request.profile.id]?.powerProbeTask?.cancel()
         powerCapabilities[request.profile.id] = nil
         sshStates[request.profile.id] = .provisioning
@@ -492,13 +506,56 @@ public actor VMManager {
               probeID == nil || probeID == session.sshProbeID,
               states[vmID] == .running || !session.reachedReady else { return }
         sshStates[vmID] = status
-        if case .ready(let user, _) = status { beginPowerProbe(vmID, user: user) }
-        else if case .failed = status { powerCapabilities[vmID] = nil }
+        if case .ready(let user, _) = status {
+            beginPowerProbe(vmID, user: user)
+            beginSharingProbe(vmID, user: user)
+        } else if profiles.first(where: { $0.id == vmID })?.sharedFolder?.enabled == true {
+            sessions[vmID]?.sharingTask?.cancel(); sessions[vmID]?.sharingTask = nil
+            if case .failed = status {
+                sharingStates[vmID] = .failed("The mount cannot be verified because authenticated managed SSH is unavailable. Review SSH and use Retry SSH Check.")
+            } else { sharingStates[vmID] = .waitingForSSH }
+        }
+        if case .failed = status { powerCapabilities[vmID] = nil }
     }
 
     public func retrySSH(_ id: UUID) {
         guard let session = sessions[id], states[id] == .running, let profile = profiles.first(where: { $0.id == id }) else { return }
         beginSSHProbe(VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id))
+    }
+
+    private func sharingReadiness(_ profile: VMProfile) -> SharedFolderReadiness {
+        guard profile.sharedFolder?.enabled == true else { return .disabled }
+        guard sessions[profile.id] != nil else { return .stopped }
+        guard states[profile.id] == .running else { return .unverified }
+        return sharingStates[profile.id] ?? .waitingForSSH
+    }
+
+    private func beginSharingProbe(_ id: UUID, user: String) {
+        guard let sharingProbe, let session = sessions[id], session.sharingTask == nil, session.powerProbeTask == nil,
+              states[id] == .running, !session.shutdownRequested, !session.forceRequested,
+              let profile = profiles.first(where: { $0.id == id }), profile.sharedFolder?.enabled == true else { return }
+        let request = VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id)
+        let generation = session.sshProbeID
+        sharingStates[id] = .checking
+        sessions[id]?.sharingTask = Task { [weak self] in
+            let status: SharedFolderReadiness
+            do { try await sharingProbe.check(request, user: user); status = .mounted }
+            catch {
+                let failure = error as? VMFailure
+                status = .failed(failure?.code == "shared-folder-unavailable" ? failure!.message : SSHSharedFolderProbe.failure().message)
+            }
+            guard !Task.isCancelled else { return }
+            await self?.receiveSharing(status, request: request, generation: generation)
+        }
+    }
+
+    private func receiveSharing(_ status: SharedFolderReadiness, request: VMStartRequest, generation: UUID) {
+        let id = request.profile.id
+        guard let session = sessions[id], session.id == request.sessionID, session.sshProbeID == generation,
+              states[id] == .running, !session.shutdownRequested, !session.forceRequested else { return }
+        sessions[id]?.sharingTask = nil
+        guard case .ready = sshStates[id] else { return }
+        sharingStates[id] = status
     }
 
     public func pause(_ id: UUID, timeout: Duration = .seconds(10)) async throws {
@@ -556,6 +613,8 @@ public actor VMManager {
     }
 
     private func suspendReadiness(_ id: UUID) {
+        sessions[id]?.sharingTask?.cancel(); sessions[id]?.sharingTask = nil
+        sharingStates[id] = .unverified
         sessions[id]?.powerProbeTask?.cancel(); sessions[id]?.powerProbeTask = nil
         powerCapabilities[id] = nil
         sessions[id]?.sshTask?.cancel(); sessions[id]?.ownerTask?.cancel()
@@ -654,7 +713,9 @@ public actor VMManager {
             sessions[vmID]?.reachedReady = true
             if states[vmID] != .stopping {
                 states[vmID] = .running
-                if case .ready(let user, _) = sshStates[vmID] { beginPowerProbe(vmID, user: user) }
+                if case .ready(let user, _) = sshStates[vmID] {
+                    beginPowerProbe(vmID, user: user); beginSharingProbe(vmID, user: user)
+                }
                 if suspensions[vmID]?.stage == .restoring { beginRestoreVerification(vmID) }
             }
         case .executionState(let report):
@@ -668,6 +729,8 @@ public actor VMManager {
         case .exited(let status):
             cancelExecutionChange(vmID, code: "guest-exited")
             session.sshTask?.cancel()
+            session.sharingTask?.cancel()
+            sharingStates[vmID] = nil
             session.ownerTask?.cancel()
             session.powerProbeTask?.cancel(); session.powerOperationTask?.cancel()
             powerCapabilities[vmID] = nil
@@ -734,6 +797,7 @@ extension VMManager {
               states[id] == .running, !session.shutdownRequested, !session.forceRequested else { return }
         powerCapabilities[id] = value
         sessions[id]?.powerProbeTask = nil
+        if case .ready(let user, _) = sshStates[id] { beginSharingProbe(id, user: user) }
     }
     public func experimentalSuspend(_ id: UUID, confirmed: Bool, exitTimeout: Duration = .seconds(180)) async throws {
         guard confirmed else { throw VMFailure(code: "experimental-opt-in-required", message: "Confirm the experimental suspension risks before attempting it.") }

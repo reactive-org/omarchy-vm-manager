@@ -101,7 +101,23 @@ public struct ManagedSSHProbe: SSHReadinessChecking {
 }
 
 final class SSHProbeProcess: @unchecked Sendable {
-    struct Result { let status: Int32; let output: Data; let hostKeyMismatch: Bool }
+    struct Result: Sendable { let status: Int32; let output: Data; let hostKeyMismatch: Bool; let failureKind: String }
+    static func failureKind(_ stderr: String) -> String {
+        let text = stderr.lowercased()
+        if text.isEmpty { return "empty" }
+        if text.contains("operation not permitted") { return "host-denied" }
+        if text.contains("maxstartups") { return "busy" }
+        if text.contains("unable to negotiate") { return "negotiation" }
+        if text.contains("bad port") || text.contains("bad configuration") || text.contains("unknown option") { return "configuration" }
+        if text.contains("permission denied") { return "authentication" }
+        if text.contains("could not resolve hostname") { return "hostname" }
+        if text.contains("connection refused") { return "refused" }
+        if text.contains("timed out") { return "timeout" }
+        if text.contains("no route to host") || text.contains("network is unreachable") { return "unreachable" }
+        if text.contains("connection reset") || text.contains("connection closed") { return "closed" }
+        if text.contains("load key") || text.contains("identity file") { return "key-access" }
+        return "unknown"
+    }
     private let lock = NSLock()
     private var process: Process?
     private var cancelled = false
@@ -129,6 +145,6 @@ final class SSHProbeProcess: @unchecked Sendable {
         if error.count > 8192 { cancel() }
         child.waitUntilExit()
         let message = String(decoding: error, as: UTF8.self)
-        return Result(status: child.terminationStatus, output: data, hostKeyMismatch: message.contains("REMOTE HOST IDENTIFICATION HAS CHANGED") || message.contains("Host key verification failed"))
+        return Result(status: child.terminationStatus, output: data, hostKeyMismatch: message.contains("REMOTE HOST IDENTIFICATION HAS CHANGED") || message.contains("Host key verification failed"), failureKind: Self.failureKind(message))
     }
 }

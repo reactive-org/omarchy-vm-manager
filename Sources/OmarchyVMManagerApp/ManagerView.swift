@@ -234,9 +234,12 @@ struct ManagerView: View {
                 Divider().padding(.horizontal, 20)
                 SettingsRow("Port Forwarding", subtitle: snapshot.profile.ssh.map { "SSH · 127.0.0.1:\($0.hostPort) → guest TCP 22" } ?? "This guest starts without host port forwards.", icon: "arrow.left.arrow.right", color: .indigo) { Text(snapshot.profile.ssh == nil ? "Off" : "SSH").foregroundStyle(.secondary) }
                 Divider().padding(.horizontal, 20)
-                SettingsRow("Host Sharing", subtitle: "Shared folders, USB, camera and authentication are disabled.", icon: "folder.fill", color: .cyan) { Text("Off").foregroundStyle(.secondary) }
+                SettingsRow("Host Folder", subtitle: snapshot.profile.sharedFolder.map { $0.enabled ? "\($0.hostPath) → \($0.guestPath) · Read & write" : "Sharing off · Remembered folder: \($0.hostPath)" } ?? "No host folder is exposed.", icon: "folder.fill", color: .cyan) {
+                    Text(snapshot.sharedFolderReadiness.label).foregroundStyle(.secondary)
+                    Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
+                }
             }
-            Text("Managed SSH uses a guest-specific Mac loopback port. General port forwarding and host sharing remain unavailable.").font(.callout).foregroundStyle(.secondary)
+            Text("Managed SSH uses a guest-specific Mac loopback port. Host-folder changes apply on the next start. Disable sharing in Configure to remove the export on that start. USB, camera and authentication remain off.").font(.callout).foregroundStyle(.secondary)
         }
     }
 
@@ -388,6 +391,8 @@ private struct VMEditor: View {
     @State private var disk: Int
     @State private var clipboard: Bool
     @State private var immersive: Bool
+    @State private var share: Bool
+    @State private var sharePath: String
     @State private var saving = false
     @State private var sshEnabled: Bool
     @State private var selectedPublicKey: String?
@@ -403,6 +408,8 @@ private struct VMEditor: View {
         _disk = State(initialValue: profile?.diskGiB ?? 64)
         _clipboard = State(initialValue: profile?.clipboardEnabled ?? true)
         _immersive = State(initialValue: profile?.immersiveMode ?? false)
+        _share = State(initialValue: profile?.sharedFolder?.enabled ?? false)
+        _sharePath = State(initialValue: profile?.sharedFolder?.hostPath ?? SharedFolderMapping.defaultPath)
         _useOwnerDefaults = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true)
         _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true ? model.ownerDefaults?.sshPublicKey : nil)
         _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
@@ -430,6 +437,13 @@ private struct VMEditor: View {
                 Stepper("Disk capacity: \(disk) GiB", value: $disk, in: max(64, profile?.diskGiB ?? 64)...8192, step: 16)
                 Toggle("Clipboard integration", isOn: $clipboard)
                 Toggle("Immersive Mode", isOn: $immersive)
+                Toggle("Share a host folder", isOn: $share).disabled(!sshEnabled)
+                if share {
+                    TextField("Host folder", text: $sharePath)
+                    Text("Exposes \(sharePath) at /mnt/mac · Read & write. The guest can modify or delete files in this folder. Use a dedicated folder without credentials. Changes apply next start.")
+                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                if !sshEnabled { Text("Managed SSH is required to verify a shared mount.").font(.caption).foregroundStyle(.secondary) }
                 if profile == nil {
                     Toggle("Use saved owner setup defaults", isOn: $useOwnerDefaults).disabled(model.ownerDefaults?.enabled != true)
                         .onChange(of: useOwnerDefaults) { _, value in
@@ -443,6 +457,7 @@ private struct VMEditor: View {
                     Text("Owner defaults snapshot: \(setup.configuration.username) · \(setup.hostname). First-boot answers cannot be changed here.").font(.caption).foregroundStyle(.secondary)
                 }
                 Toggle("Enable SSH from this Mac", isOn: $sshEnabled).disabled(profile != nil)
+                    .onChange(of: sshEnabled) { _, value in if !value { share = false } }
                 if profile == nil { Text("SSH uses a separate localhost port and automatic per-guest keys after account setup.").font(.caption).foregroundStyle(.secondary) }
                 if sshEnabled, profile == nil {
                     HStack {
@@ -459,13 +474,13 @@ private struct VMEditor: View {
             }.formStyle(.grouped)
             if let error = keyError { Text(error).foregroundStyle(.red).font(.callout) }
             if let error = model.configurationError { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }
-            Text(profile == nil ? "The selected factory prepares on first launch. Each guest has independent storage. Networking uses NAT; shared folders, USB, camera and authentication are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.callout).foregroundStyle(.secondary)
+            Text(profile == nil ? "The selected factory prepares on first launch. Each guest has independent storage. Networking uses NAT. Host-folder sharing is opt-in; USB, camera and authentication are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.callout).foregroundStyle(.secondary)
             HStack {
                 Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     saving = true
                     Task {
-                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory) { saved(id) }
+                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath) { saved(id) }
                         saving = false
                     }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)

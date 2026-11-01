@@ -4,7 +4,11 @@ import TryOmarchyKitClient
 
 public struct ManagerStorage: Sendable {
     public let applicationSupport: URL
+    private var sharingHome = FileManager.default.homeDirectoryForCurrentUser
     public init(applicationSupport: URL) { self.applicationSupport = applicationSupport.resolvingSymlinksInPath() }
+    init(applicationSupport: URL, sharingHome: URL) {
+        self.init(applicationSupport: applicationSupport); self.sharingHome = sharingHome
+    }
     public var directory: URL { applicationSupport.appendingPathComponent("Omarchy VM Manager") }
     public var vms: URL { directory.appendingPathComponent("VMs") }
     public func root(for profile: VMProfile) -> URL { vms.appendingPathComponent(profile.id.uuidString) }
@@ -29,6 +33,7 @@ public struct ManagerStorage: Sendable {
     private struct Schema: Decodable { let schemaVersion: Int }
     private struct Forwarding: Decodable { struct Mapping: Decodable { let hostPort: Int; let guestPort: Int; let `protocol`: String }; let schemaVersion: Int; let mappings: [Mapping] }
     private struct Fullscreen: Decodable { let schemaVersion: Int; let isImmersive: Bool; let usesNotch: Bool? }
+    private struct SharedPreference: Decodable { let schemaVersion: Int; let path: String; let isEnabled: Bool }
     private struct ResourcePreferences: Decodable {
         struct Resources: Decodable { let cpuCount: Int; let memoryGiB: Int; let diskGiB: Int? }
         let schemaVersion: Int
@@ -37,6 +42,7 @@ public struct ManagerStorage: Sendable {
 
     public func prepare(_ profile: VMProfile, sessionID: UUID = UUID(), ownerPassword: Data? = nil, ownerContract: String = VMOwnerSetupContract.official) throws -> URL {
         try RegistryStore.validate(profile)
+        if let share = profile.sharedFolder, share.enabled { try SharedFolderPolicy.validateHost(share, home: sharingHome) }
         try PrivateFiles.directory(directory, create: true)
         try PrivateFiles.directory(vms, create: true)
         let root = root(for: profile)
@@ -48,6 +54,7 @@ public struct ManagerStorage: Sendable {
             try PrivateFiles.write(JSONEncoder().encode(Marker(schemaVersion: 1, id: profile.id)), name: ".omarchy-vm-manager.json", in: root, exclusively: true)
             try PrivateFiles.write(Data("omarchy-qemu-storage-root-v1\n".utf8), name: ".omarchy-qemu-storage", in: root, exclusively: true)
             var values: [String: Any] = Dictionary(uniqueKeysWithValues: POCStorage.inheritedKeys.map { ($0, NSNull()) })
+            if let share = profile.sharedFolder { values["sharedFolderPreferences"] = share.runtimePreference }
             if let ssh = profile.ssh { values["portForwardingPreferences"] = ["schemaVersion": 1, "mappings": [["hostPort": ssh.hostPort, "guestPort": 22, "protocol": "tcp"]]] }
             if profile.diskGiB != nil { values["vmResourcePreferences"] = resourcePreferences(profile) }
             let settings: [String: Any] = ["schemaVersion": 1, "settings": values]
@@ -58,22 +65,24 @@ public struct ManagerStorage: Sendable {
             created = true
         }
         try validate(profile)
-        if !profile.isRetainedPOC, profile.diskGiB != nil || profile.immersiveMode != nil {
+        if !profile.isRetainedPOC, profile.diskGiB != nil || profile.immersiveMode != nil || profile.sharedFolder != nil {
             try withLock(profile) {
                 try validate(profile)
                 var settings = try settings(profile)
                 var values = settings["settings"] as! [String: Any]
                 let resourcesMatch = profile.diskGiB == nil || jsonEqual(values["vmResourcePreferences"], resourcePreferences(profile))
+                let sharingMatches = profile.sharedFolder.map { jsonEqual(values["sharedFolderPreferences"], $0.runtimePreference) } ?? true
                 let fullscreenMatches = profile.immersiveMode == nil || {
                     guard let current = values["fullscreenPreferences"] as? [String: Any] else { return false }
                     return current["isImmersive"] as? Bool == profile.immersiveMode
                 }()
-                if resourcesMatch, fullscreenMatches { return }
+                if resourcesMatch, fullscreenMatches, sharingMatches { return }
                 let fingerprint = try settingsFingerprint(profile)
                 guard created || fingerprint == profile.settingsFingerprint else {
                     throw VMFailure(code: "settings-changed", message: "VM settings changed outside the manager. They were preserved. Review and save the configuration again before launching.")
                 }
                 if !resourcesMatch { values["vmResourcePreferences"] = resourcePreferences(profile) }
+                if !sharingMatches, let share = profile.sharedFolder { values["sharedFolderPreferences"] = share.runtimePreference }
                 if !fullscreenMatches, let immersive = profile.immersiveMode {
                     values["fullscreenPreferences"] = ["schemaVersion": 1, "isImmersive": immersive, "usesNotch": true]
                 }
@@ -138,6 +147,13 @@ public struct ManagerStorage: Sendable {
             }
         }
         for (key, value) in values where !(value is NSNull) {
+            if key == "sharedFolderPreferences", profile.sharedFolder != nil,
+               let payload = value as? [String: Any], Set(payload.keys) == ["schemaVersion", "path", "isEnabled"],
+               let typed = try? JSONDecoder().decode(SharedPreference.self, from: JSONSerialization.data(withJSONObject: payload)),
+               typed.schemaVersion == 1 {
+                try SharedFolderMapping(hostPath: typed.path, enabled: typed.isEnabled).validate()
+                continue
+            }
             if key == "portForwardingPreferences", profile.ssh != nil { continue }
             if key == "vmResourcePreferences", profile.diskGiB != nil,
                let payload = value as? [String: Any], Set(payload.keys) == ["schemaVersion", "resources"],

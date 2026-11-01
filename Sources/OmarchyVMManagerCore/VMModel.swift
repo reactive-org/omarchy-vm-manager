@@ -14,6 +14,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public var ssh: SSHOptions? = nil
     public var ownerSetup: OwnerSetupOptions? = nil
     public var factory: FactoryIdentity? = nil
+    public var sharedFolder: SharedFolderMapping? = nil
 
     public var isRetainedPOC: Bool { POCProfiles.ids.contains(id) }
 
@@ -31,7 +32,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, memoryMiB, cpus, diskGiB, clipboardEnabled, createdAt, immersiveMode
-        case settingsFingerprint, ssh, ownerSetup, factory
+        case settingsFingerprint, ssh, ownerSetup, factory, sharedFolder
     }
 
     public init(from decoder: any Decoder) throws {
@@ -48,6 +49,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
         ssh = try values.decodeIfPresent(SSHOptions.self, forKey: .ssh)
         ownerSetup = try values.decodeIfPresent(OwnerSetupOptions.self, forKey: .ownerSetup)
         factory = try values.decodeIfPresent(FactoryIdentity.self, forKey: .factory)
+        sharedFolder = try values.decodeIfPresent(SharedFolderMapping.self, forKey: .sharedFolder)
     }
 }
 
@@ -117,6 +119,7 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
     public let notice: String?
     public var sshReadiness: SSHReadiness = .disabled
     public var ownerSetupReadiness: OwnerSetupReadiness = .manual
+    public var sharedFolderReadiness: SharedFolderReadiness = .disabled
     public var hibernation: GuestHibernationCapability?
     public var suspension: ExperimentalSuspension?
     public var suspensionMetadataUnsafe = false
@@ -130,10 +133,11 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
     }
 
     public init(profile: VMProfile, state: VMState, sessionID: UUID? = nil, lastFailure: VMFailure? = nil,
-                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual, hibernation: GuestHibernationCapability? = nil, suspension: ExperimentalSuspension? = nil, suspensionMetadataUnsafe: Bool = false, experimentalPowerBusy: Bool = false) {
+                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual, sharedFolderReadiness: SharedFolderReadiness = .disabled, hibernation: GuestHibernationCapability? = nil, suspension: ExperimentalSuspension? = nil, suspensionMetadataUnsafe: Bool = false, experimentalPowerBusy: Bool = false) {
         self.profile = profile; self.state = state; self.sessionID = sessionID
         self.lastFailure = lastFailure; self.notice = notice
         self.sshReadiness = sshReadiness; self.ownerSetupReadiness = ownerSetupReadiness
+        self.sharedFolderReadiness = sharedFolderReadiness
         self.hibernation = hibernation; self.suspension = suspension; self.suspensionMetadataUnsafe = suspensionMetadataUnsafe; self.experimentalPowerBusy = experimentalPowerBusy
     }
 }

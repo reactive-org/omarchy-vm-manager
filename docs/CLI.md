@@ -22,7 +22,9 @@ Replies are one compact JSON object on stdout. `--help` prints human-readable us
 
 ## Configuration
 
-Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `clipboard`, `immersive`, `ssh`, `ownerDefaults`, `ownerOverrides`, `publicKey`, `inheritDefaultPublicKey` and creation-only `factory`. Unknown keys and nulls are rejected. For example:
+Native host folders are opt-in: `create work --share on` uses `~/Shared`; `--share-path "$HOME/WorkShare"` overrides the path and opts in. Update a stopped guest with `--share off` to disable on its next start. The native guest destination is `/mnt/mac`, access is read-write, and the dedicated host folder must already exist. Managed SSH is required for mount verification. See [sharing configuration, prerequisites and recovery](SharedFolders.md).
+
+Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `clipboard`, `immersive`, `ssh`, `ownerDefaults`, `ownerOverrides`, `publicKey`, `inheritDefaultPublicKey`, `share`, `sharePath` and creation-only `factory`. Unknown keys and nulls are rejected. For example:
 
 ```json
 {"memoryMiB":8192,"cpus":8,"diskGiB":64,"clipboard":true,"immersive":false}

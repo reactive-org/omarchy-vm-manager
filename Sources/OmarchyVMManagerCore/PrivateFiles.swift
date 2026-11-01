@@ -58,6 +58,7 @@ public enum PrivateFiles {
 }
 
 public final class RegistryStore: @unchecked Sendable {
+    public static let supportedSchemaVersions = 1...5
     public let directory: URL
     private let lockFD: Int32
     private var revision: Data?
@@ -107,7 +108,7 @@ public final class RegistryStore: @unchecked Sendable {
         if PrivateFiles.exists(file) {
             let data = try PrivateFiles.read(file, maximum: 1_048_576)
             let registry = try JSONDecoder().decode(Registry.self, from: data)
-            guard (1...4).contains(registry.schemaVersion) else { throw PrivateFiles.failure("Unknown registry version. The original file was preserved.") }
+            guard Self.supportedSchemaVersions.contains(registry.schemaVersion) else { throw PrivateFiles.failure("Unknown registry version. The original file was preserved.") }
             try Self.validate(registry.profiles)
             let pending = registry.pendingDeletions ?? []
             guard pending.isSubset(of: Set(registry.profiles.map(\.id))) else { throw PrivateFiles.failure("Invalid pending deletion metadata; the registry was preserved.") }
@@ -136,6 +137,21 @@ public final class RegistryStore: @unchecked Sendable {
     }
 
     public func save(_ profiles: [VMProfile]) throws { try access.withLock { try saveLocked(profiles) } }
+
+    /// Shared admission for the separate storage helper. This does not acquire
+    /// the manager lock or authorize a filesystem mutation by itself.
+    public static func profileForDeletion(in data: Data, id: UUID) throws -> VMProfile {
+        guard data.count <= 1_048_576 else { throw PrivateFiles.failure("The registry is too large.") }
+        let registry = try JSONDecoder().decode(Registry.self, from: data)
+        guard supportedSchemaVersions.contains(registry.schemaVersion),
+              registry.pendingDeletions?.contains(id) == true,
+              registry.profiles.filter({ $0.id == id }).count == 1,
+              let profile = registry.profiles.first(where: { $0.id == id }) else {
+            throw VMFailure(code: "unregistered-vm", message: "The VM is not uniquely registered for a reviewed deletion.")
+        }
+        try validate(profile)
+        return profile
+    }
     private func saveLocked(_ profiles: [VMProfile]) throws {
         guard loaded else { throw PrivateFiles.failure("Load the registry before changing it.") }
         try Self.validate(profiles)
@@ -147,7 +163,7 @@ public final class RegistryStore: @unchecked Sendable {
         } else if PrivateFiles.exists(file) { throw PrivateFiles.failure("A registry appeared during initialization. It was preserved.") }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let nextPending = pending.intersection(Set(profiles.map(\.id)))
-        let nextSchema = max(schemaVersion, profiles.contains(where: { $0.diskGiB != nil }) ? 4 : (profiles.contains(where: { $0.ownerSetup != nil }) ? 3 : (profiles.contains(where: { $0.ssh != nil }) ? 2 : 1)))
+        let nextSchema = max(profiles.contains(where: { $0.sharedFolder != nil }) ? 5 : schemaVersion, profiles.contains(where: { $0.diskGiB != nil }) ? 4 : (profiles.contains(where: { $0.ownerSetup != nil }) ? 3 : (profiles.contains(where: { $0.ssh != nil }) ? 2 : 1)))
         let data = try encoder.encode(Registry(schemaVersion: nextSchema, profiles: profiles, pendingDeletions: nextPending))
         guard data.count <= 1_048_576 else { throw PrivateFiles.failure("The registry is too large.") }
         try PrivateFiles.write(data, name: "registry.json", in: directory, exclusively: revision == nil)
@@ -167,10 +183,12 @@ public final class RegistryStore: @unchecked Sendable {
         if let poc = POCProfiles.all.first(where: { $0.id == profile.id }) {
             guard profile.name == poc.name, profile.memoryMiB == poc.memoryMiB, profile.cpus == poc.cpus,
                   profile.diskGiB == nil, profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil,
-                  profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil, profile.factory == nil else {
+                  profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil, profile.factory == nil, profile.sharedFolder == nil else {
                 throw PrivateFiles.failure("Retained POC metadata is protected. Restore its original profile; its disk was preserved.")
             }
         }
+        try profile.sharedFolder?.validate()
+        if profile.sharedFolder?.enabled == true, profile.ssh == nil { throw SharedFolderPolicy.failure("Native sharing requires managed SSH to verify the guest mount.") }
         try profile.factory?.validate()
         try profile.ownerSetup?.validate(for: profile.id)
         if let ssh = profile.ssh {
