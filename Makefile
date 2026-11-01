@@ -5,9 +5,9 @@ export CLANG_MODULE_CACHE_PATH := $(CURDIR)/.build/module-cache/clang
 export MACOSX_DEPLOYMENT_TARGET := 15.0
 export RELEASE_TAG
 
-.PHONY: prepare-source help build build-signed icon test test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
+.PHONY: prepare-source help build build-signed icon test test-build-policies test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -26,6 +26,11 @@ test: prepare-source
 	# Each lifecycle test still exercises its own concurrent tasks and sessions.
 	swift test --disable-sandbox --no-parallel
 	python3 -m unittest discover -s Tests/ScriptTests -v
+
+test-build-policies: prepare-source
+	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
+	swift test --disable-sandbox -c release --filter compiledLaunchAdmission
+	swift test --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE --filter compiledLaunchAdmission
 
 fetch-kit:
 	Scripts/fetch-try-omarchy-kit.sh

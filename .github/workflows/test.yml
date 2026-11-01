@@ -17,6 +17,8 @@ jobs:
           submodules: true
       - name: Manager and artifact contracts
         run: make test
+      - name: Optimized release and signed-prerelease admission
+        run: make test-build-policies
       - name: Build app, CLI and storage helper
         run: make build
       - name: Render and validate native app icon
@@ -57,12 +59,17 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: make signed-prerelease
-      - name: Retain Apple diagnostics on failure
+      - name: Retain notarization diagnostics and candidate archives on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: notarization-diagnostics-${{ github.ref_name }}
-          path: .build/notarization/*.json
+          path: |
+            .build/notarization/*.json
+            .build/signed-release/kit/TryOmarchyKit.zip
+            .build/signed-release/kit/TryOmarchyKit.json
+            .build/signed-release/TryOmarchySignedRuntime.lock.json
+            .build/signed-release/notary-app.zip
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7

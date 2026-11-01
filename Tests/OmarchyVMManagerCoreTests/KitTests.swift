@@ -37,6 +37,24 @@ struct KitFixture {
 
 @Suite("Kit provenance")
 struct KitTests {
+    @Test("compiled launch admission applies the build policy before touching storage")
+    func compiledLaunchAdmission() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let admission = POCLaunchAdmission(kit: TryOmarchyKit(bundleURL: root.appendingPathComponent("missing.bundle")),
+                                           lockData: Data(), applicationSupport: root)
+        do {
+            try admission.validateKit()
+            Issue.record("An unpinned runtime was admitted")
+        } catch let failure as VMFailure {
+            #if DEBUG || SIGNED_PRERELEASE
+            #expect(failure.code == "kit-provenance-invalid")
+            #else
+            #expect(failure.code == "private-build-only")
+            #endif
+        }
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
     @Test("signed fork provenance requires a distinct runtime, source pin and signing team")
     func signedPrereleasePolicy() throws {
         var fixture = try KitFixture(); defer { fixture.cleanup() }

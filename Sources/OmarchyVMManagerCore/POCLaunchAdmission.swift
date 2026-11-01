@@ -135,7 +135,7 @@ public struct POCLaunchAdmission: Sendable {
         #endif
     }
     func validateKit() throws {
-        #if !DEBUG
+        #if !DEBUG && !SIGNED_PRERELEASE
         throw VMFailure(code: "private-build-only", message: "The development kit is refused by release builds.")
         #else
         let diagnostic = try KitVerifier.inspect(kit: kit, lockData: lockData,

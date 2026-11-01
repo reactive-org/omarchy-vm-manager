@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble only a private debug app with exact kit content and ad-hoc signing."""
+"""Assemble a debug or authorized signed prerelease app with exact kit content."""
 import argparse
 import json
 import os
@@ -21,7 +21,7 @@ def assemble():
     parser.add_argument("--preview", action="store_true", help="Build a sibling app without replacing the running manager")
     parser.add_argument("--layout-preview", action="store_true", help="Build an isolated no-VM lifecycle layout gallery")
     parser.add_argument("--output-directory", type=Path, default=ROOT / "dist", help="Separate packaging output from the normal local app")
-    parser.add_argument("--preserve-runtime-signatures", action="store_true", help="Reuse the exact upstream-pipeline ad-hoc signatures across macOS builder versions")
+    parser.add_argument("--preserve-runtime-signatures", action="store_true", help="Reuse the exact upstream-pipeline runtime signatures across app builds")
     parser.add_argument("--runtime-lock", type=Path, default=ROOT / "Config/TryOmarchyRuntime.lock.json")
     parser.add_argument("--runtime-directory", type=Path)
     parser.add_argument("--signed-prerelease", action="store_true")
