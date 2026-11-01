@@ -125,6 +125,25 @@ struct LifecycleTests {
         #expect(await manager.activeSessionCount == 0)
     }
 
+    @Test("completed unpacking clears its percentage during final disk preparation")
+    func preparationCompletion() async throws {
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [profile], applicationSupport: root)
+        try await manager.start(profile.id)
+        let sessionID = try #require(await manager.snapshots()[0].sessionID)
+        for percent in [49, 100] {
+            await manager.receive(.progress(.preparing, percent: percent), vmID: profile.id, sessionID: sessionID)
+            #expect(await manager.snapshots()[0].state == .starting(phase: .preparing, percent: percent))
+        }
+        await manager.receive(.progress(.finishing, percent: nil), vmID: profile.id, sessionID: sessionID)
+        #expect(await manager.snapshots()[0].state == .starting(phase: .finishing, percent: nil))
+        #expect(await manager.activeSessionCount == 1)
+        await manager.receive(.ready, vmID: profile.id, sessionID: sessionID)
+        #expect(await manager.snapshots()[0].state == .running)
+        await manager.receive(.exited(status: 0), vmID: profile.id, sessionID: sessionID)
+        #expect(await manager.activeSessionCount == 0)
+    }
+
     @Test("progress and notice preserve independent VM state")
     func independentSessions() async throws {
         let runtime = FakeRuntime()

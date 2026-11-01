@@ -16,7 +16,7 @@ and ARM64 Omarchy with UEFI/Limine boot.
 
 Use an existing Omarchy VM Manager checkout and matching built app/CLI, plus a
 [dev-vm checkout](https://github.com/reactive-org/dev-vm). The lean path below
-matches the reviewed **0.9.1** runtime, integration package **0.1.0-42** and
+matches the reviewed **0.9.3** runtime, integration package **0.1.0-43** and
 `lean-e4fffc6` owner-setup contract. Check [Lean owner setup](LeanOwnerSetup.md)
 when using another revision; factory compatibility is tied to exact runtime
 hashes, rather than the app version alone.
@@ -87,15 +87,15 @@ workstation='/absolute/path/to/dev-vm'
 cd "$manager"
 make prepare-source
 integration_source=$(cd .build/runtime-source && pwd -P)
-integration_commit=aab6bd82b279cc81c2627be73f7b206ae6dadfc0
+integration_commit=80156396a5daa795487c0f4a8308eee53f6ea68b
 test "$(git -C "$integration_source" rev-parse HEAD)" = "$integration_commit"
 ```
 
 The final check must succeed before continuing. Keep this generated source
 clean. This revision retains the stock v1.3.0 factory builder and adds the
 reviewed managed owner/SSH integration. The dev-vm builder produces the matched
-hardware-policy package **0.1.0-42.1**, which the runtime preserves as newer than
-its bundled 42 package. A stock-source build or older lean artifact is not a
+hardware-policy package **0.1.0-43.1**, which the runtime preserves as newer than
+its bundled 43 package. A stock-source build or older lean artifact is not a
 substitute for this managed lean path.
 
 Preview the inputs without Docker, downloads or disk creation:

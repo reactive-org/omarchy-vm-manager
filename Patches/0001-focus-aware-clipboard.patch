@@ -13,9 +13,18 @@ index e768c5e..2ba9dae 100644
  # The package's contracts with the Omarchy the factory installs today.
  test-upstream:
 diff --git a/docs/architecture.md b/docs/architecture.md
-index 02d9082..dd8ed52 100644
+index 02d9082..f36319a 100644
 --- a/docs/architecture.md
 +++ b/docs/architecture.md
+@@ -315,7 +315,7 @@ On the first launch of a factory, the launcher verifies the compressed disk's
+ digest, decompresses it into `shell-factory/`, and returns its zero blocks to
+ APFS (about 9 GB stays allocated for the 20 GiB disk). The launcher window
+ names each step, and shows how much of the disk is written while it
+-decompresses. Each new VM is then an APFS clone of that file, so creating a VM
++decompresses. Sparse trailing zeros can leave that percentage unchanged until decompression closes the file. Successful decompression and the expected disk size complete preparation at 100%; disk checksum verification and compaction then run in the finishing phase without a percentage. Each new VM is then an APFS clone of that file, so creating a VM
+ costs no space. A disposable session clones the same file into its own
+ temporary folder.
+ 
 @@ -418,3 +418,22 @@ strip beside the housing included, and the guest describes the housing to
  Omarchy's bar through Omarchy's own `display-cutouts.json`, so the bar sits
  beside the camera and windows start below it. See
@@ -3325,6 +3334,19 @@ index e5bb493..c38983b 100644
              throw error
          }
      }
+diff --git a/macos/Sources/OmarchyVMHelper/VMProgress.swift b/macos/Sources/OmarchyVMHelper/VMProgress.swift
+index b6cb53b..608031f 100644
+--- a/macos/Sources/OmarchyVMHelper/VMProgress.swift
++++ b/macos/Sources/OmarchyVMHelper/VMProgress.swift
+@@ -30,7 +30,7 @@ enum VMLaunchPhase: String, VMProgressPhase {
+         case .checking: "Checking VM"
+         case .verifying: "Verifying the Omarchy image"
+         case .preparing: "Unpacking Omarchy"
+-        case .finishing: "Compacting the disk"
++        case .finishing: "Finishing disk preparation"
+         case .starting: "Starting Omarchy"
+         }
+     }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 index c959f32..0d24369 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
@@ -4783,6 +4805,41 @@ index df1e815..b8f2824 100644
 +        #expect(!coordinator.manuallyPaused && !coordinator.pausedForHostSleep)
 +    }
 +}
+diff --git a/macos/Tests/OmarchyVMHelperTests/VMProgressTests.swift b/macos/Tests/OmarchyVMHelperTests/VMProgressTests.swift
+index ccb3ffa..f67b972 100644
+--- a/macos/Tests/OmarchyVMHelperTests/VMProgressTests.swift
++++ b/macos/Tests/OmarchyVMHelperTests/VMProgressTests.swift
+@@ -65,13 +65,29 @@ struct VMProgressTests {
+         ])
+     }
+ 
++    @Test("sparse preparation completes before finishing and clears its percentage")
++    func sparsePreparationCompletion() {
++        let output = "[qemu-gpu] Launch phase: preparing\n"
++            + "[qemu-gpu] Launch progress: 49\n[qemu-gpu] Launch progress: 100\n"
++            + "[qemu-gpu] Launch phase: finishing\n[qemu-gpu] Launch phase: starting\n"
++        for boundary in 0...output.utf8.count {
++            let data = Data(output.utf8)
++            var stream = VMProgressStream<VMLaunchPhase>(operation: .launch)
++            let updates = stream.append(data.prefix(boundary)) + stream.append(data.dropFirst(boundary))
++            #expect(updates == [VMProgress(phase: .preparing),
++                                VMProgress(phase: .preparing, percent: 49),
++                                VMProgress(phase: .preparing, percent: 100),
++                                VMProgress(phase: .finishing), VMProgress(phase: .starting)])
++        }
++    }
++
+     @Test("each step has a name and, when measured, a percentage")
+     func buttonFeedback() {
+         #expect(VMResetPhase.checking.title == "Checking VM")
+         #expect(VMResetPhase.deleting.title == "Deleting VM")
+         #expect(VMLaunchPhase.verifying.title == "Verifying the Omarchy image")
+         #expect(VMLaunchPhase.preparing.title == "Unpacking Omarchy")
+-        #expect(VMLaunchPhase.finishing.title == "Compacting the disk")
++        #expect(VMLaunchPhase.finishing.title == "Finishing disk preparation")
+         #expect(VMLaunchPhase.starting.title == "Starting Omarchy")
+         #expect(VMResetPhase.finishing.title == "Finishing reset")
+         #expect(VMProgress(phase: VMLaunchPhase.preparing, percent: 42).caption == "42%")
 diff --git a/macos/Tests/run-mode.test.sh b/macos/Tests/run-mode.test.sh
 index fb2be66..6f6fba9 100755
 --- a/macos/Tests/run-mode.test.sh
@@ -4876,6 +4933,78 @@ index fb2be66..6f6fba9 100755
 -print("run-mode.test: PASS")
 +print("run-mode.test: PASS (including reviewed custom factory selection)")
  PY
+diff --git a/macos/Tests/run-qemu-gpu.test.sh b/macos/Tests/run-qemu-gpu.test.sh
+index 6ecaef4..0eaeee3 100755
+--- a/macos/Tests/run-qemu-gpu.test.sh
++++ b/macos/Tests/run-qemu-gpu.test.sh
+@@ -95,6 +95,17 @@ if [[ -n ${FAKE_ZSTD_FAIL:-} ]]; then
+   printf 'partial' >"$out"
+   exit 1
+ fi
++if [[ -n ${FAKE_ZSTD_SHORT:-} ]]; then
++  head -c 1024 "$in" >"$out"
++  exit 0
++fi
++if [[ -n ${FAKE_ZSTD_SPARSE_TAIL:-} ]]; then
++  size=$(stat -f %z "$in")
++  head -c $((size * 49 / 100 + 1)) "$in" >"$out"
++  sleep 1
++  dd if=/dev/null of="$out" bs=1 seek="$size" 2>/dev/null
++  exit 0
++fi
+ if [[ -n ${FAKE_ZSTD_HALFWAY:-} ]]; then
+   head -c $(($(stat -f %z "$in") / 2)) "$in" >"$out"
+   sleep 1
+@@ -448,14 +459,48 @@ assert_contains "$output" "OMARCHY_QEMU_GPU_FACTORY_IMAGE must be an absolute pa
+ launch_env=(OMARCHY_QEMU_GPU_STATE_ROOT="$fresh" OMARCHY_QEMU_GPU_FACTORY_IMAGE="$downloaded" FAKE_ZSTD_FAIL=1)
+ output=$(launch) && fail "a failed decompression was accepted"
+ assert_contains "$output" "run-qemu-gpu: could not decompress the factory disk"
++assert_not_contains "$output" "Launch progress: 100"
++assert_not_contains "$output" "Launch phase: finishing"
+ [[ ! -e $fresh/shell-factory/$sha.img.partial && ! -e $fresh/shell/disk.img ]] ||
+   fail "a failed decompression left files behind"
+ launch_env=(OMARCHY_QEMU_GPU_STATE_ROOT="$fresh" OMARCHY_QEMU_GPU_FACTORY_IMAGE="$downloaded" FAKE_ZSTD_HALFWAY=1)
+ output=$(launch)
+ assert_contains "$output" "Launch phase: preparing"
+ assert_contains "$output" "[qemu-gpu] Launch progress: 50"
+-assert_not_contains "$output" "Launch progress: 100"
++assert_contains "$output" "Launch progress: 100"
+ [[ -f $fresh/shell/disk.img && -f $fresh/shell-factory/$sha.img ]] || fail "the downloaded factory did not create a VM"
++# Sparse output can stay at 49% until zstd extends the trailing hole on close.
++# Both factory paths complete preparation explicitly before disk verification.
++for kind in official reviewed; do
++  sparse_root="$test_root/$(uuidgen)"
++  if [[ $kind == reviewed ]]; then printf '{}' >"$resources/guest/reviewed-factory.json"; fi
++  launch_env=(OMARCHY_QEMU_GPU_STATE_ROOT="$sparse_root" OMARCHY_QEMU_GPU_FACTORY_IMAGE="$downloaded" FAKE_ZSTD_SPARSE_TAIL=1)
++  output=$(launch)
++  progress=$(printf '%s\n' "$output" | sed -n '/Launch phase: preparing/,$p' | sed -n '/Launch phase:/p; /Launch progress: 49$/p; /Launch progress: 100$/p')
++  expected=$'[qemu-gpu] Launch phase: preparing\n[qemu-gpu] Launch progress: 49\n[qemu-gpu] Launch progress: 100\n[qemu-gpu] Launch phase: finishing'
++  [[ $progress == "$expected"* ]] || fail "sparse $kind preparation did not complete in order: $progress"
++  [[ -f $sparse_root/shell/disk.img ]] || fail "sparse $kind preparation failed"
++done
++
++# Invalid output must not claim that preparation completed.
++launch_env=(OMARCHY_QEMU_GPU_STATE_ROOT="$test_root/$(uuidgen)" OMARCHY_QEMU_GPU_FACTORY_IMAGE="$downloaded" FAKE_ZSTD_SHORT=1)
++output=$(launch) && fail "a short factory disk was accepted"
++assert_contains "$output" "the factory disk has the wrong size"
++assert_not_contains "$output" "Launch progress: 100"
++assert_not_contains "$output" "Launch phase: finishing"
++
++# The custom disk checksum belongs to finishing; failure still prevents cloning.
++/usr/bin/plutil -replace disk.sha256 -string "$(printf '%064d' 0)" "$resources/guest/factory.json"
++rejected_root="$test_root/$(uuidgen)"
++launch_env=(OMARCHY_QEMU_GPU_STATE_ROOT="$rejected_root" OMARCHY_QEMU_GPU_FACTORY_IMAGE="$downloaded")
++output=$(launch) && fail "a wrong decompressed custom digest was accepted"
++assert_contains "$output" "Launch progress: 100"
++assert_contains "$output" "Launch phase: finishing"
++assert_contains "$output" "the decompressed reviewed factory digest differs"
++[[ ! -e $rejected_root/shell/disk.img ]] || fail "a damaged custom factory was cloned"
++/usr/bin/plutil -replace disk.sha256 -string "$sha" "$resources/guest/factory.json"
++rm "$resources/guest/reviewed-factory.json"
++
+ printf 'damaged' >"$test_root/damaged.img.zst"
+ launch_env=(OMARCHY_QEMU_GPU_STATE_ROOT="$test_root/damaged" OMARCHY_QEMU_GPU_FACTORY_IMAGE="$test_root/damaged.img.zst")
+ output=$(launch) && fail "a damaged factory image was accepted"
 diff --git a/macos/Tests/test-cocoa-product-identity.py b/macos/Tests/test-cocoa-product-identity.py
 index b496be7..d93a979 100755
 --- a/macos/Tests/test-cocoa-product-identity.py
@@ -4912,7 +5041,7 @@ index b496be7..d93a979 100755
          builder = BUILDER.read_text(encoding="utf-8")
          expected = re.search(r"^identity_patch_sha256=([a-f0-9]{64})$", builder, re.M)
 diff --git a/macos/run-qemu-gpu.sh b/macos/run-qemu-gpu.sh
-index cf3bb8f..7e48430 100755
+index cf3bb8f..e81809f 100755
 --- a/macos/run-qemu-gpu.sh
 +++ b/macos/run-qemu-gpu.sh
 @@ -290,6 +290,19 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
@@ -4951,17 +5080,21 @@ index cf3bb8f..7e48430 100755
      local shared="$shared_factory/$factory_identity.img"
      if [[ -f $shared && ! -L $shared ]] && cp -c "$shared" "$factory_disk.partial" 2>/dev/null; then
        mv -f "$factory_disk.partial" "$factory_disk"
-@@ -482,6 +500,9 @@ prepare_factory_disk() {
+@@ -482,8 +500,12 @@ prepare_factory_disk() {
      fail "could not decompress the factory disk"
    fi
    [[ $(stat -f %z "$factory_disk.partial") == "$disk_bytes" ]] || fail "the factory disk has the wrong size"
+-  chmod 600 "$factory_disk.partial"
++  echo '[qemu-gpu] Launch progress: 100' >&2
+   echo '[qemu-gpu] Launch phase: finishing' >&2
 +  if [[ -f $guest_dir/reviewed-factory.json ]]; then
 +    [[ $(/usr/bin/shasum -a 256 "$factory_disk.partial" | cut -d' ' -f1) == "$disk_sha" ]] || fail "the decompressed reviewed factory digest differs"
 +  fi
-   chmod 600 "$factory_disk.partial"
-   echo '[qemu-gpu] Launch phase: finishing' >&2
++  chmod 600 "$factory_disk.partial"
    # zstd leaves much of the filesystem's free space allocated on APFS where
-@@ -595,7 +616,11 @@ make_product_app() { # app
+   # data and zeros alternate; return those blocks (about half the disk).
+   "$native_bridge" --sparsify "$factory_disk.partial" >/dev/null || true
+@@ -595,7 +617,11 @@ make_product_app() { # app
      /usr/bin/plutil -insert CFBundleExecutable -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleName -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleDisplayName -string "$product_name" "$plist" &&
@@ -4974,7 +5107,7 @@ index cf3bb8f..7e48430 100755
  }
  qemu_exec=$qemu_bin
  case $product_name in
-@@ -758,6 +783,20 @@ if bridge_enabled settings; then
+@@ -758,6 +784,20 @@ if bridge_enabled settings; then
    )
  fi
  
@@ -4995,6 +5128,16 @@ index cf3bb8f..7e48430 100755
  if [[ -n $package_to_install ]]; then
    qemu_args+=(
      -smbios "type=11,value=$(credential tryomarchy.package "${package_to_install##*/}")"
+diff --git a/manual/README.md b/manual/README.md
+index 56c4e26..299f796 100644
+--- a/manual/README.md
++++ b/manual/README.md
+@@ -8,3 +8,5 @@ These guides cover what's specific to running Omarchy inside Try Omarchy. For Om
+ - [Touch ID](touch-id.md): `sudo` and 1Password
+ - [Updates and your data](updates-and-data.md): how updates work, where the VM lives, resources, starting over
+ - [Troubleshooting](troubleshooting.md): what to check, and where to report a problem
++
++While a new VM is being prepared, the percentage measures unpacking rather than the whole boot. It reaches 100% when unpacking finishes, then finishing disk preparation checks and compacts the disk before startup. Sparse images can pause at one percentage while trailing empty space is unpacked.
 diff --git a/manual/files-network-devices.md b/manual/files-network-devices.md
 index dd68ab0..434a5c1 100644
 --- a/manual/files-network-devices.md

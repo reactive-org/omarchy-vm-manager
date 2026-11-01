@@ -18,6 +18,8 @@ Both Omarchy program contracts remain unchanged: official `d381667f407b5f82cfb9f
 
 ## Reviewed build and pins
 
+These pins record the original owner-reporting correction. The [preparation progress correction](PreparationProgress.md) now supersedes its source, kit and runtime-lock pins. The rebuild commands below use that current source; guest package and owner-contract versions remain unchanged.
+
 | Component | Value |
 | --- | --- |
 | Integration source | `1ecd8499d271cd761e8b4be0e49747de96e57768` |
@@ -37,11 +39,11 @@ cd '/Users/danwas/Development/Projects/Omarchy VM Manager'
 make prepare-source
 integration_source=$(cd .build/runtime-source && pwd -P)
 git -C "$integration_source" rev-parse HEAD
-# Must be 1ecd8499d271cd761e8b4be0e49747de96e57768
+# Must be 80156396a5daa795487c0f4a8308eee53f6ea68b
 
 make -C /Users/danwas/Development/Projects/dev-vm build-omarchy-image \
   OMARCHY_IMAGE_TRY_SOURCE="$integration_source" \
-  OMARCHY_IMAGE_TRY_COMMIT=1ecd8499d271cd761e8b4be0e49747de96e57768 \
+  OMARCHY_IMAGE_TRY_COMMIT=80156396a5daa795487c0f4a8308eee53f6ea68b \
   OMARCHY_IMAGE_SIZE_GIB=20
 ```
 
