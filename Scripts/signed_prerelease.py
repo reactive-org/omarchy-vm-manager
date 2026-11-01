@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """CI-only signing/notarization orchestration; never starts a VM or installs an app."""
 import base64
+import argparse
 from contextlib import contextmanager
 import hashlib
 import json
@@ -41,6 +42,40 @@ def run(label, *arguments):
     if result.returncode:
         raise RuntimeError(label + ": " + redact((result.stderr + result.stdout)[-6000:]))
     return result
+
+
+def check_submission(identifier):
+    """Read an existing submission in CI without importing a signing identity."""
+    if os.environ.get("GITHUB_ACTIONS") != "true" or not os.environ.get("RUNNER_TEMP"):
+        raise RuntimeError("Notarization credentials are restricted to the authorized GitHub release job")
+    if not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", identifier):
+        raise ValueError("Invalid Apple submission ID")
+    for name in ("APPLE_API_KEY_P8", "APPLE_API_KEY_ID", "APPLE_API_ISSUER_ID"):
+        if not os.environ.get(name, "").strip():
+            raise ValueError("Missing GitHub secret: " + name)
+        REDACTIONS.extend((os.environ[name], os.environ[name].strip()))
+    with tempfile.TemporaryDirectory(prefix="omarchy-notary-status-", dir=os.environ["RUNNER_TEMP"]) as temp:
+        key = Path(temp) / "notary.p8"
+        key.write_text(os.environ["APPLE_API_KEY_P8"].strip() + "\n")
+        key.chmod(0o600)
+        authentication = ["--key", key, "--key-id", os.environ["APPLE_API_KEY_ID"].strip(),
+                          "--issuer", os.environ["APPLE_API_ISSUER_ID"].strip()]
+        result = run("Read existing Apple submission (no upload)", "xcrun", "notarytool", "info", identifier,
+                     *authentication, "--output-format", "json")
+        status = json.loads(result.stdout)
+        assert status["id"].lower() == identifier.lower(), "Apple returned a different submission"
+        assert status.get("status") in {"Accepted", "In Progress", "InProgress", "Invalid", "Rejected"}
+        folder = ROOT / ".build/notarization"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "existing-submission.json").write_text(json.dumps(status, indent=2) + "\n")
+        if status["status"] in {"Invalid", "Rejected"}:
+            run("Read Apple rejection details", "xcrun", "notarytool", "log", identifier,
+                *authentication, folder / "existing-submission-log.json")
+        print(f"::notice title=Existing Apple submission::{identifier}: {status['status']}", flush=True)
+        if os.environ.get("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                output.write("status=" + status["status"] + "\n")
+        return status
 
 
 def validate_signed_lock(lock, source, source_sha, team):
@@ -278,6 +313,12 @@ def release():
 
 if __name__ == "__main__":
     try:
-        release()
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("--check-submission", help="Read an existing Apple submission in CI without uploading or signing")
+        args = parser.parse_args()
+        if args.check_submission:
+            check_submission(args.check_submission)
+        else:
+            release()
     except Exception as error:
         sys.exit(redact(str(error)))

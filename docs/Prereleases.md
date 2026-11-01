@@ -54,6 +54,8 @@ Runtime signing and API authentication succeeded. Apple received submission `78d
 
 Read-only verification of that downloaded candidate, with macOS trust-service access, passed all 22 Mach-O Developer ID/team, hardened-runtime, timestamp, entitlement, deep-signature and networking-pin checks. Every unsigned runtime payload matches the original locked kit. Apple acceptance, fresh stapling, the signed app/ZIP and Gatekeeper remain unverified; no accepted signed-runtime lock has been committed. Preserve the candidate and submission ID when diagnosing the pending submission rather than assuming another upload fixes an Apple processing delay. The user chose to keep the release in CI; no local credential use was authorized or performed.
 
+To check this existing submission, dispatch `notarization-status.yml` on `main` with `gh workflow run notarization-status.yml --repo reactive-org/omarchy-vm-manager --ref main`. This release-specific CI job verifies the immutable `v0.9.3-dev.6` source commit, then queries the recorded submission ID using only the three API secrets. It imports no signing identity and creates no new Apple upload. The current status and any rejection log are retained as a seven-day artifact; the temporary API key file is removed on success or failure.
+
 Signing changes runtime bytes. Existing custom factory receipts/manifests tied to the ad-hoc kit are preserved and refused by the signed build; they need a newly prepared compatible bundle. Existing profiles, writable disks and official factory identity are not migrated or rewritten by packaging. Real guest acceptance of the signed build remains TO PROVE.
 
 ## Verification boundary

@@ -54,6 +54,43 @@ class SignedProvenanceTests(unittest.TestCase):
         with patch.object(signed_prerelease, "REDACTIONS", ["synthetic-private-key", "synthetic-password"]):
             self.assertEqual(signed_prerelease.redact("synthetic-private-key synthetic-password"), "[redacted] [redacted]")
 
+    def test_status_credentials_are_refused_outside_github(self):
+        with patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(RuntimeError, "restricted"):
+            signed_prerelease.check_submission("12345678-1234-1234-1234-123456789abc")
+
+    def test_existing_status_is_read_without_upload_or_signing_and_key_is_removed(self):
+        identifier = "12345678-1234-1234-1234-123456789abc"
+        for outcome in ("Accepted", "In Progress", "Invalid"):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                private = root / "private"; private.mkdir()
+                values = dict(GITHUB_ACTIONS="true", RUNNER_TEMP=str(private), APPLE_API_KEY_P8="synthetic-p8",
+                              APPLE_API_KEY_ID="synthetic-key-id", APPLE_API_ISSUER_ID="synthetic-issuer",
+                              GITHUB_OUTPUT=str(root / "outputs"))
+                def command(label, *arguments):
+                    self.assertEqual(arguments[:2], ("xcrun", "notarytool"))
+                    self.assertIn(arguments[2], ("info", "log"))
+                    key = Path(arguments[arguments.index("--key") + 1])
+                    self.assertEqual(key.read_text(), "synthetic-p8\n")
+                    self.assertEqual(key.stat().st_mode & 0o777, 0o600)
+                    return SimpleNamespace(stdout=json.dumps(dict(id=identifier, status=outcome)))
+                with patch.dict(os.environ, values, clear=True), patch.object(signed_prerelease, "ROOT", root), patch.object(signed_prerelease, "REDACTIONS", []), patch.object(signed_prerelease, "run", side_effect=command) as commands:
+                    self.assertEqual(signed_prerelease.check_submission(identifier)["status"], outcome)
+                self.assertEqual(commands.call_count, 2 if outcome == "Invalid" else 1)
+                self.assertEqual(list(private.iterdir()), [])
+                self.assertEqual((root / "outputs").read_text(), "status=" + outcome + "\n")
+                self.assertEqual(json.loads((root / ".build/notarization/existing-submission.json").read_text())["id"], identifier)
+
+    def test_status_key_is_removed_on_api_failure_and_mismatched_reply_is_refused(self):
+        identifier = "12345678-1234-1234-1234-123456789abc"
+        for response in (RuntimeError("synthetic API failure"), SimpleNamespace(stdout=json.dumps(dict(id="87654321-1234-1234-1234-123456789abc", status="Accepted")))):
+            with self.subTest(response=response), tempfile.TemporaryDirectory() as temp:
+                values = dict(GITHUB_ACTIONS="true", RUNNER_TEMP=temp, APPLE_API_KEY_P8="synthetic-p8",
+                              APPLE_API_KEY_ID="synthetic-key-id", APPLE_API_ISSUER_ID="synthetic-issuer")
+                with patch.dict(os.environ, values, clear=True), patch.object(signed_prerelease, "REDACTIONS", []), patch.object(signed_prerelease, "run", side_effect=[response]), self.assertRaises((RuntimeError, AssertionError)):
+                    signed_prerelease.check_submission(identifier)
+                self.assertEqual(list(Path(temp).iterdir()), [])
+
     def test_notary_only_accepts_accepted_status_and_retains_diagnostics(self):
         identifier = "12345678-1234-1234-1234-123456789abc"
         for outcome in ["Accepted", "Invalid"]:

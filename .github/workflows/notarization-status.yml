@@ -1,0 +1,37 @@
+name: Check existing prerelease notarization
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  status:
+    name: Check Apple submission for v0.9.3-dev.6
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: tooling
+      - uses: actions/checkout@v7
+        with:
+          ref: v0.9.3-dev.6
+          path: release-source
+      - name: Verify immutable release source
+        working-directory: release-source
+        run: test "$(git rev-parse HEAD)" = 88bb8679934fdb286461f5a9a08198f54d7f159e
+      - name: Query existing Apple submission without a new upload
+        id: apple
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: python3 tooling/Scripts/signed_prerelease.py --check-submission 78d5ad92-c756-4e67-a0f1-87dec516c5d4
+      - name: Retain current Apple result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: notarization-status-v0.9.3-dev.6
+          path: tooling/.build/notarization/*.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
