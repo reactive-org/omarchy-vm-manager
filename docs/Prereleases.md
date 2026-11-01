@@ -26,6 +26,8 @@ The reviewed runtime archive is hosted as a separate clearly labelled CI depende
 
 `make fetch-runtime-kit` checks the compiled lock pin, patch digest, downloaded archive digest, archive paths/types/size, exact per-file inventory, manifest and extracted code signatures. Existing artifacts must also verify; incompatible or damaged artifacts are preserved and refused. No runtime lock or pin is rewritten. A future runtime change requires deliberately publishing its exact reviewed archive under its new digest tag.
 
+Prerelease assembly preserves the kit's existing upstream-pipeline ad-hoc signatures, checks its exact inventory before and after embedding, and runs upstream signature/entitlement verification. Different macOS `codesign` versions can produce different bytes when re-signing the same kit; preserving the verified signatures avoids changing the runtime pin. The manager executables and outer app are signed normally. This applies to ad-hoc development packaging; future Developer ID distribution still needs a deliberately re-signed, reviewed and notarized runtime.
+
 The runtime dependency contains no VM disk, factory image, user registry, credential or guest data. It is fetched only for packaging. No Docker or guest-package rebuild is needed in CI.
 
 ## Verification boundary

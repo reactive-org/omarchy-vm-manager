@@ -45,7 +45,7 @@ verify-bundle:
 	Scripts/verify-app.sh --bundle-only
 
 prerelease: build icon
-	Scripts/build-app.sh --output-directory "$(CURDIR)/dist/prerelease-staging"
+	Scripts/build-app.sh --output-directory "$(CURDIR)/dist/prerelease-staging" --preserve-runtime-signatures
 	Scripts/verify-app.sh --bundle-only "$(CURDIR)/dist/prerelease-staging/Omarchy VM Manager.app"
 	python3 Scripts/package_prerelease.py
 

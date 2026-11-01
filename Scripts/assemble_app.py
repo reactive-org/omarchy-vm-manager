@@ -20,6 +20,7 @@ def assemble():
     parser.add_argument("--preview", action="store_true", help="Build a sibling app without replacing the running manager")
     parser.add_argument("--layout-preview", action="store_true", help="Build an isolated no-VM lifecycle layout gallery")
     parser.add_argument("--output-directory", type=Path, default=ROOT / "dist", help="Separate packaging output from the normal local app")
+    parser.add_argument("--preserve-runtime-signatures", action="store_true", help="Reuse the exact upstream-pipeline ad-hoc signatures across macOS builder versions")
     args = parser.parse_args()
     assert not (args.preview and args.layout_preview)
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"
@@ -59,8 +60,10 @@ def assemble():
                      stage / "Contents/Resources/TryOmarchy-THIRD_PARTY_NOTICES.md")
         kit = stage / "Contents/Helpers/TryOmarchyKit.bundle"
         run("ditto", source / "TryOmarchyKit.bundle", kit)
+        assert inventory(kit) == lock["files"], "copying changed pinned kit bytes"
         signature = ROOT / "Vendor/try-omarchy/scripts/kit_signature.py"
-        run("python3", signature, "sign", "--identity", "-", kit)
+        if not args.preserve_runtime_signatures:
+            run("python3", signature, "sign", "--identity", "-", kit)
         run("python3", signature, "verify", "--signature-only", kit)
         assert inventory(kit) == lock["files"], "embedding changed pinned kit bytes"
         run("codesign", "--force", "--sign", "-", "--identifier", "dev.omarchy.vm-manager.storage", stage / "Contents/MacOS/OmarchyVMStorageHelper")
