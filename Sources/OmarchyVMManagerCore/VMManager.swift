@@ -1,4 +1,5 @@
 import Foundation
+import DevVMProvisioningCore
 import TryOmarchyKitClient
 
 public actor VMManager {
@@ -52,6 +53,9 @@ public actor VMManager {
     private var storageTransactions: Set<UUID> = []
     private var quitting = false
     private var interruptedDeletions: Set<UUID> = []
+    private var provisioningOwner: UUID?
+    private var provisioningReservation: ProvisioningReservation?
+    private var provisioningBlocks: Set<UUID> = []
 
     public private(set) var factoryLibraryRevision = UUID()
 
@@ -348,6 +352,7 @@ public actor VMManager {
     }
 
     private func requireStopped(_ id: UUID) throws {
+        try requireNoProvisioning(id)
         guard suspensions[id] == nil, !unsafeSuspensions.contains(id) else { throw VMFailure(code: "suspended-disk-protected", message: "Restore or recover this experimental suspension before editing or deleting its disk.") }
         if let profile = profiles.first(where: { $0.id == id }) {
             try ManagerStorage(applicationSupport: applicationSupport).requireNoSavedSession(profile)
@@ -382,7 +387,7 @@ public actor VMManager {
     }
 
     public var activeSessionCount: Int { sessions.count }
-    public var isIdle: Bool { sessions.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil && factoryDeletionOperation == nil }
+    public var isIdle: Bool { sessions.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil && factoryDeletionOperation == nil && (provisioningReservation == nil || provisioningReservation?.abandonedForShutdown == true) }
     public var allocatedMemoryMiB: Int {
         profiles.filter { sessions[$0.id] != nil }.reduce(0) { $0 + $1.memoryMiB }
     }
@@ -390,6 +395,7 @@ public actor VMManager {
     public func start(_ vmID: UUID, launchIntent: VMLaunchIntent = .background) async throws { try await start(vmID, restoreVerificationTimeout: nil, launchIntent: launchIntent) }
 
     private func start(_ vmID: UUID, restoreVerificationTimeout: Duration?, launchIntent: VMLaunchIntent = .background) async throws {
+        try requireNoProvisioning(vmID)
         guard !unsafeSuspensions.contains(vmID), suspensions[vmID] == nil || restoreVerificationTimeout != nil else {
             throw VMFailure(code: "suspended-disk-protected", message: "Use Restore Experimental Session. Ordinary launch is blocked while a saved session may exist.")
         }
@@ -506,6 +512,9 @@ public actor VMManager {
               probeID == nil || probeID == session.sshProbeID,
               states[vmID] == .running || !session.reachedReady else { return }
         sshStates[vmID] = status
+        if let reservation = provisioningReservation, reservation.lease.vmID == vmID {
+            if case .ready(let user, _) = status, user == reservation.owner {} else { invalidateProvisioning(vmID) }
+        }
         if case .ready(let user, _) = status {
             beginPowerProbe(vmID, user: user)
             beginSharingProbe(vmID, user: user)
@@ -568,6 +577,7 @@ public actor VMManager {
     }
 
     private func changeExecution(_ id: UUID, command: VMRunCommand, timeout: Duration) async throws {
+        try requireNoProvisioning(id)
         guard !quitting, let session = sessions[id], let handle = session.handle, !session.shutdownRequested, !session.forceRequested else {
             throw VMFailure(code: "not-running", message: "The guest has no controllable running session.")
         }
@@ -648,7 +658,7 @@ public actor VMManager {
         case .hostSleeping: states[vmID] = .hostSleeping
         case .unknown: states[vmID] = .executionUnknown
         }
-        if report.state != .running { suspendReadiness(vmID) }
+        if report.state != .running { invalidateProvisioning(vmID); suspendReadiness(vmID) }
         else if previous != .running, let profile = profiles.first(where: { $0.id == vmID }) {
             let request = VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id, startedAt: .distantPast)
             beginSSHProbe(request); sessions[vmID]?.ownerTask?.cancel(); beginOwnerProbe(request)
@@ -656,6 +666,17 @@ public actor VMManager {
     }
 
     public func shutDown(_ vmID: UUID) {
+        if var reservation = provisioningReservation, reservation.lease.vmID == vmID, !reservation.abandonedForShutdown {
+            if !reservation.shutdownPending {
+                reservation.shutdownPending = true; provisioningReservation = reservation
+                Task { await reservation.cancel(.shutdown) }
+            }
+            return
+        }
+        performShutDown(vmID)
+    }
+
+    private func performShutDown(_ vmID: UUID) {
         guard var session = sessions[vmID], !session.shutdownRequested else { return }
         session.shutdownRequested = true
         sessions[vmID] = session
@@ -670,6 +691,7 @@ public actor VMManager {
             throw VMFailure(code: "confirmation-required", message: "Force Stop can lose unsaved guest work.")
         }
         guard var session = sessions[vmID], !session.forceRequested else { return }
+        invalidateProvisioning(vmID)
         session.forceRequested = true
         sessions[vmID] = session
         states[vmID] = .stopping
@@ -721,12 +743,14 @@ public actor VMManager {
         case .executionState(let report):
             receiveExecution(report, vmID: vmID)
         case .stopping:
+            invalidateProvisioning(vmID)
             states[vmID] = .stopping
             cancelExecutionChange(vmID, code: "guest-stopping")
             suspendReadiness(vmID)
         case .error(let error):
             failures[vmID] = VMFailure(code: error.reportedCode, message: error.message)
         case .exited(let status):
+            invalidateProvisioning(vmID)
             cancelExecutionChange(vmID, code: "guest-exited")
             session.sshTask?.cancel()
             session.sharingTask?.cancel()
@@ -775,6 +799,73 @@ public actor VMManager {
     }
 }
 
+// Dormant until an explicitly injected coordinator is installed. No production
+// app/helper path currently constructs one or admits a provisioning backend.
+extension VMManager {
+    private struct ProvisioningReservation {
+        let lease: ProvisioningLifecycleLease
+        let owner: String
+        let cancel: @Sendable (ProvisioningLifecycleInterruption) async -> Void
+        var valid = true
+        var shutdownPending = false
+        var abandonedForShutdown = false
+        var proofSealed = false
+    }
+    func installProvisioningCoordinator(_ owner: UUID, blocked: Set<UUID>) throws {
+        guard provisioningOwner == nil, provisioningReservation == nil, !quitting else { throw ProvisioningJobFailure.busy }
+        provisioningOwner = owner; provisioningBlocks = blocked
+    }
+    func reserveProvisioning(owner: UUID, jobID: UUID, target: GuestBinding, recovery: Bool = false,
+                             cancel: @escaping @Sendable (ProvisioningLifecycleInterruption) async -> Void) throws -> ProvisioningLifecycleLease {
+        guard provisioningOwner == owner, provisioningReservation == nil, !quitting else { throw ProvisioningJobFailure.busy }
+        guard recovery || !provisioningBlocks.contains(target.vmID) else { throw ProvisioningJobFailure.cleanupRequired }
+        guard let session = sessions[target.vmID], session.id == target.sessionID, states[target.vmID] == .running,
+              !session.shutdownRequested, !session.forceRequested, !session.powerBusy, session.executionCommand == nil,
+              !storageTransactions.contains(target.vmID), case .ready(let user, _) = sshStates[target.vmID], user == target.owner
+        else { throw ProvisioningJobFailure.targetChanged }
+        let lease = ProvisioningLifecycleLease(token: UUID(), jobID: jobID, vmID: target.vmID, sessionID: target.sessionID)
+        provisioningReservation = ProvisioningReservation(lease: lease, owner: target.owner, cancel: cancel)
+        return lease
+    }
+    func validateProvisioning(_ lease: ProvisioningLifecycleLease, cleanup: Bool) throws {
+        guard let reservation = provisioningReservation, reservation.lease == lease, reservation.valid,
+              let session = sessions[lease.vmID], session.id == lease.sessionID, states[lease.vmID] == .running,
+              !session.shutdownRequested, !session.forceRequested,
+              case .ready(let owner, _) = sshStates[lease.vmID], owner == reservation.owner,
+              cleanup || (!quitting && !reservation.shutdownPending) else { throw ProvisioningJobFailure.targetChanged }
+    }
+    func releaseProvisioning(_ lease: ProvisioningLifecycleLease, cleanupRequired: Bool) {
+        guard let reservation = provisioningReservation, reservation.lease == lease else { return }
+        if cleanupRequired { provisioningBlocks.insert(lease.vmID) } else { provisioningBlocks.remove(lease.vmID) }
+        provisioningReservation = nil
+        if reservation.shutdownPending { performShutDown(lease.vmID) }
+    }
+    func sealProvisioning(_ lease: ProvisioningLifecycleLease) -> Bool {
+        guard (try? validateProvisioning(lease, cleanup: true)) != nil else { return false }
+        // Linearize final guest proof before any later lifecycle event. No
+        // more engine work is possible once the coordinator requests sealing.
+        provisioningReservation?.proofSealed = true
+        return true
+    }
+    func abandonProvisioningForShutdown(_ lease: ProvisioningLifecycleLease) {
+        guard var reservation = provisioningReservation, reservation.lease == lease else { return }
+        reservation.valid = false; provisioningBlocks.insert(lease.vmID)
+        if reservation.shutdownPending || quitting { reservation.abandonedForShutdown = true }
+        provisioningReservation = reservation
+        if reservation.shutdownPending { performShutDown(lease.vmID) }
+    }
+    private func invalidateProvisioning(_ vmID: UUID) {
+        guard var reservation = provisioningReservation, reservation.lease.vmID == vmID, !reservation.proofSealed else { return }
+        reservation.valid = false; provisioningReservation = reservation; provisioningBlocks.insert(vmID)
+        Task { await reservation.cancel(.targetChanged) }
+    }
+    private func requireNoProvisioning(_ vmID: UUID) throws {
+        guard provisioningReservation?.lease.vmID != vmID, !provisioningBlocks.contains(vmID) else {
+            throw VMFailure(code: "provisioning-busy", message: "Provisioning or unresolved cleanup protects this VM.")
+        }
+    }
+}
+
 extension VMManager {
     public var hasActiveSuspensionTransition: Bool {
         sessions.contains { id, session in suspensions[id] != nil || session.powerBusy }
@@ -800,6 +891,7 @@ extension VMManager {
         if case .ready(let user, _) = sshStates[id] { beginSharingProbe(id, user: user) }
     }
     public func experimentalSuspend(_ id: UUID, confirmed: Bool, exitTimeout: Duration = .seconds(180)) async throws {
+        try requireNoProvisioning(id)
         guard confirmed else { throw VMFailure(code: "experimental-opt-in-required", message: "Confirm the experimental suspension risks before attempting it.") }
         guard let hibernation, let session = sessions[id], states[id] == .running, !session.shutdownRequested, !session.forceRequested,
               !session.powerBusy, suspensions[id] == nil, !unsafeSuspensions.contains(id),
@@ -890,6 +982,7 @@ extension VMManager {
         catch { record.stage = .recoveryRequired; record.restoreAttempted = false; persistSuspension(record); throw error }
     }
     public func retryExperimentalRestoreVerification(_ id: UUID) throws {
+        try requireNoProvisioning(id)
         guard let session = sessions[id], states[id] == .running, !session.shutdownRequested, !session.forceRequested,
               var record = suspensions[id], record.restoreAttempted, record.stage == .recoveryRequired else {
             throw VMFailure(code: "restore-check-unavailable", message: "A running unresolved restore is required for a read-only recheck.")
@@ -929,6 +1022,7 @@ extension VMManager {
         }
     }
     public func acceptExperimentalColdBoot(_ id: UUID, confirmed: Bool, guestImageCleared: Bool = false) throws {
+        try requireNoProvisioning(id)
         guard confirmed, guestImageCleared, let record = suspensions[id], record.stage == .coldBootDetected, let session = sessions[id],
               states[id] == .running, !session.shutdownRequested, !session.forceRequested else {
             throw VMFailure(code: "recovery-not-verified", message: "A running, verified cold boot and explicit confirmation that a guest administrator cleared any stale resume image are required before releasing saved-session protection.")

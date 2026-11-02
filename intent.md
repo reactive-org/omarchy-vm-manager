@@ -1511,3 +1511,57 @@ other-Mac relocation, coordinator/journal/session adapters and helper IPC, termi
 UI/attach, operational CLI, persistent recovery and real guest/SSH/Ansible/echo/
 quiescence behavior. Package fixture success changes no VM `.exited` ownership,
 kit provenance or earlier real-guest evidence. See [the integration handoff](docs/DevVMProvisioningPlan.md#milestone-2-pinned-managerhelper-integration--3-november-2026).
+
+
+## Provisioning coordinator and job journal foundation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** start milestone 3 with coordinator and
+private job-journal implementation, tested using fake runtimes/adapters and local
+fixtures only. No real SSH/Ansible, installs or VM launches. Constructor/backend
+injection stays internal, with no app/helper/CLI execution entry point, production
+journal creation or enabled setup gate. Shared engine/resource pin remains
+`bb3fae2`; the pinned sequencer still owns native guest authorization/cleanup.
+
+**IMPLEMENTED:** one detached provisioning worker per coordinator/VMManager,
+accepted-job/review deduplication, stale source/engine/session/dependency admission,
+explicit cancellation and independent viewer lifetime. Journal state and command
+correlation precede adapter calls. The explicit private 0700/0600 schema-1 store
+uses exclusive file-description locking, atomic fsynced writes, directory/lock
+identity and revision checks, bounded strict decoding and fixed result codes.
+It stores digests/manager-owned IDs/status only, excluding credentials, source
+paths/data, terminal bytes and helper PIDs. Bad/changed journals are preserved and
+new work fails closed; write failures still permit original-target revocation.
+
+**DESIGN DECISION / IMPLEMENTED:** VMManager leases protect active/unresolved jobs
+from pause/suspend/edit/delete/start and defer ordinary shutdown for cleanup.
+Confirmed force stop and unexpected session/execution/SSH changes retain cleanup
+risk. Quit uses bounded cleanup attempts before normal shutdown, never releases a
+VM handle before matching `.exited`, and preserves uncertain work on disk. Final
+clean proof is sealed against later lifecycle races; diagnostic `.error` is not a
+boundary. Restart-required is metadata only, without automatic lifecycle actions.
+
+**PRIVATE COUPLING / LIMIT:** explicit same-process recovery uses the engine's
+opaque live ticket and exact original pins, independent of sources/input. Reopen
+never resumes apply or reconstructs ownership from a PID. The pinned package has
+no persistent ticket API; durable frozen-input capsules, authenticated helper
+recovery and explicit restart rebinding remain pending. Journal cleanup holds
+cannot be cleared from a stopped observation alone. No source/credential copies
+are persisted by this foundation.
+
+**VERIFIED — local checks:** make build/test passes 248 Swift tests/40 suites
+(21 new coordinator/journal functions), 48 script tests and existing relocated
+package fixtures. Tests cover write-ahead/private storage, corrupt/replaced
+journals, duplicate/stale admission, missing input, viewer detach, shutdown/force
+stop, sleep/exit/SSH loss, cleanup deadline/late worker ownership, disk failure
+with attempted revoke, live cleanup recovery without sources and conservative
+reopen. New provisioning paths use no subprocess; existing socket/synthetic
+LAContext fixtures run outside the workspace sandbox without Keychain calls or
+authentication UI. No real SSH/SCP/SFTP/Ansible, host install, UI, image download,
+installed app or VM operation occurs.
+
+**TO PROVE:** real coordinator/helper IPC and ownership, durable inputs and
+post-crash authenticated recovery, SSH-ready waiting/restart rebinding, UI/CLI and
+terminal jobs, retention/migration, kernel/helper failures and actual hard cleanup
+deadlines, and real guest/auth/echo/quiescence behavior. This is the milestone-3
+foundation only. Existing VM lifecycle/provenance and real-guest evidence retain
+their prior labels. See [the coordinator/journal handoff](docs/DevVMProvisioningPlan.md#milestone-3-coordinatorjournal-foundation--3-november-2026).

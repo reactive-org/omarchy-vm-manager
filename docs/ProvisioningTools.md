@@ -149,3 +149,19 @@ Its source lock/resources/child hashes are checked on admission; the existing
 app signature pipeline seals the distribution manifest. This does not admit
 unknown host tools, authorize a provisioning job or prove real transport/guest
 compatibility. Homebrew Ansible remains the future execution dependency.
+
+
+## Coordinator/journal foundation — 3 November 2026
+
+The [milestone-3 foundation](DevVMProvisioningPlan.md#milestone-3-coordinatorjournal-foundation--3-november-2026)
+adds internal coordinator construction with explicit package and dependency/session
+admission. It wraps the pinned sequencer rather than opening a real transport.
+Accepted review/job digests, command write-ahead markers and private journal
+reconciliation are independent of the prerequisites report. An available tool
+still authorizes nothing and its change must stop body work. Existing setup gates
+and the offline-only helper/CLI boundary stay unchanged.
+
+Tests use fake runtimes, guest adapters and dependency authorities. Production
+coordinator/helper wiring and post-restart authenticated cleanup remain pending;
+no host tools are installed/probed or real SSH/Ansible command is used by the new
+coordinator tests. The compiled shared-engine pin stays `bb3fae2`.

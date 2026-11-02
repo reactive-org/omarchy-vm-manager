@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; operational SSH/Ansible and job/UI integration remain pending.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 coordinator/journal foundation now has fake-runtime coverage; operational helper/job/UI integration remains pending.
 
 Date: 3 November 2026 (Australia/Melbourne).
 
@@ -243,7 +243,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
 | 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; offline manager/helper package/resource/launcher integration now implemented; operational CLI, job/session adapters and full release acceptance remain pending | 227 manager Swift tests / 48 script tests plus relocated package fixtures and prior 64 package tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity and full runtime-app/release acceptance remain pending |
-| 3. Job coordination | Journal, admission, lifecycle interlocks, cancellation and recovery | Fake-runtime tests cover session changes, duplicates, failure retention, interrupted work and .exited ownership |
+| 3. Job coordination — foundation implemented, operational integration pending | Private versioned journal, single-job coordinator over the pinned sequencer, VMManager reservations/interlocks, cancellation/deadline markers and live-ticket cleanup recovery; no app/helper execution entry point | Fake-runtime/local metadata tests cover deduplication, stale admission, disk failure, shutdown/force stop, interruption/reopen, recovery and matching .exited ownership. Durable input capsules, authenticated helper reconciliation, SSH waits and restart rebinding remain pending |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
 | 6. Guest acceptance | Explicitly approved manager-owned disposable guest only | End-to-end setup, reapplication, authenticated restart, check and sudo revocation observed; failure scenarios recorded |
@@ -562,3 +562,108 @@ stream attach, operational UI/CLI, persistent recovery and all real SSH/Ansible/
 guest authorization/echo/quiescence checks. A relocated offline package fixture
 is not full installed-app or real-guest acceptance. VM clients and reservations
 still require the matching VM `.exited` boundary.
+
+
+## Milestone 3 coordinator/journal foundation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** start milestone 3 with a provisioning
+coordinator and job journal, using fake runtimes/adapters and local fixtures only.
+No real SSH/Ansible, host installs or VM launches. This foundation is maintained on
+`codex/dev-vm-provisioning-plan`.
+The foundation has no public constructor or app/helper/CLI execution entry point;
+existing execution gates remain disabled. The immutable dev-vm code/resource pin
+stays `bb3fae2` and the shared sequencer continues to own guest authorization and
+cleanup order. The manager does not duplicate Ansible or VM orchestration.
+
+**IMPLEMENTED — coordinator:** `ProvisioningCoordinator` owns one detached job at
+a time alongside VMManager, with an explicit package-admission callback and typed
+session/dependency authority. Submission validates reviewed source/engine identity,
+task/grant consent and exact current VM/session/SSH owner; the engine handles the
+remaining authorization policy. An accepted job UUID plus review digest deduplicates
+lost replies, including completed attempts. Conflicting reuse is refused and a
+new apply needs a fresh reviewed job. Waiting or cancelling a viewer cannot cancel
+the worker; cancellation is an explicit job operation. Missing input returns
+`authorizationRequired` without any guest call; attaching/resuming such a prompt
+within the same job is future UI/IPC work and currently requires a fresh review.
+
+A manager wrapper journals command/job/payload correlation before delegation and
+revalidates the lifecycle lease and dependency authority around actor hops. It
+rejects stale generations/payloads and body work after cancellation. Package
+admission is repeated before body work. Frozen original cleanup commands may
+still run if source/package data changes; they require the same verified guest
+and dependencies. Primary failure and bounded typed cleanup failures remain
+separate. Restart-required results are metadata only; no automatic restart or
+rebinding is added. Public snapshots carry fixed states/codes and manager-owned
+IDs, never terminal bytes, source contents or arbitrary adapter diagnostics.
+
+**IMPLEMENTED — journal:** `ProvisioningJobJournal` takes one explicit owned
+0700 directory and retains a private 0600 file-description lock. Schema-1
+`jobs.json` stores approved review/plan/input/engine/dependency/binding digests,
+job/VM/session/payload/command IDs, mode, sequence, attempt count and structured
+status. Binding is an opaque digest, not an owner/key record. No credentials,
+credential paths, source paths/bytes, terminal data or helper PID are persisted.
+Writes are private atomic rename plus file/directory fsync. Check directory/lock
+identity and index revision before writes. Unknown/duplicate fields or IDs, bad
+schemas/digests/states, links, insecure modes, excess size, external edits/removal
+and replaced directories/locks fail closed and preserve existing data. Limits are
+128 records, 1 MiB and 32 typed cleanup codes; no history is silently pruned.
+
+Persist conservative cleanup risk before starting the shared driver and command
+identity before any adapter call. A journal failure stops new body work while
+still attempting known-target quiescence/revocation. The last durable risk marker
+and in-memory lease stay conservative if a final write fails; new admissions are
+blocked rather than reporting success. On reopen, unfinished jobs become
+interrupted or cleanup-required, never resumed. Private source snapshots remain
+in memory for the current attempt; durable frozen-input capsules are not added in
+this foundation, and no arbitrary setup replay is supported after a crash.
+
+**IMPLEMENTED — lifecycle interlocks:** an installed coordinator reserves one
+job in VMManager. Pause/resume, suspend/restore, start, configuration and deletion
+are blocked for the affected VM while work or unresolved cleanup is held. Ordinary
+shutdown is deferred while cancellation/cleanup runs; Quit follows the same path.
+Force stop requires the existing explicit confirmation, invalidates the job and
+retains cleanup uncertainty. Unexpected VM exit, execution sleep/pause/unknown or
+SSH-owner/readiness changes cancel setup and prevent retargeting. `.error` remains
+a diagnostic only. Only matching VM `.exited` releases runtime handles, memory and
+ports; no job completion or journal status releases them.
+
+A default 240-second cancellation-cleanup grace (up to 300, shortened in fixtures)
+records uncertainty on expiry while retaining the outstanding worker/lease. For a
+pending shutdown/Quit, VMManager then follows its normal graceful shutdown policy;
+it may finish Quit after the matching VM exit even if setup remains unresolved.
+It does not infer remote quiescence or kill a helper by stored PID. Final clean
+engine proof is sealed atomically in VMManager before a later lifecycle event can
+invalidate an already-completed attempt. No automatic forced power-off is added.
+
+**IMPLEMENTED — recovery boundary:** same-process explicit cleanup recovery uses
+the engine's original opaque ticket, exact guest/session/dependency/engine pins and
+a new driver/generation. It needs neither original sources nor terminal input and
+never stages, grants, applies or restarts. Clean proof clears the affected hold.
+The pinned engine does not export a persistent cleanup-ticket format: after
+process restart, `recoveryUnavailable` preserves the cleanup hold until a future
+authenticated helper/recovery protocol supplies proof. Stopped state or a saved
+PID cannot clear it. This is intentionally not full post-crash recovery.
+
+**VERIFIED — fake/local checks:** `make test` passes 248 Swift test functions in
+40 suites (21 new coordinator/journal functions with parameterized cases), 48
+script tests and the existing relocated/read-only offline-helper package checks.
+Coverage includes write-ahead bytes/modes and exclusive locking, corruption and
+external replacement, stale review/source/dependency/package admission, duplicate
+submissions, missing input, viewer cancellation, shutdown during authorization,
+confirmed force stop, unexpected exit/sleep/SSH loss, cleanup deadlines with an
+unresponsive fake, journal failure during work, live recovery after source removal,
+reopen without resume and preservation of VM ownership until matching exit. New
+provisioning tests execute no subprocess; package and existing dependency tests
+use local fixtures. Full regression uses the previously required sandbox exception
+for existing socket/synthetic LAContext tests, without actual Keychain access or
+authentication UI. No real SSH/SCP/SFTP/Ansible, host installation, UI action, image
+download, installed-app change or VM operation occurs.
+
+**TO PROVE / REMAINING:** production coordinator construction and authenticated
+helper IPC/ownership, durable frozen inputs and persistent ticket/recovery design,
+explicit SSH-ready waits and reviewed restart/session rebinding, UI/CLI job and
+terminal attachment, journal retention/migration policy, real helper crash/kernel
+stalls and hard wall-clock cleanup guarantees, and every real guest/transport/
+authorization/echo/quiescence scenario. Private metadata locking is not a
+transaction against a malicious same-user writer. This slice establishes a
+coordinator/journal foundation, not completion of milestone 3 or guest acceptance.
