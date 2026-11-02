@@ -813,7 +813,11 @@ extension VMManager {
     }
     func installProvisioningCoordinator(_ owner: UUID, blocked: Set<UUID>) throws {
         guard provisioningOwner == nil, provisioningReservation == nil, !quitting else { throw ProvisioningJobFailure.busy }
-        provisioningOwner = owner; provisioningBlocks = blocked
+        provisioningOwner = owner; provisioningBlocks.formUnion(blocked)
+    }
+    func uninstallProvisioningCoordinator(_ owner: UUID) throws {
+        guard provisioningOwner == owner, provisioningReservation == nil else { throw ProvisioningJobFailure.busy }
+        provisioningOwner = nil // Unresolved VM blocks survive a coordinator handoff.
     }
     func reserveProvisioning(owner: UUID, jobID: UUID, target: GuestBinding, recovery: Bool = false,
                              cancel: @escaping @Sendable (ProvisioningLifecycleInterruption) async -> Void) throws -> ProvisioningLifecycleLease {

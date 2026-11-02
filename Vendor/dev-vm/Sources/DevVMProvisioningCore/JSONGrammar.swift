@@ -6,8 +6,10 @@ import Foundation
 struct JSONGrammar {
     let bytes: [UInt8]
     private var index = 0
+    private var nodes = 0
+    private let maximumNodes: Int?
     var objectKeys: [[String]: [String]] = [:]
-    init(bytes: [UInt8]) { self.bytes = bytes }
+    init(bytes: [UInt8], maximumNodes: Int? = nil) { self.bytes = bytes; self.maximumNodes = maximumNodes }
 
     mutating func parse() throws -> ManifestValue {
         let result = try value(depth: 0)
@@ -27,6 +29,8 @@ struct JSONGrammar {
         guard take(byte) else { throw ManifestError(.syntax) }
     }
     private mutating func value(depth: Int, path: [String] = []) throws -> ManifestValue {
+        nodes += 1
+        guard maximumNodes == nil || nodes <= maximumNodes! else { throw ManifestError(.sourceLimit) }
         guard depth <= PlainDataParser.maximumDepth else { throw ManifestError(.depth) }
         whitespace()
         guard index < bytes.count else { throw ManifestError(.syntax) }

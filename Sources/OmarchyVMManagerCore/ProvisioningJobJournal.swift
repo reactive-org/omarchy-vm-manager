@@ -12,6 +12,7 @@ public enum ProvisioningJobFailure: String, Codable, Error, Sendable {
     case busy, invalidRequest, approvalRequired, sourceChanged, targetChanged, dependencyChanged
     case jobConflict, unknownJob, journalUnavailable, managerRestarted, cleanupRequired
     case recoveryUnavailable, lifecycleChanged, cleanupDeadline, driverFailed
+    case artifactUnavailable, ownershipUnverified
 }
 public struct ProvisioningJobSnapshot: Codable, Equatable, Sendable {
     public let jobID: UUID
@@ -52,6 +53,9 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
     var commandID: UUID?
     var operation: GuestOperation?
     var attempts = 1
+    var inputArchiveSHA256: String?
+    var cleanupCheckpointSHA256: String?
+    var workerToken: UUID?
     var snapshot: ProvisioningJobSnapshot {
         .init(jobID: jobID, vmID: vmID, sessionID: sessionID, sequence: sequence, state: state,
               outcome: outcome, failure: failure, engineFailure: engineFailure, cleanupFailures: cleanupFailures,
@@ -60,9 +64,12 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case jobID, vmID, sessionID, reviewDigest, planDigest, inputDigest, engineDigest, dependencyDigest, bindingDigest, mode
         case sequence, state, outcome, failure, engineFailure, cleanupFailures, cleanupRequired, workerOutstanding, payloadID, commandID, operation, attempts
+        case inputArchiveSHA256, cleanupCheckpointSHA256, workerToken
     }
     func validate() throws {
-        guard sequence > 0, attempts > 0, attempts <= 1000, cleanupFailures.count <= 32,
+        let durable = inputArchiveSHA256 != nil || cleanupCheckpointSHA256 != nil || workerToken != nil
+        guard !durable || (inputArchiveSHA256.map(provisioningDigest) == true && cleanupCheckpointSHA256.map(provisioningDigest) == true && workerToken != nil && payloadID != nil),
+              sequence > 0, sequence <= UInt64(Int64.max), attempts > 0, attempts <= 1000, cleanupFailures.count <= 32,
               [reviewDigest, planDigest, inputDigest, engineDigest, dependencyDigest, bindingDigest].allSatisfy(provisioningDigest),
               !state.unfinished || workerOutstanding || state == .queued,
               !workerOutstanding || cleanupRequired,
@@ -79,16 +86,18 @@ func provisioningDigest(_ text: String) -> Bool {
 protocol ProvisioningJobJournaling: Sendable {
     func load() throws -> [ProvisioningJobRecord]
     func save(_ records: [ProvisioningJobRecord]) throws
+    func close()
 }
+extension ProvisioningJobJournaling { func close() {} }
 
 /// Explicit directory only. The app does not instantiate this foundation yet.
 /// Owns a BSD file-description lock, private atomic file and revision detector.
 final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendable {
     static let maximumJobs = 128
-    static let maximumBytes = 1024 * 1024
+    static let maximumBytes = PlainDataParser.maximumBytes
     let directory: URL
     private let mutex = NSLock()
-    private let lockFD: Int32
+    private var lockFD: Int32
     private let lockInode: ino_t
     private let directoryInode: ino_t
     private let directoryDevice: dev_t
@@ -107,12 +116,13 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
         var info = stat()
         guard lockFD >= 0, fstat(lockFD, &info) == 0, info.st_uid == getuid(), info.st_nlink == 1,
               info.st_mode & S_IFMT == S_IFREG, info.st_mode & 0o7777 == 0o600 else {
-            if lockFD >= 0 { close(lockFD) }
+            if lockFD >= 0 { Darwin.close(lockFD) }
             throw ProvisioningJobFailure.journalUnavailable
         }
         lockInode = info.st_ino
     }
-    deinit { close(lockFD) }
+    deinit { if lockFD >= 0 { Darwin.close(lockFD) } }
+    func close() { mutex.withLock { if lockFD >= 0 { Darwin.close(lockFD); lockFD = -1 }; poisoned = true } }
     func load() throws -> [ProvisioningJobRecord] {
         try mutex.withLock {
             do {
@@ -126,11 +136,15 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                 if loaded { guard fingerprint == KitVerifier.sha256(data) else { throw ProvisioningJobFailure.journalUnavailable } }
                 let value = try PlainDataParser.parse(data, format: .json)
                 guard case .object(let root) = value, Set(root.keys) == ["schemaVersion", "revision", "jobs"],
-                      root["schemaVersion"] == .integer(1), case .array(let jobs) = root["jobs"], jobs.count <= Self.maximumJobs
+                      [ManifestValue.integer(1), .integer(2)].contains(root["schemaVersion"] ?? .null),
+                      case .array(let jobs) = root["jobs"], jobs.count <= Self.maximumJobs
                 else { throw ProvisioningJobFailure.journalUnavailable }
                 for job in jobs {
                     guard case .object(let fields) = job, Set(fields.keys).isSubset(of: Set(ProvisioningJobRecord.CodingKeys.allCases.map(\.rawValue)))
                     else { throw ProvisioningJobFailure.journalUnavailable }
+                    if root["schemaVersion"] == .integer(1) {
+                        guard Set(fields.keys).isDisjoint(with: ["inputArchiveSHA256", "cleanupCheckpointSHA256", "workerToken"]) else { throw ProvisioningJobFailure.journalUnavailable }
+                    }
                 }
                 let document = try JSONDecoder().decode(Document.self, from: data)
                 try validate(document.jobs)
@@ -143,13 +157,13 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
     func save(_ records: [ProvisioningJobRecord]) throws {
         try mutex.withLock {
             do {
-                guard loaded, !poisoned, revision < UInt64.max else { throw ProvisioningJobFailure.journalUnavailable }
+                guard loaded, !poisoned, revision < UInt64(Int64.max) else { throw ProvisioningJobFailure.journalUnavailable }
                 try checkLock(); try validate(records)
                 let file = directory.appendingPathComponent("jobs.json")
                 let current = try PrivateFiles.exists(file) ? KitVerifier.sha256(PrivateFiles.read(file, maximum: Self.maximumBytes)) : nil
                 guard current == fingerprint else { throw ProvisioningJobFailure.journalUnavailable }
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-                let data = try encoder.encode(Document(schemaVersion: 1, revision: revision + 1, jobs: records.sorted { $0.jobID.uuidString < $1.jobID.uuidString }))
+                let data = try encoder.encode(Document(schemaVersion: 2, revision: revision + 1, jobs: records.sorted { $0.jobID.uuidString < $1.jobID.uuidString }))
                 guard data.count <= Self.maximumBytes else { throw ProvisioningJobFailure.journalUnavailable }
                 try PrivateFiles.write(data, name: "jobs.json", in: directory)
                 guard try PrivateFiles.read(file, maximum: Self.maximumBytes) == data else { throw ProvisioningJobFailure.journalUnavailable }

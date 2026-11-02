@@ -11,6 +11,7 @@ public struct ProvisioningPackageLayout: Sendable {
 public struct ProvisioningPackageStatus: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let sourceRevision: String
+    public let sourceSnapshotSHA256: String
     public let setupAPI: Int
     public let resourceCount: Int
     public let offlinePlanningIntegrated: Bool
@@ -43,6 +44,7 @@ public enum BundledProvisioning {
                       access(url.path, X_OK) == 0 else { throw invalid() }
             }
             return ProvisioningPackageStatus(schemaVersion: 1, sourceRevision: ProvisioningPackagePin.revision,
+                sourceSnapshotSHA256: ProvisioningPackagePin.sourceSnapshotSHA256,
                 setupAPI: 1, resourceCount: ProvisioningPackagePin.resources.count,
                 offlinePlanningIntegrated: true, executionEnabled: false)
         } catch { throw invalid() }

@@ -16,6 +16,8 @@ public actor ProvisioningCoordinator {
     private let manager: VMManager
     private let journal: any ProvisioningJobJournaling
     private let authority: any ProvisioningSessionAuthority
+    private let artifacts: ProvisioningJobArtifacts?
+    private let recoveryAuthority: (any ProvisioningRecoveryAuthorizing)?
     private let engineDigest: String
     private let admitPackage: @Sendable () throws -> Void
     private let cleanupGrace: Duration
@@ -24,6 +26,7 @@ public actor ProvisioningCoordinator {
     private var recovering: [UUID: Recovery] = [:]
     private var admitting = false
     private var storageFailed = false
+    private var closed = false
 
     private struct Active {
         let generation: UUID
@@ -45,13 +48,16 @@ public actor ProvisioningCoordinator {
         let key: String
     }
     private init(manager: VMManager, journal: any ProvisioningJobJournaling, authority: any ProvisioningSessionAuthority,
+                 artifacts: ProvisioningJobArtifacts?, recoveryAuthority: (any ProvisioningRecoveryAuthorizing)?,
                  engineDigest: String, cleanupGrace: Duration, admitPackage: @escaping @Sendable () throws -> Void,
                  records: [ProvisioningJobRecord]) {
         self.manager = manager; self.journal = journal; self.authority = authority
+        self.artifacts = artifacts; self.recoveryAuthority = recoveryAuthority
         self.engineDigest = engineDigest; self.cleanupGrace = cleanupGrace; self.admitPackage = admitPackage
         jobs = Dictionary(uniqueKeysWithValues: records.map { ($0.jobID, $0) })
     }
     static func open(manager: VMManager, journal: any ProvisioningJobJournaling, authority: any ProvisioningSessionAuthority,
+                     artifacts: ProvisioningJobArtifacts? = nil, recoveryAuthority: (any ProvisioningRecoveryAuthorizing)? = nil,
                      engineDigest: String, cleanupGrace: Duration = .seconds(240),
                      admitPackage: @escaping @Sendable () throws -> Void) async throws -> ProvisioningCoordinator {
         guard provisioningDigest(engineDigest), cleanupGrace > .zero, cleanupGrace <= .seconds(300) else { throw ProvisioningJobFailure.invalidRequest }
@@ -64,6 +70,7 @@ public actor ProvisioningCoordinator {
         }
         if changed { try journal.save(records) }
         let coordinator = ProvisioningCoordinator(manager: manager, journal: journal, authority: authority,
+            artifacts: artifacts, recoveryAuthority: recoveryAuthority,
             engineDigest: engineDigest, cleanupGrace: cleanupGrace, admitPackage: admitPackage, records: records)
         try await manager.installProvisioningCoordinator(coordinator.ownerID, blocked: Set(records.filter(\.cleanupRequired).map(\.vmID)))
         return coordinator
@@ -71,6 +78,17 @@ public actor ProvisioningCoordinator {
 
     public func status(_ jobID: UUID) -> ProvisioningJobSnapshot? { jobs[jobID]?.snapshot }
     public func statuses() -> [ProvisioningJobSnapshot] { jobs.values.map(\.snapshot).sorted { $0.jobID.uuidString < $1.jobID.uuidString } }
+    /// Releases only an idle coordinator. Does not stop/rebind the VM or clear risk.
+    func closeForReopen() async throws {
+        guard !closed, active == nil, !admitting else { throw ProvisioningJobFailure.busy }
+        admitting = true; defer { admitting = false }
+        try await manager.uninstallProvisioningCoordinator(ownerID)
+        journal.close(); recovering.removeAll(); closed = true
+    }
+    func frozenInputs(_ jobID: UUID) throws -> FrozenInputsArchive {
+        guard !closed, let record = jobs[jobID], let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
+        return try artifacts.frozenInputs(record)
+    }
     /// Waiting/losing a viewer never owns or cancels the detached job task.
     public func wait(_ jobID: UUID) async throws -> ProvisioningJobSnapshot {
         guard jobs[jobID] != nil else { throw ProvisioningJobFailure.unknownJob }
@@ -81,6 +99,7 @@ public actor ProvisioningCoordinator {
     @discardableResult
     func submit(_ request: ProvisioningRequest, approval: ProvisioningApproval,
                 adapter: any ProvisioningGuestAdapter) async throws -> ProvisioningJobSnapshot {
+        guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
         guard approval.reviewIdentity == request.reviewIdentity else { throw ProvisioningJobFailure.approvalRequired }
         if let existing = jobs[request.jobID] {
             guard existing.reviewDigest == request.reviewIdentity else { throw ProvisioningJobFailure.jobConflict }
@@ -101,16 +120,21 @@ public actor ProvisioningCoordinator {
         let lease = try await reserve(request.jobID, target: request.target, generation: generation)
         do {
             try await manager.validateProvisioning(lease, cleanup: false)
+            guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
+            let payloadID = UUID(), workerToken = UUID()
+            let files = try artifacts.prepare(request, payloadID: payloadID, workerToken: workerToken, engineDigest: engineDigest)
             var record = ProvisioningJobRecord(jobID: request.jobID, vmID: request.target.vmID, sessionID: request.target.sessionID,
                 reviewDigest: request.reviewIdentity, planDigest: request.plan.identity, inputDigest: request.plan.snapshot.identity,
                 engineDigest: engineDigest, dependencyDigest: request.dependencyDigest, bindingDigest: try Self.bindingIdentity(request.target), mode: request.mode)
+            record.payloadID = payloadID; record.workerToken = workerToken
+            record.inputArchiveSHA256 = files.inputsSHA256; record.cleanupCheckpointSHA256 = files.cleanupSHA256
             record.state = .running; record.workerOutstanding = true; record.cleanupRequired = true
             try persist(record)
             let driver = ProvisioningSequencer()
             active = Active(generation: generation, jobID: request.jobID, lease: lease, target: request.target, driver: driver)
             let wrapper = JournaledProvisioningAdapter(owner: self, generation: generation, underlying: adapter)
             active?.task = Task.detached {
-                let result = await driver.run(request, approval: approval, adapter: wrapper)
+                let result = await driver.run(request, approval: approval, payloadID: payloadID, adapter: wrapper)
                 await self.finish(result, generation: generation)
             }
             return record.snapshot
@@ -124,30 +148,50 @@ public actor ProvisioningCoordinator {
         }
     }
 
-    func recover(_ jobID: UUID, adapter: any ProvisioningGuestAdapter) async throws -> ProvisioningJobSnapshot {
+    @discardableResult
+    func recover(_ jobID: UUID, target: GuestBinding? = nil, adapter: any ProvisioningGuestAdapter) async throws -> ProvisioningJobSnapshot {
+        guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
         guard active == nil, !admitting else { throw ProvisioningJobFailure.busy }
         guard !storageFailed else { throw ProvisioningJobFailure.journalUnavailable }
         guard var record = jobs[jobID], record.cleanupRequired else { throw ProvisioningJobFailure.unknownJob }
-        // The pinned engine deliberately does not serialize its private ticket.
-        // Reopen never synthesizes one or reconnects a helper from a stored PID.
-        guard let recovery = recovering[jobID] else { throw ProvisioningJobFailure.recoveryUnavailable }
+        guard let candidate = target ?? recovering[jobID]?.target else { throw ProvisioningJobFailure.recoveryUnavailable }
         guard record.engineDigest == engineDigest, record.attempts < 1000,
-              record.bindingDigest == (try Self.bindingIdentity(recovery.target)) else { throw ProvisioningJobFailure.invalidRequest }
+              candidate.vmID == record.vmID, candidate.sessionID == record.sessionID,
+              record.bindingDigest == (try Self.bindingIdentity(candidate)) else { throw ProvisioningJobFailure.invalidRequest }
         admitting = true; defer { admitting = false }
         do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
-        do { try await authority.revalidate(recovery.target, dependencyDigest: record.dependencyDigest) }
+        if let token = record.workerToken, let payload = record.payloadID, let checkpoint = record.cleanupCheckpointSHA256 {
+            guard let recoveryAuthority else { throw ProvisioningJobFailure.ownershipUnverified }
+            let expected = ProvisioningRecoveryExpectation(challenge: UUID(), jobID: jobID, vmID: record.vmID,
+                sessionID: record.sessionID, payloadID: payload, workerToken: token, engineDigest: record.engineDigest,
+                dependencyDigest: record.dependencyDigest, bindingDigest: record.bindingDigest,
+                reviewDigest: record.reviewDigest, checkpointDigest: checkpoint)
+            do {
+                let permit = try await recoveryAuthority.reconcile(expected)
+                guard permit.expectation == expected, permit.priorWorker == .stoppedAndFenced else { throw ProvisioningJobFailure.ownershipUnverified }
+            } catch { throw ProvisioningJobFailure.ownershipUnverified }
+        } else if recovering[jobID] == nil { throw ProvisioningJobFailure.recoveryUnavailable }
+        // Only an authentic in-memory ticket or an exact independently bound
+        // checkpoint can authorize cleanup. Inputs/source trees are not read.
+        let ticket: CleanupTicket
+        if let live = recovering[jobID] { ticket = live.ticket }
+        else {
+            guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
+            ticket = try artifacts.cleanupTicket(record, target: candidate)
+        }
+        do { try await authority.revalidate(candidate, dependencyDigest: record.dependencyDigest) }
         catch { throw ProvisioningJobFailure.dependencyChanged }
-        let generation = UUID(), lease = try await reserve(jobID, target: recovery.target, generation: generation, recovery: true)
+        let generation = UUID(), lease = try await reserve(jobID, target: candidate, generation: generation, recovery: true)
         do {
             try await manager.validateProvisioning(lease, cleanup: true)
             record.state = .cleaningUp; record.workerOutstanding = true; record.failure = nil; record.attempts += 1
             record.engineFailure = nil; record.cleanupFailures = []; record.outcome = nil
             try advance(&record); try persist(record)
             let driver = ProvisioningSequencer()
-            active = Active(generation: generation, jobID: jobID, lease: lease, target: recovery.target, driver: driver)
+            active = Active(generation: generation, jobID: jobID, lease: lease, target: candidate, driver: driver)
             let wrapper = JournaledProvisioningAdapter(owner: self, generation: generation, underlying: adapter)
             active?.task = Task.detached {
-                let result = await driver.recover(recovery.ticket, adapter: wrapper)
+                let result = await driver.recover(ticket, adapter: wrapper)
                 await self.finish(result, generation: generation)
             }
             return record.snapshot
@@ -157,6 +201,7 @@ public actor ProvisioningCoordinator {
     }
 
     public func cancel(_ jobID: UUID) throws {
+        guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
         guard jobs[jobID] != nil else { throw ProvisioningJobFailure.unknownJob }
         guard var running = active, running.jobID == jobID, !running.cancelled, !running.completing else { return }
         running.cancelled = true; active = running
@@ -206,11 +251,24 @@ public actor ProvisioningCoordinator {
         if !cleanup, storageFailed { throw SequencingFailure.adapterFailed }
         if cleanup, command.inputLeaseID != nil { throw SequencingFailure.protocolViolation }
         do {
-            if !cleanup { try admitPackage() }
+            if !cleanup {
+                try admitPackage()
+                guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
+                try artifacts.verifyInputs(record)
+            }
             try await manager.validateProvisioning(running.lease, cleanup: cleanup)
             try await authority.revalidate(running.target, dependencyDigest: record.dependencyDigest)
             try await manager.validateProvisioning(running.lease, cleanup: cleanup)
-        } catch { throw Self.engineFailure(error) }
+        } catch {
+            // A pending ordinary shutdown bars body admission but does not
+            // invalidate the guest. Classify that boundary as cancellation so
+            // the engine can still revoke against the original verified target.
+            if !cleanup, error as? ProvisioningJobFailure == .targetChanged,
+               (try? await manager.validateProvisioning(running.lease, cleanup: true)) != nil {
+                throw SequencingFailure.cancelled
+            }
+            throw Self.engineFailure(error)
+        }
         // Cancellation may have arrived during either admission await.
         guard let current = active, current.generation == generation, !current.expired else { throw SequencingFailure.cancelled }
         if !cleanup, current.cancelled { throw SequencingFailure.cancelled }
@@ -227,8 +285,11 @@ public actor ProvisioningCoordinator {
     }
     fileprivate func after(_ command: DevVMProvisioningCore.GuestCommand, generation: UUID) async throws {
         guard let running = active, running.generation == generation, !running.expired else { throw SequencingFailure.cancelled }
-        do { try await manager.validateProvisioning(running.lease, cleanup: command.plan == nil) }
+        // Completion checks physical identity, not admission of another body
+        // command. Cancellation can arrive before the driver's interrupt task.
+        do { try await manager.validateProvisioning(running.lease, cleanup: true) }
         catch { throw Self.engineFailure(error) }
+        if command.plan != nil, active?.cancelled == true { throw SequencingFailure.cancelled }
     }
     fileprivate func interruptAllowed(_ commandID: UUID, context: GuestJobContext, generation: UUID) -> Bool {
         guard let running = active, running.generation == generation, let record = jobs[running.jobID] else { return false }

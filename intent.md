@@ -1565,3 +1565,60 @@ terminal jobs, retention/migration, kernel/helper failures and actual hard clean
 deadlines, and real guest/auth/echo/quiescence behavior. This is the milestone-3
 foundation only. Existing VM lifecycle/provenance and real-guest evidence retain
 their prior labels. See [the coordinator/journal handoff](docs/DevVMProvisioningPlan.md#milestone-3-coordinatorjournal-foundation--3-november-2026).
+
+
+## Durable provisioning inputs and cleanup checkpoints — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes
+and local fixtures only. No real SSH/Ansible execution, host installs or VM launches.
+Execution gates and offline-only helper entry points remain disabled.
+
+**IMPLEMENTED:** new jobs preallocate a payload UUID and worker token, then fsync
+private frozen inputs and a separate cleanup checkpoint before journaling the
+running risk marker and delegating work. Schema-2 journal rows bind both artifact
+hashes; schema-1 risk is preserved without inventing missing authority. Journal
+size is 256 KiB to match the strict parser (superseding the earlier 1 MiB claim).
+The 0700 artifact directory/0600 immutable files have exact hashes, link/mode/root
+checks and a 256 MiB/512-file quota counting orphans. No automatic import, replay,
+pruning or deletion occurs. Selected user configuration may be sensitive and is
+kept out of reports/terminal/journal; private storage is not encryption.
+
+The versioned bounded binary input archive retains selected bytes/modes/directory
+membership and restores inert data only. It cannot reconstruct an executable plan,
+resume apply or extract files into user paths. A cleanup checkpoint restores only
+conservative original-scope cleanup risk. The engine retains its payload/control
+helper while grant/cache inactivity is unproved.
+
+Explicit persistent cleanup requires the exact original live VM/session/guest,
+approved review, payload/worker, engine/dependency/binding/checkpoint pins, plus a
+fresh challenge response proving the prior worker is stopped AND fenced from
+launch. This authority is injected and fake-only in this slice; PID/disk metadata
+is never sufficient. Session/dependency authority is rechecked after awaits and
+before commands. Missing/corrupt input archives cannot suppress cleanup. Damaged
+checkpoints without a genuine live ticket preserve uncertainty. Idle close/reopen
+drops all tickets and releases the journal lock; active close is refused and VM
+holds survive handoff. No body command, grant, prompt, restart or rebinding can be
+issued by recovery; matching `.exited` still owns VM handle/resource release.
+
+**PRIVATE COUPLING:** the manager consumes base `bb3fae2` plus the exact hashed
+`Patches/dev-vm-durable-state.patch`, with base/result inventories and a resulting
+source-snapshot digest. This supersedes the earlier unchanged-engine statement.
+Source preparation verifies patch lineage locally and uses no mutable checkout;
+license/parser/guest-resource and C launcher bytes remain unchanged.
+
+**VERIFIED — fakes/local fixtures:** full `make test` passes 260 manager Swift
+functions/40 suites, 49 script tests and relocated/read-only offline-helper checks.
+Shared build/tests plus static oracles pass 68 Swift functions, 18 parser and 66
+planning/error fixtures. Coverage includes fresh fenced worker proof, interrupted
+markers, source/input removal, corrupted/cross-job/unsafe checkpoints, quota/orphan
+preservation, legacy migration and no replay. A graceful-shutdown completion race
+now cancels body work without misclassifying the still-valid guest or suppressing
+cleanup. Existing socket/mock-context and local PTY fixtures need the sandbox
+exception; no actual credentials/auth UI or real transport/VM operations occur.
+
+**TO PROVE:** production helper IPC/fencing and coordinator construction, recovery
+after full manager/VM restart, reviewed session rebinding, real helper absence/
+crash and power-loss durability, retention/removal, SSH waits, live terminal/job
+UI and CLI, and all real guest/transport/authentication behavior. These local
+foundations do not promote any existing real-guest evidence labels. See the
+[durable continuation](docs/DevVMProvisioningPlan.md#milestone-3-durable-inputs-and-cleanup-recovery--3-november-2026).

@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import shutil
 import stat
+import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = "Config/DevVMProvisioning.lock.json"
@@ -63,6 +65,7 @@ def pin_source(raw, lock):
             f'    public static let revision = "{lock["revision"]}"\n'
             f'    public static let lockSHA256 = "{sha(raw)}"\n'
             f'    public static let engineSHA256 = "{lock["engineSHA256"]}"\n'
+            f'    public static let sourceSnapshotSHA256 = "{lock["sourceSnapshotSHA256"]}"\n'
             f'    public static let resourceBundle = "{BUNDLE}"\n'
             "    public static let resources: [String: String] = [\n" + entries + "\n    ]\n}\n")
 
@@ -73,6 +76,20 @@ def prepare(root=ROOT):
             and "SPI_GENERATE_DOCS" not in os.environ, "Optional parser build plugins are not admitted")
     raw, lock = read_lock(root)
     require(files(root / lock["package"]) == lock["files"], "Pinned dev-vm source changed")
+    require(sha(json.dumps(lock["files"], sort_keys=True, separators=(",", ":")).encode()) == lock["sourceSnapshotSHA256"])
+    patches = lock.get("integrationPatches", [])
+    require(len(patches) <= 8)
+    if patches:
+        with tempfile.TemporaryDirectory(prefix="provisioning-source-check-") as temporary:
+            checkout = Path(temporary) / "source"
+            shutil.copytree(root / lock["package"], checkout)
+            for patch in reversed(patches):
+                require(patch["path"].startswith("Patches/") and ".." not in Path(patch["path"]).parts)
+                path = root / patch["path"]
+                require(path.is_file() and not path.is_symlink() and sha(path.read_bytes()) == patch["sha256"], "Changed provisioning integration patch")
+                result = subprocess.run(["/usr/bin/git", "apply", "--reverse", str(path.resolve())], cwd=checkout, capture_output=True)
+                require(result.returncode == 0, "Provisioning integration patch cannot be verified")
+            require(files(checkout) == lock["baseFiles"], "Provisioning patch base differs")
     require(lock["engineSHA256"] == lock["files"]["Sources/DevVMProvisioningCore/Resources/engine-identity.json"])
     pin = root / "Sources/OmarchyVMManagerCore/ProvisioningPackagePin.swift"
     require(not pin.is_symlink())

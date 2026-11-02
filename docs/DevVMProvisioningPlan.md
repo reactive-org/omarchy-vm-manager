@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 coordinator/journal foundation now has fake-runtime coverage; operational helper/job/UI integration remains pending.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 coordinator/journal foundation now includes private durable inputs and cleanup checkpoints with fake ownership reconciliation; operational helper/job/UI integration remains pending.
 
 Date: 3 November 2026 (Australia/Melbourne).
 
@@ -243,7 +243,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
 | 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; offline manager/helper package/resource/launcher integration now implemented; operational CLI, job/session adapters and full release acceptance remain pending | 227 manager Swift tests / 48 script tests plus relocated package fixtures and prior 64 package tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity and full runtime-app/release acceptance remain pending |
-| 3. Job coordination — foundation implemented, operational integration pending | Private versioned journal, single-job coordinator over the pinned sequencer, VMManager reservations/interlocks, cancellation/deadline markers and live-ticket cleanup recovery; no app/helper execution entry point | Fake-runtime/local metadata tests cover deduplication, stale admission, disk failure, shutdown/force stop, interruption/reopen, recovery and matching .exited ownership. Durable input capsules, authenticated helper reconciliation, SSH waits and restart rebinding remain pending |
+| 3. Job coordination — durable foundation implemented, operational integration pending | Private schema-2 journal, frozen-input archives and cleanup checkpoints, single-job coordinator, VMManager interlocks and explicit cleanup recovery; no app/helper execution entry point | Fake-runtime/local fixtures cover close/reopen, exact fresh worker fencing, corruption, quotas and interrupted markers. Production authenticated helper reconciliation, SSH waits and reviewed restart rebinding remain pending |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
 | 6. Guest acceptance | Explicitly approved manager-owned disposable guest only | End-to-end setup, reapplication, authenticated restart, check and sudo revocation observed; failure scenarios recorded |
@@ -667,3 +667,120 @@ stalls and hard wall-clock cleanup guarantees, and every real guest/transport/
 authorization/echo/quiescence scenario. Private metadata locking is not a
 transaction against a malicious same-user writer. This slice establishes a
 coordinator/journal foundation, not completion of milestone 3 or guest acceptance.
+
+
+## Milestone 3 durable inputs and cleanup recovery — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes,
+fake guest adapters/ownership authorities and disposable local fixtures only. No
+real SSH/SCP/SFTP/Ansible execution, host installs, VM launches or UI operations.
+This section supersedes the earlier foundation's pending durable-input/checkpoint
+status and 1 MiB journal limit. Operational execution remains disabled.
+
+**IMPLEMENTED — frozen inputs:** before publishing the running risk marker or
+starting a worker, allocate the payload UUID and worker token, then fsync two
+immutable UUID-named files in an explicit private 0700 artifact directory. The
+0600 `.inputs` archive holds only the selected frozen manifest/files, original
+modes and selected directory membership, including empty directories. It contains
+no absolute host paths/root inode identities or fetched credentials. Selected
+user configuration can itself be sensitive: this archive is private storage,
+never status/plan/terminal output. It is not encrypted or a credential vault.
+
+The shared `DVMSNAP1` binary format has a versioned, duplicate-aware JSON metadata
+header and raw file bytes. Its reader checks exact fields, safe relative paths,
+file hashes, lengths, sorted unique entries, directory references, snapshot
+identity and EOF. Bounds are 8 MiB metadata, 32 MiB file bytes, 4096 files, 4096
+directories, 8192 total children and 150000 JSON values; path depth is at most 64.
+Restoration returns a redacted, inert `FrozenInputsArchive`, never a SetupPlan or
+apply authority. There is no extraction/replay API or resume-apply path. Body
+admission checks the archive's exact journaled SHA-256 as well as the original
+source/package/session/dependency checks.
+
+**IMPLEMENTED — durable cleanup:** the separate 0600 `.cleanup` envelope binds a
+version-1 shared-engine checkpoint to the worker token. Schema-2 `jobs.json`
+contains only both artifact hashes and the token/payload alongside the existing
+approved review/plan/input/engine/dependency/binding digests. It still excludes
+source bytes/paths, credentials, guest owner/key values, terminal bytes and PIDs.
+The checkpoint privately contains the original guest identity and cleanup scope;
+it carries no private key, terminal input or source bytes. Restoring it compares
+all fields with an independently supplied original identity and always assumes
+work/payload risk, plus grant risk for apply. Stored flags cannot claim cleanliness.
+The engine now retains its control payload until both work and grant/cache
+inactivity have been proved, so failed revocation proof cannot remove the helper.
+
+Cleanup after reopening is explicit. A fresh caller supplies the original live
+GuestBinding; exact VM/session, binding, engine and dependency checks still apply.
+An injected recovery authority must answer a fresh UUID challenge binding the job,
+VM/session/payload/worker, checkpoint, engine/dependencies and approved review. It
+must prove the previous worker is **stopped and fenced from further launch**;
+stopped/running/unknown metadata or a PID is insufficient. A stale/mismatched
+permit is refused, and session/dependencies are rechecked after the await and
+before every guest call. The original live ticket may be used when available;
+a reopened coordinator instead restores the hash-bound checkpoint. No input
+archive or source tree is needed for cleanup, so damage there cannot suppress
+revocation. Missing/damaged checkpoints without a genuine live ticket preserve
+`cleanupRequired` and delegate nothing.
+
+The permitted sequence verifies identity before each of quiescence, apply-only
+revoke/cache clear/inactive proof, and payload removal. It cannot stage, install,
+configure, grant, prompt, resume apply, restart or rebind. Only fresh final clean
+proof clears the lifecycle hold. Idle close/reopen releases the journal lock and
+drops all live tickets; active close is refused and VM blocks survive handoff.
+The fixture recovery boundary is a surviving VMManager session, not adoption of a
+VM after a full manager/VM restart. No production ownership-channel implementation
+or helper IPC is enabled in this slice.
+
+**IMPLEMENTED — storage bounds/migration:** journal schemas 1 and 2 are readable;
+new writes use 2. Legacy rows retain risk and never acquire invented checkpoints.
+Unknown schemas, partial durable references, unsafe modes/links/root replacement,
+changed hashes and oversize data fail closed and preserve files. The journal limit
+is now 256 KiB, matching the existing strict parser; 128 rows and 32 cleanup codes
+remain. Artifact quota defaults to 256 MiB and at most 512 files, counts orphans,
+and fails admission before any worker. Pre-index crash artifacts are never
+imported/replayed or automatically deleted. Cleanup completion retains artifacts;
+a reviewed retention/removal policy remains future work. File/directory fsync and
+index-before-delegate ordering are tested locally; this is not a transaction
+against a malicious same-user writer or evidence of power-loss durability.
+
+**PRIVATE COUPLING — package provenance:** the manager now uses the immutable
+`bb3fae22be45b38035fac52aefa0eb270a9d0fea` base plus the exact content-hashed
+`Patches/dev-vm-durable-state.patch`, rather than claiming an unchanged base engine.
+The lock records the base inventory, patch hash, resulting 82-file inventory,
+source-snapshot digest and updated engine resource hash. Preparation verifies the
+result, reverse-applies the patch in a disposable directory and checks the exact
+base inventory. No mutable external checkout is a build/runtime dependency.
+Package status/diagnostics expose the resulting source-snapshot digest alongside
+the base revision. Parser/guest-resource bytes and the C launcher are unchanged.
+See [the package boundary](../Vendor/DevVMProvisioning.md).
+
+
+**VERIFIED — fake/local checks:** `make test` passes 260 manager Swift test
+functions in 40 suites, 49 script tests and the relocated/read-only offline-helper
+package checks. The 12 new coordinator/journal functions include parameterized
+cases for fresh fencing challenges, running/unknown/mismatched worker proof,
+wrong original session/binding/dependencies, target exit during proof, interrupted
+risk markers, source/input removal, checkpoint corruption/swap/links/modes/root
+replacement, quota/orphan handling, archive privacy and active-close rejection.
+An existing graceful-shutdown race was also fixed: completion checks the original
+guest identity independently of new body admission, so pending graceful shutdown
+cancels body work without suppressing cleanup. The fake can explicitly ignore
+interrupts to exercise that boundary. Force-stop/changed-target interlocks remain.
+
+Shared `make build-provisioning test-provisioning test-provisioning-oracle test-provisioning-planning-oracle ORACLE_PYTHON=/opt/homebrew/opt/ansible/libexec/bin/python`
+passes 68 Swift functions, 18 parser oracle fixtures and 66 planning/error oracle
+fixtures. The existing Ansible-environment Python is used only for development
+comparisons; no Ansible executable or runtime fallback is used. Existing local
+PTY tests need `/dev/tty` outside the workspace sandbox; full manager regression
+uses the existing exception for local sockets/synthetic LAContext and ad-hoc sealed
+package fixtures. No real SSH/SCP/SFTP/Ansible, Keychain/authentication UI, host
+install, image download, manager UI or VM operation occurs. Local file/fsync checks
+do not demonstrate real helper/process-crash or power-loss recovery.
+
+**TO PROVE / REMAINING:** authenticated production helper ownership/fencing,
+coordinator/helper construction, full manager process restart and reviewed VM
+session rebinding, SSH-ready waits, live terminal/job UI and CLI, reviewed artifact
+retention, real helper/guest crash recovery, absent control-helper reconciliation,
+power-loss behavior and every real SSH/Ansible/authorization/echo/quiescence case.
+If a missing helper cannot prove absence, cleanup remains required. Real VM
+clients/resources still require matching `.exited`; archives do not change VM
+ownership policy. This slice does not complete milestone 3 or real guest acceptance.

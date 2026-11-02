@@ -13,8 +13,10 @@ The guest icon uses the official Omarchy logo from https://omarchy.org/brand/oma
 Omarchy VM Manager is a project of reactive.org enterprises: https://www.reactive.org/. This project credit does not assign ownership of upstream names, marks or software to reactive.org enterprises.
 
 
-The developer provisioning library and guest resources are an unmodified source
-snapshot from reactive-org/dev-vm at `bb3fae22be45b38035fac52aefa0eb270a9d0fea`.
+The developer provisioning library uses the source snapshot from reactive-org/dev-vm
+at `bb3fae22be45b38035fac52aefa0eb270a9d0fea` plus the exact durable-state integration
+patch in `Patches/dev-vm-durable-state.patch`. Guest resources/parser dependencies
+and the C launcher retain their upstream bytes.
 `Config/DevVMProvisioning.lock.json` inventories the exported source and
 `Vendor/DevVMProvisioning.md` records the integration boundary. This adds no host
 Python/Ansible runtime distribution. The engine retains guest-side Python/shell

@@ -59,7 +59,7 @@ private final class JournalFixture {
             case "oversized": try Data(repeating: 32, count: ProvisioningJobJournal.maximumBytes + 1).write(to: f.file)
             case "duplicate-key": try Data("{\"schemaVersion\":1,\"schemaVersion\":1}".utf8).write(to: f.file)
             default:
-                if kind == "schema" { root["schemaVersion"] = 2 }
+                if kind == "schema" { root["schemaVersion"] = 3 }
                 if kind == "field" { jobs[0]["privateKey"] = "never-accept" }
                 if kind == "duplicate-job" { jobs.append(jobs[0]) }
                 if kind == "digest" { jobs[0]["dependencyDigest"] = "unknown" }
@@ -112,5 +112,37 @@ private final class JournalFixture {
         let alias = f.root.appendingPathComponent("alias")
         try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: f.directory)
         #expect(throws: Error.self) { _ = try ProvisioningJobJournal(directory: alias) }
+    }
+    @Test func legacyRiskIsPreservedWithoutInventingDurableReferences() throws {
+        let f = try JournalFixture()
+        var record = journalRecord()
+        record.state = .cleanupRequired; record.cleanupRequired = true
+        let initial = try ProvisioningJobJournal(directory: f.directory)
+        _ = try initial.load(); try initial.save([record]); initial.close()
+        var document = try JSONSerialization.jsonObject(with: Data(contentsOf: f.file)) as! [String: Any]
+        document["schemaVersion"] = 1
+        try JSONSerialization.data(withJSONObject: document).write(to: f.file)
+        let store = try ProvisioningJobJournal(directory: f.directory)
+        let rows = try store.load()
+        #expect(rows == [record] && rows[0].inputArchiveSHA256 == nil && rows[0].workerToken == nil)
+        try store.save(rows)
+        let upgraded = try JSONSerialization.jsonObject(with: Data(contentsOf: f.file)) as! [String: Any]
+        #expect(upgraded["schemaVersion"] as? Int == 2)
+        store.close()
+        #expect(throws: ProvisioningJobFailure.journalUnavailable) { _ = try store.load() }
+    }
+    @Test func partialDurableReferencesAndLegacyDurableKeysAreRejected() throws {
+        let f = try JournalFixture(), store = try ProvisioningJobJournal(directory: f.directory)
+        _ = try store.load()
+        var record = journalRecord(); record.workerToken = UUID()
+        #expect(throws: ProvisioningJobFailure.journalUnavailable) { try store.save([record]) }
+        #expect(!FileManager.default.fileExists(atPath: f.file.path))
+        let legacy = try JournalFixture(); _ = try legacy.seed()
+        var document = try JSONSerialization.jsonObject(with: Data(contentsOf: legacy.file)) as! [String: Any]
+        document["schemaVersion"] = 1
+        var rows = document["jobs"] as! [[String: Any]]; rows[0]["workerToken"] = UUID().uuidString; document["jobs"] = rows
+        try JSONSerialization.data(withJSONObject: document).write(to: legacy.file)
+        let reader = try ProvisioningJobJournal(directory: legacy.directory)
+        #expect(throws: ProvisioningJobFailure.journalUnavailable) { _ = try reader.load() }
     }
 }

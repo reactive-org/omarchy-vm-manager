@@ -59,7 +59,7 @@ public struct SourceSnapshot: Sendable {
         } catch { throw ManifestError(.sourceChanged) }
     }
 }
-private struct SnapshotIdentity: Encodable {
+struct SnapshotIdentity: Encodable {
     let files: [InputReceipt]
     let directories: [String: ManifestValue]
 }

@@ -33,6 +33,7 @@ private final class ProvisioningPackageFixture {
         let fixture = try ProvisioningPackageFixture(nested: nested)
         let status = try BundledProvisioning.inspect(fixture.layout)
         #expect(status.sourceRevision == "bb3fae22be45b38035fac52aefa0eb270a9d0fea")
+        #expect(status.sourceSnapshotSHA256 == ProvisioningPackagePin.sourceSnapshotSHA256)
         #expect(status.setupAPI == 1 && status.offlinePlanningIntegrated && !status.executionEnabled)
         #expect(status.resourceCount == ProvisioningPackagePin.resources.count)
     }

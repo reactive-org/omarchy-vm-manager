@@ -165,3 +165,21 @@ Tests use fake runtimes, guest adapters and dependency authorities. Production
 coordinator/helper wiring and post-restart authenticated cleanup remain pending;
 no host tools are installed/probed or real SSH/Ansible command is used by the new
 coordinator tests. The compiled shared-engine pin stays `bb3fae2`.
+
+
+## Durable inputs and cleanup recovery — 3 November 2026
+
+The [durable milestone-3 continuation](DevVMProvisioningPlan.md#milestone-3-durable-inputs-and-cleanup-recovery--3-november-2026)
+adds private frozen-input archives, hash-bound cleanup checkpoints and schema-2
+journal references before any fake guest call. An explicit reopened recovery uses
+the original live session plus fresh stopped-and-fenced worker proof; no stored
+PID, tool-readiness report or source archive grants execution authority. Missing
+inputs do not block cleanup; damaged checkpoints preserve the hold. No apply
+resumption or VM restart/rebinding is added.
+
+The manager now verifies a content-hashed durable-state patch over base `bb3fae2`,
+with a separate resulting snapshot digest in diagnostics. This supersedes the
+historical unchanged-pin/persistent-recovery statements above. Production helper
+ownership and job/UI/CLI execution remain pending; fake runtime/ownership fixtures
+and disposable metadata are the only new execution paths. Homebrew dependency
+checks, no-install policy and setup feature gates remain unchanged.

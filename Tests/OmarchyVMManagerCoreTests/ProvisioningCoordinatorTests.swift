@@ -6,6 +6,25 @@ import TryOmarchyKitClient
 @testable import OmarchyVMManagerCore
 
 private let jobDependencies = String(repeating: "d", count: 64)
+private actor JobRecoveryAuthority: ProvisioningRecoveryAuthorizing {
+    var state: ProvisioningPriorWorkerState = .stoppedAndFenced
+    var wrongChallenge = false
+    var gate: JobGate?
+    private(set) var expectations: [ProvisioningRecoveryExpectation] = []
+    func deny(_ state: ProvisioningPriorWorkerState) { self.state = state }
+    func mismatch() { wrongChallenge = true }
+    func pause(_ gate: JobGate) { self.gate = gate }
+    func reconcile(_ expectation: ProvisioningRecoveryExpectation) async throws -> ProvisioningRecoveryPermit {
+        expectations.append(expectation)
+        if let gate { self.gate = nil; await gate.pause() }
+        let result = wrongChallenge ? ProvisioningRecoveryExpectation(challenge: UUID(), jobID: expectation.jobID,
+            vmID: expectation.vmID, sessionID: expectation.sessionID, payloadID: expectation.payloadID,
+            workerToken: expectation.workerToken, engineDigest: expectation.engineDigest,
+            dependencyDigest: expectation.dependencyDigest, bindingDigest: expectation.bindingDigest,
+            reviewDigest: expectation.reviewDigest, checkpointDigest: expectation.checkpointDigest) : expectation
+        return .init(expectation: result, priorWorker: state)
+    }
+}
 private actor JobGate {
     private(set) var entered = false
     private var released = false
@@ -42,7 +61,7 @@ private actor JobGuest: ProvisioningGuestAdapter {
     func perform(_ command: DevVMProvisioningCore.GuestCommand) async throws -> DevVMProvisioningCore.GuestReply {
         commands.append(command); try observe?(command)
         if command.operation == pauseAt { await gate?.pause() }
-        if interrupts.contains(command.id) { throw SequencingFailure.cancelled }
+        if !ignoreInterrupt, interrupts.contains(command.id) { throw SequencingFailure.cancelled }
         if failures.contains(command.operation) { throw SequencingFailure.adapterFailed }
         let proof: GuestProof
         switch command.operation {
@@ -68,6 +87,7 @@ private final class FailingJobJournal: ProvisioningJobJournaling, @unchecked Sen
     init(_ base: ProvisioningJobJournal) { self.base = base }
     func failWrites() { lock.withLock { failing = true } }
     func load() throws -> [ProvisioningJobRecord] { try base.load() }
+    func close() { base.close() }
     func save(_ records: [ProvisioningJobRecord]) throws {
         guard !lock.withLock({ failing }) else { throw NSError(domain: "fixture-secret-error-never-log", code: 1) }
         try base.save(records)
@@ -93,9 +113,11 @@ private final class JobFixture: Sendable {
     let authority: JobAuthority
     let journal: ProvisioningJobJournal
     let faults: FailingJobJournal
+    let artifacts: ProvisioningJobArtifacts
+    let recoveryAuthority = JobRecoveryAuthority()
     let coordinator: ProvisioningCoordinator
     let package = JobPackageAdmission()
-    init(grace: Duration = .seconds(2), docker: Bool = false) async throws {
+    init(grace: Duration = .seconds(2), docker: Bool = false, quota: Int = 256 * 1024 * 1024) async throws {
         root = URL(fileURLWithPath: "/private/tmp/provisioning-job-test-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         source = root.appendingPathComponent("source")
@@ -116,8 +138,10 @@ private final class JobFixture: Sendable {
         authority = JobAuthority()
         journal = try ProvisioningJobJournal(directory: root.appendingPathComponent("journal"))
         faults = FailingJobJournal(journal)
+        artifacts = try ProvisioningJobArtifacts(directory: root.appendingPathComponent("artifacts"), maximumTotalBytes: quota)
         let admission = package
         coordinator = try await ProvisioningCoordinator.open(manager: manager, journal: faults, authority: authority,
+            artifacts: artifacts, recoveryAuthority: recoveryAuthority,
             engineDigest: ProvisioningCoordinator.engineIdentity(plan), cleanupGrace: grace, admitPackage: { try admission.check() })
     }
     deinit {
@@ -130,6 +154,13 @@ private final class JobFixture: Sendable {
     }
     func approve(_ request: ProvisioningRequest) -> ProvisioningApproval {
         .init(reviewIdentity: request.reviewIdentity, customTasksReviewed: true, persistentGrantAcknowledged: true, dockerRootAccessAcknowledged: true)
+    }
+    func reopen() async throws -> ProvisioningCoordinator {
+        try await coordinator.closeForReopen()
+        return try await ProvisioningCoordinator.open(manager: manager,
+            journal: ProvisioningJobJournal(directory: journal.directory), authority: authority,
+            artifacts: ProvisioningJobArtifacts(directory: artifacts.directory), recoveryAuthority: recoveryAuthority,
+            engineDigest: ProvisioningCoordinator.engineIdentity(plan), admitPackage: {})
     }
 }
 
@@ -367,5 +398,191 @@ private final class JobFixture: Sendable {
         #expect(result.state == .failed && !result.cleanupRequired)
         #expect(await guest.commands.allSatisfy { $0.operation != .configureRepository })
         #expect(await guest.commands.contains { $0.operation == .revokeGrant })
+    }
+
+    @Test func frozenInputsRemainPrivateAndInertAfterSourceRemoval() async throws {
+        let f = try await JobFixture(), request = try f.request(), guest = JobGuest()
+        let original = try Data(contentsOf: f.source.appendingPathComponent("vm.yml"))
+        try Data("unselected sentinel".utf8).write(to: f.source.appendingPathComponent("unselected.txt"))
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: guest)
+        _ = try await f.coordinator.wait(request.jobID)
+        try FileManager.default.removeItem(at: f.source)
+        let restored = try await f.coordinator.frozenInputs(request.jobID)
+        #expect(restored.identity == f.plan.snapshot.identity)
+        #expect(restored.data(for: "vm.yml") == original)
+        #expect(restored.data(for: "unselected.txt") == nil)
+        #expect(String(reflecting: restored) == "FrozenInputsArchive(redacted)")
+        for name in try FileManager.default.contentsOfDirectory(atPath: f.artifacts.directory.path) {
+            var info = stat()
+            #expect(lstat(f.artifacts.directory.appendingPathComponent(name).path, &info) == 0)
+            #expect(info.st_mode & 0o7777 == 0o600 && info.st_nlink == 1)
+        }
+        #expect(!FileManager.default.fileExists(atPath: f.source.path))
+    }
+
+    @Test func persistentRecoveryNeedsNoSourcesOrInputArchiveAndCannotResumeApply() async throws {
+        let f = try await JobFixture(), request = try f.request(), original = JobGuest(failures: [.quiesceOwnedWork])
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: original)
+        #expect(try await f.coordinator.wait(request.jobID).cleanupRequired)
+        let payload = try #require(await original.commands.first?.context.payloadID)
+        let reopened = try await f.reopen() // Drops every in-memory CleanupTicket and the journal lock.
+        try FileManager.default.removeItem(at: f.source)
+        try FileManager.default.removeItem(at: f.artifacts.directory.appendingPathComponent(request.jobID.uuidString + ".inputs"))
+        await #expect(throws: ProvisioningJobFailure.artifactUnavailable) { _ = try await reopened.frozenInputs(request.jobID) }
+        let recovery = JobGuest()
+        try await reopened.recover(request.jobID, target: f.target, adapter: recovery)
+        #expect(try await reopened.wait(request.jobID).state == .cleanupConfirmed)
+        let commands = await recovery.commands
+        #expect(!commands.isEmpty && commands.allSatisfy { $0.context.payloadID == payload && $0.plan == nil && $0.inputLeaseID == nil })
+        #expect(commands.filter { $0.operation != .verifyIdentity }.map(\.operation) == [.quiesceOwnedWork, .revokeGrant, .clearAuthenticationCache, .verifyGrantInactive, .removePayload])
+        #expect(commands.filter { $0.operation == .verifyIdentity }.count == 5)
+        #expect(await f.recoveryAuthority.expectations.count == 1)
+        #expect(f.runtime.startedHandles.count == 1 && f.runtime.startedHandles[0].shutdownCount == 0)
+        await #expect(throws: ProvisioningJobFailure.recoveryUnavailable) { try await f.coordinator.recover(request.jobID, adapter: JobGuest()) }
+    }
+
+    @Test(arguments: ["unknown", "running", "challenge", "session", "binding", "authority-change"])
+    func persistentRecoveryRequiresFreshExactFencedOwnership(kind: String) async throws {
+        let f = try await JobFixture(), request = try f.request()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(failures: [.quiesceOwnedWork]))
+        _ = try await f.coordinator.wait(request.jobID)
+        let reopened = try await f.reopen(), guest = JobGuest()
+        if kind == "unknown" { await f.recoveryAuthority.deny(.unknown) }
+        if kind == "running" { await f.recoveryAuthority.deny(.running) }
+        if kind == "challenge" { await f.recoveryAuthority.mismatch() }
+        var target = f.target
+        if kind == "session" || kind == "binding" {
+            target = try GuestBinding(vmID: f.target.vmID, sessionID: kind == "session" ? UUID() : f.target.sessionID,
+                owner: "fixture_owner", ownerUID: 1000, hostKeyDigest: String(repeating: "b", count: 64))
+        }
+        if kind == "authority-change" { await f.authority.deny() }
+        let expected: ProvisioningJobFailure = ["session", "binding"].contains(kind) ? .invalidRequest : kind == "authority-change" ? .dependencyChanged : .ownershipUnverified
+        await #expect(throws: expected) { try await reopened.recover(request.jobID, target: target, adapter: guest) }
+        #expect(await guest.commands.isEmpty)
+        #expect(await reopened.status(request.jobID)?.cleanupRequired == true)
+        await #expect(throws: VMFailure.self) { try await f.manager.configure(f.profile) }
+    }
+
+    @Test func persistentRecoveryRechecksSessionAfterFencingAwait() async throws {
+        let f = try await JobFixture(), request = try f.request()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(failures: [.quiesceOwnedWork]))
+        _ = try await f.coordinator.wait(request.jobID)
+        let reopened = try await f.reopen(), guest = JobGuest(), gate = JobGate()
+        await f.recoveryAuthority.pause(gate)
+        let attempt = Task { try await reopened.recover(request.jobID, target: f.target, adapter: guest) }
+        #expect(await eventually { await gate.entered })
+        f.runtime.startedHandles[0].emit(.exited(status: 0))
+        #expect(await eventually { await f.manager.activeSessionCount == 0 })
+        await gate.release()
+        await #expect(throws: ProvisioningJobFailure.targetChanged) { _ = try await attempt.value }
+        #expect(await guest.commands.isEmpty)
+    }
+
+    @Test(arguments: ["missing", "tampered", "symlink", "hardlink", "mode", "swapped", "directory"])
+    func damagedPersistentCheckpointCannotDelegateCleanup(kind: String) async throws {
+        let f = try await JobFixture(), request = try f.request()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(failures: [.quiesceOwnedWork]))
+        _ = try await f.coordinator.wait(request.jobID)
+        let reopened = try await f.reopen(), guest = JobGuest()
+        let file = f.artifacts.directory.appendingPathComponent(request.jobID.uuidString + ".cleanup")
+        if kind == "directory" {
+            try FileManager.default.moveItem(at: f.artifacts.directory, to: f.root.appendingPathComponent("old-artifacts"))
+            try FileManager.default.copyItem(at: f.root.appendingPathComponent("old-artifacts"), to: f.artifacts.directory)
+        }
+        else if kind == "mode" { chmod(file.path, 0o644) }
+        else if kind == "hardlink" { #expect(link(file.path, f.root.appendingPathComponent("linked").path) == 0) }
+        else if kind == "missing" { try FileManager.default.removeItem(at: file) }
+        else if kind == "symlink" {
+            try FileManager.default.moveItem(at: file, to: f.root.appendingPathComponent("sentinel"))
+            try FileManager.default.createSymbolicLink(at: file, withDestinationURL: f.root.appendingPathComponent("sentinel"))
+        } else if kind == "swapped" {
+            let different = try f.request()
+            _ = try f.artifacts.prepare(different, payloadID: UUID(), workerToken: UUID(), engineDigest: ProvisioningCoordinator.engineIdentity(f.plan))
+            try Data(contentsOf: f.artifacts.directory.appendingPathComponent(different.jobID.uuidString + ".cleanup")).write(to: file)
+        } else { try Data("{}".utf8).write(to: file) }
+        await #expect(throws: ProvisioningJobFailure.artifactUnavailable) { try await reopened.recover(request.jobID, target: f.target, adapter: guest) }
+        #expect(await guest.commands.isEmpty)
+        #expect(await reopened.status(request.jobID)?.cleanupRequired == true)
+    }
+
+    @Test func damagedInputsStopBodyWithoutSuppressingKnownTargetCleanup() async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = JobGate()
+        let guest = JobGuest(pauseAt: .configureFeatures, gate: gate)
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: guest)
+        #expect(await eventually { await gate.entered })
+        try Data("damaged".utf8).write(to: f.artifacts.directory.appendingPathComponent(request.jobID.uuidString + ".inputs"))
+        await gate.release()
+        let result = try await f.coordinator.wait(request.jobID)
+        #expect(result.state == .failed && !result.cleanupRequired)
+        #expect(await guest.commands.allSatisfy { $0.operation != .configureRepository })
+        #expect(await guest.commands.contains { $0.operation == .revokeGrant })
+    }
+
+    @Test func quotaFailureAndOrphansNeverStartOrReplayWork() async throws {
+        let f = try await JobFixture(quota: 0), request = try f.request(), guest = JobGuest()
+        await #expect(throws: ProvisioningJobFailure.artifactUnavailable) { try await f.coordinator.submit(request, approval: f.approve(request), adapter: guest) }
+        #expect(await f.coordinator.statuses().isEmpty)
+        #expect(await guest.commands.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: f.artifacts.directory.path).isEmpty)
+        // A pre-index crash can leave files; opening never imports or replays them.
+        let orphan = try await JobFixture(), unindexed = try orphan.request()
+        _ = try orphan.artifacts.prepare(unindexed, payloadID: UUID(), workerToken: UUID(), engineDigest: ProvisioningCoordinator.engineIdentity(orphan.plan))
+        let reopened = try await orphan.reopen()
+        #expect(await reopened.statuses().isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: orphan.artifacts.directory.path).count == 2)
+        let limited = try ProvisioningJobArtifacts(directory: orphan.artifacts.directory, maximumTotalBytes: 1)
+        #expect(throws: ProvisioningJobFailure.artifactUnavailable) {
+            _ = try limited.prepare(orphan.request(), payloadID: UUID(), workerToken: UUID(), engineDigest: ProvisioningCoordinator.engineIdentity(orphan.plan))
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: orphan.artifacts.directory.path).count == 2)
+        #expect(await guest.commands.isEmpty)
+    }
+
+    @Test func interruptedDurableMarkerStillRequiresFreshWorkerReconciliation() async throws {
+        let f = try await JobFixture(), request = try f.request()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(failures: [.quiesceOwnedWork]))
+        _ = try await f.coordinator.wait(request.jobID)
+        try await f.coordinator.closeForReopen()
+        // Represent the last fsynced marker from an interrupted fake worker.
+        let journal = try ProvisioningJobJournal(directory: f.journal.directory)
+        var rows = try journal.load(); rows[0].state = .running; rows[0].workerOutstanding = true; try journal.save(rows)
+        let reopened = try await ProvisioningCoordinator.open(manager: f.manager, journal: journal, authority: f.authority,
+            artifacts: f.artifacts, recoveryAuthority: f.recoveryAuthority,
+            engineDigest: ProvisioningCoordinator.engineIdentity(f.plan), admitPackage: {})
+        #expect(await reopened.status(request.jobID)?.failure == .managerRestarted)
+        #expect(await reopened.status(request.jobID)?.cleanupRequired == true)
+        let guest = JobGuest()
+        await f.recoveryAuthority.deny(.running)
+        await #expect(throws: ProvisioningJobFailure.ownershipUnverified) { try await reopened.recover(request.jobID, target: f.target, adapter: guest) }
+        #expect(await guest.commands.isEmpty)
+        await f.recoveryAuthority.deny(.stoppedAndFenced)
+        try await reopened.recover(request.jobID, target: f.target, adapter: guest)
+        #expect(try await reopened.wait(request.jobID).state == .cleanupConfirmed)
+        let expectations = await f.recoveryAuthority.expectations
+        #expect(expectations.count == 2 && expectations[0].challenge != expectations[1].challenge)
+        #expect(expectations[0].workerToken == expectations[1].workerToken)
+    }
+
+    @Test func durableRecoveryWithoutOwnershipChannelFailsClosed() async throws {
+        let f = try await JobFixture(), request = try f.request()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(failures: [.quiesceOwnedWork]))
+        _ = try await f.coordinator.wait(request.jobID)
+        try await f.coordinator.closeForReopen()
+        let reopened = try await ProvisioningCoordinator.open(manager: f.manager,
+            journal: ProvisioningJobJournal(directory: f.journal.directory), authority: f.authority, artifacts: f.artifacts,
+            engineDigest: ProvisioningCoordinator.engineIdentity(f.plan), admitPackage: {})
+        let guest = JobGuest()
+        await #expect(throws: ProvisioningJobFailure.ownershipUnverified) { try await reopened.recover(request.jobID, target: f.target, adapter: guest) }
+        #expect(await guest.commands.isEmpty)
+        #expect(await reopened.status(request.jobID)?.cleanupRequired == true)
+    }
+
+    @Test func closingActiveCoordinatorIsRejectedAndRetainsOwnership() async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = JobGate()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(pauseAt: .configureFeatures, gate: gate))
+        #expect(await eventually { await gate.entered })
+        await #expect(throws: ProvisioningJobFailure.busy) { try await f.coordinator.closeForReopen() }
+        await gate.release()
+        #expect(try await f.coordinator.wait(request.jobID).state == .succeeded)
     }
 }

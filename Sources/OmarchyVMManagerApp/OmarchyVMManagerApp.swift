@@ -59,6 +59,7 @@ struct OmarchyVMManagerApp: App {
                     "developmentKeychainCompatibility": KeychainOwnerSecretStore.usesDevelopmentKeychain,
                     "hostPreflightPerformed": !bundleOnly,
                     "provisioningSourceRevision": provisioning.sourceRevision,
+                    "provisioningSourceSnapshotSHA256": provisioning.sourceSnapshotSHA256,
                     "provisioningExecutionEnabled": provisioning.executionEnabled,
                     "preflight": bundleOnly ? "not performed (bundle verification only)" : (value.preflightFailure ?? "passed"),
                     "vmLaunchEnabled": !bundleOnly && !AppModel.layoutPreview, "launchScope": AppModel.layoutPreview ? "synthetic-layout-preview" : "registered-manager-owned-private-build"

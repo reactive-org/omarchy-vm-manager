@@ -59,8 +59,26 @@ class ProvisioningPackageTests(unittest.TestCase):
             (root / "Config").mkdir(); (root / "Sources/OmarchyVMManagerCore").mkdir(parents=True)
             shutil.copy2(package.ROOT / package.LOCK, root / package.LOCK)
             shutil.copytree(package.ROOT / "Vendor/dev-vm", root / "Vendor/dev-vm")
+            shutil.copytree(package.ROOT / "Patches", root / "Patches")
             package.prepare(root)
             launcher = root / ".build/provisioning-launcher-source/Sources"
             self.assertEqual((launcher / "main.c").read_bytes(), (root / "Vendor/dev-vm/Sources/dev-vm-process-host/main.c").read_bytes())
             (launcher / "extra.c").write_text("not admitted")
             with self.assertRaisesRegex(ValueError, "Unexpected launcher"): package.prepare(root)
+
+    def test_patched_snapshot_requires_exact_patch_and_reconstructed_base(self):
+        for kind in ("patch", "base", "snapshot", "missing-patch"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / "Config").mkdir()
+                (root / "Sources/OmarchyVMManagerCore").mkdir(parents=True)
+                shutil.copytree(package.ROOT / "Vendor/dev-vm", root / "Vendor/dev-vm")
+                shutil.copytree(package.ROOT / "Patches", root / "Patches")
+                raw, lock = package.read_lock()
+                patch_file = root / lock["integrationPatches"][0]["path"]
+                if kind == "patch": patch_file.write_text("changed fixture")
+                elif kind == "missing-patch": patch_file.unlink()
+                elif kind == "base": lock["baseFiles"]["Package.swift"] = "a" * 64
+                else: lock["sourceSnapshotSHA256"] = "b" * 64
+                (root / package.LOCK).write_text(json.dumps(lock))
+                with self.assertRaises(ValueError): package.prepare(root)

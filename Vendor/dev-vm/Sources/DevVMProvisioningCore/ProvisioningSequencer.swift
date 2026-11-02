@@ -31,11 +31,11 @@ public actor ProvisioningSequencer {
         }
     }
 
-    public func run(_ request: ProvisioningRequest, approval: ProvisioningApproval,
+    public func run(_ request: ProvisioningRequest, approval: ProvisioningApproval, payloadID: UUID = UUID(),
                     adapter: any ProvisioningGuestAdapter) async -> SequencingResult {
         guard !used else { return rejection(.alreadyUsed) }
         used = true; self.request = request; self.adapter = adapter
-        context = GuestJobContext(jobID: request.jobID, payloadID: UUID(), target: request.target,
+        context = GuestJobContext(jobID: request.jobID, payloadID: payloadID, target: request.target,
                                   dependencyDigest: request.dependencyDigest, mode: request.mode)
         defer { self.adapter = nil; active = nil }
         return await withTaskCancellationHandler {
@@ -137,7 +137,7 @@ public actor ProvisioningSequencer {
             // A local check's return/exit is not a remote descendant proof.
             if workRisk { await quiesce() }
         }
-        if payloadRisk, !workRisk, !unsafeIdentity {
+        if payloadRisk, !workRisk, !grantRisk, !unsafeIdentity {
             transition(.removingPayload)
             if await cleanupStep(.removePayload) { payloadRisk = false }
         }
