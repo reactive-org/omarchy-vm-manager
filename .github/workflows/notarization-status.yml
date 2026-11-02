@@ -6,7 +6,9 @@ permissions:
 jobs:
   status:
     name: Check Apple submission for v0.9.4-dev.1
-    runs-on: macos-15
+    # This job only queries notarytool; it does not build or execute the arm64 app.
+    # Use the Intel pool after arm64 runner capacity prevented status checks.
+    runs-on: macos-15-intel
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
