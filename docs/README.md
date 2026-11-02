@@ -53,3 +53,7 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 - [Reviewed custom factories](CustomFactories.md): prepared-bundle review, import, creation-time selection and validation limits.
 
 - [Native host-folder sharing](SharedFolders.md): opt-in configuration, runtime limitations, factory prerequisites and approval-gated existing-VM validation.
+
+## Implementation plans
+
+- [Bundled dev-vm provisioning](DevVMProvisioningPlan.md): planning only; Homebrew dependency checks, feature availability, shared UI/CLI setup jobs and a live interactive provisioning terminal. Implementation has not started.
