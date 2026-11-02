@@ -96,3 +96,20 @@ Run `make test-provisioning-tools` for focused coverage and `make test build` fo
 **USER CONFIRMED — isolated UI preview, 2 November 2026:** the user reviewed and accepted the page's appearance in a temporary native SwiftUI app using an unchanged copy of ProvisioningToolsView and the current core library. The preview was ad-hoc signed, opened with live dependency checks, and closed on request. It contained no manager initialization, registry access, command server, VM runtime kit or VM controls. The installed manager and guests were untouched; no tracked preview source or shared package was added. This confirms the isolated presentation, not installed-manager integration or every control interaction.
 
 **TO PROVE:** full manager page interaction, packaged/signed discovery, other Homebrew installations and Core versions, the shared Swift package and parsers, real provisioning/terminal/guest behavior and crash/sleep recovery. This milestone starts no controller port and establishes no real-VM evidence.
+
+
+## Shared transport continuation
+
+The [milestone-2 concrete adapter slice](DevVMProvisioningPlan.md#milestone-2-concrete-command-adapters--2-november-2026)
+consumes explicitly admitted SSH/SCP/SFTP and Homebrew Ansible executable pins.
+It rechecks identities/hashes and a manager-owned session/dependency authority
+before each process specification. It performs no dependency discovery, version
+probe or host install. A tools report remains prerequisites evidence, not job
+approval. Ansible retains its Homebrew-managed Python; the additional scope-control
+Python helper runs only in the guest. Guest prerequisites include cgroup v2 and a
+systemd user manager supporting `--scope --expand-environment=no`.
+
+Only fake process runners exercise this implementation. No live runner/PTY,
+manager package integration or execution feature gate is enabled. Live terminal
+stream specifications exist; actual output delivery and password echo remain
+unverified. Historical milestone-1A validation above is unchanged.

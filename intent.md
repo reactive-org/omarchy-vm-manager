@@ -1377,3 +1377,48 @@ The host-controller/runtime packaging choice in this initial decision is superse
 **VERIFIED — fake-only tests:** build and 38 Swift test functions pass (18 new sequencing/native-contract functions), including partial grants, uncertain staging/cleanup, cancellation and reentrant-driver rejection, check/trust/input rules, 10 reply/pin mismatch cases, source invalidation, post-revoke checks, recovery without original sources and sanitized results. All 38 pass with an empty tool PATH. The 18 parser and 66 planning oracle cases remain passing; seven targeted existing Python tests run with mocked guest, Ansible and lifecycle calls. No actual SSH/Ansible command, host install/probe, credential access, UI action or VM operation occurred. The earlier full legacy suite was not rerun because this slice uses fake guest adapters only; prior evidence remains historical.
 
 **TO PROVE:** actual identity/receipt authenticity, native commands and password echo/quoting, adapter deadlines and local/remote process cancellation/quiescence, concrete transports/payload staging, private persistent recovery/session rebinding, CLI/helper/UI integration, signed/pinned packaging, live terminal and real guests. Deadlines are an adapter contract, not proven wall-clock termination. Existing VM policy and manager execution gates remain unchanged. See [the transport/auth handoff](docs/DevVMProvisioningPlan.md#milestone-2-transportauthorization-slice--2-november-2026).
+
+
+## Shared Swift concrete transport adapters — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** implement the next milestone-2 slice
+in the dev-vm companion worktree: concrete SSH/Ansible adapters, fake process
+runners only, no host installations or VM launches. Manager changes are docs only;
+all execution gates, lifecycle ownership, pinned-kit and personal-VM rules remain.
+The dev-vm adapter slice is committed as
+`9ebaf178de48e6480e248f8b20eae1f35c0d16b6` on
+`codex/swift-provisioning-package` (3 November 2026).
+
+**DESIGN DECISION / IMPLEMENTED:** pinned loopback SSH and Ansible command
+construction, private immutable job materialization and bundled maintained guest
+resources sit behind an injected runner and manager-owned session authority.
+Revalidate dependencies/credential metadata/session before each process; never
+read key contents. Preserve Ansible launcher entry paths while hashing resolved
+targets. Interactive native authorization/Docker/package commands request an input
+lease and terminal stream; Ansible requests live output with closed stdin. Track
+cancellation between processes and require exact local exit before cleanup.
+No live process runner, PTY, UI terminal or operational Swift command is shipped.
+
+**PRIVATE COUPLING:** a guest-only Python helper binds one exclusive UUID payload
+lease to recorded systemd user scopes and an Ansible shell wrapper. Preparation
+requires Linux/aarch64/non-root Python 3, cgroup v2, a user manager/bus and scoped
+execution with `--expand-environment=no`, before sudo grant. Quiescence seals new
+body work and requires known scopes inactive/empty; uncertain registration blocks
+proof/removal. Only the verified guest job temp root may be removed. This is not
+a sandbox for trusted task code or independent services. Uncertain startup can
+require manual recovery. The helper adds no host Python runtime or VM lifecycle
+implementation; Homebrew continues to supply Ansible's dependencies.
+
+**VERIFIED — fake-process checks:** make build and 50 Swift test functions,
+including 12 new transport functions, pass; all 50 pass with an empty tool PATH.
+The 18 parser/66 planning oracle fixtures and seven mocked Python sequencing tests
+pass. New Python files compile and 21 bundled YAML files parse statically. No
+real SSH/SCP/SFTP/Ansible executable, credential contents, host install, app/UI or
+VM operation is used. Full legacy/Ansible syntax execution was not repeated for
+this fake-process-only slice. Prior real-VM evidence remains unchanged.
+
+**TO PROVE:** real authentication/SSH quoting, Ansible/native package parity,
+guest systemd/cgroup registration and privileged descendants, hard deadlines,
+local/remote cancellation/quiescence, PTY/password echo/live output, persistent
+recovery/session rebinding, operational CLI and manager/helper integration, signed
+packaging and real-guest acceptance. See [the concrete adapter handoff](docs/DevVMProvisioningPlan.md#milestone-2-concrete-command-adapters--2-november-2026).

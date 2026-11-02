@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete execution and manager integration remain pending.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. Live runner/PTY execution and manager integration remain pending.
 
 Date: 2 November 2026 (Australia/Melbourne).
 
@@ -240,7 +240,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | --- | --- | --- |
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
-| 2. Shared Swift controller and packaging — offline planning and fake-adapter sequencing implemented; remaining port pending | SwiftPM library, offline validation/planning executable, strict data/manifest parser and schema/catalogue resources in dev-vm; offline resolution, snapshots and proposals now implemented; fake-adapter transport/auth sequencing now implemented; concrete execution, full guest resources, manager adapters and pinned packaging remain pending | 38 Swift tests plus 18 plain-data/66 proposal-error oracle fixtures pass without a guest; real transport proofs, complete plan parity, manager pin and relocated app acceptance remain pending |
+| 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; live process runner/PTY, operational CLI, manager adapters and pinned app packaging remain pending | 50 Swift tests plus 18 plain-data/66 proposal-error oracle fixtures pass; transport tests use fake process runners only. Real guest/process proofs, complete parity, manager pin and relocated app acceptance remain pending |
 | 3. Job coordination | Journal, admission, lifecycle interlocks, cancellation and recovery | Fake-runtime tests cover session changes, duplicates, failure retention, interrupted work and .exited ownership |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
@@ -321,3 +321,76 @@ Adapter deadline contracts are 10 seconds for identity, 30 for grant/cache probe
 **VERIFIED — fake-only checks:** package build and 38 Swift test functions pass, including 18 new sequencing/native-contract tests and 10 reply/identity mismatch cases. All 38 also pass with `PATH=/nonexistent`. The 18 parser and 66 complete proposal/error oracle cases still pass. Seven selected existing Python tests using mocked guest/Ansible/lifecycle operations preserve the Python authorization/check ordering reference. The full legacy suite that runs local Ansible was deliberately not rerun in this fake-only slice; its earlier `56dba82` evidence remains historical. No host tool installation/probe, actual SSH/Ansible command, credential access, app opening/install or VM operation occurred.
 
 **TO PROVE / REMAINING:** actual guest authentication/pins and proof authenticity, native commands/quoting/TTY echo, adapter timeout/cancellation/process ownership, remote quiescence, job payload materialization, persistent journal/recovery and explicit session rebinding, operational Swift CLI cutover, immutable manager/helper/UI packaging, live terminal and all real-guest acceptance. CLI output still declares execution unavailable and every manager execution gate remains disabled. This supersedes only the earlier pending adapter-contract/authorization-state-machine status, not the remaining concrete transport or guest-acceptance work.
+
+
+## Milestone 2 concrete command adapters — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue in the same dev-vm companion
+worktree with concrete SSH/Ansible adapters tested only through fake process
+runners. No host tool installation or VM launch. The manager receives these docs
+only; package consumption, UI/CLI execution gates and VM lifecycle ownership stay
+unchanged. The dev-vm slice is committed as
+`9ebaf178de48e6480e248f8b20eae1f35c0d16b6` on
+`codex/swift-provisioning-package` (committed 3 November 2026).
+
+**IMPLEMENTED:** `SSHAnsibleGuestAdapter` constructs exact admitted executable,
+argv, environment, stdin/output policy, deadline and correlated process IDs through
+`ProvisioningProcessRunner`. No live runner or PTY is supplied. Session authority
+remains manager-owned; each invocation revalidates VM/session/dependency admission,
+credential metadata and executable identity/hash. The adapter uses loopback-only
+SSH, a pinned ed25519 host key, private known_hosts/config and explicit owner/key,
+with agent/forwarding/proxy/multiplexing disabled. Key bytes are never read by the
+adapter. Executable entry paths are preserved after resolved-target validation
+because Homebrew Ansible launchers can dispatch by symlink name.
+
+Frozen selected repository bytes and authenticated maintained playbooks, roles,
+catalogue and guest helpers are materialized into private UUID job storage.
+Build-time copies have checked inventories. Ansible receives private fixed
+inventory/config/JSON variable files, fixed transport overrides, explicit tags and
+`--check` where selected. No new host Python selection/runtime is introduced;
+Homebrew still owns Ansible's dependencies. Native package installation follows
+Omarchy and mise rather than replacing their update paths. The exact nested
+manifest path is retained to recover frozen variables without reparsing another
+file. Caller environment/plugin/agent state is not inherited.
+
+**LIVE TERMINAL CONTRACT:** native authorization, Docker consent and package
+installers request SSH TTY plus an opaque input lease; Ansible requests a live
+terminal output stream with stdin closed. A future runner must implement actual
+PTY allocation, ownership, no-secret-echo, bounded streaming/deadlines and local
+descendant exit. Structured events/results contain no terminal bytes. The adapter
+tracks cancellation across gaps between processes, interrupts only the matching
+active invocation and prevents a subsequent body launch. Cleanup is independent
+and noninteractive. There is no terminal view or actual streaming implementation
+in this slice; the standalone Swift CLI still offers offline commands only.
+
+**PRIVATE COUPLING:** the guest-only Python `provisioning-job.py` protocol binds a
+non-root Linux/aarch64 job/payload lease, recorded systemd user scopes and a scoped
+Ansible shell wrapper. Before granting sudo, preparation checks Python 3, cgroup
+v2, user manager/bus and `systemd-run --scope --expand-environment=no` capability
+(the flag requires systemd 254+). Quiescence seals body work, stops recorded scopes
+and checks inactive/empty groups before reporting proof. Pending/uncertain launch
+registration blocks proof/removal. Cleanup may create scopes after sealing for
+revocation checks; a final quiescence precedes removal of the exact owned UUID
+temporary payload. No VM storage is touched. Trusted custom tasks are executable
+code, not sandboxed; deliberate scope escape/independent services are outside this
+proof. Uncertain startup can require manual review. No local SSH exit or arbitrary
+process-name match establishes guest quiescence.
+
+**VERIFIED — fake-process slice:** make build, 50 Swift test functions (12 new
+transport functions with parameterized failure cases), 18 parser and 66 complete
+planning oracle fixtures pass. All 50 Swift tests also pass with an empty tool
+PATH. Seven focused existing Python sequencing tests use mocked guest/Ansible/
+lifecycle calls. New helper/build scripts pass syntax compilation and 21 bundled
+YAML resources pass static parsing. No real SSH/SCP/SFTP/Ansible executable,
+credential contents, UI, host install or VM operation is used. The full legacy
+suite and actual Ansible syntax commands were deliberately not rerun for this
+fake-process-only scope; previous results remain historical evidence.
+
+**TO PROVE / REMAINING:** actual SSH pins/authentication/quoting, Ansible and
+native package parity, guest helper/systemd scope registration and privileged
+cgroup descendants, hard deadlines/process ownership, real cancellation and remote
+quiescence, PTY/password echo/terminal delivery, persistent recovery and explicit
+session rebinding, operational CLI cutover, manager/helper/UI integration and
+signed/pinned packaging/relocation. Fake runners validate specifications and result
+handling, not these runtime properties. This supersedes the prior pending concrete
+command-adapter/resource-materialization status only.
