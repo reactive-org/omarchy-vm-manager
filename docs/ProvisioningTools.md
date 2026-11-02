@@ -4,6 +4,8 @@ Milestone 1A implements the Homebrew Ansible CLI dependency contract from the [s
 
 The shared Swift package, parsers, dev-vm controller port, setup execution, provisioning jobs and interactive terminal are not integrated yet. Every feature reports `implemented: false` and `enabled: false`, even when `toolsReady` is true. Normal VM management does not depend on these checks.
 
+The [milestone-2 foundation](DevVMProvisioningPlan.md#milestone-2-foundation-handoff--2-november-2026) now supplies a validation-only Swift package/parser in the companion dev-vm worktree. It does not change manager dependencies, reports or feature gates. Complete resolution/planning and the immutable package integration are still pending.
+
 ## Native and CLI reports
 
 Select **Manager → Provisioning tools** to check or refresh tools. Reports show Available, Missing, Incompatible, Needs authentication or Check failed, with detected versions and executable/Homebrew installation identities. Missing or incompatible tools can show a selectable manual Homebrew command. The manager never runs installation or upgrade commands.
