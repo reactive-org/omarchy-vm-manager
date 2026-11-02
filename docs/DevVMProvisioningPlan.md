@@ -1,8 +1,8 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. Live runner/PTY execution and manager integration remain pending.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; operational SSH/Ansible and manager integration remain pending.
 
-Date: 2 November 2026 (Australia/Melbourne).
+Date: 3 November 2026 (Australia/Melbourne).
 
 Integrate a shared Swift provisioning package maintained with dev-vm into Omarchy VM Manager so users can create and configure a developer workstation through the native app or CLI without a separate dev-vm checkout. Invoke Homebrew's Ansible for configuration tasks and show the actual process in an interactive terminal, including guest authorization prompts.
 
@@ -240,7 +240,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | --- | --- | --- |
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
-| 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; live process runner/PTY, operational CLI, manager adapters and pinned app packaging remain pending | 50 Swift tests plus 18 plain-data/66 proposal-error oracle fixtures pass; transport tests use fake process runners only. Real guest/process proofs, complete parity, manager pin and relocated app acceptance remain pending |
+| 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; operational CLI, manager adapters and pinned app packaging remain pending | 64 Swift tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity, manager pin and relocated app acceptance remain pending |
 | 3. Job coordination | Journal, admission, lifecycle interlocks, cancellation and recovery | Fake-runtime tests cover session changes, duplicates, failure retention, interrupted work and .exited ownership |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
@@ -394,3 +394,87 @@ session rebinding, operational CLI cutover, manager/helper/UI integration and
 signed/pinned packaging/relocation. Fake runners validate specifications and result
 handling, not these runtime properties. This supersedes the prior pending concrete
 command-adapter/resource-materialization status only.
+
+
+## Milestone 2 local runner and PTY — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue in the dev-vm worktree with
+local process execution and PTYs tested using disposable local fixtures only.
+No real SSH/Ansible execution, host installs or VM launches. The manager changes
+are documentation only. No operational CLI/app setup action or feature gate is
+enabled. The dev-vm continuation is committed as `bb3fae22be45b38035fac52aefa0eb270a9d0fea`
+on `codex/swift-provisioning-package` (3 November 2026).
+
+**IMPLEMENTED:** `LocalProvisioningProcessRunner` accepts exact absolute program,
+argv, working directory and environment specifications. It performs no discovery,
+shell expansion, credential access or inherited environment merge. Closed stdin
+and bounded byte input use pipes; stdout/stderr remain separate under the combined
+32 KiB capture limit. Streaming publishes raw bytes and returns empty structured
+stdout/stderr. Invalid requests/missing input ownership fail before launch;
+overflow/I/O errors cannot become successful zero exits.
+
+A small `CDevVMProcess` Darwin bridge calls `posix_spawn` with a new session,
+explicit signal state and close-on-exec-default descriptors. PTY execution also
+requires an explicitly pinned compiled `dev-vm-process-host` launcher: Darwin
+creates the session after spawn file actions, so the launcher claims its
+controlling tty then execs the target under the same PID. No fork runs in the
+Swift runtime. The launcher adds a package-owned binary to future helper
+packaging/admission; it is not a Homebrew or Python dependency. The separate C
+fixture target is test-only. Signed/relocated distribution remains pending.
+
+Register ownership before spawn and serialize one invocation per runner and one
+local invocation per VM/session across runner instances in this process. TERM
+escalates to KILL after 150 ms. Keep the leader waitable to reserve its PID/group;
+reap only after no live owned group members and output EOF. Background children
+after parent exit force failure/cleanup. Bound post-exit draining to a 250 ms
+grace, then attempt cleanup for up to 2 seconds. If proof fails, return
+`cleanupUnconfirmed`, retain descriptors/ownership and block fresh runners for
+that session. Exact-ID local reconciliation never launches another command.
+Dropping an uncertain runner transfers retention to a local reaper; loss of wait
+ownership never permits speculative PID signaling or fresh work. These controls
+are in-memory and do not establish persistent/crash recovery. Process groups do
+not contain deliberately detached task code; inherited-pipe evidence can reveal
+some escapes but cannot prove that arbitrary code has stopped.
+
+**LIVE TERMINAL / INPUT:** `ProvisioningTerminal` stores actual sequenced raw
+frames in memory only, bounded to 8 KiB–1 MiB and 1,024 frames, with 64 KiB
+snapshot batches and explicit gaps. Slow/detached viewers cannot block draining.
+Frames preserve ANSI, carriage returns and split UTF-8; their descriptions are
+redacted and no bytes enter structured provisioning reports. Snapshots expose
+active invocation/input metadata. This is a backend, not a terminal renderer or
+IPC/UI implementation. Screen reconstruction after gaps and host-action/clipboard
+escape filtering remain renderer work.
+
+One explicit lease binds reviewed job/VM/session/dependencies/mode. Input and
+resize require active invocation, owner and monotonic message sequence. Limits
+are 4 KiB per input, 64 KiB pending, 1–500 rows and 1–1,000 columns. Initial and
+flush-time local PTY settings are raw/no-echo. Revocation is serialized with actual
+nonblocking writes and drops pending input; it detaches rather than cancels the
+job. Missing answers expire at the invocation deadline. No silent mid-command
+owner transfer or retired lease reuse. Programs can print secrets; no automatic
+redaction is promised. Native SSH/sudo password echo is still TO PROVE.
+
+**VERIFIED — local fixture checks:** make build, 64 Swift test functions (14 new
+local-runner functions), 18 parser and 66 complete planning oracle fixtures pass.
+All 64 tests also pass with empty tool PATH and the absolute Swift toolchain.
+Compiled launcher/fixtures are copied into private disposable UUID roots. Tests
+cover exact argv/environment, stdin/EOF/capture/limits, stream floods/gaps/UTF-8,
+controlling/foreground tty, SIGWINCH sizing, synthetic no-echo input, revoked or
+replayed input, early/stale/concurrent cancellation, descriptor isolation,
+TERM-resistant group descendants, parent exit, changed launchers and uncertain
+pipe reconciliation. Fixture checks establish no live child after cleanup;
+launchd reaps orphan zombies. Restricted PTY runs could not open `/dev/tty`; the
+full suite passes outside that workspace filesystem restriction. An initial
+direct Swift command lacked the make cache environment and failed a restricted
+cache write; normal make checks use repository-local caches. No real SSH/SCP/
+SFTP/Ansible executable, host install, credential, UI or VM operation is used.
+The legacy suite that runs Ansible is not repeated for this scope.
+
+**TO PROVE / REMAINING:** real SSH/Ansible/nested terminal and guest auth/echo,
+remote quiescence, deliberate detached execution, kernel stalls/foreign reapers,
+crash/cross-process ownership and persistent cleanup, helper admission/signing/
+relocation, terminal renderer/escape filtering/viewer resynchronization, IPC and
+operational CLI/manager integration. Local `.exited` proves the owned process
+group/descriptors only and never releases VM clients/reservations or substitutes
+for the manager's matching VM `.exited`. Earlier 9ebaf17 fake-process evidence
+remains historical; this supersedes pending local-runner/PTY construction only.

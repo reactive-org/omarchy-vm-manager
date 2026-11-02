@@ -1422,3 +1422,48 @@ guest systemd/cgroup registration and privileged descendants, hard deadlines,
 local/remote cancellation/quiescence, PTY/password echo/live output, persistent
 recovery/session rebinding, operational CLI and manager/helper integration, signed
 packaging and real-guest acceptance. See [the concrete adapter handoff](docs/DevVMProvisioningPlan.md#milestone-2-concrete-command-adapters--2-november-2026).
+
+
+## Shared Swift local process runner and PTY — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 2 with a local
+process runner and PTYs, tested solely using disposable local fixtures. No real
+SSH/Ansible, host installs or VM launches. Manager changes are docs only; no
+production dependency, setup feature gate or lifecycle policy changes.
+The dev-vm continuation is committed as `bb3fae22be45b38035fac52aefa0eb270a9d0fea` on
+`codex/swift-provisioning-package` (3 November 2026).
+
+**DESIGN DECISION / IMPLEMENTED:** exact argv/environment/cwd, bounded separate
+capture or raw terminal streams, closed/bounded stdin, new local sessions and
+matching-ID cancellation/deadlines. Retain a waitable leader until the owned
+group is inactive and output EOF, then reap; uncertain cleanup retains ownership
+and blocks new runners for that VM/session. Explicit reconciliation and a retained
+local reaper never relaunch or signal a reused PID. This is in-memory ownership,
+not persistent recovery or a sandbox for deliberately detached code.
+
+A small Darwin C syscall bridge and pinned `dev-vm-process-host` exec launcher
+supply controlling PTY semantics without fork in the Swift runtime. Future helper
+packaging must admit/distribute that binary. No new Homebrew/Python runtime is
+required. Terminal bytes remain bounded, sequenced, memory-only and separate from
+structured events; slow readers get explicit gaps. One reviewed input lease
+controls bounded input/resize; local PTYs are raw/no-echo, and revocation drops
+pending input without cancelling the job. No renderer, IPC attach or automatic
+secret redaction is supplied.
+
+**VERIFIED — local fixtures:** make build and 64 Swift test functions pass (14
+new local-runner functions), including controlling/foreground terminal, sizing,
+synthetic input without echo, overflow, cancellation/TERM-resistant children,
+exact capture, descriptor isolation, stale admission and uncertain-pipe cleanup.
+All 64 also pass with an empty tool PATH; 18 parser and 66 planning oracle cases
+remain passing. PTY `/dev/tty` access required execution outside the workspace
+filesystem sandbox; restricted failures are recorded in the handoff. Tests use
+private UUID roots with copied compiled binaries and confirm no live fixture
+children; launchd reaps orphan zombies. No real SSH/SCP/SFTP/Ansible command,
+credential, host installation, UI or VM operation occurs.
+
+**TO PROVE:** actual remote SSH/Ansible/guest authorization and echo/quiescence,
+deliberately detached code and kernel stalls, foreign reapers, cross-process/crash
+recovery, launcher signature/relocation/admission, terminal renderer/escape policy,
+IPC/viewer resynchronization and operational CLI/manager integration. Local process
+exit is not guest quiescence or VM exit and releases no runtime resources. See
+[the local runner handoff](docs/DevVMProvisioningPlan.md#milestone-2-local-runner-and-pty--3-november-2026).

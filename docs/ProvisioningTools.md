@@ -109,7 +109,26 @@ approval. Ansible retains its Homebrew-managed Python; the additional scope-cont
 Python helper runs only in the guest. Guest prerequisites include cgroup v2 and a
 systemd user manager supporting `--scope --expand-environment=no`.
 
-Only fake process runners exercise this implementation. No live runner/PTY,
-manager package integration or execution feature gate is enabled. Live terminal
+At the `9ebaf17` adapter handoff, only fake process runners exercised this
+implementation. The local runner continuation below adds pipe/PTY support;
+manager package integration and execution feature gates stay disabled. Live terminal
 stream specifications exist; actual output delivery and password echo remain
 unverified. Historical milestone-1A validation above is unchanged.
+
+
+## Local process/PTY continuation — 3 November 2026
+
+The [local runner slice](DevVMProvisioningPlan.md#milestone-2-local-runner-and-pty--3-november-2026)
+adds an explicitly injected backend without changing dependency discovery or
+feature gates. Pipe execution uses exact supplied argv/environment. PTY execution
+also requires an explicitly pinned package-built `dev-vm-process-host` launcher,
+which claims the new session's controlling terminal before exec. It is a future
+helper packaging/admission asset, not a Homebrew installation requirement or a
+host Python runtime. The C test fixture executable is never a runtime dependency.
+
+Only disposable local binaries exercise this backend. Existing adapter tests
+still use fake process runners; no real SSH/Ansible command or VM is invoked.
+Local capture/deadlines/cancellation, owned-group cleanup, raw terminal streams,
+input leases/no-echo and resize have fixture evidence. Real remote echo, signed
+launcher distribution, persistent recovery and manager UI/CLI integration remain
+unverified; all provisioning execution gates stay disabled.
