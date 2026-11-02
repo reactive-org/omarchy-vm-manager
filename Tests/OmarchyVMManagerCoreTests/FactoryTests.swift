@@ -8,7 +8,8 @@ struct FactoryFixture {
     let kit: KitFixture
     let source: URL
     var manifest: [String: Any]
-    let lock: RuntimeProvenance
+    var lock: RuntimeProvenance
+    var integrationContract = VMGuestIntegrationContract.current
     init() throws {
         files = try RegistryFixture(); kit = try KitFixture()
         try PrivateFiles.directory(files.storage.directory, create: true)
@@ -54,7 +55,7 @@ struct FactoryFixture {
     }
     func catalog(reviewed: Set<String>) throws -> FactoryCatalog {
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
-        return FactoryCatalog(applicationSupport: files.support, kit: kit.kit, lockData: try encoder.encode(lock), reviewed: reviewed)
+        return FactoryCatalog(applicationSupport: files.support, kit: kit.kit, lockData: try encoder.encode(lock), reviewed: reviewed, integrationContract: integrationContract)
     }
     func cleanup() { files.cleanup(); kit.cleanup() }
 }

@@ -51,5 +51,6 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 [Suspend-to-disk investigation](Suspend.md) records the clarified RAM-release requirement, pinned graphics blocker and proposed disposable hibernation POC.
 
 - [Reviewed custom factories](CustomFactories.md): prepared-bundle review, import, creation-time selection and validation limits.
+- [Factory compatibility](FactoryCompatibility.md): reviewed guest package identities, supported protocols, migration and when an image rebuild is necessary.
 
 - [Native host-folder sharing](SharedFolders.md): opt-in configuration, runtime limitations, factory prerequisites and approval-gated existing-VM validation.

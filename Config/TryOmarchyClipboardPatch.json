@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-01T07:58:27+00:00",
+  "authorDate": "2026-11-03T00:00:00+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-01T07:58:27+00:00",
-  "subject": "Report exact guest display identity for explicit launch intent",
-  "commit": "85f5e561e5a277ccec08d7725c8714cb090c9011",
-  "patchSHA256": "7a402c8771dd180a411b71675dbea1425218593e7562c120996d597b3549dae5"
+  "committerDate": "2026-11-03T00:00:00+00:00",
+  "subject": "Admit reviewed guest integration independently of source revision",
+  "commit": "033d2460dc44796afeb6d08b6a32aaf51febf8be",
+  "patchSHA256": "236447a6c44429c857b9fbba1d30fc78b1f5900eb64523aa33a841bc09fb8e6d"
 }

@@ -39,7 +39,7 @@ fetch-runtime-kit:
 	python3 Scripts/fetch_runtime_kit.py
 
 patched-kit:
-	Scripts/build-patched-try-omarchy-kit.sh
+	Scripts/build-patched-try-omarchy-kit.sh $(if $(REUSE_GUEST_PACKAGE_KIT),--reuse-guest-package-from "$(REUSE_GUEST_PACKAGE_KIT)")
 
 test-upstream:
 	Scripts/upstream-make.sh test

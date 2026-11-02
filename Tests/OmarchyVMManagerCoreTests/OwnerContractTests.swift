@@ -33,14 +33,14 @@ struct OwnerContractTests {
             #expect(try VMFactorySelection.digest(repository.appendingPathComponent("Sources/OmarchyVMManagerCore/Resources/" + name + ".json")) == digest)
         }
         var fixture = try FactoryFixture(); defer { fixture.cleanup() }
+        try fixture.compatibleLeanEvidence()
         let catalog = try fixture.catalog(reviewed: [])
         #expect(try catalog.ownerSetupContract(for: nil) == VMOwnerSetupContract.official)
         #expect(try catalog.ownerSetupContract(for: .official) == VMOwnerSetupContract.official)
-        try fixture.leanEvidence()
         _ = try fixture.write()
         let identity = try catalog.importBundle(fixture.source)
         #expect(try catalog.ownerSetupContract(for: identity) == VMOwnerSetupContract.lean)
-        #expect(try catalog.selection(for: identity)?.verified(runtimeBundle: fixture.kit.kit.bundleURL).ownerSetupContractSHA256 == VMOwnerSetupContract.lean)
+        #expect(try catalog.selection(for: identity)?.verified(runtimeBundle: fixture.kit.kit.bundleURL, reviewedIntegrationContract: fixture.integrationContract).ownerSetupContractSHA256 == VMOwnerSetupContract.lean)
         try Data("changed evidence".utf8).write(to: catalog.root(identity.manifestSHA256).appendingPathComponent("compatibility.json"))
         #expect(throws: (any Error).self) { try catalog.selection(for: identity) }
     }
@@ -48,7 +48,7 @@ struct OwnerContractTests {
     @Test("unknown, mixed, missing or incompatible lean evidence is refused", arguments: ["unknown", "mixed", "missing", "source", "old-package"])
     func invalidEvidence(_ mode: String) throws {
         var fixture = try FactoryFixture(); defer { fixture.cleanup() }
-        try fixture.leanEvidence(mode: mode); _ = try fixture.write()
+        try fixture.compatibleLeanEvidence(mode: mode); _ = try fixture.write()
         #expect(throws: (any Error).self) { try fixture.catalog(reviewed: []).importBundle(fixture.source) }
         #expect(!FileManager.default.fileExists(atPath: fixture.files.storage.vms.path))
     }

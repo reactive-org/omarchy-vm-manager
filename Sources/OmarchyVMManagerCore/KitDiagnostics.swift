@@ -31,6 +31,7 @@ public struct RuntimeProvenance: Codable, Equatable, Sendable {
     public var manualPauseVersion: Int? = nil
     public var launchIntentVersion: Int? = nil
     public var customFactoryVersion: Int? = nil
+    public var factoryCompatibilityVersion: Int? = nil
     public var managedSetupVersion: Int? = nil
     public var ownerSetupContractsVersion: Int? = nil
     public var ownerSetupReportVersion: Int? = nil
@@ -116,6 +117,9 @@ public enum KitVerifier {
         }
         if let version = lock.ownerSetupContractsVersion {
             guard version == VMOwnerSetupContract.capabilityVersion, lock.files[VMOwnerSetupContract.provenancePath] != nil else { throw invalid("Reviewed owner contract selection is unproven.") }
+        }
+        if let version = lock.factoryCompatibilityVersion, version != 1 {
+            throw invalid("Factory guest integration compatibility capability is unknown.")
         }
         if let version = lock.customFactoryVersion, version != VMFactorySelection.capabilityVersion {
             throw invalid("Custom factory selection capability is unknown.")
