@@ -1,6 +1,6 @@
 # Bundled dev-vm implementation plan
 
-Status: planning only; implementation has not started.
+Status: milestone 1 dependency checks implemented and validated without VMs; subsequent milestones remain planned.
 
 Date: 2 November 2026 (Australia/Melbourne).
 
@@ -8,7 +8,7 @@ Integrate a pinned copy of dev-vm into Omarchy VM Manager so users can create an
 
 **DESIGN DECISION — user direction:** bundle the dev-vm engine first, assume Homebrew is available, and enable provisioning features according to compatible host tools and their capabilities. Bundling Python and Ansible is a later packaging improvement. Do not install or upgrade host tools automatically.
 
-Saving this plan authorizes documentation only. Implementation, host dependency installation, signing credential use, permission grants, UI takeover and real guest operations require their applicable authorization. Existing VM and runtime safeguards in [intent.md](../intent.md) and [AGENTS.md](../AGENTS.md) continue to apply.
+The initial save authorized documentation only. The user subsequently authorized milestone 1 in this worktree: Homebrew dependency checks and feature gates, with no host tool installation or VM launches. See [the milestone 1 reference](ProvisioningTools.md). Subsequent implementation, host dependency installation, signing credential use, permission grants, UI takeover and real guest operations retain their applicable authorization boundaries. Existing VM and runtime safeguards in [intent.md](../intent.md) and [AGENTS.md](../AGENTS.md) continue to apply.
 
 ## Scope and ownership
 
@@ -31,7 +31,7 @@ The first release includes bundled presets, explicitly selected local setup fold
 
 Defer remote repository cloning, custom factory building in the app, automatic third-party collection installation, concurrent provisioning and a general-purpose SSH terminal. Docker remains conditional on the separate image-building workflow. Do not require Git merely to use bundled engine assets or local setup folders.
 
-The terminal is a scoped exception proposed for the embedded-terminal non-goal in intent.md. Record that exception and the new orchestration decisions in intent.md before implementation; do not interpret this planning document as changing the current launch or permission policy.
+The terminal is a scoped exception to the embedded-terminal non-goal recorded with the provisioning design decision in intent.md. Milestone 1 implements dependency reports only; the terminal and orchestration remain future work. Current launch and permission policy continues to apply.
 
 ## Existing source evidence
 

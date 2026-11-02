@@ -56,4 +56,5 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 
 ## Implementation plans
 
-- [Bundled dev-vm provisioning](DevVMProvisioningPlan.md): planning only; Homebrew dependency checks, feature availability, shared UI/CLI setup jobs and a live interactive provisioning terminal. Implementation has not started.
+- [Bundled dev-vm provisioning](DevVMProvisioningPlan.md): phased plan for Homebrew dependency checks, feature availability, shared UI/CLI setup jobs and a live interactive provisioning terminal. Milestone 1 dependency checks are implemented; later milestones remain planned.
+- [Provisioning tools](ProvisioningTools.md): milestone 1 native and CLI dependency reports, compatibility rules, feature gates and validation limits. Setup execution is not implemented.

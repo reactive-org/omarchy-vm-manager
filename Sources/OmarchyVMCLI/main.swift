@@ -23,6 +23,14 @@ do {
         let data = try JSONSerialization.data(withJSONObject: ["version": version, "commandProtocol": 1], options: [.sortedKeys])
         FileHandle.standardOutput.write(data + Data([10])); exit(0)
     }
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    if !arguments.contains("--help"), !arguments.contains("-h"),
+       let tools = try ProvisioningToolsInvocation.parse(arguments) {
+        let report = try await HomebrewProvisioningDependencies(configuration: .host(overrides: tools.overrides)).inspect()
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        FileHandle.standardOutput.write(try encoder.encode(report) + Data([10]))
+        exit(0)
+    }
     let parsed = try GuestCLIInvocation.parse(Array(CommandLine.arguments.dropFirst()))
     if parsed.help { FileHandle.standardOutput.write(Data((GuestCLIInvocation.usage + "\n").utf8)); exit(0) }
     let request = parsed.request!; requestID = request.requestID
@@ -38,7 +46,7 @@ do {
         let deadline = Date().addingTimeInterval(20)
         while Date() < deadline {
             do { output(try client.send(request)) }
-            catch let error as VMFailure where error.code == "manager-unavailable" { Thread.sleep(forTimeInterval: 0.2) }
+            catch let error as VMFailure where error.code == "manager-unavailable" { try await Task.sleep(for: .milliseconds(200)) }
         }
         throw VMFailure(code: "manager-unavailable", message: "The manager did not become available. Open it and check its Runtime and registry status.")
     }

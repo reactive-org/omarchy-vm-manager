@@ -46,7 +46,7 @@ This document uses four labels so implementation does not accidentally turn a hy
 
 - General-purpose support for arbitrary operating systems.
 - Snapshots, cloning, migration, import/export or moving VM storage.
-- Embedded guest display, VNC, SPICE, terminal, interactive SSH client UI or file browser. Provisioning guest SSH access and exposing connection details for host tools are in scope.
+- Embedded guest display, VNC, SPICE, general-purpose terminal, interactive SSH client UI or file browser. A future terminal scoped to approved developer-provisioning jobs is the exception described under the 2 November 2026 provisioning decision below; milestone 1 adds dependency checks only. Provisioning guest SSH access and exposing connection details for host tools are in scope.
 - Background clipboard broadcast or a one-VM-only clipboard compromise. A focus-aware runtime fix is a required prerequisite, not a deferred feature.
 - More than one bridged-network session.
 - Bridged networking at all in the proof of concept or first private MVP.
@@ -1309,3 +1309,15 @@ The helper owns QMP pause/resume and keeps manual ownership separate from host-s
 
 
 **VERIFIED — sharing final handoff:** final installed 0.10.0 (23) passes installed-path verification and 65 seconds of health observation across two monitor intervals. Dev VM remains Running / SSH ready / Mounted with `~/Shared → /mnt/mac` read-write. The two disposable test files are removed after inode/hash checks and guest confirmation; unrelated host files are preserved. No guest disk was replaced, reset or moved to Trash. Untested behaviors retain the TO PROVE distinctions above.
+
+## Developer provisioning dependency checks — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** implement milestone 1 of [the dev-vm plan](docs/DevVMProvisioningPlan.md) in its worktree: Homebrew dependency checks and feature gates, with no host tool installations or VM launches. Bundle the dev-vm engine in a later milestone and use compatible existing host dependencies initially; private bundled Python/Ansible runtimes remain a future packaging option. Keep VM implementation in Try Omarchy and lifecycle ownership in VMManager. A future live terminal is scoped to approved provisioning jobs, rather than a general SSH client; milestone 1 adds no terminal or guest execution.
+
+**DESIGN DECISION:** expose a native Provisioning tools page and local `omarchy-vm setup tools` report without opening the manager from the CLI. Reports distinguish tool prerequisites from implemented features; all execution gates remain disabled. Probe explicit executables with bounded output/time and a private temporary environment. Do not run install/upgrade commands, read credentials, check GitHub authentication, contact guests, query Docker or invoke Apple's potentially interactive Python launcher. See [dependency policy and checks](docs/ProvisioningTools.md).
+
+**PRIVATE COUPLING:** host Ansible launcher resolution recognizes direct Python shebangs and the exact `/usr/bin/env python3` form. Preserve virtualenv entry paths, verify the selected interpreter's imports and matching CLI/package versions, and reject other wrappers. This adapter is separate from existing runtime/settings couplings and grants no upstream kit capability.
+
+**VERIFIED — milestone 1 no-VM validation:** `make test build` passes 224 Swift tests/37 suites and 43 script tests, including 18 focused provisioning tests. Direct CLI checks preserve JSON/help/version behavior, reject an installation flag and leave execution disabled. Minimal-PATH read-only discovery admits the existing Homebrew 7.0.11/Python 3.14.9/PyYAML 6.0.3/Ansible Core 2.21.5 toolchain; GitHub authentication remains unverified. Probe locale is explicitly UTF-8. No host software was installed/upgraded, credential accessed, app installed/opened or guest contacted. Exact checks and limitations are in [ProvisioningTools.md](docs/ProvisioningTools.md).
+
+**TO PROVE:** other supported Homebrew environments, native UI interaction and packaged behavior; engine integration, PTY authorization/echo, persistent sudo-grant cleanup, interrupted remote work, real guest compatibility, focus, sleep/wake, crashes and concurrent provisioning. Synthetic tool probes do not establish those behaviors or change prior real-VM evidence.

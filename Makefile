@@ -7,7 +7,7 @@ export RELEASE_TAG
 
 .PHONY: prepare-source help build build-signed icon test test-build-policies test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-provisioning-tools | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -85,3 +85,8 @@ verify-layout-preview:
 .PHONY: test-factories
 test-factories: prepare-source
 	Scripts/upstream-make.sh test-shell-run-mode
+
+.PHONY: test-provisioning-tools
+test-provisioning-tools: prepare-source
+	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
+	swift test --disable-sandbox --no-parallel --filter Provisioning

@@ -2,7 +2,7 @@ import AppKit
 import OmarchyVMManagerCore
 import SwiftUI
 
-private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults }
+private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults, provisioningTools }
 private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces" }
 
 struct ManagerView: View {
@@ -37,6 +37,7 @@ struct ManagerView: View {
                         Label("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark").tag(Destination.defaults)
                         Label("Permissions", systemImage: "hand.raised.fill").tag(Destination.permissions)
                         Label("Runtime", systemImage: "checkmark.shield").tag(Destination.runtime)
+                        Label("Provisioning tools", systemImage: "wrench.and.screwdriver").tag(Destination.provisioningTools)
                     }
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 5) {
@@ -61,6 +62,7 @@ struct ManagerView: View {
                     case .defaults: OwnerDefaultsView(model: model)
                     case .permissions: permissions
                     case .runtime: runtime
+                    case .provisioningTools: ProvisioningToolsView()
                     default: library
                     }
                 }.padding(28).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
