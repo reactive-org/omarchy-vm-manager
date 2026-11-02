@@ -11,3 +11,19 @@ The manager's original stacked-frame artwork uses an Omarchy-inspired green pale
 The guest icon uses the official Omarchy logo from https://omarchy.org/brand/omarchy-logo.svg. Its original SVG, source SHA-256 and derivation metadata are preserved in `App/Assets/OmarchyGuest-source.*`; the official path is unchanged and rendered white on a neutral dark tile. Omarchy is a pending trademark of the Omacom Foundation. All rights reserved. Brand and Foundation references: https://omarchy.org/brand/ and https://omarchy.org/foundation/.
 
 Omarchy VM Manager is a project of reactive.org enterprises: https://www.reactive.org/. This project credit does not assign ownership of upstream names, marks or software to reactive.org enterprises.
+
+
+The developer provisioning library and guest resources are an unmodified source
+snapshot from reactive-org/dev-vm at `bb3fae22be45b38035fac52aefa0eb270a9d0fea`.
+`Config/DevVMProvisioning.lock.json` inventories the exported source and
+`Vendor/DevVMProvisioning.md` records the integration boundary. This adds no host
+Python/Ansible runtime distribution. The engine retains guest-side Python/shell
+helpers as data.
+
+The shared library compiles the CYaml/LibYAML subset from Yams 6.2.2 and uses
+TOMLDecoder 0.4.5 at `a2bbd2796fe3064e107de18cb56031052c4fa899`. Preserve the
+Yams, LibYAML and TOMLDecoder license files in the provisioning resource bundle
+(`Resources/Yams-LICENSE.txt`, `LibYAML-LICENSE.txt`, `TOMLDecoder-LICENSE.txt`).
+Exact parser revisions/hashes and license sources remain in the pinned package's
+`ThirdParty/ParserInventory.json`. TOMLDecoder remains an exactly resolved SwiftPM
+source dependency, not an installed host program.

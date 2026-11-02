@@ -1,0 +1,12 @@
+---
+- name: Ensure selected cli configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'cli'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ omarchy_cli | to_json }}"
+  register: omarchy_cli_result
+  changed_when: (omarchy_cli_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report cli actions
+  ansible.builtin.debug:
+    var: omarchy_cli_result.stdout

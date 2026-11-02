@@ -1,0 +1,12 @@
+---
+- name: Ensure selected docker configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'docker'] + (['--check'] if ansible_check_mode else []) + (['--defer-docker-access'] if omarchy_defer_docker_access | default(false) else []) }}"
+    stdin: "{{ omarchy_docker | to_json }}"
+  register: omarchy_docker_result
+  changed_when: (omarchy_docker_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report docker actions
+  ansible.builtin.debug:
+    var: omarchy_docker_result.stdout

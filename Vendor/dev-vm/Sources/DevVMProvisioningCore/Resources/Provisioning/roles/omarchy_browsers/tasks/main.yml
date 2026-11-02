@@ -1,0 +1,12 @@
+---
+- name: Ensure selected browsers configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'browsers'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ {'browsers': omarchy_browsers} | to_json }}"
+  register: omarchy_browsers_result
+  changed_when: (omarchy_browsers_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report browsers actions
+  ansible.builtin.debug:
+    var: omarchy_browsers_result.stdout

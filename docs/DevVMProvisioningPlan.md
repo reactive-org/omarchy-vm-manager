@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; operational SSH/Ansible and manager integration remain pending.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; operational SSH/Ansible and job/UI integration remain pending.
 
 Date: 3 November 2026 (Australia/Melbourne).
 
@@ -106,7 +106,7 @@ Do not forward the manager's inherited environment wholesale. Keep a controlled 
 
 ## Shared Swift package and resource packaging
 
-Maintain a SwiftPM package at the dev-vm repository's root `Package.swift`, with a `DevVMProvisioningCore` library and a standalone `dev-vm` executable consuming that library. These products now exist in the milestone-2 foundation branch; the executable currently supports structure validation only. The manager will pin the package by immutable revision and link the same library into its provisioning helper after the relevant migration steps. Keep Swift 6 and macOS 15+ compatibility and a make-based build/test entry point.
+Maintain a SwiftPM package at the dev-vm repository's root `Package.swift`, with a `DevVMProvisioningCore` library and a standalone `dev-vm` executable consuming that library. These products now exist in the milestone-2 foundation branch; the executable supports offline validation and planning only. The manager now consumes the immutable `bb3fae2` source export under `Vendor/dev-vm`, verified by `Config/DevVMProvisioning.lock.json`, and links the same library into manager core and an offline-only provisioning helper. Keep Swift 6 and macOS 15+ compatibility and a make-based build/test entry point.
 
 Move host-side manifest parsing, feature/profile resolution, plan generation, input freezing/hashing, source validation, inventory/argument generation, guest payload staging, native-command sequencing and authorization cleanup coordination into this package. Manager-specific transports and lifecycle actions are injected adapters; the package must not import the manager or create dependency cycles. In the app, all lifecycle actions still pass through VMManager. The standalone executable calls the same package and uses the manager's public CLI for authorized VM lifecycle operations.
 
@@ -120,7 +120,9 @@ Contents/
     OmarchyVMManager
     omarchy-vm
     OmarchyVMProvisioningHelper
-      [links DevVMProvisioningCore]
+      [links DevVMProvisioningCore; offline only]
+    dev-vm-process-host
+      [pinned PTY exec launcher; not invoked by the offline helper]
   Resources/
     <SwiftPM provisioning resources>.bundle/
       playbooks, roles, catalogues, presets, guest helpers
@@ -240,7 +242,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | --- | --- | --- |
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
-| 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; operational CLI, manager adapters and pinned app packaging remain pending | 64 Swift tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity, manager pin and relocated app acceptance remain pending |
+| 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; offline manager/helper package/resource/launcher integration now implemented; operational CLI, job/session adapters and full release acceptance remain pending | 227 manager Swift tests / 48 script tests plus relocated package fixtures and prior 64 package tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity and full runtime-app/release acceptance remain pending |
 | 3. Job coordination | Journal, admission, lifecycle interlocks, cancellation and recovery | Fake-runtime tests cover session changes, duplicates, failure retention, interrupted work and .exited ownership |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
@@ -478,3 +480,85 @@ operational CLI/manager integration. Local `.exited` proves the owned process
 group/descriptors only and never releases VM clients/reservations or substitutes
 for the manager's matching VM `.exited`. Earlier 9ebaf17 fake-process evidence
 remains historical; this supersedes pending local-runner/PTY construction only.
+
+
+## Milestone 2 pinned manager/helper integration — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** integrate the pinned Swift package and
+resources into manager/helper builds, using local fixtures only. No real SSH/
+Ansible, host installs or VM launches. This continuation adds
+an offline package boundary; setup jobs, execution gates and VM policy remain
+unchanged. No manager window is opened and no installed app is replaced.
+
+**IMPLEMENTED — source pin:** consume an unmodified 79-file package snapshot at
+`bb3fae22be45b38035fac52aefa0eb270a9d0fea` under `Vendor/dev-vm`. The Config lock
+records the immutable revision, exact source/resource hashes and engine hash;
+make preparation refuses drift, links and extra source files, then generates a
+compiled pin. Source export avoids requiring the separate/unpublished dev-vm
+worktree. Root `Package.resolved` exactly pins TOMLDecoder to `a2bbd27`; the
+upstream lock/source/engine inventory stay untouched. Parser licenses ship inside
+the resource bundle and the manager's notices now identify them. Optional parser
+plugin/doc/benchmark flags are refused. Builds use local SwiftPM caches and skip
+update checks; fresh developer builds can still need normal SwiftPM source
+resolution for the exact TOML dependency. No host program is installed.
+
+**IMPLEMENTED — offline manager/helper API:** manager core links
+`DevVMProvisioningCore` and exposes `BundledProvisioning` admission, validation
+and planning. `OmarchyVMProvisioningHelper` supports only
+`--verify-package-json`, `--validate-manifest-json FILE` and
+`--plan-json REPOSITORY [MANIFEST]` (plus help). It never creates a process runner,
+reads manager registry/Keychain/defaults, connects to the manager socket, discovers
+tools or reaches a VM. Apply/check/recover/exec commands are refused. Plans still
+emit `execution_available: false`. The existing CLI/guest-command schema and all
+setup feature gates remain unchanged; tools-page text now distinguishes packaged
+offline APIs from the disabled product workflow.
+
+**IMPLEMENTED — packaging:** compile the unchanged pinned `dev-vm-process-host`
+C entry point through a generated standalone SwiftPM package. Its manifest and
+single source file are the only admitted build inputs. App assembly embeds the
+shared SwiftPM resource bundle and licenses, provisioning helper, PTY launcher,
+source lock and a final-binary-hash distribution manifest. Child executables are
+signed before their hashes are recorded; the outer app signature seals that
+manifest. Existing layout, bundle-only, diagnostics and signed-release verifiers
+now require these assets. Manager bundle diagnostics report the source revision
+and disabled provisioning execution. No existing runtime kit/factory is changed.
+
+Admission rejects a changed source lock, missing/damaged/extra resource data,
+symlinks/special files, ambiguous resource layouts, changed/nonexecutable children,
+malformed or duplicate metadata, and debug resource-bundle overrides. Embedded
+resources are checked against the compiled hash inventory before/after offline
+work; library-generated plan engine identity must also match the admitted engine.
+Both flat SwiftPM bundles and `Contents/Resources` layouts are supported. File
+reads are bounded/no-follow with before/after metadata checks. These are integrity
+checks; signing authority is checked by the app's packaging/signature pipeline,
+not granted by the editable distribution manifest or a tools report.
+
+**VERIFIED — no-VM checks:** `make build`, `make test-provisioning-package` and
+`make test` pass: 227 Swift tests in 38 suites, 48 script tests, and relocated
+package fixtures. New admission tests cover both layouts and damage/missing/
+extra/symlink/metadata cases. A copied fixture app is ad-hoc signed, moved to a
+path containing spaces/apostrophes and made read-only. Its actual offline helper
+validates/plans with `PATH=/nonexistent` and empty private HOME/TMPDIR, produces no
+host state, omits synthetic variable values, rejects execution commands and
+resource overrides, and fails on resource/launcher tampering. Deep strict ad-hoc
+signature verification passes before tampering and rejects changed resources.
+The fixture contains manager code for sealing but never executes or opens it;
+it contains no runtime kit or VM. No real SSH/SCP/SFTP/Ansible, credential access,
+host installs, UI takeover, image download, app installation or guest operation
+occurs. The separate dev-vm source/engine code remains unchanged at its pin.
+
+Initial sandboxed full regression runs could not bind local sockets and could not
+retain expected synthetic LAContext properties; the complete suite passes outside
+that restriction without authentication UI or real Keychain calls. An initial
+SwiftPM update attempt lacked network access; subsequent builds reused existing
+exact Git objects with update checks disabled. Neither workaround changes host
+software or the dependency version.
+
+**TO PROVE / REMAINING:** full app assembly with the unchanged real runtime kit,
+Developer ID/notarization and other toolchain/install layouts, read-only release
+relocation on another Mac, job journal/coordinator/lifecycle interlocks and
+manager session/dependency adapters, authenticated helper IPC, terminal renderer/
+stream attach, operational UI/CLI, persistent recovery and all real SSH/Ansible/
+guest authorization/echo/quiescence checks. A relocated offline package fixture
+is not full installed-app or real-guest acceptance. VM clients and reservations
+still require the matching VM `.exited` boundary.

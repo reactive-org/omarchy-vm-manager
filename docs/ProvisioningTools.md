@@ -132,3 +132,20 @@ Local capture/deadlines/cancellation, owned-group cleanup, raw terminal streams,
 input leases/no-echo and resize have fixture evidence. Real remote echo, signed
 launcher distribution, persistent recovery and manager UI/CLI integration remain
 unverified; all provisioning execution gates stay disabled.
+
+
+## Pinned manager/helper package — 3 November 2026
+
+The [integration handoff](DevVMProvisioningPlan.md#milestone-2-pinned-managerhelper-integration--3-november-2026)
+records the exact `bb3fae2` source/resource snapshot, compiled admission pin,
+TOMLDecoder resolution, offline helper and packaged launcher. Offline validation
+and planning need no host tool probe, separate checkout, Python or Ansible at
+runtime. The dependency report remains schema 2 with eight tool rows and all
+product setup feature gates disabled. Its wording now reflects the integrated
+helper APIs while the UI/CLI setup workflow remains pending.
+
+The new helper refuses execution commands and never creates the local runner.
+Its source lock/resources/child hashes are checked on admission; the existing
+app signature pipeline seals the distribution manifest. This does not admit
+unknown host tools, authorize a provisioning job or prove real transport/guest
+compatibility. Homebrew Ansible remains the future execution dependency.

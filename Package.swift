@@ -8,16 +8,19 @@ let package = Package(
         .executable(name: "OmarchyVMManager", targets: ["OmarchyVMManagerApp"]),
         .executable(name: "omarchy-vm", targets: ["OmarchyVMCLI"]),
         .library(name: "OmarchyVMManagerCore", targets: ["OmarchyVMManagerCore"]),
-        .executable(name: "OmarchyVMStorageHelper", targets: ["OmarchyVMStorageHelper"])
+        .executable(name: "OmarchyVMStorageHelper", targets: ["OmarchyVMStorageHelper"]),
+        .executable(name: "OmarchyVMProvisioningHelper", targets: ["OmarchyVMProvisioningHelper"])
     ],
-    dependencies: [.package(path: ".build/runtime-source/macos")],
+    dependencies: [.package(path: ".build/runtime-source/macos"), .package(path: "Vendor/dev-vm")],
     targets: [
         .target(name: "OmarchyVMManagerCore", dependencies: [
-            .product(name: "TryOmarchyKitClient", package: "macos")
+            .product(name: "TryOmarchyKitClient", package: "macos"),
+            .product(name: "DevVMProvisioningCore", package: "dev-vm")
         ], resources: [.process("Resources")]),
         .executableTarget(name: "OmarchyVMManagerApp", dependencies: ["OmarchyVMManagerCore"]),
         .executableTarget(name: "OmarchyVMCLI", dependencies: ["OmarchyVMManagerCore"]),
         .executableTarget(name: "OmarchyVMStorageHelper", dependencies: ["OmarchyVMManagerCore"]),
+        .executableTarget(name: "OmarchyVMProvisioningHelper", dependencies: ["OmarchyVMManagerCore"]),
         .testTarget(name: "OmarchyVMManagerCoreTests", dependencies: ["OmarchyVMManagerCore"])
     ],
     swiftLanguageModes: [.v6]

@@ -1467,3 +1467,47 @@ recovery, launcher signature/relocation/admission, terminal renderer/escape poli
 IPC/viewer resynchronization and operational CLI/manager integration. Local process
 exit is not guest quiescence or VM exit and releases no runtime resources. See
 [the local runner handoff](docs/DevVMProvisioningPlan.md#milestone-2-local-runner-and-pty--3-november-2026).
+
+
+## Pinned provisioning manager/helper integration — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** integrate the pinned shared package and
+resources into manager/helper builds, tested with local fixtures only. No real
+SSH/Ansible, installs or VM launches. Add offline admission/planning only; no setup
+execution gate, job coordinator, lifecycle policy or installed app changes.
+
+**IMPLEMENTED:** an unchanged 79-file source export at dev-vm `bb3fae22be45b38035fac52aefa0eb270a9d0fea`
+is bound by a source/resource lock and generated compiled pin. Root SwiftPM links
+the library into core/helper and exactly resolves TOMLDecoder. Builds verify
+source drift and refuse optional parser plugins. The pinned C launcher is built
+unchanged through a separate generated SwiftPM package. App assembly/signature/
+layout checks now include the provisioning resources/licenses, offline helper,
+launcher, source lock and final signed-child hash manifest. Bundle diagnostics
+include source revision and disabled execution. No runtime-kit source is changed.
+
+**PRIVATE COUPLING:** bounded embedded package admission supports the two known
+SwiftPM layouts, refuses overrides/links/special files/extra or damaged resources
+and changed child binaries, and repeats verification after offline work. The
+helper accepts verify-package/validate-manifest/plan only, returns fixed errors
+for execution, and never initializes registry/credentials/socket/tool probes or a
+runner. Plans stay nonexecutable. Integrity manifests do not establish signing
+authority; the app signature pipeline supplies that distinct check.
+
+**VERIFIED — local checks:** build, 227 Swift tests/38 suites, 48 script tests
+and actual offline helper relocation fixtures pass. A private ad-hoc sealed
+fixture app, with no runtime kit, validates/plans read-only with empty tool PATH
+and private empty HOME/TMPDIR; it rejects execution, resource overrides and
+resource/launcher damage, and does not serialize synthetic variable values.
+Strict deep signature checks pass before resource damage and reject it afterward.
+The fixture manager executable is sealed but never opened/executed. No real SSH/
+SCP/SFTP/Ansible, Keychain item, permission prompt, host install, UI action, image
+download, installed-app change or guest operation occurs. Sandbox socket/context
+failures and the initial unavailable-network update are recorded in the handoff;
+full fixture regression passes outside that restriction using existing exact
+source objects and private caches. The separate dev-vm code remains unchanged.
+
+**TO PROVE:** complete runtime-kit app assembly/release signature/notarization,
+other-Mac relocation, coordinator/journal/session adapters and helper IPC, terminal
+UI/attach, operational CLI, persistent recovery and real guest/SSH/Ansible/echo/
+quiescence behavior. Package fixture success changes no VM `.exited` ownership,
+kit provenance or earlier real-guest evidence. See [the integration handoff](docs/DevVMProvisioningPlan.md#milestone-2-pinned-managerhelper-integration--3-november-2026).

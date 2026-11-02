@@ -105,7 +105,7 @@ public struct ProvisioningToolReport: Codable, Equatable, Sendable {
     public let policy: String
     public init(tools: [ProvisioningToolResult]) {
         schemaVersion = 2; self.tools = tools
-        policy = "Homebrew Ansible Core 2.21.x with local CLI self-checks. No separate Python/PyYAML requirement. The shared Swift package and execution are not implemented."
+        policy = "Homebrew Ansible Core 2.21.x with local CLI self-checks. No separate Python/PyYAML requirement. The pinned Swift engine supports offline helper planning; setup UI/CLI execution is disabled."
         features = ProvisioningCapability.allCases.map { capability in
             let required: [ProvisioningTool]
             switch capability {
@@ -121,8 +121,8 @@ public struct ProvisioningToolReport: Codable, Equatable, Sendable {
             return ProvisioningFeatureGate(capability: capability, toolsReady: !deferred && blockers.isEmpty,
                 implemented: false, enabled: false, blockers: blockers,
                 reason: deferred ? "Deferred; dependencies are not probed." :
-                    (capability == .jsonPlanning || capability == .yamlPlanning ? "No external tools required; the shared Swift package and parsers are not integrated yet." :
-                     (blockers.isEmpty ? "Tool prerequisites pass; the provisioning engine is not integrated yet." : "Required tools are missing, incompatible or unverified.")))
+                    (capability == .jsonPlanning || capability == .yamlPlanning ? "No external tools required; pinned offline helper APIs are integrated, while the setup UI/CLI workflow is disabled." :
+                     (blockers.isEmpty ? "Tool prerequisites pass; setup execution remains disabled." : "Required tools are missing, incompatible or unverified.")))
         }
     }
     public func tool(_ id: ProvisioningTool) -> ProvisioningToolResult? { tools.first { $0.tool == id } }

@@ -11,6 +11,7 @@ import subprocess
 from kit_artifacts import ROOT, digest
 from build_patched_kit import inventory
 from keychain_profile import stage_keychain_profile, verify_keychain_profile
+import provisioning_package
 
 
 def run(*args, **kwargs):
@@ -43,7 +44,7 @@ def assemble():
     if args.signed_prerelease:
         assert args.preserve_runtime_signatures and lock["signingTeamID"] == os.environ["APPLE_TEAM_ID"]
         assert identity.startswith("Developer ID Application:") and identity.endswith("(" + lock["signingTeamID"] + ")")
-    binaries = Path(subprocess.check_output(["swift", "build", "--disable-sandbox", "-c", configuration, "--show-bin-path"], cwd=ROOT, text=True).strip())
+    binaries = Path(subprocess.check_output(["swift", "build", *provisioning_package.swift_flags(), "-c", configuration, "--show-bin-path"], cwd=ROOT, text=True).strip())
     name = "Omarchy VM Manager Layout Preview" if args.layout_preview else ("Omarchy VM Manager Preview" if args.preview else "Omarchy VM Manager")
     app = args.output_directory / (name + ".app")
     stage = args.output_directory / ("." + name + ".staging.app")
@@ -57,6 +58,10 @@ def assemble():
         assert resources.is_dir() and not resources.is_symlink(), "missing core resource bundle"
         assert all(not entry.is_symlink() for entry in resources.rglob("*")), "linked core resource entry"
         shutil.copytree(resources, stage / "Contents/Resources" / resources.name)
+        launcher_binaries = Path(subprocess.check_output(["swift", "build", *provisioning_package.swift_flags(),
+            "--package-path", str(ROOT / ".build/provisioning-launcher-source"), "--scratch-path", str(ROOT / ".build/provisioning-launcher"),
+            "-c", configuration, "--show-bin-path"], cwd=ROOT, text=True).strip())
+        provisioning_package.stage(binaries, launcher_binaries, stage / "Contents")
         info = plistlib.loads((ROOT / "App/Info.plist").read_bytes())
         if args.layout_preview:
             info["CFBundleIdentifier"] = "dev.omarchy.vm-manager.layout-preview"
@@ -94,11 +99,16 @@ def assemble():
             signing += ["--options", "runtime", "--timestamp"]
         run(*signing, "--identifier", "dev.omarchy.vm-manager.storage", stage / "Contents/MacOS/OmarchyVMStorageHelper")
         run(*signing, "--identifier", "dev.omarchy.vm-manager.cli", stage / "Contents/MacOS/omarchy-vm")
+        for name in provisioning_package.EXECUTABLES:
+            run(*signing, "--identifier", "dev.omarchy.vm-manager." + name, stage / "Contents/MacOS" / name)
+        provisioning_package.seal(stage / "Contents")
         run(*signing, "--identifier", info["CFBundleIdentifier"],
             "--entitlements", entitlements_path, stage)
         run("codesign", "--verify", "--deep", "--strict", stage)
         verify_keychain_profile(stage, lock.get("signingTeamID", ""))
         run(stage / "Contents/MacOS/OmarchyVMManager", "--verify-bundle-json")
+        run(stage / "Contents/MacOS/OmarchyVMProvisioningHelper", "--verify-package-json")
+        provisioning_package.verify(stage / "Contents")
         if app.exists():
             assert app.is_dir() and not app.is_symlink()
             shutil.rmtree(app)

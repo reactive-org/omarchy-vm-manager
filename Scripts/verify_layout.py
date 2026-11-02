@@ -10,6 +10,7 @@ from kit_artifacts import ROOT
 from build_patched_kit import inventory
 from bundle_layout import core_resource_directory
 from keychain_profile import verify_keychain_profile
+import provisioning_package
 
 parser = argparse.ArgumentParser()
 parser.add_argument("app", type=Path)
@@ -17,6 +18,7 @@ parser.add_argument("--runtime-lock", type=Path, default=ROOT / "Config/TryOmarc
 args = parser.parse_args()
 app = args.app
 contents = app / "Contents"
+provisioning_package.verify(contents)
 info = plistlib.loads((contents / "Info.plist").read_bytes())
 assert info["CFBundleExecutable"] == "OmarchyVMManager"
 resources = core_resource_directory(contents / "Resources/OmarchyVMManager_OmarchyVMManagerCore.bundle")

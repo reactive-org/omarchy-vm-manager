@@ -1,2 +1,4 @@
 Patches/*.patch -whitespace
 intent.md whitespace=-blank-at-eol
+# Preserve imported dependency bytes; their exact hashes are checked at build.
+Vendor/dev-vm/** -whitespace

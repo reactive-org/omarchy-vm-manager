@@ -4,33 +4,46 @@ export SWIFT_MODULECACHE_PATH := $(CURDIR)/.build/module-cache/swift
 export CLANG_MODULE_CACHE_PATH := $(CURDIR)/.build/module-cache/clang
 export MACOSX_DEPLOYMENT_TARGET := 15.0
 export RELEASE_TAG
+SWIFT_FLAGS := --disable-sandbox --skip-update --cache-path "$(CURDIR)/.build/swiftpm-cache" --config-path "$(CURDIR)/.build/swiftpm-configuration" --security-path "$(CURDIR)/.build/swiftpm-security"
 
 .PHONY: prepare-source help build build-signed icon test test-build-policies test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-provisioning-tools | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-provisioning-tools | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
 
 build: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift build --disable-sandbox
+	swift build $(SWIFT_FLAGS)
+	swift build $(SWIFT_FLAGS) --package-path .build/provisioning-launcher-source --scratch-path "$(CURDIR)/.build/provisioning-launcher" --product dev-vm-process-host
 
 build-signed: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift build --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE
+	swift build $(SWIFT_FLAGS) -c release -Xswiftc -DSIGNED_PRERELEASE
+	swift build $(SWIFT_FLAGS) --package-path .build/provisioning-launcher-source --scratch-path "$(CURDIR)/.build/provisioning-launcher" -c release --product dev-vm-process-host
 
-test: prepare-source
+test: build
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
 	# Run cases serially: synchronous gate fixtures can exhaust small cooperative pools.
 	# Each lifecycle test still exercises its own concurrent tasks and sessions.
-	swift test --disable-sandbox --no-parallel
+	swift test $(SWIFT_FLAGS) --no-parallel
 	python3 -m unittest discover -s Tests/ScriptTests -v
+	$(MAKE) test-provisioning-bundle
+
+.PHONY: test-provisioning-package test-provisioning-bundle
+test-provisioning-package: build
+	swift test $(SWIFT_FLAGS) --no-parallel --filter ProvisioningPackage
+	python3 -m unittest discover -s Tests/ScriptTests -p test_provisioning_package.py -v
+	$(MAKE) test-provisioning-bundle
+
+test-provisioning-bundle:
+	python3 Scripts/test_provisioning_bundle.py --binaries "$$(swift build $(SWIFT_FLAGS) --show-bin-path)" --launcher-binaries "$$(swift build $(SWIFT_FLAGS) --package-path .build/provisioning-launcher-source --scratch-path "$(CURDIR)/.build/provisioning-launcher" --show-bin-path)"
 
 test-build-policies: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift test --disable-sandbox -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
-	swift test --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
+	swift test $(SWIFT_FLAGS) -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
+	swift test $(SWIFT_FLAGS) -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
 
 fetch-kit:
 	Scripts/fetch-try-omarchy-kit.sh
@@ -89,4 +102,4 @@ test-factories: prepare-source
 .PHONY: test-provisioning-tools
 test-provisioning-tools: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift test --disable-sandbox --no-parallel --filter Provisioning
+	swift test $(SWIFT_FLAGS) --no-parallel --filter Provisioning

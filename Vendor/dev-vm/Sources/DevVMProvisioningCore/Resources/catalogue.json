@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "namespace": "builtin",
+  "features": {
+    "workstation": {
+      "description": "Login shell, Foot, idle, theme and layout preferences; hardware rendering repair",
+      "handler": "workstation",
+      "defaults": {"shell": "zsh", "oh_my_zsh": true, "oh_my_zsh_plugins": null, "oh_my_zsh_update_mode": "reminder", "starship": true, "starship_config": "", "font_size": "12", "idle_mode": "host", "theme": "", "layout": "", "remove_layout": false},
+      "shells": {"zsh": "/usr/bin/zsh", "bash": "/bin/bash"},
+      "oh_my_zsh_repository": "https://github.com/ohmyzsh/ohmyzsh.git"
+    },
+    "browsers": {
+      "description": "Native Omarchy browser integration",
+      "handler": "browsers",
+      "defaults": {"browsers": ["chromium"]},
+      "choices": {"chromium": "chromium", "firefox": "firefox"}
+    },
+    "docker": {
+      "description": "Docker, Buildx, Compose and native UFW/socket integration",
+      "handler": "docker",
+      "defaults": {"access": "native"},
+      "packages": ["docker", "docker-buildx", "docker-compose", "ufw-docker"]
+    },
+    "languages": {
+      "description": "Selected mise runtimes and companion tools",
+      "handler": "languages",
+      "defaults": {"tools": {"node": ""}}
+    },
+    "toolchain": {
+      "description": "Project-managed mise with native shell activation and selected build prerequisites; no global runtimes",
+      "handler": "toolchain",
+      "defaults": {"prerequisites": []}
+    },
+    "agents": {
+      "description": "Explicit coding agent CLI selections; no authentication or trust changes",
+      "handler": "agents",
+      "defaults": {"tools": {"claude": ""}},
+      "choices": ["claude", "codex", "opencode", "pi", "copilot", "amp", "crush"]
+    },
+    "credentials": {
+      "description": "Credential clients only; no login or credential transfer",
+      "handler": "credentials",
+      "defaults": {"packages": ["1password", "1password-cli"]},
+      "choices": ["1password", "1password-cli", "github-cli"]
+    },
+    "keyring": {
+      "description": "Desktop secret-storage packages; native session startup and unlocking remain unchanged",
+      "handler": "keyring",
+      "defaults": {"seahorse": false},
+      "packages": ["gnome-keyring", "libsecret"],
+      "choices": {"seahorse": "seahorse"}
+    },
+    "cli": {
+      "description": "Search, navigation and JSON/YAML inspection",
+      "handler": "tools",
+      "defaults": {"packages": ["ripgrep", "fd", "fzf", "jq", "tree"], "tools": {}}
+    },
+    "vcs": {
+      "description": "Git, LFS, readable diffs and terminal repository UI",
+      "handler": "tools",
+      "defaults": {"packages": ["git", "git-lfs", "git-delta", "lazygit"], "tools": {}}
+    },
+    "editors": {
+      "description": "Selected editors; preserves settings, keybindings and extensions",
+      "handler": "selection",
+      "option": "editors",
+      "defaults": {"editors": ["neovim"]},
+      "choices": {"neovim": "neovim", "vscode": "visual-studio-code-bin"}
+    },
+    "build": {
+      "description": "Native compiler, headers, CMake, Ninja and GDB",
+      "handler": "tools",
+      "defaults": {"packages": ["base-devel", "pkgconf", "cmake", "ninja", "gdb"], "tools": {}}
+    },
+    "databases": {
+      "description": "Database clients; does not initialize databases or start services",
+      "handler": "selection",
+      "option": "clients",
+      "defaults": {"clients": ["sqlite"]},
+      "choices": {"sqlite": "sqlite", "postgresql": "postgresql-libs", "mysql": "mariadb-clients"}
+    },
+    "api": {
+      "description": "HTTP and TLS diagnostics",
+      "handler": "tools",
+      "defaults": {"packages": ["curl", "openssl", "httpie"], "tools": {}}
+    },
+    "quality": {
+      "description": "Shell/YAML checks and pre-commit executable; does not install project hooks",
+      "handler": "tools",
+      "defaults": {"packages": ["yamllint", "pre-commit"], "tools": {"shellcheck": ""}}
+    }
+  },
+  "profiles": {
+    "developer": {
+      "description": "Editor, CLI, Git, API diagnostics and desktop keyring support",
+      "features": ["workstation", "cli", "vcs", "editors", "api", "keyring"],
+      "options": {
+        "docker": {"access": "sudoless"},
+        "workstation": {"starship_config": "add_newline = false\nformat = '$directory$git_branch$git_status$cmd_duration$line_break$character'\n\n[directory]\ntruncation_length = 1\nsubstitutions = [\n  { from = '([^/]{20})[^/]+', to = '${1}…', regex = true },\n]\n\n[git_branch]\nformat = '[$symbol$branch]($style) '\ntruncation_length = 24\ntruncation_symbol = '…'\n\n[cmd_duration]\nformat = '[$duration]($style) '\n\n[character]\nsuccess_symbol = '[❯](bold green)'\nerror_symbol = '[❯](bold red)'\n"}
+      }
+    },
+    "web": {
+      "description": "JS/TS workstation with Node, pnpm, browser, Compose and SQL clients",
+      "extends": ["developer"],
+      "features": ["browsers", "languages", "docker", "databases", "quality"],
+      "options": {"languages": {"tools": {"node": "lts", "pnpm": ""}}, "databases": {"clients": ["postgresql", "sqlite"]}}
+    },
+    "python": {
+      "description": "Python/uv workstation with native extension builds, SQLite and quality tools",
+      "extends": ["developer"],
+      "features": ["languages", "build", "databases", "quality"],
+      "options": {"languages": {"tools": {"python": "3", "uv": ""}}, "databases": {"clients": ["sqlite"]}}
+    },
+    "project-managed": {
+      "description": "Developer workstation with browser, Docker, build tools and SQL clients; projects own runtime versions",
+      "extends": ["developer"],
+      "features": ["toolchain", "browsers", "build", "docker", "databases"],
+      "options": {"databases": {"clients": ["postgresql", "sqlite"]}}
+    }
+  },
+  "language_packages": {
+    "ruby": ["base-devel", "libyaml", "openssl", "readline", "zlib", "libffi", "gmp"],
+    "python": ["base-devel", "openssl", "readline", "zlib", "libffi", "xz"]
+  },
+  "workstation_packages": ["herdr", "udiskie", "socat", "imagemagick", "inotify-tools"],
+  "package_tools": {"github-cli": "gh", "1password-cli": "1password", "nodejs": "node", "npm": "node", "python": "python", "pnpm": "pnpm", "uv": "uv", "ruby": "ruby", "go": "go", "rust": "rust", "pre-commit": "pre-commit", "shellcheck": "shellcheck"}
+}

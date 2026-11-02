@@ -1,0 +1,12 @@
+---
+- name: Ensure selected keyring configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'keyring'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ omarchy_keyring | to_json }}"
+  register: omarchy_keyring_result
+  changed_when: (omarchy_keyring_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report keyring actions
+  ansible.builtin.debug:
+    var: omarchy_keyring_result.stdout
