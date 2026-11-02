@@ -56,5 +56,5 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 
 ## Implementation plans
 
-- [Shared Swift dev-vm provisioning](DevVMProvisioningPlan.md): Homebrew Ansible, UI/CLI setup jobs and live terminal plan. Milestone 1A checks and the milestone-2 package/parser foundation are implemented; offline resolution/snapshots/planning are committed in dev-vm at `56dba82`; execution and manager integration remain pending.
+- [Shared Swift dev-vm provisioning](DevVMProvisioningPlan.md): Homebrew Ansible, UI/CLI setup jobs and live terminal plan. Milestone 1A checks and the milestone-2 package/parser foundation are implemented; offline resolution/snapshots/planning are committed in dev-vm at `56dba82`; fake-adapter transport/auth sequencing is committed in dev-vm at `f807104`; concrete execution and manager integration remain pending.
 - [Provisioning tools](ProvisioningTools.md): schema 2 native/CLI reports, Homebrew command-pair self-checks, feature gates, schema 1 migration and validation limits. Setup execution is not implemented.
