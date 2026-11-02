@@ -30,8 +30,8 @@ struct ProvisioningToolsView: View {
                         if let executable = tool.executable {
                             Text(executable.path).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                         }
-                        if let interpreter = tool.interpreter {
-                            Text("Python: " + interpreter.path).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                        if let installation = tool.installation {
+                            Text("Homebrew installation: " + installation.path).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                         }
                         if [.missing, .incompatible].contains(tool.status), let command = tool.installCommand {
                             Text(command).font(.system(.callout, design: .monospaced)).textSelection(.enabled)

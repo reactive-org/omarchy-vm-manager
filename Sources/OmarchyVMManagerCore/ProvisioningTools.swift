@@ -1,30 +1,27 @@
 import Foundation
 
 public enum ProvisioningTool: String, Codable, CaseIterable, Sendable {
-    case brew, python, bash, ssh, scp, sftp
+    case brew, bash, ssh, scp, sftp
     case ansiblePlaybook = "ansible-playbook"
     case ansibleInventory = "ansible-inventory"
-    case yaml, gh
+    case gh
 
     public var title: String {
         switch self {
         case .brew: "Homebrew"
-        case .python: "Python"
         case .bash: "Bash"
         case .ssh: "OpenSSH"
         case .scp: "SCP"
         case .sftp: "SFTP"
         case .ansiblePlaybook: "Ansible Playbook"
         case .ansibleInventory: "Ansible Inventory"
-        case .yaml: "PyYAML"
         case .gh: "GitHub CLI"
         }
     }
     public var installCommand: String? {
         switch self {
         case .brew, .bash, .ssh, .scp, .sftp: nil
-        case .python: "brew install python"
-        case .ansiblePlaybook, .ansibleInventory, .yaml: "brew install ansible"
+        case .ansiblePlaybook, .ansibleInventory: "brew install ansible"
         case .gh: "brew install gh"
         }
     }
@@ -58,13 +55,13 @@ public struct ProvisioningToolResult: Codable, Equatable, Identifiable, Sendable
     public var executable: ProvisioningToolIdentity?
     public var provider: String
     public var reason: String
-    public var interpreter: ProvisioningToolIdentity?
+    public var installation: ProvisioningToolIdentity?
     public let installCommand: String?
     public init(tool: ProvisioningTool, status: ProvisioningToolStatus, version: String? = nil,
                 executable: ProvisioningToolIdentity? = nil, provider: String = "host", reason: String,
-                interpreter: ProvisioningToolIdentity? = nil) {
+                installation: ProvisioningToolIdentity? = nil) {
         self.tool = tool; self.status = status; self.version = version; self.executable = executable
-        self.provider = provider; self.reason = reason; self.interpreter = interpreter; installCommand = tool.installCommand
+        self.provider = provider; self.reason = reason; self.installation = installation; installCommand = tool.installCommand
     }
 }
 
@@ -107,17 +104,16 @@ public struct ProvisioningToolReport: Codable, Equatable, Sendable {
     public let features: [ProvisioningFeatureGate]
     public let policy: String
     public init(tools: [ProvisioningToolResult]) {
-        schemaVersion = 1; self.tools = tools
-        policy = "Host tools only. Python 3.11–3.14; PyYAML 6.x; Ansible Core 2.21.x on Python 3.12–3.14. Execution is not implemented."
+        schemaVersion = 2; self.tools = tools
+        policy = "Homebrew Ansible Core 2.21.x with local CLI self-checks. No separate Python/PyYAML requirement. The shared Swift package and execution are not implemented."
         features = ProvisioningCapability.allCases.map { capability in
             let required: [ProvisioningTool]
             switch capability {
-            case .jsonPlanning: required = [.python]
-            case .basicProvisioning: required = [.python, .bash, .ssh, .scp, .sftp]
-            case .yamlPlanning: required = [.python, .yaml]
+            case .jsonPlanning, .yamlPlanning: required = []
+            case .basicProvisioning: required = [.bash, .ssh, .scp, .sftp]
             case .developerFeatures, .externalSetup:
-                required = [.python, .bash, .ssh, .scp, .sftp, .yaml, .ansiblePlaybook, .ansibleInventory]
-            case .githubStarThemes: required = [.python, .bash, .ssh, .gh]
+                required = [.brew, .bash, .ssh, .scp, .sftp, .ansiblePlaybook, .ansibleInventory]
+            case .githubStarThemes: required = [.bash, .ssh, .gh]
             case .remoteSetup, .imageBuilding: required = []
             }
             let deferred = capability == .remoteSetup || capability == .imageBuilding
@@ -125,7 +121,8 @@ public struct ProvisioningToolReport: Codable, Equatable, Sendable {
             return ProvisioningFeatureGate(capability: capability, toolsReady: !deferred && blockers.isEmpty,
                 implemented: false, enabled: false, blockers: blockers,
                 reason: deferred ? "Deferred; dependencies are not probed." :
-                    (blockers.isEmpty ? "Tool prerequisites pass; the provisioning engine is not integrated yet." : "Required tools are missing, incompatible or unverified."))
+                    (capability == .jsonPlanning || capability == .yamlPlanning ? "No external tools required; the shared Swift package and parsers are not integrated yet." :
+                     (blockers.isEmpty ? "Tool prerequisites pass; the provisioning engine is not integrated yet." : "Required tools are missing, incompatible or unverified.")))
         }
     }
     public func tool(_ id: ProvisioningTool) -> ProvisioningToolResult? { tools.first { $0.tool == id } }
@@ -166,7 +163,10 @@ public struct ProvisioningToolsInvocation: Sendable {
         while index < arguments.count {
             guard arguments[index] == "--tool", index + 1 < arguments.count else { throw invalid() }
             let parts = arguments[index + 1].split(separator: "=", maxSplits: 1).map(String.init)
-            guard parts.count == 2, let tool = ProvisioningTool(rawValue: parts[0]), tool != .yaml,
+            if parts.count == 2, ["python", "python3", "yaml", "pyyaml"].contains(parts[0]) {
+                throw VMFailure(code: "retired-tool-override", message: "Dependency report schema 2 no longer accepts Python/PyYAML overrides. Select Homebrew's Ansible commands with --tool ansible-playbook=/absolute/path and --tool ansible-inventory=/absolute/path.")
+            }
+            guard parts.count == 2, let tool = ProvisioningTool(rawValue: parts[0]),
                   ![.bash, .ssh, .scp, .sftp].contains(tool), overrides[tool] == nil,
                   ProvisioningToolConfiguration.validPath(parts[1]) else { throw invalid() }
             overrides[tool] = parts[1]; index += 2
@@ -174,6 +174,6 @@ public struct ProvisioningToolsInvocation: Sendable {
         return Self(overrides: overrides)
     }
     private static func invalid() -> VMFailure {
-        VMFailure(code: "usage", message: "Use setup tools [--tool brew|python|ansible-playbook|ansible-inventory|gh=/absolute/path].")
+        VMFailure(code: "usage", message: "Use setup tools [--tool brew|ansible-playbook|ansible-inventory|gh=/absolute/path].")
     }
 }

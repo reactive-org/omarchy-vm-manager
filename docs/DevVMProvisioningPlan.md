@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; Swift architecture revision recorded. Milestone 1A adaptation and the Swift port have not started.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A dependency-contract adaptation implemented. The shared Swift package port has not started.
 
 Date: 2 November 2026 (Australia/Melbourne).
 
@@ -8,7 +8,7 @@ Integrate a shared Swift provisioning package maintained with dev-vm into Omarch
 
 **DESIGN DECISION — revised user direction, 2 November 2026:** port the host-side dev-vm controller to one shared Swift package consumed by the manager and a standalone dev-vm CLI. Bundle its compiled code and configuration assets; use Homebrew's existing Ansible installation. The manager will have no separate host Python/PyYAML runtime requirement. Ansible still uses the Python and libraries managed by its Homebrew installation; Python guest helpers remain guest-side dependencies. Do not install or upgrade host tools automatically. Bundling Python or Ansible is outside this revised plan.
 
-The original milestone 1 is implemented under the earlier Python-controller design; see [the current milestone 1 reference](ProvisioningTools.md). This revision authorizes documentation only: do not start the port or change the committed dependency checks yet. Subsequent implementation, host dependency installation, signing credential use, permission grants, UI takeover and real guest operations retain their applicable authorization boundaries. Existing VM and runtime safeguards in [intent.md](../intent.md) and [AGENTS.md](../AGENTS.md) continue to apply.
+The original milestone 1 used the earlier Python-controller design. The user subsequently authorized milestone 1A only: replace those dependency checks with Homebrew Ansible CLI checks, without installing host tools, launching VMs or starting the shared Swift package port. See [the current dependency reference](ProvisioningTools.md). Later implementation, host dependency installation, signing credential use, permission grants, UI takeover and real guest operations retain their applicable authorization boundaries. Existing VM and runtime safeguards in [intent.md](../intent.md) and [AGENTS.md](../AGENTS.md) continue to apply.
 
 ## Scope and ownership
 
@@ -54,9 +54,9 @@ These links identify the source projects. Implementation must pin the shared Swi
 
 ## Changes to milestone 1
 
-**VERIFIED — existing implementation:** commit `62a4c62` contains the provider abstraction, Homebrew/tool discovery, native and CLI reports, isolated bounded probes, executable change checks and prerequisite gates. Its Python/PyYAML import and shebang checks remain in the current code. The 224 Swift/43 script test results describe that implementation, not a completed Swift migration.
+**VERIFIED — original implementation:** commit `62a4c62` contains the provider abstraction, Homebrew/tool discovery, native and CLI reports, isolated bounded probes, executable change checks and prerequisite gates. Its Python/PyYAML import and shebang checks are preserved in that commit; milestone 1A removes them from current code. Its test results remain historical evidence and do not establish a completed shared-controller migration.
 
-**DESIGN DECISION — planned milestone 1A:** adapt the existing infrastructure before integrating the shared Swift package. Do not discard the original implementation or rewrite its validation history.
+**DESIGN DECISION — implemented milestone 1A:** adapt the existing infrastructure before integrating the shared Swift package. Preserve the original commit and its validation history.
 
 | Existing milestone 1 area | Retain or change for the Swift approach |
 | --- | --- |
@@ -70,13 +70,13 @@ These links identify the source projects. Implementation must pin the shared Swi
 | Report schema and Python-related tests | Introduce dependency-report schema 2 with documented migration; replace interpreter/shebang cases with CLI failure, wrapper and command-pair cases while preserving isolation/timeout/replacement tests |
 | Engine availability and authorization | Keep execution disabled until the corresponding engine/job milestones are implemented and approved |
 
-Schema 2 is a proposed change to the local dependency report, not to existing guest-command protocol 1. Remove the Python override explicitly with an actionable compatibility error; do not silently accept and ignore it. If Ansible exposes Python details in its version output, treat them as diagnostic information, not a separately managed dependency or fixed Python-major gate. Preserve the current report and behavior until milestone 1A is authorized and implemented.
+Schema 2 now replaces schema 1 in the local dependency report; existing guest-command protocol 1 is unchanged. Python/PyYAML overrides return `retired-tool-override` with actionable Ansible selection guidance. Ansible's Python details do not become a separately managed dependency or fixed Python-major gate. The per-tool `installation` identity replaces `interpreter`; report consumers must check the schema version.
 
-The original tests for Python environment selection remain evidence for commit `62a4c62`. Revised acceptance must prove that planning works without host Python/PyYAML, that a working Homebrew Ansible can be admitted without a Python probe, and that a broken Ansible installation fails closed. Record manager-issued probe/process requests and assert there is no direct Python invocation, including absolute-path fallbacks; Ansible's internal Python processes are expected. Do not equate the existence of an Ansible executable with usability.
+The original Python-selection tests remain evidence for commit `62a4c62`. Milestone 1A tests prove that planning prerequisites have no external Python/PyYAML blocker, a working Homebrew Ansible is admitted without a Python probe, and broken or mismatched installations fail closed. Recorded manager requests exclude direct Python invocation and absolute-path fallbacks; Ansible's internal Python processes are expected. Actual JSON/YAML planning and parser parity remain milestone 2 work; all feature execution stays disabled.
 
 ## Homebrew dependency discovery and feature gates
 
-Use the milestone 1 dependency-provider abstraction for Homebrew's Ansible and optional host tools. Keep ordinary VM management and package-local data-only planning available when Ansible is absent. The following table is the target contract after milestone 1A and package integration; it does not describe the unchanged current report.
+Use the milestone 1 dependency-provider abstraction for Homebrew's Ansible and optional host tools. Ordinary VM management stays available when Ansible is absent. Schema 2 now reports no external blockers for data-only planning; that planning will become available only after the shared package/parsers are integrated. The following table includes those later package requirements.
 
 | Capability | Requirements | Missing or incompatible behavior |
 | --- | --- | --- |
@@ -143,7 +143,7 @@ Planning resolves only data and freezes selected inputs without contacting a gue
 
 Keep inventory and transport parameters manager-owned, with the exact VM UUID, expected non-root account, pinned SSH host identity and verified session. Revalidate before mutation and after planned restarts. Do not discover guests by incidental port availability or silently substitute a different guest.
 
-**PRIVATE COUPLING — proposed adapter boundary:** isolate native guest authorization commands, guest-helper contracts and Homebrew Ansible CLI interpretation behind versioned adapters with contract tests. The original milestone 1 Python-shebang adapter is to be retired in milestone 1A. Existing manager settings and kit couplings retain their own versioned boundaries. Do not treat these adapters as public upstream VM APIs.
+**PRIVATE COUPLING — adapter boundary:** isolate native guest authorization commands, guest-helper contracts and Homebrew Ansible CLI interpretation behind versioned adapters with contract tests. Milestone 1A retires the original Python-shebang adapter and implements the Homebrew command-pair/self-check adapter only. Guest authorization and shared-controller integration remain future work. Existing manager settings and kit couplings retain their own versioned boundaries. Do not treat these adapters as public upstream VM APIs.
 
 ## Provisioning jobs and lifecycle coordination
 
@@ -204,7 +204,7 @@ Require explicit trust for custom Ansible tasks tied to frozen input hashes. Gen
 
 ## CLI and streaming transport
 
-`setup tools` is already implemented under the original milestone 1 contract and needs the planned schema 2 revision. All other commands below remain proposed:
+`setup tools` now implements schema 2 under milestone 1A. All other commands below remain proposed:
 
 ```sh
 omarchy-vm setup tools
@@ -237,7 +237,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | Milestone | Main changes | Acceptance gate |
 | --- | --- | --- |
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
-| 1A. Swift dependency contract — not started | Retain discovery/isolation; replace direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | Data-only planning prerequisites have no external runtime blocker; healthy/broken/wrapped/mismatched Ansible fixtures, GUI PATH, timeout, replacement and authentication deferral covered; execution stays disabled |
+| 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
 | 2. Shared Swift controller and packaging — not started | SwiftPM library and standalone executable in dev-vm; host-controller port, parser/plan parity, guest resources, manager adapters and pinned packaging | Python-oracle fixture parity; Swift standalone and manager plans agree; no Python/PyYAML needed for native parsing; Ansible runs only through its own launchers; relocated read-only app works without a checkout |
 | 3. Job coordination | Journal, admission, lifecycle interlocks, cancellation and recovery | Fake-runtime tests cover session changes, duplicates, failure retention, interrupted work and .exited ownership |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
@@ -255,6 +255,6 @@ Real acceptance requires separate authorization. After an authorized disposable-
 
 ## Remaining validation boundaries
 
-**TO PROVE:** shared Swift package/API design, strict YAML/JSON/TOML parity, Python-controller behavior migration, standalone command compatibility, resource relocation, revised milestone 1A Ansible CLI admission, native password interaction and echo behavior across nested PTYs, GUI tool discovery, Homebrew/Ansible version compatibility, terminal library/toolchain compatibility, interrupted remote work and persistent-grant recovery, host sleep/wake, manager/helper crashes, guest compatibility and future concurrent provisioning.
+**TO PROVE:** shared Swift package/API design, strict YAML/JSON/TOML parity, Python-controller behavior migration, standalone command compatibility, resource relocation, other Homebrew installations/Core versions, native password interaction and echo behavior across nested PTYs, GUI/native packaged discovery, terminal library/toolchain compatibility, interrupted remote work and persistent-grant recovery, host sleep/wake, manager/helper crashes, guest compatibility and future concurrent provisioning.
 
-Ansible check mode and plan output cannot guarantee arbitrary trusted task behavior. Real two-VM, focus, sleep/wake and crash claims retain the exact evidence limits in intent.md and existing validation records. Original milestone 1 results remain valid for their committed implementation; this documentation revision establishes no acceptance evidence for milestone 1A or the Swift port.
+Ansible check mode and plan output cannot guarantee arbitrary trusted task behavior. Real two-VM, focus, sleep/wake and crash claims retain the exact evidence limits in intent.md and existing validation records. Original milestone 1 results remain valid for their commit. Milestone 1A evidence is scoped to dependency reports and fixed local probes; it establishes no shared-controller port or real-guest acceptance.

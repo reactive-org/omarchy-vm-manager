@@ -6,10 +6,18 @@ import Testing
 private final class ProvisioningFakeFiles: ProvisioningToolFiles, @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [String: ProvisioningExecutable] = [:]
-    func executable(_ path: String) -> ProvisioningExecutable? { lock.withLock { entries[path] } }
-    func put(_ path: String, line: String? = nil, fingerprint: String = "original") {
-        lock.withLock { entries[path] = .init(identity: .init(path: path, fingerprint: fingerprint), firstLine: line) }
+    private var directories: [String: ProvisioningInstallation] = [:]
+    private var queriedPaths: [String] = []
+    var queries: [String] { lock.withLock { queriedPaths } }
+    func executable(_ path: String) -> ProvisioningExecutable? { lock.withLock { queriedPaths.append(path); return entries[path] } }
+    func directory(_ path: String) -> ProvisioningInstallation? { lock.withLock { queriedPaths.append(path); return directories[path] } }
+    func put(_ path: String, resolved: String? = nil, fingerprint: String = "original") {
+        lock.withLock { entries[path] = .init(identity: .init(path: path, fingerprint: fingerprint), resolvedPath: resolved ?? path) }
     }
+    func putDirectory(_ path: String, resolved: String? = nil, fingerprint: String = "original") {
+        lock.withLock { directories[path] = .init(identity: .init(path: path, fingerprint: fingerprint), resolvedPath: resolved ?? path) }
+    }
+    func remove(_ path: String) { lock.withLock { entries[path] = nil } }
 }
 
 private actor ProvisioningFakeProbes: ProvisioningToolProbing {
@@ -19,36 +27,47 @@ private actor ProvisioningFakeProbes: ProvisioningToolProbing {
     func run(_ request: ProvisioningProbeRequest) -> ProvisioningProbeResult { requests.append(request); return response(request) }
 }
 
-private struct ProvisioningHarness {
+private struct ProvisioningHarness: Sendable {
     let files = ProvisioningFakeFiles()
-    let bin: String
-    let python: String
-    init(bin: String = "/opt/homebrew/bin", python: String? = nil, ansible: Bool = true, shebang: String? = nil) {
-        self.bin = bin; self.python = python ?? bin + "/python3"
-        for path in ["/bin/bash", "/usr/bin/ssh", "/usr/bin/scp", "/usr/bin/sftp", bin + "/brew", bin + "/gh", self.python] { files.put(path) }
-        if ansible {
-            files.put(bin + "/ansible-playbook", line: shebang ?? "#!" + self.python)
-            files.put(bin + "/ansible-inventory", line: shebang ?? "#!" + self.python)
+    let root: String
+    var bin: String { root + "/bin" }
+    var prefix: String { root + "/opt/ansible" }
+    var keg: String { root + "/Cellar/ansible/14.5.0" }
+    static let inventoryJSON = #"{"_meta":{"hostvars":{"fixture.invalid":{"ansible_local":{}}},"profile":"inventory_legacy"},"all":{"children":["ungrouped","provisioning_probe"]},"provisioning_probe":{"hosts":["fixture.invalid"]}}"#
+    init(root: String = "/opt/homebrew", installed: Bool = true) {
+        self.root = root
+        for path in ["/bin/bash", "/usr/bin/ssh", "/usr/bin/scp", "/usr/bin/sftp", root + "/bin/brew", root + "/bin/gh"] { files.put(path) }
+        if installed {
+            files.putDirectory(prefix, resolved: keg)
+            for name in ["ansible-playbook", "ansible-inventory"] {
+                files.put(prefix + "/bin/" + name, resolved: keg + "/bin/" + name)
+                files.put(bin + "/" + name, resolved: keg + "/bin/" + name)
+            }
         }
     }
-    func probes(pythonVersion: [Int] = [3, 14, 10], yaml: String? = "6.0.3", core: String? = "2.21.5",
-                dependencies: Bool = true, launcherCore: String = "2.21.5") -> ProvisioningFakeProbes {
-        let python = self.python, bin = self.bin
-        return ProvisioningFakeProbes { request in
+    func response(core: String = "2.21.5", inventoryCore: String? = nil) -> @Sendable (ProvisioningProbeRequest) -> ProvisioningProbeResult {
+        { request in
             let name = URL(fileURLWithPath: request.executable.path).lastPathComponent
             let output: String
             switch name {
-            case "brew": output = request.arguments == ["--prefix"] ? String(bin.dropLast(4)) + "\n" : "Homebrew 5.0.0\n"
+            case "brew":
+                if request.arguments == ["--prefix"] { output = root + "\n" }
+                else if request.arguments == ["--prefix", "--installed", "ansible"] { output = prefix + "\n" }
+                else if request.arguments == ["--version"] { output = "Homebrew 7.0.11\n" }
+                else { return .init(status: 99) }
             case "bash": output = "GNU bash, version 3.2.57(1)-release\n"
-            case "ssh": output = "OpenSSH_10.0p2, LibreSSL\n"
-            case "gh": output = "gh version 2.82.0 (date)\n"
-            case "ansible-playbook", "ansible-inventory": output = name + " [core " + launcherCore + "]\n"
-            default:
-                // Ansible's CLI imports reject a non-UTF-8 controller locale.
+            case "ssh": return .init(standardError: Data("OpenSSH_10.3p1, LibreSSL\n".utf8))
+            case "gh": output = "gh version 2.103.3\n"
+            case "ansible-playbook", "ansible-inventory":
                 guard request.environment["LC_ALL"] == "en_US.UTF-8" else { return .init(status: 1) }
-                let data = try! JSONSerialization.data(withJSONObject: ["python": pythonVersion, "releaselevel": "final", "executable": python,
-                    "yaml": yaml as Any? ?? NSNull(), "ansible": core as Any? ?? NSNull(), "dependencies": dependencies])
-                return .init(output: data)
+                if request.arguments == ["--version"] {
+                    output = name + " [core " + (name == "ansible-inventory" ? inventoryCore ?? core : core) + "]\n  python version = 3.99.0 (Homebrew-managed diagnostic only)\n"
+                } else if name == "ansible-inventory", request.arguments.count == 3, request.arguments[0] == "-i", request.arguments[2] == "--list" {
+                    output = Self.inventoryJSON
+                } else if name == "ansible-playbook", request.arguments.count == 4, request.arguments[0] == "--syntax-check", request.arguments[1] == "-i" {
+                    output = "\nplaybook: " + request.arguments[3] + "\n"
+                } else { return .init(status: 99) }
+            default: return .init(status: 99)
             }
             return .init(output: Data(output.utf8))
         }
@@ -59,21 +78,25 @@ private struct ProvisioningHarness {
     }
 }
 
-@Suite("Provisioning host tool discovery and feature gates")
+@Suite("Provisioning Homebrew Ansible CLI checks and schema 2 gates")
 struct ProvisioningToolsTests {
-    @Test("GUI discovery ignores an empty PATH and exposes prerequisites without enabling unimplemented execution")
+    @Test("GUI discovery checks the coherent Ansible pair without finding or invoking Python")
     func guiDiscovery() async throws {
-        let fixture = ProvisioningHarness(), probes = fixture.probes()
+        let fixture = ProvisioningHarness(), probes = ProvisioningFakeProbes(ProvisioningHarness().response())
         let report = try await fixture.provider(probes).inspect()
-        #expect(report.tool(.python)?.version == "3.14.10")
+        #expect(report.schemaVersion == 2 && report.tools.count == 8)
         #expect(report.tool(.ansiblePlaybook)?.status == .available)
+        #expect(report.tool(.ansiblePlaybook)?.version == "2.21.5")
+        #expect(report.tool(.ansibleInventory)?.installation?.path == fixture.prefix)
         #expect(report.features.first { $0.capability == .developerFeatures }?.toolsReady == true)
         #expect(report.features.allSatisfy { !$0.enabled && !$0.implemented })
         #expect(report.tool(.gh)?.status == .needsAuthentication)
-        #expect(report.features.first { $0.capability == .githubStarThemes }?.toolsReady == false)
+        #expect(!fixture.files.queries.contains { $0.contains("python") || $0.contains("yaml") })
         let requests = await probes.requests
-        #expect(!requests.contains { $0.arguments.contains("install") || $0.arguments.contains("auth") || $0.arguments.contains("info") })
-        #expect(!requests.contains { ["scp", "sftp", "git", "docker"].contains(URL(fileURLWithPath: $0.executable.path).lastPathComponent) })
+        let names = requests.map { URL(fileURLWithPath: $0.executable.path).lastPathComponent }
+        #expect(Set(names).isSubset(of: ["brew", "bash", "ssh", "gh", "ansible-playbook", "ansible-inventory"]))
+        #expect(!requests.contains { $0.arguments.contains("install") || $0.arguments.contains("auth") || $0.arguments.contains("-c") })
+        #expect(requests.contains { $0.arguments.contains("--syntax-check") })
         for request in requests {
             #expect(request.environment["HOMEBREW_NO_AUTO_UPDATE"] == "1")
             #expect(request.environment["GH_TOKEN"] == nil && request.environment["GITHUB_TOKEN"] == nil && request.environment["SSH_AUTH_SOCK"] == nil)
@@ -82,157 +105,188 @@ struct ProvisioningToolsTests {
             #expect(!FileManager.default.fileExists(atPath: request.workingDirectory))
         }
         let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as! [String: Any]
-        let features = object["features"] as! [[String: Any]]
-        #expect(features.allSatisfy { $0["enabled"] as? Bool == false })
-        #expect((object["tools"] as! [[String: Any]]).contains { $0["installCommand"] as? String == "brew install ansible" })
+        let tools = object["tools"] as! [[String: Any]]
+        #expect(tools.allSatisfy { $0["interpreter"] == nil && !["python", "yaml"].contains($0["tool"] as? String ?? "") })
+        #expect((object["features"] as! [[String: Any]]).allSatisfy { $0["enabled"] as? Bool == false })
     }
 
-    @Test("Homebrew prefix, controlled PATH fallback and explicit overrides support paths containing spaces")
-    func discoveryPaths() async throws {
-        let fixture = ProvisioningHarness(bin: "/custom prefix/bin"), probes = fixture.probes()
-        fixture.files.put("/known/brew")
-        let report = try await fixture.provider(probes, overrides: [.brew: "/known/brew"], homebrew: [], path: []).inspect()
-        #expect(report.tool(.python)?.executable?.path == "/custom prefix/bin/python3")
-        #expect(report.tool(.brew)?.provider == "override")
-        let fallback = try await fixture.provider(probes, homebrew: [], path: [fixture.bin]).inspect()
-        #expect(fallback.tool(.python)?.status == .available)
-    }
-
-    @Test("explicit invalid overrides never fall back to a discovered tool")
-    func missingOverride() async throws {
-        let fixture = ProvisioningHarness(), probes = fixture.probes()
-        let report = try await fixture.provider(probes, overrides: [.python: "/missing/python3"]).inspect()
-        #expect(report.tool(.python)?.status == .checkFailed)
-        #expect(report.tool(.ansiblePlaybook)?.status == .incompatible)
-        #expect(report.features.first { $0.capability == .jsonPlanning }?.toolsReady == false)
-    }
-
-    @Test("missing dependencies disable only their dependent capabilities")
-    func partialInstallation() async throws {
-        let fixture = ProvisioningHarness(ansible: false), probes = fixture.probes(yaml: nil, core: nil)
-        let report = try await fixture.provider(probes).inspect()
-        #expect(report.features.first { $0.capability == .jsonPlanning }?.toolsReady == true)
-        #expect(report.features.first { $0.capability == .basicProvisioning }?.toolsReady == true)
-        #expect(report.features.first { $0.capability == .yamlPlanning }?.toolsReady == false)
-        #expect(report.tool(.ansibleInventory)?.status == .missing)
-        #expect(report.features.first { $0.capability == .imageBuilding }?.toolsReady == false)
-    }
-
-    @Test("unsupported Python and prerelease or new Ansible lines fail closed", arguments: ["old-python", "future-python", "old-core", "future-core", "prerelease", "missing-dependency"])
-    func compatibility(_ scenario: String) async throws {
-        let fixture = ProvisioningHarness()
-        let version = scenario == "old-python" ? [3, 10, 12] : scenario == "future-python" ? [3, 15, 0] : [3, 14, 10]
-        let core = scenario == "old-core" ? "2.20.9" : scenario == "future-core" ? "2.22.0" : scenario == "prerelease" ? "2.21.5rc1" : "2.21.5"
-        let report = try await fixture.provider(fixture.probes(pythonVersion: version, core: core, dependencies: scenario != "missing-dependency")).inspect()
-        #expect(report.tool(.ansiblePlaybook)?.status == .incompatible)
+    @Test("data planning has no external blockers when every tool is absent but remains unimplemented")
+    func noExternalTools() async throws {
+        let files = ProvisioningFakeFiles(), probes = ProvisioningFakeProbes { _ in .init(status: 99) }
+        let report = try await HomebrewProvisioningDependencies(configuration: .init(homebrewDirectories: []), files: files, probes: probes).inspect()
+        for capability in [ProvisioningCapability.jsonPlanning, .yamlPlanning] {
+            let gate = try #require(report.features.first { $0.capability == capability })
+            #expect(gate.toolsReady && gate.blockers.isEmpty && !gate.enabled && !gate.implemented)
+        }
         #expect(report.features.first { $0.capability == .developerFeatures }?.toolsReady == false)
+        #expect((await probes.requests).isEmpty)
     }
 
-    @Test("basic Python 3.11 remains usable while Ansible requires Python 3.12 or newer")
-    func python311() async throws {
-        let fixture = ProvisioningHarness()
-        let report = try await fixture.provider(fixture.probes(pythonVersion: [3, 11, 9])).inspect()
-        #expect(report.tool(.python)?.status == .available)
-        #expect(report.tool(.ansiblePlaybook)?.status == .incompatible)
+    @Test("prefix discovery, PATH fallback and explicit aliases support paths containing spaces")
+    func discoveryPaths() async throws {
+        let fixture = ProvisioningHarness(root: "/custom brew"), probes = ProvisioningFakeProbes(ProvisioningHarness(root: "/custom brew").response())
+        fixture.files.put("/known/brew")
+        fixture.files.put("/chosen alias/ansible-playbook", resolved: fixture.keg + "/bin/ansible-playbook")
+        let report = try await fixture.provider(probes, overrides: [.brew: "/known/brew", .ansiblePlaybook: "/chosen alias/ansible-playbook"], homebrew: []).inspect()
+        #expect(report.tool(.ansiblePlaybook)?.status == .available)
+        #expect(report.tool(.ansiblePlaybook)?.provider == "override")
+        let fallback = try await fixture.provider(probes, homebrew: [], path: [fixture.bin]).inspect()
+        #expect(fallback.tool(.ansibleInventory)?.status == .available)
     }
 
-    @Test("supported Python boundary versions and the PyYAML major gate are explicit", arguments: [11, 12, 13, 14])
-    func versionBoundaries(_ minor: Int) async throws {
-        let fixture = ProvisioningHarness()
-        let report = try await fixture.provider(fixture.probes(pythonVersion: [3, minor, 0])).inspect()
-        #expect(report.tool(.python)?.status == .available)
-        #expect(report.tool(.ansibleInventory)?.status == (minor >= 12 ? .available : .incompatible))
-        let wrongYaml = try await fixture.provider(fixture.probes(pythonVersion: [3, minor, 0], yaml: "5.4.1")).inspect()
-        #expect(wrongYaml.tool(.yaml)?.status == .incompatible)
-        #expect(wrongYaml.features.first { $0.capability == .developerFeatures }?.toolsReady == false)
-    }
-
-    @Test("Apple's Python stub is never executed even with an explicit override")
-    func applePython() async throws {
-        let fixture = ProvisioningHarness(), probes = fixture.probes()
-        fixture.files.put("/usr/bin/python3")
-        let report = try await fixture.provider(probes, overrides: [.python: "/usr/bin/python3"]).inspect()
-        #expect(report.tool(.python)?.status == .incompatible)
-        #expect(!(await probes.requests).contains { $0.executable.path == "/usr/bin/python3" })
-        let env = ProvisioningHarness(shebang: "#!/usr/bin/env python3"), envProbes = env.probes()
-        env.files.put("/usr/bin/python3")
-        let first = try await env.provider(envProbes, overrides: [.brew: "/missing/brew"], homebrew: [], path: ["/usr/bin", env.bin]).inspect()
-        #expect(first.tool(.python)?.status == .incompatible)
-        #expect(!(await envProbes.requests).contains { $0.executable.path == "/usr/bin/python3" })
-    }
-
-    @Test("use the Ansible virtualenv entry path rather than resolving away pyvenv.cfg")
-    func coherentEnvironment() async throws {
-        let fixture = ProvisioningHarness(python: "/opt/homebrew/Cellar/ansible/libexec/bin/python3")
-        fixture.files.put(fixture.bin + "/python3", fingerprint: "different-python")
-        let probes = fixture.probes()
-        let report = try await fixture.provider(probes).inspect()
-        #expect(report.tool(.python)?.executable?.path == fixture.python)
-        #expect(report.tool(.yaml)?.interpreter?.path == fixture.python)
-        #expect(report.tool(.ansibleInventory)?.status == .available)
-        let mismatched = try await fixture.provider(probes, overrides: [.python: fixture.bin + "/python3"]).inspect()
-        #expect(mismatched.tool(.ansiblePlaybook)?.status == .incompatible)
-    }
-
-    @Test("ambiguous launchers and different inventory interpreters are refused")
-    func launchers() async throws {
-        for line in ["#!/bin/sh", "#!/usr/bin/env -S python3 -I", "#!/usr/bin/python3 -s"] {
-            let fixture = ProvisioningHarness(shebang: line)
-            let report = try await fixture.provider(fixture.probes()).inspect()
-            #expect(report.tool(.ansiblePlaybook)?.status == .incompatible)
-        }
-        let fixture = ProvisioningHarness(shebang: "#!/usr/bin/env python3")
-        let env = try await fixture.provider(fixture.probes()).inspect()
-        #expect(env.tool(.ansiblePlaybook)?.status == .available)
-        fixture.files.put("/other/python3")
-        fixture.files.put(fixture.bin + "/ansible-inventory", line: "#!/other/python3")
-        let mismatch = try await fixture.provider(fixture.probes()).inspect()
-        #expect(mismatch.tool(.ansibleInventory)?.status == .incompatible)
-    }
-
-    @Test("different launcher version or malformed runtime output is not readiness")
-    func malformedReports() async throws {
-        let fixture = ProvisioningHarness()
-        let report = try await fixture.provider(fixture.probes(launcherCore: "2.21.4")).inspect()
-        #expect(report.tool(.ansiblePlaybook)?.status == .incompatible)
-        let malformed = try await fixture.provider(ProvisioningFakeProbes { _ in .init(output: Data("synthetic-secret-output".utf8)) }).inspect()
-        #expect(malformed.tool(.python)?.status == .checkFailed)
-        let json = String(decoding: try JSONEncoder().encode(malformed), as: UTF8.self)
-        #expect(!json.contains("synthetic-secret-output"))
-    }
-
-    @Test("timeout and output failures are bounded categories without raw output", arguments: [ProvisioningProbeResult.Failure.timeout, .outputLimit, .launch])
-    func probeFailure(_ failure: ProvisioningProbeResult.Failure) async throws {
-        let fixture = ProvisioningHarness()
-        let report = try await fixture.provider(ProvisioningFakeProbes { _ in .failed(failure) }).inspect()
-        #expect(report.tool(.python)?.status == .checkFailed)
-        #expect(report.tool(.python)?.reason.contains(failure.rawValue) == true)
-    }
-
-    @Test("an executable replaced during a probe invalidates the report")
-    func replacement() async throws {
-        let fixture = ProvisioningHarness(), files = fixture.files, python = fixture.python
+    @Test("missing Homebrew or an uninstalled formula never falls back to unrelated PATH commands", arguments: ["brew", "formula"])
+    func missingInstallation(_ scenario: String) async throws {
+        let fixture = ProvisioningHarness(), normal = fixture.response()
         let probes = ProvisioningFakeProbes { request in
-            if request.executable.path == python { files.put(python, fingerprint: "upgraded") }
-            return .init(output: Data("Homebrew 5.0.0\n".utf8))
+            if scenario == "formula", request.arguments == ["--prefix", "--installed", "ansible"] { return .init(status: 1) }
+            return normal(request)
         }
-        let report = try await fixture.provider(probes).inspect()
-        #expect(report.tool(.python)?.status == .checkFailed)
-        #expect(report.tool(.python)?.reason.contains("changed") == true)
+        let report = try await fixture.provider(probes, overrides: scenario == "brew" ? [.brew: "/missing/brew"] : [:]).inspect()
+        #expect(report.tool(.ansiblePlaybook)?.status != .available)
+        #expect(!(await probes.requests).contains { $0.executable.path.contains("ansible-") })
+        #expect(report.features.first { $0.capability == .basicProvisioning }?.toolsReady == true)
+        #expect(report.features.first { $0.capability == .yamlPlanning }?.toolsReady == true)
     }
 
-    @Test("local tools command accepts only bounded absolute overrides and leaves legacy parsing alone")
+    @Test("invalid formula prefixes and absent directory metadata fail closed", arguments: ["relative", "newline", "missing", "timeout"])
+    func invalidPrefix(_ scenario: String) async throws {
+        let fixture = ProvisioningHarness(), normal = fixture.response()
+        let probes = ProvisioningFakeProbes { request in
+            if request.arguments == ["--prefix", "--installed", "ansible"] {
+                if scenario == "timeout" { return .failed(.timeout) }
+                return .init(output: Data((scenario == "relative" ? "relative" : scenario == "newline" ? "/one\n/two\n" : "/absent/prefix").utf8))
+            }
+            return normal(request)
+        }
+        let report = try await fixture.provider(probes).inspect()
+        #expect(report.tool(.ansibleInventory)?.status == .checkFailed)
+        #expect(!(await probes.requests).contains { $0.executable.path.contains("ansible-") })
+    }
+
+    @Test("wrong installation targets and invalid explicit overrides are never executed", arguments: ["outside", "mixed", "missing"])
+    func wrongCommand(_ scenario: String) async throws {
+        let fixture = ProvisioningHarness(), probes = ProvisioningFakeProbes(ProvisioningHarness().response())
+        let path = "/other/bin/ansible-inventory"
+        if scenario != "missing" { fixture.files.put(path, resolved: scenario == "mixed" ? fixture.root + "/Cellar/ansible/other/bin/ansible-inventory" : "/outside/bin/ansible-inventory") }
+        let report = try await fixture.provider(probes, overrides: [.ansibleInventory: path]).inspect()
+        #expect(report.tool(.ansibleInventory)?.status == (scenario == "missing" ? .checkFailed : .incompatible))
+        #expect(report.tool(.ansiblePlaybook)?.status == .incompatible)
+        #expect(!(await probes.requests).contains { $0.executable.path == path || $0.arguments.contains("--list") })
+    }
+
+    @Test("missing companion and version mismatches block pair readiness", arguments: ["missing", "mismatch", "old", "future", "prerelease"])
+    func versionPolicy(_ scenario: String) async throws {
+        let fixture = ProvisioningHarness()
+        if scenario == "missing" { fixture.files.remove(fixture.prefix + "/bin/ansible-inventory") }
+        let core = scenario == "old" ? "2.20.9" : scenario == "future" ? "2.22.0" : scenario == "prerelease" ? "2.21.5rc1" : "2.21.5"
+        let probes = ProvisioningFakeProbes(fixture.response(core: core, inventoryCore: scenario == "mismatch" ? "2.21.4" : nil))
+        let report = try await fixture.provider(probes).inspect()
+        #expect(report.tool(.ansiblePlaybook)?.status == .incompatible)
+        #expect(report.tool(.ansibleInventory)?.status == (scenario == "missing" ? .missing : .incompatible))
+        #expect(!(await probes.requests).contains { $0.arguments.contains("--list") || $0.arguments.contains("--syntax-check") })
+    }
+
+    @Test("inventory self-check admits only the fixed fixture and never runs syntax after failure", arguments: ["exit", "json", "host", "vars", "facts", "timeout", "limit"])
+    func inventoryFailures(_ scenario: String) async throws {
+        let fixture = ProvisioningHarness(), normal = fixture.response()
+        let probes = ProvisioningFakeProbes { request in
+            if request.arguments.contains("--list") {
+                if scenario == "exit" { return .init(status: 1, output: Data("synthetic-secret".utf8)) }
+                if scenario == "timeout" { return .failed(.timeout) }
+                if scenario == "limit" { return .failed(.outputLimit) }
+                if scenario == "vars" { return .init(output: Data(ProvisioningHarness.inventoryJSON.replacingOccurrences(of: #""ansible_local":{}"#, with: #""unexpected":true"#).utf8)) }
+                if scenario == "facts" { return .init(output: Data(ProvisioningHarness.inventoryJSON.replacingOccurrences(of: #""ansible_local":{}"#, with: #""ansible_local":{"unexpected":true}"#).utf8)) }
+                return .init(output: Data((scenario == "json" ? "synthetic-secret" : ProvisioningHarness.inventoryJSON.replacingOccurrences(of: "fixture.invalid", with: "unexpected.invalid")).utf8))
+            }
+            return normal(request)
+        }
+        let report = try await fixture.provider(probes).inspect()
+        #expect(report.tool(.ansibleInventory)?.status == .checkFailed && report.tool(.ansiblePlaybook)?.status == .checkFailed)
+        #expect(!(await probes.requests).contains { $0.arguments.contains("--syntax-check") })
+        #expect(!String(decoding: try JSONEncoder().encode(report), as: UTF8.self).contains("synthetic-secret"))
+    }
+
+    @Test("syntax self-check failure and surprising success output do not count as readiness", arguments: ["exit", "output", "timeout"])
+    func syntaxFailures(_ scenario: String) async throws {
+        let fixture = ProvisioningHarness(), normal = fixture.response()
+        let probes = ProvisioningFakeProbes { request in
+            if request.arguments.contains("--syntax-check") {
+                if scenario == "timeout" { return .failed(.timeout) }
+                return .init(status: scenario == "exit" ? 1 : 0, output: Data("synthetic-secret".utf8))
+            }
+            return normal(request)
+        }
+        let report = try await fixture.provider(probes).inspect()
+        #expect(report.tool(.ansiblePlaybook)?.status == .checkFailed && report.tool(.ansibleInventory)?.status == .checkFailed)
+        #expect(!String(decoding: try JSONEncoder().encode(report), as: UTF8.self).contains("synthetic-secret"))
+    }
+
+    @Test("only fixed private inventory/config/playbook inputs are used for the local checks")
+    func fixedFixtures() async throws {
+        let fixture = ProvisioningHarness(), normal = fixture.response()
+        let probes = ProvisioningFakeProbes { request in
+            if request.arguments.contains("--list") || request.arguments.contains("--syntax-check") {
+                let root = URL(fileURLWithPath: request.workingDirectory)
+                let inventory = root.appendingPathComponent("inventory.ini")
+                #expect(request.arguments[request.arguments.firstIndex(of: "-i")! + 1] == inventory.path)
+                #expect(try! String(contentsOf: inventory, encoding: .utf8) == "[provisioning_probe]\nfixture.invalid\n")
+                let playbook = try! String(contentsOf: root.appendingPathComponent("syntax.yml"), encoding: .utf8)
+                #expect(playbook.contains("gather_facts: false") && playbook.contains("ansible.builtin.debug:"))
+                #expect(!playbook.contains("lookup(") && !playbook.contains("shell:") && !playbook.contains("command:"))
+                for name in ["inventory.ini", "syntax.yml", "ansible.cfg"] {
+                    let attributes = try! FileManager.default.attributesOfItem(atPath: root.appendingPathComponent(name).path)
+                    #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+                }
+            }
+            return normal(request)
+        }
+        let report = try await fixture.provider(probes).inspect()
+        #expect(report.tool(.ansiblePlaybook)?.status == .available)
+    }
+
+    @Test("successful prefix and inventory stdout remains usable when stderr contains a warning")
+    func separateDiagnostics() async throws {
+        let fixture = ProvisioningHarness(), normal = fixture.response()
+        let probes = ProvisioningFakeProbes { request in
+            var result = normal(request)
+            result.standardError += Data("synthetic-diagnostic-canary".utf8)
+            return result
+        }
+        let report = try await fixture.provider(probes).inspect()
+        #expect(report.tool(.ansiblePlaybook)?.status == .available)
+        #expect(!String(decoding: try JSONEncoder().encode(report), as: UTF8.self).contains("synthetic-diagnostic-canary"))
+    }
+
+    @Test("upgrades to either command, Homebrew or its active keg invalidate the whole pair", arguments: ["command", "brew", "keg"])
+    func replacedAfterChecks(_ scenario: String) async throws {
+        let fixture = ProvisioningHarness(), normal = fixture.response()
+        let probes = ProvisioningFakeProbes { request in
+            if request.executable.path.hasSuffix("/gh") {
+                if scenario == "keg" { fixture.files.putDirectory(fixture.prefix, resolved: fixture.keg + "-new", fingerprint: "changed") }
+                else if scenario == "brew" { fixture.files.put(fixture.bin + "/brew", fingerprint: "changed") }
+                else { fixture.files.put(fixture.prefix + "/bin/ansible-playbook", resolved: fixture.keg + "/bin/ansible-playbook", fingerprint: "changed") }
+            }
+            return normal(request)
+        }
+        let report = try await fixture.provider(probes).inspect()
+        #expect(report.tool(.ansiblePlaybook)?.status == .checkFailed && report.tool(.ansibleInventory)?.status == .checkFailed)
+    }
+
+    @Test("schema 2 command rejects retired Python/PyYAML overrides with migration guidance")
     func commandParsing() throws {
         #expect(try ProvisioningToolsInvocation.parse(["list"]) == nil)
-        let invocation = try #require(try ProvisioningToolsInvocation.parse(["setup", "tools", "--tool", "python=/custom path/python3"]))
-        #expect(invocation.overrides[.python] == "/custom path/python3")
+        let invocation = try #require(try ProvisioningToolsInvocation.parse(["setup", "tools", "--tool", "ansible-playbook=/custom path/ansible-playbook"]))
+        #expect(invocation.overrides[.ansiblePlaybook] == "/custom path/ansible-playbook")
+        for key in ["python", "python3", "yaml", "pyyaml"] {
+            do { _ = try ProvisioningToolsInvocation.parse(["setup", "tools", "--tool", key + "=/some/path"]); Issue.record("Retired override accepted") }
+            catch let error as VMFailure { #expect(error.code == "retired-tool-override" && error.message.contains("schema 2")) }
+        }
         for arguments in [["setup"], ["setup", "apply"], ["setup", "tools", "--install"],
-                          ["setup", "tools", "--tool", "python=relative"], ["setup", "tools", "--tool", "ssh=/bin/other"],
-                          ["setup", "tools", "--tool", "python=/one", "--tool", "python=/two"]] {
+                          ["setup", "tools", "--tool", "brew=relative"], ["setup", "tools", "--tool", "ssh=/bin/other"],
+                          ["setup", "tools", "--tool", "brew=/one", "--tool", "brew=/two"]] {
             #expect(throws: VMFailure.self) { try ProvisioningToolsInvocation.parse(arguments) }
         }
-        let config = ProvisioningToolConfiguration(searchDirectories: [".", "relative", "/good", "/bad\n", "/parent/../escape"])
-        #expect(config.searchDirectories == ["/good"])
+        #expect(ProvisioningToolConfiguration(searchDirectories: [".", "relative", "/good", "/bad\n", "/parent/../escape"]).searchDirectories == ["/good"])
     }
 }
 
@@ -249,13 +303,14 @@ struct ProvisioningProcessTests {
         .init(executable: executable, arguments: [], environment: ["PATH": "/usr/bin:/bin", "HOME": fixture.support.path],
               workingDirectory: fixture.support.path, timeout: timeout, outputLimit: limit)
     }
-    @Test("real fixture streams merge, stdin is closed and the inherited environment is absent")
+    @Test("real fixture streams stay separate, stdin is closed and the inherited environment is absent")
     func processIO() async throws {
         let fixture = try RegistryFixture(); defer { fixture.cleanup() }
         let executable = try script("printf 'out'; printf 'err' >&2; read input && exit 9; test -z \"$SSH_AUTH_SOCK\"\n", fixture: fixture)
         let result = await LocalProvisioningToolProbe().run(request(executable, fixture: fixture))
         #expect(result.failure == nil && result.status == 0)
-        #expect(String(decoding: result.output, as: UTF8.self) == "outerr")
+        #expect(String(decoding: result.output, as: UTF8.self) == "out")
+        #expect(String(decoding: result.standardError, as: UTF8.self) == "err")
     }
     @Test("a hanging tool and a flooding tool stop within bounds")
     func bounds() async throws {
@@ -268,6 +323,46 @@ struct ProvisioningProcessTests {
         let noisy = try script("while :; do printf '012345678901234567890123456789'; done\n", fixture: fixture)
         let limited = await LocalProvisioningToolProbe().run(request(noisy, fixture: fixture, limit: 128))
         #expect(limited.failure == .outputLimit && limited.output.isEmpty)
+        let errorNoisy = try script("while :; do printf '012345678901234567890123456789' >&2; done\n", fixture: fixture)
+        let errorLimit = await LocalProvisioningToolProbe().run(request(errorNoisy, fixture: fixture, limit: 128))
+        #expect(errorLimit.failure == .outputLimit && errorLimit.standardError.isEmpty)
+    }
+
+    @Test("real shell wrappers pass the full Homebrew CLI contract without a Python probe")
+    func localWrapperInstallation() async throws {
+        let fixture = try RegistryFixture(); defer { fixture.cleanup() }
+        let root = fixture.support.appendingPathComponent("brew fixture"), bin = root.appendingPathComponent("bin")
+        let prefix = root.appendingPathComponent("opt/ansible"), ansibleBin = prefix.appendingPathComponent("bin")
+        for directory in [bin, ansibleBin] { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
+        func quote(_ text: String) -> String { "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        func save(_ directory: URL, _ name: String, _ source: String) throws {
+            let path = directory.appendingPathComponent(name)
+            try Data(("#!/bin/sh\n" + source).utf8).write(to: path)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: path.path)
+        }
+        try save(bin, "brew", """
+        case "$*" in
+          --version) printf 'Homebrew 7.0.11\\n' ;;
+          --prefix) printf '%s\\n' \(quote(root.path)) ;;
+          '--prefix --installed ansible') printf '%s\\n' \(quote(prefix.path)); printf 'fixture warning\\n' >&2 ;;
+          *) exit 99 ;;
+        esac
+        """)
+        try save(ansibleBin, "ansible-inventory", """
+        if [ "$*" = '--version' ]; then printf 'ansible-inventory [core 2.21.5]\\n'; exit 0; fi
+        test "$#" = 3 && test "$1" = '-i' && test "$3" = '--list' || exit 99
+        printf '%s\\n' \(quote(ProvisioningHarness.inventoryJSON))
+        """)
+        try save(ansibleBin, "ansible-playbook", """
+        if [ "$*" = '--version' ]; then printf 'ansible-playbook [core 2.21.5]\\n'; exit 0; fi
+        test "$#" = 4 && test "$1" = '--syntax-check' && test "$2" = '-i' || exit 99
+        printf 'playbook: %s\\n' "$4"
+        """)
+        let report = try await HomebrewProvisioningDependencies(configuration: .init(overrides: [.gh: "/missing/gh"], homebrewDirectories: [bin.path])).inspect()
+        #expect(report.schemaVersion == 2)
+        #expect(report.tool(.ansiblePlaybook)?.status == .available)
+        #expect(report.tool(.ansibleInventory)?.status == .available)
+        #expect(report.features.allSatisfy { !$0.enabled })
     }
     @Test("replacement and cancellation prevent stale or lingering probe results")
     func changedAndCancelled() async throws {
@@ -282,13 +377,14 @@ struct ProvisioningProcessTests {
         task.cancel()
         #expect(await task.value.failure == .cancelled)
     }
-    @Test("Python virtualenv symlink entry remains the execution path")
+    @Test("Homebrew wrapper alias preserves the invocation path and canonical target")
     func symlinkEntry() throws {
         let fixture = try RegistryFixture(); defer { fixture.cleanup() }
         let target = try script("exit 0\n", fixture: fixture)
-        let link = fixture.support.appendingPathComponent("python3")
+        let link = fixture.support.appendingPathComponent("ansible-playbook")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: target.path))
         let entry = try #require(LocalProvisioningToolFiles().executable(link.path))
         #expect(entry.identity.path == link.path)
+        #expect(entry.resolvedPath == URL(fileURLWithPath: target.path).resolvingSymlinksInPath().path)
     }
 }
