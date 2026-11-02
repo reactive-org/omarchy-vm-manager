@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """Relocated read-only package checks. Runs only the offline helper on fixtures."""
 import argparse
+import base64
+import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
 import plistlib
 import shutil
+import socket
+import struct
 import subprocess
 import tempfile
+import uuid
 
 import provisioning_package as package
 
@@ -49,6 +55,66 @@ def run_checks(binaries, launcher_binaries):
             package.require(not result.stderr and len(result.stdout) <= 128*1024, "Unexpected helper diagnostic/output")
             return json.loads(result.stdout)
 
+        def ownership_fixture(scenario):
+            # Actual packaged helper, anonymous inherited socket and bootstrap
+            # pipe only. Its registry is empty; it cannot claim a worker or run.
+            encode = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+            identifier = lambda: str(uuid.uuid4()).upper()
+            secret = os.urandom(32)
+            identity = {"instanceID": identifier(), "executableSHA256": package.sha(helper.read_bytes()),
+                        "packageLockSHA256": package.sha((contents / "Resources/DevVMProvisioning.lock.json").read_bytes())}
+            channel = identifier()
+            bootstrap = {"version": 1, "identity": identity, "channelID": channel,
+                         "secret": base64.b64encode(secret).decode()}
+            if scenario == "bootstrap": bootstrap["identity"] = {**identity, "executableSHA256": "a" * 64}
+            parent, child = socket.socketpair()
+            parent.settimeout(3)
+            process = subprocess.Popen([str(helper), "--ownership-channel-fd", str(child.fileno())],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       pass_fds=(child.fileno(),), env=environment, cwd=root)
+            child.close()
+            try:
+                data = encode(bootstrap)
+                process.stdin.write(struct.pack(">I", len(data)) + data)
+                process.stdin.close()
+                if scenario != "bootstrap":
+                    scope = {name: identifier() for name in ("challenge", "jobID", "vmID", "sessionID", "payloadID", "workerToken")}
+                    scope.update({name: "b" * 64 for name in ("engineDigest", "dependencyDigest", "bindingDigest", "reviewDigest", "checkpointDigest")})
+                    request = {"requestID": identifier(), "expectation": scope}
+                    signed = {"version": 1, "identity": identity, "channelID": channel, "role": "manager", "sequence": 1,
+                              "payload": base64.b64encode(encode(request)).decode()}
+                    mac = hmac.digest(secret, encode(signed), hashlib.sha256)
+                    if scenario == "mac": mac = bytes(32)
+                    frame = encode({"signed": signed, "mac": base64.b64encode(mac).decode()})
+                    parent.sendall(struct.pack(">I", len(frame)) + frame)
+                    if scenario == "valid":
+                        def exact(count):
+                            result = b""
+                            while len(result) < count:
+                                chunk = parent.recv(count - len(result))
+                                package.require(bool(chunk), "Incomplete ownership fixture frame")
+                                result += chunk
+                            return result
+                        length = struct.unpack(">I", exact(4))[0]
+                        package.require(0 < length <= 24 * 1024)
+                        response = json.loads(exact(length)); authenticated = response["signed"]
+                        package.require(hmac.compare_digest(base64.b64decode(response["mac"]), hmac.digest(secret, encode(authenticated), hashlib.sha256)))
+                        package.require(authenticated["role"] == "helper" and authenticated["sequence"] == 1
+                                        and authenticated["identity"] == identity and authenticated["channelID"] == channel)
+                        payload = json.loads(base64.b64decode(authenticated["payload"]))
+                        package.require(payload == {**request, "priorWorker": "unknown"}, "Empty helper invented ownership")
+                        # Replay a correctly signed request: no second proof.
+                        parent.sendall(struct.pack(">I", len(frame)) + frame)
+                process.wait(timeout=5)
+                stdout, stderr = process.stdout.read(), process.stderr.read()
+                package.require(process.returncode == (1 if scenario == "bootstrap" else 0))
+                package.require(not stderr and (not stdout if scenario != "bootstrap" else json.loads(stdout)["ok"] is False))
+                package.require(base64.b64encode(secret) not in stdout + stderr, "Bootstrap secret leaked")
+            finally:
+                parent.close()
+                if process.poll() is None: process.kill(); process.wait(timeout=5)
+                process.stdout.close(); process.stderr.close()
+
         try:
             status = invoke("--verify-package-json")
             package.require(status["sourceRevision"] == "bb3fae22be45b38035fac52aefa0eb270a9d0fea" and status["executionEnabled"] is False)
@@ -60,6 +126,8 @@ def run_checks(binaries, launcher_binaries):
             for command in ("--apply", "--check", "--recover", "--exec", "--trash"):
                 package.require(invoke(command, ok=False)["code"] == "provisioning-execution-disabled")
             package.require(invoke("--verify-package-json", ok=False, extra={"PACKAGE_RESOURCE_BUNDLE_PATH": str(binaries)})["code"] == "provisioning-package-invalid")
+            for scenario in ("valid", "mac", "bootstrap"): ownership_fixture(scenario)
+            package.require(invoke("--ownership-channel-fd", "0", ok=False)["ok"] is False)
             (source / "vm.yml").write_text("schema_version: 1\nid: fixture\nid: duplicate\n")
             package.require(invoke("--validate-manifest-json", source / "vm.yml", ok=False)["ok"] is False)
             package.require(not list(home.iterdir()) and not list(scratch.iterdir()), "Helper created host state")
@@ -77,7 +145,7 @@ def run_checks(binaries, launcher_binaries):
             for path in relocated.rglob("*"):
                 if path.is_dir(): path.chmod(0o755)
                 else: path.chmod(0o644)
-    print("provisioning-package: PASS; relocated/read-only offline helper, exact resources, disabled execution, no host state")
+    print("provisioning-package: PASS; relocated/read-only helper, authenticated inherited ownership IPC, exact resources, disabled execution, no host state")
 
 
 if __name__ == "__main__":

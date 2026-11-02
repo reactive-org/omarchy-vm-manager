@@ -351,7 +351,7 @@ public actor ProvisioningCoordinator {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return KitVerifier.sha256(try encoder.encode(engine))
     }
-    private static func bindingIdentity(_ target: GuestBinding) throws -> String {
+    static func bindingIdentity(_ target: GuestBinding) throws -> String {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         return KitVerifier.sha256(try encoder.encode(Binding(vm: target.vmID, session: target.sessionID, owner: target.owner, uid: target.ownerUID, key: target.hostKeyDigest)))
     }

@@ -1622,3 +1622,61 @@ crash and power-loss durability, retention/removal, SSH waits, live terminal/job
 UI and CLI, and all real guest/transport/authentication behavior. These local
 foundations do not promote any existing real-guest evidence labels. See the
 [durable continuation](docs/DevVMProvisioningPlan.md#milestone-3-durable-inputs-and-cleanup-recovery--3-november-2026).
+
+
+## Authenticated provisioning helper control and ownership — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 with authenticated
+helper IPC/ownership reconciliation, using fake runtimes and local fixtures only.
+No real SSH/Ansible, host installs or VM launches. The supplied Setup-tab screenshot
+is the future stage-strip/live-terminal reference, not guest-validation evidence;
+no UI takeover, permission grant or terminal rendering is performed.
+
+**IMPLEMENTED:** an inherited same-user AF_UNIX control connection uses a private
+per-launch capability delivered only through an anonymous bootstrap pipe. HMAC
+frames bind direction, instance/binary/package pins, channel, sequence and exact
+payload. Strict bounded messages reject unknown/duplicate fields, replay,
+reflection, wrong keys/pins and uncorrelated request/challenge replies. Capability
+bytes never enter argv/environment/disk/journal/status/logs. One request is allowed
+in flight; timeouts/malformed replies poison the channel without automatic retry.
+No listener/path discovery or stored-PID ownership inference is introduced.
+
+The helper registry accepts worker bindings from its trusted local owner only;
+wire requests cannot register or start anything. Missing/new helper state returns
+unknown. A process-runner wrapper permanently fences the original worker before
+waiting, owns each delegated task/ID and retains uncertain/mismatched process
+receipts. Only matching local exit/not-started or exact retained local cleanup
+can prove the local worker stopped and fenced. A stopped task/EOF/diagnostic never
+proves guest quiescence, grant revocation or success. Disconnect fences local
+workers and stops new registration. The coordinator can consume this authenticated
+proof for its existing explicit cleanup-only recovery after reopen, with fresh
+original-session/dependency checks. VM ownership still ends only at `.exited`.
+
+**PRIVATE COUPLING:** helper control API 1 has only reconciliation, no shell,
+apply, terminal/input, PID, arbitrary path or registration command. The packaged
+helper's internal inherited-channel mode admits its distribution and bootstrap
+pins, then serves an empty ownership registry without a runner/tool probe/journal/
+Keychain/VM. It reports unknown; production job launch and worker registration are
+not enabled. The shared package source/resource pin is unchanged. Authentication
+is possession of a privately handed-off capability, not signing/notarization or
+protection from a malicious same-user memory writer. Automatic production launch
+must independently admit the child and preserve exclusive backend ownership.
+
+**VERIFIED — fake/local checks:** full `make test` passes 275 Swift functions/41
+suites (15 new IPC/coordinator functions), 49 script tests and expanded relocated
+read-only package checks. Swift worker backends are all fake. The actual ad-hoc
+sealed helper authenticates an inherited socket/pipe with empty PATH/private
+HOME/TMPDIR; it reports unknown for missing ownership, rejects replay/wrong MAC/
+bootstrap pins and leaks no secrets or host state. Existing strict signature/
+tamper tests still pass. Full regression uses the existing local socket/mock-auth
+sandbox exception, without real auth UI, tools/guests or host installs. Shared
+package sources/pins remain unchanged and were not retested in this docs-only
+companion handoff.
+
+**TO PROVE:** production admitted launch/registration/executor wiring, operational
+job IPC, full manager-process restart and reviewed session adoption, signing/
+audit policy where needed, real helper/guest crash and remote cleanup, hard kernel
+stall deadlines, live terminal streams/input leases and UI/CLI. This slice can
+reconcile a surviving helper after coordinator reopen; an empty replacement helper
+cannot prove lost ownership. Existing real-guest evidence labels remain unchanged.
+See the [helper-control handoff](docs/DevVMProvisioningPlan.md#milestone-3-authenticated-helper-ipc-and-ownership--3-november-2026).

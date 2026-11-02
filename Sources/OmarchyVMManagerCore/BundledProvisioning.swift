@@ -22,6 +22,9 @@ public struct ProvisioningPackageStatus: Codable, Equatable, Sendable {
 /// connect to the manager socket, read a registry/credential or operate a VM.
 public enum BundledProvisioning {
     public static let executableNames = ["OmarchyVMProvisioningHelper", "dev-vm-process-host"]
+    static func helperExecutableSHA256(_ layout: ProvisioningPackageLayout) throws -> String {
+        KitVerifier.sha256(try read(layout.binaries.appendingPathComponent("OmarchyVMProvisioningHelper"), maximum: 32 * 1024 * 1024))
+    }
     public static func inspect(_ layout: ProvisioningPackageLayout) throws -> ProvisioningPackageStatus {
         do {
             // A debug SwiftPM override must never substitute another package.

@@ -1,7 +1,8 @@
 import Foundation
 import OmarchyVMManagerCore
 
-// Deliberately offline. No execution, registry, Keychain, VM or socket surface.
+// Offline work and an inherited ownership-only control channel. No execution,
+// VM registry, Keychain, guest, tool probing or path-addressed socket surface.
 func output(_ data: Data, status: Int32 = 0) -> Never {
     FileHandle.standardOutput.write(data + Data([10])); exit(status)
 }
@@ -14,6 +15,10 @@ do {
         throw VMFailure(code: "provisioning-package-invalid", message: "Packaged helper required.")
     }
     let layout = ProvisioningPackageLayout(contents: executable.deletingLastPathComponent().deletingLastPathComponent())
+    if args.count == 2, args[0] == "--ownership-channel-fd", let fd = Int32(args[1]) {
+        try await ProvisioningHelperControl.serveInheritedOwnershipChannel(descriptor: fd, layout: layout)
+        exit(0)
+    }
     if args == ["--verify-package-json"] { output(try JSONEncoder().encode(BundledProvisioning.inspect(layout))) }
     if args.count == 2, args[0] == "--validate-manifest-json" {
         output(try BundledProvisioning.validateManifest(URL(fileURLWithPath: args[1]), layout: layout))

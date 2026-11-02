@@ -113,14 +113,20 @@ final class ProvisioningJobArtifacts: @unchecked Sendable {
     }
 }
 
-/// Must be supplied by a future authenticated ownership channel, never a PID or
+/// Must be supplied by an authenticated ownership channel, never a PID or
 /// a disk observation. The prior worker must be stopped AND fenced from launch.
-struct ProvisioningRecoveryExpectation: Sendable, Equatable {
+struct ProvisioningRecoveryExpectation: Sendable, Equatable, Codable {
     let challenge: UUID
     let jobID: UUID, vmID: UUID, sessionID: UUID, payloadID: UUID, workerToken: UUID
     let engineDigest: String, dependencyDigest: String, bindingDigest: String, reviewDigest: String, checkpointDigest: String
+    func validate() throws {
+        guard [engineDigest, dependencyDigest, bindingDigest, reviewDigest, checkpointDigest].allSatisfy(provisioningDigest) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+    }
+    func sameWorker(as other: Self) -> Bool {
+        jobID == other.jobID && vmID == other.vmID && sessionID == other.sessionID && payloadID == other.payloadID && workerToken == other.workerToken && engineDigest == other.engineDigest && dependencyDigest == other.dependencyDigest && bindingDigest == other.bindingDigest && reviewDigest == other.reviewDigest && checkpointDigest == other.checkpointDigest
+    }
 }
-enum ProvisioningPriorWorkerState: Sendable { case stoppedAndFenced, running, unknown }
+enum ProvisioningPriorWorkerState: String, Sendable, Codable { case stoppedAndFenced, running, unknown }
 struct ProvisioningRecoveryPermit: Sendable {
     let expectation: ProvisioningRecoveryExpectation
     let priorWorker: ProvisioningPriorWorkerState

@@ -585,4 +585,50 @@ private final class JobFixture: Sendable {
         await gate.release()
         #expect(try await f.coordinator.wait(request.jobID).state == .succeeded)
     }
+    @Test func reopenedCleanupUsesAuthenticatedHelperOwnershipProof() async throws {
+        let f = try await JobFixture(), request = try f.request()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(failures: [.quiesceOwnedWork]))
+        #expect(try await f.coordinator.wait(request.jobID).cleanupRequired)
+        let record = try #require(f.journal.load().first)
+        let ipc = try HelperIPCFixture(scope: helperTestExpectation(record: record, target: f.target), target: f.target)
+        // Trusted fixture job owner registers an exact original worker locally;
+        // registration is deliberately absent from the remote control protocol.
+        let backend = IPCRecordingRunner(), oldRunner = try await ipc.runner(backend)
+        try await f.coordinator.closeForReopen()
+        let reopened = try await ProvisioningCoordinator.open(manager: f.manager,
+            journal: ProvisioningJobJournal(directory: f.journal.directory), authority: f.authority,
+            artifacts: f.artifacts, recoveryAuthority: ipc.client,
+            engineDigest: ProvisioningCoordinator.engineIdentity(f.plan), admitPackage: {})
+        try FileManager.default.removeItem(at: f.source)
+        let guest = JobGuest()
+        try await reopened.recover(request.jobID, target: f.target, adapter: guest)
+        #expect(try await reopened.wait(request.jobID).state == .cleanupConfirmed)
+        #expect(await guest.commands.allSatisfy { $0.plan == nil && $0.inputLeaseID == nil && $0.context.payloadID == record.payloadID })
+        if case .notStarted = await oldRunner.run(ipc.invocation()).termination {} else { Issue.record("Old worker's launch fence reopened") }
+        #expect(await backend.invocations.isEmpty)
+        #expect(f.runtime.startedHandles.count == 1 && f.runtime.startedHandles[0].shutdownCount == 0)
+    }
+    @Test(arguments: ["missing", "disconnected", "uncertain"])
+    func authenticatedButUnprovenHelperCannotClearCleanupHold(kind: String) async throws {
+        let f = try await JobFixture(), request = try f.request()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(failures: [.quiesceOwnedWork]))
+        _ = try await f.coordinator.wait(request.jobID)
+        let record = try #require(f.journal.load().first)
+        let ipc = try HelperIPCFixture(scope: helperTestExpectation(record: record, target: f.target), target: f.target)
+        if kind == "disconnected" { ipc.client.disconnect(); await ipc.task.value }
+        if kind == "uncertain" {
+            let runner = try await ipc.runner(IPCRecordingRunner(result: .uncertain))
+            _ = await runner.run(ipc.invocation())
+        }
+        try await f.coordinator.closeForReopen()
+        let reopened = try await ProvisioningCoordinator.open(manager: f.manager,
+            journal: ProvisioningJobJournal(directory: f.journal.directory), authority: f.authority,
+            artifacts: f.artifacts, recoveryAuthority: ipc.client,
+            engineDigest: ProvisioningCoordinator.engineIdentity(f.plan), admitPackage: {})
+        let guest = JobGuest()
+        await #expect(throws: ProvisioningJobFailure.ownershipUnverified) { try await reopened.recover(request.jobID, target: f.target, adapter: guest) }
+        #expect(await guest.commands.isEmpty)
+        #expect(await reopened.status(request.jobID)?.cleanupRequired == true)
+        await #expect(throws: VMFailure.self) { try await f.manager.configure(f.profile) }
+    }
 }

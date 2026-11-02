@@ -48,7 +48,9 @@ notices. `make prepare-source` validates the export and regenerates the compiled
 pin; it does not bless changed sources by rewriting their hashes. Run
 `make test-provisioning-package` and `make test` before accepting the new pin.
 
-The library is linked into manager core and its offline-only provisioning helper.
+The library is linked into manager core and its offline-planning/ownership-only
+provisioning helper. Its inherited control mode cannot construct an operational
+worker or run the engine; see the milestone-3 helper IPC handoff in the plan.
 The pinned C PTY launcher is built unchanged in a generated standalone SwiftPM
 package because an executable product of a dependency is not a manager root
 product. Only its exact entry-point source and generated manifest are admitted.

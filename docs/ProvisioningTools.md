@@ -183,3 +183,19 @@ historical unchanged-pin/persistent-recovery statements above. Production helper
 ownership and job/UI/CLI execution remain pending; fake runtime/ownership fixtures
 and disposable metadata are the only new execution paths. Homebrew dependency
 checks, no-install policy and setup feature gates remain unchanged.
+
+
+## Authenticated helper control — 3 November 2026
+
+The [helper-control continuation](DevVMProvisioningPlan.md#milestone-3-authenticated-helper-ipc-and-ownership--3-november-2026)
+adds inherited capability-authenticated IPC, replay/correlation checks and a
+permanent original-worker process fence. It uses no Homebrew discovery or tool
+execution. The relocated helper can authenticate an ownership-only request; its
+empty registry returns `unknown`, never permission to run a job or proof that a
+previous helper stopped. Operational construction and automatic launch remain
+pending, and every setup execution gate stays disabled. Missing ownership keeps
+the cleanup hold even when all Homebrew dependency checks are ready.
+
+The supplied Setup-tab terminal screenshot remains the UI reference. No terminal
+bytes or keystrokes are transported by this structured control channel, and the
+screen's sample output does not establish real guest acceptance.

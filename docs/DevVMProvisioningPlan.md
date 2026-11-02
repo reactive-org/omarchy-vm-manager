@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 coordinator/journal foundation now includes private durable inputs and cleanup checkpoints with fake ownership reconciliation; operational helper/job/UI integration remains pending.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 foundation includes durable inputs, cleanup checkpoints, authenticated inherited helper IPC and fenced ownership reconciliation tested with local fixtures; operational helper/job/UI integration remains pending.
 
 Date: 3 November 2026 (Australia/Melbourne).
 
@@ -172,6 +172,8 @@ Closing a view or disconnecting the CLI detaches the viewer. It does not cancel 
 
 ## Live terminal and input ownership
 
+The user-provided Setup-tab reference is the visual target: reviewed source/profile/features, readiness checks, stage strip, a large dark terminal with Follow output/expand, cancellation and job details. Its concept/sample output is illustration, not evidence of a configured guest. Keep actual terminal bytes separate from structured control messages; the authenticated ownership slice below adds no UI or stream rendering.
+
 Use a native terminal emulator in a SwiftUI wrapper. SwiftTerm is a candidate; select a pinned release compatible with the chosen Swift 6 toolchain and macOS 15. Its current main branch requires Swift tools 6.2, so do not adopt main without a compatibility check. See [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm).
 
 The manager-owned Swift provisioning helper links the shared package and controls the PTY, child process session and cleanup channel. It invokes reviewed Homebrew Ansible and system SSH/native-command transports with explicit arguments, working directory and environment. No Python host-controller subprocess is required. The UI renders bytes and sends input/resize messages; closing or recreating the view does not own or terminate the process.
@@ -243,7 +245,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
 | 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; offline manager/helper package/resource/launcher integration now implemented; operational CLI, job/session adapters and full release acceptance remain pending | 227 manager Swift tests / 48 script tests plus relocated package fixtures and prior 64 package tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity and full runtime-app/release acceptance remain pending |
-| 3. Job coordination — durable foundation implemented, operational integration pending | Private schema-2 journal, frozen-input archives and cleanup checkpoints, single-job coordinator, VMManager interlocks and explicit cleanup recovery; no app/helper execution entry point | Fake-runtime/local fixtures cover close/reopen, exact fresh worker fencing, corruption, quotas and interrupted markers. Production authenticated helper reconciliation, SSH waits and reviewed restart rebinding remain pending |
+| 3. Job coordination — authenticated control foundation implemented, operational integration pending | Private journal/input/checkpoint storage, coordinator/interlocks, authenticated inherited helper control and permanent process-runner fencing; no helper execution factory | Fake-runtime/local fixtures and an actual packaged ownership-only helper cover fresh authentication, replay/correlation refusal, original-worker reconciliation, close/reopen and retained uncertainty. Production job launch/registration, full manager restart and SSH/rebinding remain pending |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
 | 6. Guest acceptance | Explicitly approved manager-owned disposable guest only | End-to-end setup, reapplication, authenticated restart, check and sudo revocation observed; failure scenarios recorded |
@@ -784,3 +786,117 @@ power-loss behavior and every real SSH/Ansible/authorization/echo/quiescence cas
 If a missing helper cannot prove absence, cleanup remains required. Real VM
 clients/resources still require matching `.exited`; archives do not change VM
 ownership policy. This slice does not complete milestone 3 or real guest acceptance.
+
+
+## Milestone 3 authenticated helper IPC and ownership — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** add authenticated helper IPC and ownership
+reconciliation using fake runtimes/process runners and local fixtures only. No
+real SSH/SCP/SFTP/Ansible, host installs or VM launches. Use the supplied Setup-tab
+screenshot as the future terminal UI reference; no user UI is opened or changed.
+This section supersedes the earlier pending IPC/fake-authority-only statements.
+Production job submission/delegation and setup execution gates remain disabled.
+
+**IMPLEMENTED — private control protocol 1:** a manager/helper connection is an
+explicit inherited AF_UNIX stream, with same-user peer credentials and CLOEXEC/
+nonblocking/no-SIGPIPE descriptors. There is no path-addressed listener, discovery,
+PID lookup or credential file. A fresh per-launch 256-bit capability and channel
+UUID pass through a bounded anonymous stdin pipe, never arguments, environment,
+disk, logs or the job journal. Capability descriptions are redacted. Both peers
+share an independently expected helper instance UUID, exact helper executable
+SHA-256 and package-lock SHA-256. The packaged helper independently admits its
+resources/distribution and compares bootstrap pins with its actual executable.
+
+Length-prefixed bounded frames carry canonical signed JSON and HMAC-SHA256. The
+MAC covers protocol version, complete helper identity, channel, direction,
+monotonic sequence and exact payload bytes. Request UUID and a fresh coordinator
+challenge bind every reply to the exact original job/VM/session/payload/worker,
+engine, dependencies, guest-binding digest, approved review and checkpoint hash.
+Unknown fields/types/versions, duplicate keys, changed pins, reflection/replay,
+wrong keys, partial/oversize frames and uncorrelated replies fail closed. Frame
+size is 24 KiB, payload 12 KiB and bootstrap 4 KiB. Active frame/send deadlines
+are bounded (default 3 seconds); idle server reads remain interruptible by socket
+shutdown. One client request may be outstanding; the server serves only once.
+A lost/malformed reply poisons the channel, never automatically retries a command
+or clears cleanup. A new channel requires a new trusted bootstrap.
+
+This is capability authentication tied to an admitted launch, not a claim of
+Developer ID/signing authority or protection against a malicious same-user memory
+reader. The production manager must launch the exact independently admitted helper
+and pass only its private descriptors. That automatic launcher/executor wiring
+remains disabled. A saved helper ID, PID or matching user alone proves nothing.
+
+**IMPLEMENTED — original-worker ownership:** the helper-side registry accepts
+immutable bindings only from the trusted local job owner, never a wire registration
+or disk import. It retains at most 128 original-worker records/tombstones and
+rejects replacement. Missing state, an empty/new helper or changed scope returns
+`unknown`; absence cannot prove another helper's worker stopped. Each registered
+worker uses a `ProvisioningFencedProcessRunner` over its exclusively owned backend.
+The wrapper validates the original job/payload/guest/session/dependency/mode on
+every invocation, registers ownership before its launch actor hop, rejects ID
+reuse, and permits one local invocation at a time.
+
+Reconciliation permanently closes that runner's launch gate before any await,
+cancels/interrupts only its exact owned invocation, waits for its matching result
+and requires `.exited`/`.notStarted` or exact retained local-cleanup reconciliation.
+A wrong invocation ID or `cleanupUnconfirmed` retains the backend and uncertainty.
+Late/duplicate observers cannot erase uncertainty. Concurrent queries share one
+stop attempt and completed tombstones never reopen the gate. Task cancellation,
+a diagnostic, socket EOF or a local exit alone cannot prove guest quiescence or
+sudo revocation. Disconnect fences registered local workers and refuses new
+registration. If a backend stalls, the client times out but the helper retains
+its outstanding task/ownership; it does not signal a PID read from disk.
+
+The authenticated client now conforms to the coordinator recovery-authority
+contract. Fake-runtime tests close/reopen the coordinator, authenticate/fence its
+original registered worker, then run only the existing shared-engine cleanup
+sequence against a freshly revalidated original session. Missing ownership,
+uncertain processes or a disconnected helper preserve the VM cleanup hold. The
+old worker's runner stays fenced even after clean remote proof. VM handles and
+reservations still require the matching runtime `.exited`.
+
+**IMPLEMENTED — packaged helper boundary:** the internal
+`--ownership-channel-fd FD` mode consumes only an inherited Unix stream and
+anonymous bootstrap pipe after package admission. It constructs an **empty**
+ownership registry and can authenticate an `unknown` response, but creates no
+runner, journal, saved guest credential/Keychain access, VM, tool probes or operational job.
+There is no apply/check/recover/exec/terminal/PID command in this wire protocol.
+The existing offline validate/plan APIs and disabled execution report remain.
+The shared dev-vm code/resources and immutable base-plus-durable-patch pin are
+unchanged by this manager-only continuation.
+
+**VERIFIED — fake/local checks:** `make test` passes 275 manager Swift test
+functions in 41 suites (15 new IPC/coordinator functions with parameterized cases),
+49 script tests and the expanded relocated/read-only helper packaging fixture.
+New tests cover wrong keys/pins, directional replay/reflection, duplicate/unknown/
+oversize/truncated frames, request/challenge mismatches, busy/one-shot channels,
+exact process receipts, concurrent stop queries, worker tombstones, disconnect/
+timeout uncertainty, unchanged original bindings, missing state and authenticated
+cleanup after coordinator reopen. All invocation backends in the new Swift tests
+are fake; no real process runner is constructed there.
+
+The actual packaged helper is ad-hoc signed/sealed in a disposable app without a
+runtime kit and relocated read-only. Empty PATH and private empty HOME/TMPDIR are
+used for the inherited socket/pipe fixture. A development Python peer verifies
+the helper's response MAC and exact correlation; the empty registry returns
+unknown, valid request replay/wrong MAC close the channel, mismatched bootstrap
+binary pins are rejected, and no stdout/stderr secrets or host state are produced.
+Strict app-signature/resource-damage checks still pass. The fixture launches only
+the ownership/offline helper, never the manager UI or an operational engine.
+Full regression uses the existing sandbox exception for local sockets/synthetic
+LAContext; no actual Keychain/authentication UI, real SSH/SCP/SFTP/Ansible, host
+install, image download, installed-app change or VM operation occurs. Shared-engine
+code/pins are unchanged, so prior package/oracle evidence is not claimed as a new
+shared test run. These fixtures do not prove release signer or real guest behavior.
+
+**TO PROVE / REMAINING:** automatic admitted manager/helper launch, exclusive
+backend construction and registration before operational job start, sequencer/job
+IPC delegation, signer/audit-token policy where required by distribution, full
+manager process restart/reconnection and reviewed session rebinding, helper-crash
+and guest-side quiescence/revocation, hard kernel-stall deadlines, terminal stream/
+input-lease transport and UI/CLI attachment. The inherited capability and live
+helper registry currently survive coordinator reopen, not full manager/VM restart
+adoption. A replacement empty helper cannot manufacture lost ownership proof.
+Channel-close local fencing is not yet an operational remote-cleanup driver.
+Raw terminal/input bytes remain separate and in memory only; no sample output or
+ANSI parsing is used for ownership or successful completion.
