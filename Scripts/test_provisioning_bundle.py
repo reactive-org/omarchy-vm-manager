@@ -129,7 +129,7 @@ def run_checks(binaries, launcher_binaries):
             for scenario in ("valid", "mac", "bootstrap"): ownership_fixture(scenario)
             # The Swift fixture uses the real admitted-launch factory. It is a
             # debug-only build product, never staged into the application.
-            for scenario in ("policy", "tamper", "replace", "normal"):
+            for scenario in ("policy", "tamper", "replace", "normal", "dispatch-denied"):
                 control_root = root / str(uuid.uuid4()); control_root.mkdir(mode=0o700)
                 result = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(contents), str(control_root), scenario],
                                         env=environment, cwd=root, capture_output=True, timeout=20)
@@ -141,6 +141,34 @@ def run_checks(binaries, launcher_binaries):
                 value = json.loads(result.stdout)
                 package.require(value.get("policyRejected") or value.get("changedSourceRejected") or
                                 (value.get("registered") and value.get("reconciled") and value.get("exited") and value.get("executionEnabled") is False))
+            # Separate, explicitly re-signed fixture app: replace only its helper
+            # with the excluded debug fixture binary, which hosts a fake engine
+            # factory. The actual product helper above has no execution backend.
+            engine_app = root / "EngineFixture.app"
+            shutil.copytree(relocated, engine_app)
+            for path in [engine_app, *engine_app.rglob("*")]:
+                path.chmod(0o755 if path.is_dir() or path.parent.name == "MacOS" else 0o644)
+            engine_contents = engine_app / "Contents"
+            fake_helper = engine_contents / "MacOS/OmarchyVMProvisioningHelper"
+            shutil.copy2(binaries / "OmarchyProvisioningLaunchFixture", fake_helper)
+            subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(fake_helper)], check=True, capture_output=True)
+            package.seal(engine_contents)
+            subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(engine_app)], check=True, capture_output=True)
+            for path in [engine_app, *engine_app.rglob("*")]:
+                path.chmod(0o555 if path.is_dir() or path.parent.name == "MacOS" else 0o444)
+            try:
+                for scenario in ("dispatch", "dispatch-cancel"):
+                    control_root = root / str(uuid.uuid4()); control_root.mkdir(mode=0o700)
+                    result = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(engine_contents), str(control_root), scenario],
+                                            env=environment, cwd=root, capture_output=True, timeout=20)
+                    if result.returncode != 0:
+                        diagnostic = json.loads(result.stdout)
+                        print("engine-helper-fixture:", scenario, diagnostic.get("code"), diagnostic.get("step"))
+                    package.require(result.returncode == 0 and not result.stderr, "Helper-side fixture dispatch failed")
+                    package.require(json.loads(result.stdout)["exited"] is True)
+            finally:
+                for path in [engine_app, *engine_app.rglob("*")]:
+                    path.chmod(0o755 if path.is_dir() else 0o644)
             package.require(invoke("--ownership-channel-fd", "0", ok=False)["ok"] is False)
             (source / "vm.yml").write_text("schema_version: 1\nid: fixture\nid: duplicate\n")
             package.require(invoke("--validate-manifest-json", source / "vm.yml", ok=False)["ok"] is False)

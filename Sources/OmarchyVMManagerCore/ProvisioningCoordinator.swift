@@ -23,6 +23,7 @@ public actor ProvisioningCoordinator {
     private let cleanupGrace: Duration
     private var jobs: [UUID: ProvisioningJobRecord]
     private var active: Active?
+    private var helperActive: HelperActive?
     private var recovering: [UUID: Recovery] = [:]
     private var helperAuthorities: [UUID: any ProvisioningRecoveryAuthorizing] = [:]
     private var admitting = false
@@ -81,7 +82,7 @@ public actor ProvisioningCoordinator {
     public func statuses() -> [ProvisioningJobSnapshot] { jobs.values.map(\.snapshot).sorted { $0.jobID.uuidString < $1.jobID.uuidString } }
     /// Releases only an idle coordinator. Does not stop/rebind the VM or clear risk.
     func closeForReopen() async throws {
-        guard !closed, active == nil, !admitting else { throw ProvisioningJobFailure.busy }
+        guard !closed, active == nil, helperActive == nil, !admitting else { throw ProvisioningJobFailure.busy }
         admitting = true; defer { admitting = false }
         try await manager.uninstallProvisioningCoordinator(ownerID)
         journal.close(); recovering.removeAll(); helperAuthorities.removeAll(); closed = true
@@ -94,6 +95,7 @@ public actor ProvisioningCoordinator {
     public func wait(_ jobID: UUID) async throws -> ProvisioningJobSnapshot {
         guard jobs[jobID] != nil else { throw ProvisioningJobFailure.unknownJob }
         if let running = active, running.jobID == jobID { await running.task?.value }
+        if let running = helperActive, running.jobID == jobID { await running.task?.value }
         return jobs[jobID]!.snapshot
     }
 
@@ -106,7 +108,7 @@ public actor ProvisioningCoordinator {
             guard existing.reviewDigest == request.reviewIdentity else { throw ProvisioningJobFailure.jobConflict }
             return existing.snapshot
         }
-        guard active == nil, !admitting, !jobs.values.contains(where: { $0.helperIdentity != nil && $0.cleanupRequired }) else { throw ProvisioningJobFailure.busy }
+        guard active == nil, helperActive == nil, !admitting, !jobs.values.contains(where: { $0.helperIdentity != nil && $0.cleanupRequired }) else { throw ProvisioningJobFailure.busy }
         guard !storageFailed, jobs.count < ProvisioningJobJournal.maximumJobs else { throw ProvisioningJobFailure.journalUnavailable }
         guard !jobs.values.contains(where: { $0.vmID == request.target.vmID && $0.cleanupRequired }) else { throw ProvisioningJobFailure.cleanupRequired }
         admitting = true; defer { admitting = false }
@@ -160,7 +162,7 @@ public actor ProvisioningCoordinator {
             guard existing.reviewDigest == request.reviewIdentity else { throw ProvisioningJobFailure.jobConflict }
             return existing.snapshot
         }
-        guard active == nil, !admitting, !jobs.values.contains(where: { $0.helperIdentity != nil && $0.cleanupRequired }) else { throw ProvisioningJobFailure.busy }
+        guard active == nil, helperActive == nil, !admitting, !jobs.values.contains(where: { $0.helperIdentity != nil && $0.cleanupRequired }) else { throw ProvisioningJobFailure.busy }
         guard !storageFailed, jobs.count < ProvisioningJobJournal.maximumJobs else { throw ProvisioningJobFailure.journalUnavailable }
         guard !jobs.values.contains(where: { $0.vmID == request.target.vmID && $0.cleanupRequired }) else { throw ProvisioningJobFailure.cleanupRequired }
         admitting = true; defer { admitting = false }
@@ -228,7 +230,7 @@ public actor ProvisioningCoordinator {
     @discardableResult
     func recover(_ jobID: UUID, target: GuestBinding? = nil, adapter: any ProvisioningGuestAdapter) async throws -> ProvisioningJobSnapshot {
         guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
-        guard active == nil, !admitting else { throw ProvisioningJobFailure.busy }
+        guard active == nil, helperActive == nil, !admitting else { throw ProvisioningJobFailure.busy }
         guard !storageFailed else { throw ProvisioningJobFailure.journalUnavailable }
         guard var record = jobs[jobID], record.cleanupRequired else { throw ProvisioningJobFailure.unknownJob }
         guard let candidate = target ?? recovering[jobID]?.target else { throw ProvisioningJobFailure.recoveryUnavailable }
@@ -280,6 +282,16 @@ public actor ProvisioningCoordinator {
     public func cancel(_ jobID: UUID) throws {
         guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
         guard jobs[jobID] != nil else { throw ProvisioningJobFailure.unknownJob }
+        if var running = helperActive, running.jobID == jobID, !running.cancelled, !running.completing {
+            running.cancelled = true; helperActive = running
+            if var record = jobs[jobID] { record.state = .cancelling; try? advance(&record); try? persist(record) }
+            let generation = running.generation, grace = cleanupGrace
+            helperActive?.timer = Task { [weak self] in
+                do { try await Task.sleep(for: grace) } catch { return }
+                await self?.helperCleanupTimedOut(generation)
+            }
+            return
+        }
         guard var running = active, running.jobID == jobID, !running.cancelled, !running.completing else { return }
         running.cancelled = true; active = running
         if var record = jobs[jobID] {
@@ -298,6 +310,11 @@ public actor ProvisioningCoordinator {
         }
     }
     private func lifecycleInterrupted(_ generation: UUID, cause: ProvisioningLifecycleInterruption) {
+        if let running = helperActive, running.generation == generation {
+            if cause == .targetChanged { helperActive?.invalidated = true }
+            if cause == .targetChanged, var record = jobs[running.jobID] { record.failure = .lifecycleChanged; try? advance(&record); try? persist(record) }
+            try? cancel(running.jobID); return
+        }
         guard let running = active, running.generation == generation else { return }
         if cause == .targetChanged, var record = jobs[running.jobID] {
             record.failure = .lifecycleChanged; try? advance(&record); try? persist(record)
@@ -457,5 +474,152 @@ private struct JournaledProvisioningAdapter: ProvisioningGuestAdapter {
     func interrupt(commandID: UUID, context: GuestJobContext) async {
         guard await owner.interruptAllowed(commandID, context: context, generation: generation) else { return }
         await underlying.interrupt(commandID: commandID, context: context)
+    }
+}
+
+
+extension ProvisioningCoordinator {
+    private struct HelperActive {
+        let generation: UUID
+        let jobID: UUID
+        let lease: ProvisioningLifecycleLease
+        let target: GuestBinding
+        let dispatcher: any ProvisioningHelperDispatching
+        let activation: ProvisioningHelperActivation
+        var task: Task<Void, Never>?
+        var timer: Task<Void, Never>?
+        var last: ProvisioningHelperWorkerSnapshot?
+        var cancelled = false, expired = false, completing = false, invalidated = false
+    }
+    @discardableResult
+    func activateHelperWorker(_ request: ProvisioningRequest, approval: ProvisioningApproval,
+                              dispatcher: any ProvisioningHelperDispatching) async throws -> ProvisioningJobSnapshot {
+        guard !closed, var record = jobs[request.jobID], record.helperRegistered == true,
+              let identity = record.helperIdentity, let registrationDigest = record.helperRegistrationDigest,
+              let payload = record.payloadID, let worker = record.workerToken, let checkpoint = record.cleanupCheckpointSHA256
+        else { throw ProvisioningJobFailure.invalidRequest }
+        guard request.reviewIdentity == record.reviewDigest, approval.reviewIdentity == record.reviewDigest else { throw ProvisioningJobFailure.approvalRequired }
+        // Accepted activation, including interrupted/uncertain activation, is
+        // never silently replayed after a missing reply or coordinator restart.
+        if record.helperActivationID != nil { return record.snapshot }
+        guard active == nil, helperActive == nil, !admitting else { throw ProvisioningJobFailure.busy }
+        guard !storageFailed else { throw ProvisioningJobFailure.journalUnavailable }
+        guard record.state == .queued, request.plan.identity == record.planDigest, request.plan.snapshot.identity == record.inputDigest,
+              request.mode == record.mode, request.dependencyDigest == record.dependencyDigest,
+              try Self.bindingIdentity(request.target) == record.bindingDigest,
+              request.selectedTasks.isEmpty || approval.customTasksReviewed,
+              request.mode == .check || approval.persistentGrantAcknowledged else { throw ProvisioningJobFailure.invalidRequest }
+        admitting = true; defer { admitting = false }
+        try admitPackage(); try request.plan.verify(in: request.repository)
+        guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }; try artifacts.verifyInputs(record)
+        try await authority.revalidate(request.target, dependencyDigest: record.dependencyDigest)
+        let generation = UUID(), lease = try await reserve(request.jobID, target: request.target, generation: generation, recovery: true)
+        do {
+            try await manager.validateProvisioning(lease, cleanup: false)
+            let scope = ProvisioningRecoveryExpectation(challenge: UUID(), jobID: record.jobID, vmID: record.vmID, sessionID: record.sessionID,
+                payloadID: payload, workerToken: worker, engineDigest: record.engineDigest, dependencyDigest: record.dependencyDigest,
+                bindingDigest: record.bindingDigest, reviewDigest: record.reviewDigest, checkpointDigest: checkpoint, helperIdentity: identity)
+            let activation = ProvisioningHelperActivation(activationID: UUID(), registrationDigest: registrationDigest, scope: scope,
+                customTasksReviewed: approval.customTasksReviewed, persistentGrantAcknowledged: approval.persistentGrantAcknowledged,
+                dockerRootAccessAcknowledged: approval.dockerRootAccessAcknowledged)
+            record.helperActivationID = activation.activationID; record.helperActivationDigest = try activation.digest
+            record.state = .running; record.workerOutstanding = true; record.cleanupRequired = true
+            try advance(&record); try persist(record) // Before any activation RPC.
+            helperAuthorities[record.jobID] = dispatcher
+            helperActive = HelperActive(generation: generation, jobID: record.jobID, lease: lease, target: request.target, dispatcher: dispatcher, activation: activation)
+            helperActive?.task = Task.detached { await self.driveHelper(generation) }
+            return record.snapshot
+        } catch {
+            if var latest = jobs[record.jobID], latest.helperActivationID != nil {
+                latest.workerOutstanding = false; latest.state = .cleanupRequired; latest.failure = .journalUnavailable
+                jobs[record.jobID] = latest
+            }
+            await manager.releaseProvisioning(lease, cleanupRequired: true); throw error
+        }
+    }
+    private func driveHelper(_ generation: UUID) async {
+        guard let running = helperActive, running.generation == generation else { return }
+        do {
+            var status = try await running.dispatcher.dispatch(.activate, activation: running.activation)
+            var cancelSent = false
+            while true {
+                try await observeHelper(status, generation: generation)
+                if status.terminal { await finishHelper(status, generation: generation); return }
+                if helperActive?.cancelled == true, !cancelSent {
+                    cancelSent = true; status = try await running.dispatcher.dispatch(.cancel, activation: running.activation)
+                } else {
+                    try await Task.sleep(for: .milliseconds(50))
+                    status = try await running.dispatcher.dispatch(.status, activation: running.activation)
+                }
+            }
+        } catch {
+            await running.dispatcher.abort(running.activation)
+            guard let current = helperActive, current.generation == generation, var row = jobs[current.jobID] else { return }
+            current.timer?.cancel(); row.state = .cleanupRequired; row.cleanupRequired = true; row.workerOutstanding = false
+            row.failure = storageFailed ? .journalUnavailable : .helperUnavailable
+            try? advance(&row); try? persist(row)
+            await manager.releaseProvisioning(current.lease, cleanupRequired: true); helperActive = nil
+        }
+    }
+    private func observeHelper(_ status: ProvisioningHelperWorkerSnapshot, generation: UUID) async throws {
+        try status.validate()
+        guard let running = helperActive, running.generation == generation,
+              status.activationID == running.activation.activationID, status.activationDigest == (try running.activation.digest),
+              status.sequence >= (running.last?.sequence ?? 0) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        if let last = running.last, status.sequence == last.sequence, status != last { throw ProvisioningHelperIPCFailure.protocolViolation }
+        do {
+            try await authority.revalidate(running.target, dependencyDigest: running.activation.scope.dependencyDigest)
+            try await manager.validateProvisioning(running.lease, cleanup: true)
+        } catch {
+            helperActive?.invalidated = true
+            if var row = jobs[running.jobID] { if row.failure == nil { row.failure = .lifecycleChanged }; try? advance(&row); try? persist(row) }
+            try? cancel(running.jobID)
+        }
+        guard var current = helperActive, current.generation == generation else { throw ProvisioningHelperIPCFailure.unavailable }
+        let changed = current.last != status; current.last = status; helperActive = current
+        if changed, var row = jobs[running.jobID] {
+            row.operation = status.operation; row.commandID = status.commandID
+            if status.phase == .cancelling, !current.expired { row.state = .cancelling }
+            try advance(&row); try persist(row)
+        }
+    }
+    private func helperCleanupTimedOut(_ generation: UUID) async {
+        guard var running = helperActive, running.generation == generation, !running.completing else { return }
+        running.expired = true; helperActive = running
+        if var row = jobs[running.jobID] {
+            row.state = .cleanupRequired; row.failure = .cleanupDeadline; row.cleanupRequired = true
+            try? advance(&row); try? persist(row)
+        }
+        await manager.abandonProvisioningForShutdown(running.lease)
+    }
+    private func finishHelper(_ status: ProvisioningHelperWorkerSnapshot, generation: UUID) async {
+        guard var running = helperActive, running.generation == generation, let outcome = status.outcome else { return }
+        running.completing = true; helperActive = running; running.timer?.cancel()
+        let sealed = !status.cleanupRequired && !storageFailed && !running.expired && !running.invalidated ? await manager.sealProvisioning(running.lease) : false
+        guard let latest = helperActive, latest.generation == generation, var row = jobs[latest.jobID] else { return }
+        running = latest
+        row.workerOutstanding = false; row.engineFailure = status.primaryFailure; row.cleanupFailures = status.cleanupFailures
+        row.cleanupRequired = status.cleanupRequired || storageFailed || running.expired || !sealed
+        row.outcome = row.cleanupRequired ? .cleanupRequired : outcome
+        if row.cleanupRequired { row.state = .cleanupRequired }
+        else {
+            switch outcome {
+            case .applied: row.state = .succeeded
+            case .checked: row.state = .checked
+            case .appliedRestartRequired: row.state = .restartRequired
+            case .cancelled: row.state = .cancelled
+            case .timedOut: row.state = .timedOut
+            case .authorizationRequired: row.state = .authorizationRequired
+            case .cleanupConfirmed: row.state = .cleanupConfirmed
+            case .rejected: row.state = .rejected
+            default: row.state = .failed
+            }
+        }
+        try? advance(&row)
+        do { try persist(row) } catch { row.cleanupRequired = true; row.state = .cleanupRequired; row.failure = .journalUnavailable; jobs[row.jobID] = row }
+        if !row.cleanupRequired, let identity = row.helperIdentity {
+            await running.dispatcher.releaseAfterCleanup(jobID: row.jobID, helperIdentity: identity); helperAuthorities.removeValue(forKey: row.jobID)
+        }
+        await manager.releaseProvisioning(running.lease, cleanupRequired: row.cleanupRequired); helperActive = nil
     }
 }

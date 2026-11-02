@@ -1750,3 +1750,69 @@ release signer/Team policy, full manager restart/reconnect and reviewed VM/sessi
 adoption, real helper/guest failures and grant cleanup, hard kernel stalls,
 retention/removal, SSH waits and terminal/input/UI/CLI. Earlier real-guest evidence
 keeps its labels. See [the admitted-launch handoff](docs/DevVMProvisioningPlan.md#milestone-3-admitted-helper-launch-and-worker-registration--3-november-2026).
+
+
+## Helper-side shared-engine dispatch and activation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 with helper-side
+engine dispatch and worker activation, using fake runtimes and local fixtures only.
+No real SSH/Ansible, installs or VM launches. Production backend/context factories,
+app/CLI execution gates and terminal UI remain disabled.
+
+**IMPLEMENTED:** a prepared worker consumes one immutable activation bound to its
+original registration/owner/plan/input/review/engine/dependency/session scope.
+Authenticated typed activate/status/cancel requests preserve MAC/request/sequence
+correlation and contain no plan bytes, arbitrary paths, executable/credential or
+terminal data. Activation's acknowledgements are ANDed with helper-local approval;
+missing task/grant/Docker consent cannot be invented. Duplicate identical activation
+returns status without another task; a changed activation or a prior fence cannot
+reopen the worker. Preparation must run no guest/process operations.
+
+The helper validates a local prepared context then invokes the pinned shared
+sequencer with the original payload ID. Its owned task survives viewer/RPC detach.
+Command bindings, package/body admission, session/dependency authority and a known
+closed-channel body gate are checked around work. Cancellation/fencing stops body
+work while permitting known-target sequencer cleanup. Completion retires/fences
+its owned runner; local uncertainty overrides apparent guest success. Contexts,
+owned local tasks and handles remain retained, and helper EOF is not an exit or
+remote-cleanup proof. Status/results are bounded fixed types, not terminal/raw
+errors or source values. No authorization/Ansible logic is duplicated.
+
+Schema 4 journals activation UUID/digest and risk before the activation RPC. Manager
+polling is detached from viewers and checks exact activation/correlation and
+monotonic status. Lost replies, invalid status, disk failure and runtime/session/
+dependency invalidation preserve cleanup-required without automatic replay. Old
+schemas preserve risk without invented activation. Coordinator reopen records
+interruption, not a restarted apply. Existing lifecycle interlocks, cancellation
+grace and final proof sealing remain; matching VM `.exited` still releases guest
+resources independently of helper-child exit.
+
+**PRIVATE COUPLING:** control payloads extend frame 1/bootstrap 2 with activation
+and sanitized results. The normal helper provides no engine context factory and
+rejects execution. A separate ad-hoc-signed temporary fixture app uses the excluded
+debug fixture binary as its helper, with a fixed synthetic manifest/fake backend;
+no production argument/environment/RPC enables it. This preserves the admitted
+image/capability/owner chain while testing actual helper-process dispatch. Shared
+package sources/resources/pins are unchanged. There is no frozen-archive extraction
+or arbitrary executable/source transfer added to the control channel.
+
+**VERIFIED — fake/local checks:** `make test` passes 297 Swift functions/43 suites
+(13 new engine/coordinator/journal functions), 49 script tests and expanded signed
+package fixtures. Coverage includes one-shot apply/check, consent/context/source
+refusal, fence/cancel/disconnect ordering, physical uncertainty, journal-before-RPC,
+viewer detach, shutdown, lost/malformed replies, failed writes, no replay after
+reopen, schema preservation and runtime/SSH/dependency invalidation. Diagnostics
+alone are not lifecycle exit. The normal helper refuses activation without a
+factory. A separately sealed/ad-hoc-signed temporary fixture helper runs the
+actual sequencer with only synthetic adapters, reports clean completion and
+cancellation/cleanup, and is reaped through the owned launcher. Existing protocol/
+signature/tamper checks still pass. No real signing credentials, auth UI, host
+installs, SSH/Ansible or VM operations occur; existing local socket/mock-auth
+sandbox exceptions apply. Shared sources/pins are unchanged and not retested.
+
+**TO PROVE:** production frozen-context/consent transfer, exclusive real backend
+and manager-aware session authority, product wiring, full restart/reconnect and
+reviewed rebinding, release signer acceptance, real guest/auth/echo/quiescence/
+crash/kernel behavior, terminal/PTY/input/UI/CLI. The screenshot remains a reference;
+no user UI or installed app is changed. Earlier real-guest evidence labels remain.
+See the [helper dispatch handoff](docs/DevVMProvisioningPlan.md#milestone-3-helper-side-engine-dispatch-and-activation--3-november-2026).

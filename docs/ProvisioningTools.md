@@ -216,3 +216,19 @@ fixture executable is built for local checks and is never staged into an app.
 The same live service is required for recovery after coordinator reopen; it never
 launches a replacement helper to claim a saved worker. Real engine dispatch and
 terminal streams remain pending.
+
+
+## Helper-side engine dispatch — 3 November 2026
+
+The [dispatch continuation](DevVMProvisioningPlan.md#milestone-3-helper-side-engine-dispatch-and-activation--3-november-2026)
+adds one-shot activation, typed status/cancellation and schema-4 durable activation
+markers. Context preparation is local to the helper and must match every recorded
+review/input/engine/session/owner pin. Review acknowledgements cannot be strengthened
+by the helper. The shared sequencer owns actual operation ordering and cleanup;
+local process uncertainty overrides a clean guest result.
+
+Only fake adapters and a separate signed debug fixture exercise execution. The
+product helper has no context/backend factory and returns `executionUnavailable`;
+Homebrew readiness still enables nothing, and no host tool is installed or invoked
+by the new path. Production frozen-context/session/transport wiring and all terminal
+stream/input/UI/CLI integration remain pending.

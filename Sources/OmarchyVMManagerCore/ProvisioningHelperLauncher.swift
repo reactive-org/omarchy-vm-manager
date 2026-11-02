@@ -2,7 +2,7 @@ import Foundation
 
 /// Explicit internal factory only. App/CLI execution gates do not construct it.
 /// One admitted helper reservation at a time; no automatic restart or adoption.
-actor ProvisioningHelperLauncher: ProvisioningHelperLaunching, ProvisioningRecoveryAuthorizing {
+actor ProvisioningHelperLauncher: ProvisioningHelperDispatching {
     enum Phase: Sendable { case prepared, launching, registered, abandoned, exited, unconfirmed }
     private struct Pending: Sendable {
         let admission: ProvisioningHelperLaunchAdmission
@@ -80,6 +80,17 @@ actor ProvisioningHelperLauncher: ProvisioningHelperLaunching, ProvisioningRecov
               entry.phase == .registered, let client = entry.client,
               expectation.helperIdentity == entry.ticket.identity else { throw ProvisioningHelperIPCFailure.ownership }
         return try await client.reconcile(expectation)
+    }
+    func dispatch(_ kind: ProvisioningHelperDispatchKind, activation: ProvisioningHelperActivation) async throws -> ProvisioningHelperWorkerSnapshot {
+        guard let entry = entries.values.first(where: { $0.ticket.registration.scope.sameWorker(as: activation.scope) }),
+              entry.phase == .registered, let client = entry.client,
+              activation.registrationDigest == (try entry.ticket.registration.digest) else { throw ProvisioningHelperDispatchDenial.ownership }
+        if kind == .activate { try entry.pending?.admission.revalidate() }
+        return try await client.dispatch(kind, activation: activation)
+    }
+    func abort(_ activation: ProvisioningHelperActivation) async {
+        guard let entry = entries.values.first(where: { $0.ticket.registration.scope.sameWorker(as: activation.scope) }) else { return }
+        await abandon(entry.ticket)
     }
     func phase(_ ticket: ProvisioningHelperLaunchTicket) -> Phase? { entries[ticket.id]?.phase }
     func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) async {

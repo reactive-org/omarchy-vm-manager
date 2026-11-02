@@ -1,4 +1,5 @@
 import Darwin
+import DevVMProvisioningCore
 import Foundation
 
 /// Serial client. A lost/malformed reply poisons this channel; reconciliation
@@ -31,6 +32,21 @@ final class ProvisioningHelperIPCClient: ProvisioningRecoveryAuthorizing, @unche
             return ProvisioningRecoveryPermit(expectation: response.expectation, priorWorker: response.priorWorker)
         }
     }
+    func dispatch(_ kind: ProvisioningHelperDispatchKind, activation: ProvisioningHelperActivation) async throws -> ProvisioningHelperWorkerSnapshot {
+        try activation.validate()
+        let response = try await transaction { codec, socket in
+            let request = ProvisioningHelperDispatchRequest(kind: kind, requestID: UUID(), activation: activation)
+            try socket.send(codec.encode(helperJSON(request)))
+            let value = try ProvisioningHelperDispatchResponse.decode(codec.decode(socket.receive()))
+            guard value.kind == kind, value.requestID == request.requestID, value.activation == activation else { throw ProvisioningHelperIPCFailure.authentication }
+            if let status = value.status {
+                guard status.activationID == activation.activationID, status.activationDigest == (try activation.digest) else { throw ProvisioningHelperIPCFailure.authentication }
+            }
+            return value
+        }
+        if let denial = response.denial { throw denial }
+        guard let status = response.status else { throw ProvisioningHelperIPCFailure.protocolViolation }; return status
+    }
     private func transaction<T: Sendable>(_ operation: @escaping @Sendable (inout ProvisioningHelperFrameCodec, ProvisioningHelperSocket) throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             guard admission.withLock({ if inFlight { return false }; inFlight = true; return true }) else {
@@ -59,18 +75,20 @@ private final class ProvisioningHelperServeGate: @unchecked Sendable {
     func claim() -> Bool { lock.withLock { guard !used else { return false }; used = true; return true } }
 }
 
-/// Helper-side control loop. No register/run/apply/terminal/PID command exists.
-/// Terminal byte streaming will use a separate bounded channel in milestone 4.
+/// Helper-side control loop. Activation requires an injected local factory;
+/// there is no arbitrary registration/shell/terminal/PID command. Raw streaming
+/// will use a separate bounded channel in milestone 4.
 final class ProvisioningHelperIPCServer: Sendable {
     private let socket: ProvisioningHelperSocket
     private let credentials: ProvisioningHelperCredentials
     private let registry: ProvisioningHelperOwnershipRegistry
     private let gate = ProvisioningHelperServeGate()
     private let registration: ProvisioningHelperWorkerRegistration?
-    init(socket: ProvisioningHelperSocket, credentials: ProvisioningHelperCredentials, registry: ProvisioningHelperOwnershipRegistry) throws {
+    private let engineFactory: (any ProvisioningHelperEnginePreparing)?
+    init(socket: ProvisioningHelperSocket, credentials: ProvisioningHelperCredentials, registry: ProvisioningHelperOwnershipRegistry, engineFactory: (any ProvisioningHelperEnginePreparing)? = nil) throws {
         guard credentials.identity == registry.identity else { throw ProvisioningHelperIPCFailure.authentication }
         self.socket = socket; self.credentials = credentials; self.registry = registry
-        registration = credentials.registration
+        registration = credentials.registration; self.engineFactory = engineFactory
     }
     func stop() { socket.stop() }
     func serve() async {
@@ -85,22 +103,36 @@ final class ProvisioningHelperIPCServer: Sendable {
         var codec = ProvisioningHelperFrameCodec(credentials: credentials, role: .helper)
         do {
             if let registration {
-                try await registry.registerPrepared(registration)
+                let control = socket
+                try await registry.registerPrepared(registration, bodyAllowed: { !control.peerClosed })
                 let receipt = ProvisioningHelperRegistrationReceipt(identity: credentials.identity, registrationDigest: try registration.digest, state: "registered")
                 let frame = try codec.encode(helperJSON(receipt))
                 try await helperBlocking { try self.socket.send(frame) }
             }
             while true {
                 let packet = try await helperBlocking { try self.socket.receive(idle: true) }
-                let request = try ProvisioningHelperReconcileRequest.decode(codec.decode(packet))
-                let state = await registry.reconcile(request.expectation)
-                let reply = ProvisioningHelperReconcileResponse(requestID: request.requestID, expectation: request.expectation, priorWorker: state)
-                let frame = try codec.encode(helperJSON(reply))
+                let payload = try codec.decode(packet)
+                let bytes: Data
+                if case .object(let object) = try DevVMProvisioningCore.PlainDataParser.parse(payload, format: .json), object["kind"] != nil {
+                    let request = try ProvisioningHelperDispatchRequest.decode(payload)
+                    do {
+                        let status = try await registry.dispatch(request, factory: engineFactory)
+                        bytes = try helperJSON(ProvisioningHelperDispatchResponse(kind: request.kind, requestID: request.requestID, activation: request.activation, status: status, denial: nil))
+                    } catch let denial as ProvisioningHelperDispatchDenial {
+                        bytes = try helperJSON(ProvisioningHelperDispatchResponse(kind: request.kind, requestID: request.requestID, activation: request.activation, status: nil, denial: denial))
+                    }
+                } else {
+                    let request = try ProvisioningHelperReconcileRequest.decode(payload)
+                    let state = await registry.reconcile(request.expectation)
+                    bytes = try helperJSON(ProvisioningHelperReconcileResponse(requestID: request.requestID, expectation: request.expectation, priorWorker: state))
+                }
+                let frame = try codec.encode(bytes)
                 try await helperBlocking { try self.socket.send(frame) }
             }
         } catch {
             // Fixed typed errors only; never echo an untrusted packet/bootstrap.
             await registry.managerDisconnected()
+            await registry.waitForOwnedWorkers()
         }
     }
 }
@@ -109,6 +141,9 @@ final class ProvisioningHelperIPCServer: Sendable {
 /// No provisioning runner, VM, Keychain, journal or operational factory is made.
 public enum ProvisioningHelperControl {
     public static func serveInheritedOwnershipChannel(descriptor: Int32, layout: ProvisioningPackageLayout) async throws {
+        try await serveInherited(descriptor: descriptor, layout: layout, engineFactory: nil)
+    }
+    static func serveInherited(descriptor: Int32, layout: ProvisioningPackageLayout, engineFactory: (any ProvisioningHelperEnginePreparing)?) async throws {
         guard (3...1024).contains(descriptor) else { throw ProvisioningHelperIPCFailure.authentication }
         let socket = try ProvisioningHelperSocket(taking: descriptor)
         defer { socket.stop() }
@@ -119,9 +154,9 @@ public enum ProvisioningHelperControl {
               credentials.identity.executableSHA256 == (try BundledProvisioning.helperExecutableSHA256(layout)) else { throw ProvisioningHelperIPCFailure.authentication }
         _ = try BundledProvisioning.inspect(layout)
         let registry = try ProvisioningHelperOwnershipRegistry(identity: credentials.identity)
-        let server = try ProvisioningHelperIPCServer(socket: socket, credentials: credentials, registry: registry)
-        // A version-2 bootstrap reserves one inert worker before its receipt.
-        // It still has no operational runner or engine-dispatch entry point.
+        let server = try ProvisioningHelperIPCServer(socket: socket, credentials: credentials, registry: registry, engineFactory: engineFactory)
+        // Bootstrap reserves the original worker before its receipt. The public
+        // product entry point supplies no context factory and rejects activation.
         await server.serve()
     }
 }

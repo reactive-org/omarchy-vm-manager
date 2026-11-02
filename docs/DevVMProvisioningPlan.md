@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 foundation includes durable inputs, authenticated helper IPC, admitted helper launch and inert worker registration with local-fixture coverage; operational engine/job dispatch and terminal integration remain pending.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 foundation includes durable inputs, admitted helper launch and helper-side sequencer activation/status/cancellation tested with fake adapters and signed local fixtures; production context/backend wiring and terminal integration remain pending.
 
 Date: 3 November 2026 (Australia/Melbourne).
 
@@ -245,7 +245,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
 | 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; offline manager/helper package/resource/launcher integration now implemented; operational CLI, job/session adapters and full release acceptance remain pending | 227 manager Swift tests / 48 script tests plus relocated package fixtures and prior 64 package tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity and full runtime-app/release acceptance remain pending |
-| 3. Job coordination — admitted registration foundation implemented, operational integration pending | Private journal/input/checkpoint storage, admitted helper launch, authenticated inert worker registration and permanent original-worker fencing; no engine dispatch | Fake-runtime/local signed-fixture checks cover journal-before-spawn owner binding, registration receipts, loaded-child code identity, tamper/replacement refusal and matching helper exit. Operational engine/job dispatch, full manager restart and SSH/rebinding remain pending |
+| 3. Job coordination — helper dispatch foundation implemented, production integration pending | Private activation journal, admitted helper registration, one-shot helper-side shared sequencer, authenticated status/cancel and permanent original-worker fencing; product backend factory disabled | Fake runtimes/adapters and separately signed local fixture helpers cover activation ordering/idempotence, cancellation/cleanup, physical uncertainty, runtime invalidation and no replay after reopen. Production frozen-context/transport authority wiring, full manager restart and terminal integration remain pending |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
 | 6. Guest acceptance | Explicitly approved manager-owned disposable guest only | End-to-end setup, reapplication, authenticated restart, check and sudo revocation observed; failure scenarios recorded |
@@ -1027,3 +1027,134 @@ hard deadlines, reviewed retention and live terminal/input-lease/UI/CLI integrat
 The prior Setup-tab screenshot remains a visual reference; this slice changes no
 UI and emits no fabricated terminal output. Shared dev-vm source/resources and the
 base-plus-durable-patch engine pin remain unchanged.
+
+
+## Milestone 3 helper-side engine dispatch and activation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 with helper-side
+engine dispatch/worker activation, tested using fake runtimes and local fixtures
+only. No real SSH/SCP/SFTP/Ansible, host installs or VM launches. This section
+supersedes the earlier no-activation/dispatch foundation status. The shared engine
+is invoked against injected fake adapters; the product helper has **no backend
+factory**, returns `executionUnavailable`, and every product execution gate remains
+disabled. This is not an operational VM provisioning release.
+
+**IMPLEMENTED — one-shot activation:** new authenticated control payloads expose
+`activate`, `status` and `cancel` over the existing frame-1/bootstrap-2 channel.
+Activation binds one activation UUID, the exact registration digest and original
+job/VM/session/payload/worker/review/engine/dependency/binding/helper identities.
+It also carries the review acknowledgements for custom tasks, persistent grant
+and Docker root access. The helper combines each acknowledgement with its locally
+prepared approval using AND, so a permissive factory cannot invent missing consent.
+There is no command line, executable path, arbitrary source/plan, credential,
+terminal input or guest-discovery parameter in these messages. Request UUID,
+activation/digest, direction and MAC sequence remain exact correlation boundaries.
+Unknown kinds/fields/types, changed identities or malformed status poison the
+channel; known fixed denials are authenticated and never trigger fallback/retry.
+
+Each prepared registration owns a `ProvisioningHelperEngineWorker`. Its first
+activation reserves the immutable activation identity before an owned task can
+prepare context or run. The same activation returns the current snapshot without
+another preparation/task, even after completion; any changed activation conflicts.
+A reservation fenced before activation cannot reopen. The context factory is
+helper-local, injected and required to prepare without running processes/guest
+commands. It returns the reviewed request/approval, original session authority,
+exclusive fenced runner and adapter. Validate job/guest/binding/dependencies/mode,
+review, plan/input hashes, engine identity, runner scope and frozen sources before
+using it. Product frozen-input/context transfer and real transport construction
+are not enabled by this API.
+
+**IMPLEMENTED — helper execution:** the worker invokes the pinned shared
+`ProvisioningSequencer` once, with the preallocated original payload UUID. The
+helper does not duplicate its native authorization/apply/check/cleanup rules.
+An adapter wrapper revalidates original command/context/plan/mode and session/
+dependencies around commands. Package admission is checked before body work;
+cleanup remains independent of current source/package availability. A known-closed
+manager channel prevents body dispatch before/after asynchronous preparation and
+admission. Cancellation/fencing bars further body work while allowing the shared
+sequencer's original-target cleanup attempt, without input. No terminal/prompt
+text is parsed for control or completion.
+
+The task outlives its viewer/RPC. Control reads status and requests cancellation
+without waiting for the whole job. Bounded typed snapshots expose activation,
+monotonic sequence, phase, command/operation, outcome, primary failure and separate
+cleanup failures, not inputs, owner names, credentials, terminal or raw errors.
+A completed engine is not sufficient local-exit proof: retire its command gate,
+fence/reconcile its exact local runner, and override apparent guest success with
+cleanup-required if local ownership is uncertain. The original context/runner
+stay retained. Disconnect requests cleanup/fencing and the helper waits for owned
+local tasks/cleanup rather than exiting on EOF with an unconfirmed child. Local
+reconciliation never reruns the engine or claims remote grant revocation. Hard
+kernel stalls remain unproved; retaining uncertainty is deliberate.
+
+**IMPLEMENTED — coordinator/journal:** `activateHelperWorker` revalidates the exact
+registered review, private inputs, package, session and dependencies, reserves the
+VM lease and fsyncs schema-4 activation UUID/digest plus running/cleanup risk before
+sending any activation RPC. Detached manager polling then consumes authenticated
+status and sends explicit cancellation once when requested. One control request
+is in flight; viewers do not own the helper task. Regressing sequence, conflicting
+same-sequence snapshots, wrong activation/result, lost replies or journal failure
+retain cleanup-required and close only that helper channel. No automatic body
+retry occurs. Accepted duplicate activation, including after coordinator reopen,
+returns recorded state rather than dispatching again.
+
+Schemas 1/2/3 preserve existing risk and never acquire invented activation markers.
+New markers require an acknowledged original helper and reject partial/null/legacy
+fields. Reopen converts unfinished work to cleanup-required and does not resume
+polling/apply. The original surviving service/owner is still required for explicit
+cleanup recovery. Helper failure, runtime exit, SSH/readiness or dependency changes
+cannot clear the VM hold; an error diagnostic alone remains nonterminal. Ordinary
+shutdown cancels/cleans before normal guest shutdown, and the existing cleanup
+grace records risk before abandonment. Final clean proof seals the original lease;
+matching VM `.exited` alone releases its handles/resources. Matching helper-child
+exit remains separately owned by the launch service.
+
+**PRIVATE COUPLING / PRODUCT BOUNDARY:** the product helper's public inherited
+entry point passes a nil context factory. A distinct, excluded debug fixture binary
+contains the synthetic factory. Tests copy that binary into a *separate* temporary
+fixture app's helper slot, regenerate its distribution manifest and ad-hoc-sign it.
+The admitted launcher therefore verifies the actual fixture image before handoff;
+the normal app/helper is not modified or enabled. The fixture prepares a fixed
+synthetic manifest in its private cwd and uses fake proofs/no executable backend.
+No production flag, environment override or RPC can select that factory. Raw
+archive transfer, reconstruction into an executable plan and terminal transport
+remain absent. Shared dev-vm code/resources and engine/source pin are unchanged.
+
+**VERIFIED — fake/local checks:** `make test` passes 297 manager Swift test
+functions in 43 suites (13 new engine/coordinator/journal functions with
+parameterized cases), 49 script tests and the expanded signed package fixtures.
+New tests cover shared-sequencer apply/check, exact original payload/guest pins,
+activation idempotence/conflict, missing acknowledgement, changed context/source,
+fence-before-activation, disconnect during preparation, cancellation with grant
+cleanup, physical uncertainty overriding clean guest result, and retained runner
+reconciliation without another engine run. Manager tests verify journal-before-RPC,
+viewer detach, shutdown ordering, malformed/lost status/replies, failed writes,
+no replay after reopen, source preflight and explicit original-owner recovery.
+Exit/SSH/dependency changes retain cleanup-required; error diagnostics alone leave
+runtime ownership intact. Schema-4 activation fields reject partial/null/legacy or
+unregistered markers and preserve legacy owner/risk metadata without invention.
+
+The regular relocated/read-only helper rejects activation with no factory. A
+separate temporary fixture app is explicitly re-sealed/ad-hoc-signed with the
+excluded debug binary as its helper. The real admitted launcher verifies that
+image, activates its actual shared sequencer using only synthetic adapters, polls
+completion, cancels a second fixture job with cleanup, fences the original worker,
+rejects duplicate launch and observes matching reaped child exit. No fake backend
+is installed into the normal helper/app. Capability/registration/signature/tamper
+fixtures still pass. The shared package is unchanged; prior package/oracle checks
+are not presented as a new run.
+
+Full regression uses existing sandbox exceptions for disposable sockets,
+synthetic LAContext and local helper fixtures. Only ad-hoc fixture signing is used.
+No real signing credentials, Keychain/auth UI, real SSH/SCP/SFTP/Ansible, host
+installation, image download, user UI, installed-app change or VM operation occurs.
+These are synthetic guest proofs, not new real-guest validation evidence.
+
+**TO PROVE / REMAINING:** production frozen-context delivery/validation and consent
+handoff, exclusive real adapter/backend construction, manager-aware per-command
+session authority, product coordinator/launcher wiring, live terminal/PTY/input
+leases and UI/CLI attachment, full manager/helper restart/reconnect and reviewed
+rebinding, real release-signature acceptance and all real guest/auth/echo/remote
+quiescence/crash/kernel behavior. Existing disposable signed-helper evidence does
+not establish guest correctness. The Setup-tab screenshot remains a visual target,
+and this slice changes no UI or installed app.

@@ -77,6 +77,7 @@ actor ProvisioningHelperOwnershipRegistry {
     private struct Record {
         let scope: ProvisioningRecoveryExpectation
         let runner: ProvisioningFencedProcessRunner?
+        var engine: ProvisioningHelperEngineWorker? = nil
         var reconciliation: Attempt?
         var proven = false
     }
@@ -84,11 +85,11 @@ actor ProvisioningHelperOwnershipRegistry {
     private var records: [UUID: Record] = [:]
     private var disconnected = false
     init(identity: ProvisioningHelperIdentity) throws { try identity.validate(); self.identity = identity }
-    func registerPrepared(_ registration: ProvisioningHelperWorkerRegistration) throws {
+    func registerPrepared(_ registration: ProvisioningHelperWorkerRegistration, bodyAllowed: @escaping @Sendable () -> Bool = { true }) throws {
         try registration.validate()
         guard registration.scope.helperIdentity == identity, !disconnected, records.count < 128,
               records[registration.scope.workerToken] == nil else { throw ProvisioningHelperIPCFailure.ownership }
-        records[registration.scope.workerToken] = Record(scope: registration.scope, runner: nil)
+        records[registration.scope.workerToken] = Record(scope: registration.scope, runner: nil, engine: ProvisioningHelperEngineWorker(registration: registration, bodyAllowed: bodyAllowed))
     }
     func register(_ scope: ProvisioningRecoveryExpectation, runner: ProvisioningFencedProcessRunner) async throws {
         try scope.validate()
@@ -100,13 +101,14 @@ actor ProvisioningHelperOwnershipRegistry {
     func reconcile(_ scope: ProvisioningRecoveryExpectation) async -> ProvisioningPriorWorkerState {
         guard var record = records[scope.workerToken], record.scope.sameWorker(as: scope) else { return .unknown }
         if record.proven { return .stoppedAndFenced }
-        // A bootstrap reservation has no execution API. Fencing it permanently
-        // retires the reservation; future activation must never reopen it.
-        guard let runner = record.runner else { records[scope.workerToken]?.proven = true; return .stoppedAndFenced }
+        let stop: @Sendable () async -> ProvisioningPriorWorkerState
+        if let engine = record.engine { stop = { await engine.fenceAndReconcile() } }
+        else if let runner = record.runner { stop = { await runner.fenceAndReconcile() } }
+        else { records[scope.workerToken]?.proven = true; return .stoppedAndFenced }
         let attempt: Attempt
         if let current = record.reconciliation { attempt = current }
         else {
-            attempt = Attempt(task: Task.detached { await runner.fenceAndReconcile() })
+            attempt = Attempt(task: Task.detached { await stop() })
             record.reconciliation = attempt; records[scope.workerToken] = record
         }
         let state = await attempt.task.value
@@ -120,9 +122,34 @@ actor ProvisioningHelperOwnershipRegistry {
         guard !disconnected else { return }
         disconnected = true
         for (token, var record) in records where !record.proven && record.reconciliation == nil {
-            guard let runner = record.runner else { record.proven = true; records[token] = record; continue }
-            record.reconciliation = Attempt(task: Task.detached { await runner.fenceAndReconcile() })
+            let stop: @Sendable () async -> ProvisioningPriorWorkerState
+            if let engine = record.engine { stop = { await engine.fenceAndReconcile() } }
+            else if let runner = record.runner { stop = { await runner.fenceAndReconcile() } }
+            else { record.proven = true; records[token] = record; continue }
+            record.reconciliation = Attempt(task: Task.detached { await stop() })
             records[token] = record
+        }
+    }
+    func waitForOwnedWorkers() async {
+        let scopes = records.values.map(\.scope)
+        for scope in scopes {
+            while await reconcile(scope) != .stoppedAndFenced {
+                // Retain the helper/owned runner rather than exiting with an
+                // unconfirmed local child. This never launches another command.
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+    func dispatch(_ request: ProvisioningHelperDispatchRequest, factory: (any ProvisioningHelperEnginePreparing)?) async throws -> ProvisioningHelperWorkerSnapshot {
+        let activation = request.activation
+        guard let record = records[activation.scope.workerToken], record.scope.sameWorker(as: activation.scope),
+              let engine = record.engine, activation.registrationDigest == (try engine.registration.digest) else { throw ProvisioningHelperDispatchDenial.ownership }
+        switch request.kind {
+        case .activate:
+            guard !disconnected else { throw ProvisioningHelperDispatchDenial.fenced }
+            return try await engine.activate(activation, factory: factory)
+        case .status: return try await engine.snapshot(activation)
+        case .cancel: return try await engine.cancel(activation)
         }
     }
 }

@@ -650,8 +650,9 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         let record = try #require(f.journal.load().first)
         let ipc = try HelperIPCFixture(scope: helperTestExpectation(record: record, target: f.target), target: f.target)
         if kind == "disconnected" { ipc.client.disconnect(); await ipc.task.value }
+        let uncertain = IPCRecordingRunner(result: .uncertain)
         if kind == "uncertain" {
-            let runner = try await ipc.runner(IPCRecordingRunner(result: .uncertain))
+            let runner = try await ipc.runner(uncertain)
             _ = await runner.run(ipc.invocation())
         }
         try await f.coordinator.closeForReopen()
@@ -664,6 +665,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(await guest.commands.isEmpty)
         #expect(await reopened.status(request.jobID)?.cleanupRequired == true)
         await #expect(throws: VMFailure.self) { try await f.manager.configure(f.profile) }
+        await uncertain.proveCleanup() // Release the disposable fake owner after assertions.
     }
     @Test func admittedRegistrationIsJournaledBeforeLaunchAndNeverDispatchesBody() async throws {
         let f = try await JobFixture(), request = try f.request(), unused = JobGuest()
@@ -760,6 +762,115 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(await launcher.abandons == 1)
         #expect(await f.coordinator.statuses().isEmpty)
         #expect(f.runtime.startedHandles[0].shutdownCount == 0)
+    }
+
+    @Test func helperActivationMarkerPrecedesRPCAndViewerDetachDoesNotOwnTheWorker() async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = IPCWorkerGate(), guest = EngineFixtureGuest(gate: gate)
+        let factory = EngineFixtureFactory(request: request, approval: f.approve(request), guest: guest, authority: f.authority)
+        let dispatcher = LocalEngineLauncher(factory: factory, observe: { activation in
+            let row = try #require(f.journal.load().first)
+            let digest = try activation.digest
+            #expect(row.helperActivationID == activation.activationID && row.helperActivationDigest == digest)
+            #expect(row.workerOutstanding && row.cleanupRequired && row.helperRegistered == true)
+        })
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: dispatcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
+        #expect(await eventually { await gate.entered })
+        let viewer = Task { try await f.coordinator.wait(request.jobID) }; viewer.cancel()
+        await #expect(throws: ProvisioningJobFailure.busy) { try await f.coordinator.closeForReopen() }
+        _ = try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
+        await #expect(throws: VMFailure.self) { try await f.manager.pause(f.profile.id) }
+        await gate.release()
+        #expect(try await viewer.value.state == .succeeded)
+        #expect(await dispatcher.activations == 1)
+        #expect(await factory.prepares == 1)
+        #expect(f.runtime.startedHandles[0].shutdownCount == 0 && f.runtime.startedHandles.count == 1)
+        await dispatcher.close()
+    }
+    @Test func helperJobOrdinaryShutdownCancelsThenCleansBeforeGuestShutdown() async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = IPCWorkerGate(), guest = EngineFixtureGuest(gate: gate)
+        let dispatcher = LocalEngineLauncher(factory: EngineFixtureFactory(request: request, approval: f.approve(request), guest: guest, authority: f.authority))
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: dispatcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
+        #expect(await eventually { await gate.entered })
+        await f.manager.shutDown(f.profile.id)
+        #expect(try await f.coordinator.wait(request.jobID).state == .cancelled)
+        #expect(await guest.commands.contains { $0.operation == .revokeGrant })
+        #expect(await eventually { f.runtime.startedHandles[0].shutdownCount == 1 })
+        #expect(await f.manager.activeSessionCount == 1)
+        await dispatcher.close()
+    }
+    @Test(arguments: ["lost-reply", "status", "journal"])
+    func uncertainHelperDispatchCannotReplayOrClearItsHold(kind: String) async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = IPCWorkerGate(), guest = EngineFixtureGuest(gate: gate)
+        let dispatcher = LocalEngineLauncher(factory: EngineFixtureFactory(request: request, approval: f.approve(request), guest: guest, authority: f.authority))
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: dispatcher)
+        if kind == "lost-reply" { await dispatcher.loseReply() }
+        if kind == "status" { await dispatcher.corruptReply() }
+        if kind == "journal" { f.faults.failWrites() }
+        if kind == "journal" {
+            await #expect(throws: ProvisioningJobFailure.journalUnavailable) { try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher) }
+            #expect(await dispatcher.activations == 0)
+        } else {
+            try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
+            #expect(try await f.coordinator.wait(request.jobID).cleanupRequired)
+            _ = try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
+            #expect(await dispatcher.activations == 1)
+            try await f.coordinator.closeForReopen()
+            let reopened = try await ProvisioningCoordinator.open(manager: f.manager,
+                journal: ProvisioningJobJournal(directory: f.journal.directory), authority: f.authority, artifacts: f.artifacts,
+                recoveryAuthority: dispatcher, engineDigest: ProvisioningCoordinator.engineIdentity(f.plan), admitPackage: {})
+            #expect(try await reopened.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher).cleanupRequired)
+            #expect(await dispatcher.activations == 1)
+        }
+        await gate.release(); await dispatcher.close()
+        await #expect(throws: VMFailure.self) { try await f.manager.configure(f.profile) }
+    }
+    @Test func helperPhysicalUncertaintyNeedsExplicitOriginalScopeRecovery() async throws {
+        let f = try await JobFixture(), request = try f.request(), guest = EngineFixtureGuest(useProcess: true), backend = IPCRecordingRunner(result: .uncertain)
+        let dispatcher = LocalEngineLauncher(factory: EngineFixtureFactory(request: request, approval: f.approve(request), guest: guest, authority: f.authority, backend: backend))
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: dispatcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
+        #expect(try await f.coordinator.wait(request.jobID).cleanupRequired)
+        await #expect(throws: VMFailure.self) { try await f.manager.configure(f.profile) }
+        await backend.proveCleanup()
+        try await f.coordinator.recover(request.jobID, target: f.target, adapter: JobGuest())
+        #expect(try await f.coordinator.wait(request.jobID).state == .cleanupConfirmed)
+        #expect(await dispatcher.activations == 1)
+        await dispatcher.close()
+    }
+    @Test func staleHelperActivationIsRejectedBeforeAnyRPC() async throws {
+        let f = try await JobFixture(), request = try f.request(), guest = EngineFixtureGuest()
+        let dispatcher = LocalEngineLauncher(factory: EngineFixtureFactory(request: request, approval: f.approve(request), guest: guest, authority: f.authority))
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: dispatcher)
+        try Data("changed".utf8).write(to: f.source.appendingPathComponent("vm.yml"))
+        await #expect(throws: Error.self) { try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher) }
+        #expect(await dispatcher.activations == 0)
+        #expect(try f.journal.load().first?.helperActivationID == nil)
+        await dispatcher.close()
+    }
+
+    @Test(arguments: ["exit", "ssh", "dependency", "diagnostic"])
+    func helperResultsCannotOutrunRuntimeOrDependencyInvalidation(kind: String) async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = IPCWorkerGate(), guest = EngineFixtureGuest(gate: gate)
+        let dispatcher = LocalEngineLauncher(factory: EngineFixtureFactory(request: request, approval: f.approve(request), guest: guest, authority: f.authority))
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: dispatcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
+        #expect(await eventually { await gate.entered })
+        if kind == "exit" {
+            f.runtime.startedHandles[0].emit(.exited(status: 0))
+            #expect(await eventually { await f.manager.activeSessionCount == 0 })
+        }
+        if kind == "ssh" { await f.manager.receiveSSH(.failed("fixture lost readiness"), vmID: f.profile.id, sessionID: f.target.sessionID) }
+        if kind == "dependency" { await f.authority.deny() }
+        if kind == "diagnostic" { f.runtime.startedHandles[0].emit(.error(VMRunError(code: .launchFailed, message: "fixture diagnostic"))) }
+        await gate.release()
+        let result = try await f.coordinator.wait(request.jobID)
+        if kind == "diagnostic" { #expect(result.state == .succeeded && !result.cleanupRequired) }
+        else { #expect(result.cleanupRequired && result.state == .cleanupRequired) }
+        #expect(await guest.commands.allSatisfy { $0.context.target == f.target })
+        if kind != "exit" { #expect(await f.manager.activeSessionCount == 1) }
+        await dispatcher.close()
     }
 
 }
