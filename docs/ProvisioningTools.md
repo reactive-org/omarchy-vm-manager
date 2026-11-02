@@ -4,6 +4,8 @@ Milestone 1 of the [dev-vm implementation plan](DevVMProvisioningPlan.md) checks
 
 The dev-vm engine, setup execution, provisioning jobs and interactive terminal are not integrated yet. Every feature reports `implemented: false` and `enabled: false`, even when `toolsReady` is true. Normal VM management does not depend on these checks.
 
+**Current implementation versus revised plan:** this reference describes the original milestone 1 committed as `62a4c62`. The user has since selected a shared Swift controller using Homebrew's Ansible. The planned [milestone 1A changes](DevVMProvisioningPlan.md#changes-to-milestone-1) remove independent host Python/PyYAML requirements and interpreter/shebang probes, retain the bounded discovery infrastructure, and introduce Ansible CLI usability checks and dependency-report schema 2. None of those changes or the Swift port has started. The schema 1 commands and checks below remain the current behavior.
+
 ## Native and CLI reports
 
 Select **Manager → Provisioning tools** to check tools or refresh a previous report. Version and executable/interpreter paths are displayed with Available, Missing, Incompatible, Needs authentication or Check failed. Installation commands are selectable text to run manually in a separate Terminal; the manager never invokes them.
