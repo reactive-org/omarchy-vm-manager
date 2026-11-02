@@ -1,0 +1,16 @@
+{
+  "releaseTag": "v0.9.4-dev.1",
+  "sourceCommit": "ef98347fde21cbdcb1002506c828e36e7ee9cda3",
+  "sourceRun": 41296495425,
+  "artifactID": 13080912857,
+  "artifactSHA256": "457fa325f94429f23e81f48573084eaa749f78b2e8ab344e4a82f00dc0252fbb",
+  "runtimeArchiveSHA256": "d75f504b50ab7a690cd58bcfb7bbb6be1d40e3879ce17e07fbe4f843dd91f0d8",
+  "sourceLockSHA256": "f450c1ac80ba9d6cac3678cf72d80dd10d11f23e0af380acf516c8e11e35dc74",
+  "sourceKitSHA256": "e92968e89addb319267e31310ae19ae390a061b4ef842ad0396b4fd4356f5721",
+  "signedMachOFiles": 22,
+  "unsignedPayloadsUnchanged": true,
+  "signaturesEntitlementsNetworkPinsVerified": true,
+  "appleStatusAtCIStop": "In Progress",
+  "appleSubmissionID": "c30ff885-b28d-4039-9314-1bf8f53267cf",
+  "appleCreatedDate": "2026-11-01T10:19:22.100Z"
+}
