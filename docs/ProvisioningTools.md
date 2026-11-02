@@ -199,3 +199,20 @@ the cleanup hold even when all Homebrew dependency checks are ready.
 The supplied Setup-tab terminal screenshot remains the UI reference. No terminal
 bytes or keystrokes are transported by this structured control channel, and the
 screen's sample output does not establish real guest acceptance.
+
+
+## Admitted helper launch and inert registration — 3 November 2026
+
+The [launch/registration continuation](DevVMProvisioningPlan.md#milestone-3-admitted-helper-launch-and-worker-registration--3-november-2026)
+adds exact signed-package/executable admission, owned-child code verification,
+anonymous bootstrap, durable original-helper pins and an authenticated reservation
+receipt. No Homebrew discovery or Ansible/SSH process is involved. Registration
+leaves the job queued and cannot run the shared engine. Available tools still
+supply no execution authority and every product setup gate remains disabled.
+
+The default launch policy requires matching non-ad-hoc app/helper Team IDs;
+explicit ad-hoc fixture admission is internal and test-only. A debug-only launch
+fixture executable is built for local checks and is never staged into an app.
+The same live service is required for recovery after coordinator reopen; it never
+launches a replacement helper to claim a saved worker. Real engine dispatch and
+terminal streams remain pending.

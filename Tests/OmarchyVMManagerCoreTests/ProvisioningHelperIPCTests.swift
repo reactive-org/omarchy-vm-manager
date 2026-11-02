@@ -10,7 +10,7 @@ func helperTestExpectation(record: ProvisioningJobRecord? = nil, target: GuestBi
         sessionID: record?.sessionID ?? target.sessionID, payloadID: record?.payloadID ?? UUID(), workerToken: record?.workerToken ?? UUID(),
         engineDigest: record?.engineDigest ?? String(repeating: "a", count: 64), dependencyDigest: record?.dependencyDigest ?? String(repeating: "b", count: 64),
         bindingDigest: try record?.bindingDigest ?? ProvisioningCoordinator.bindingIdentity(target), reviewDigest: record?.reviewDigest ?? String(repeating: "c", count: 64),
-        checkpointDigest: record?.cleanupCheckpointSHA256 ?? String(repeating: "d", count: 64))
+        checkpointDigest: record?.cleanupCheckpointSHA256 ?? String(repeating: "d", count: 64), helperIdentity: record?.helperIdentity)
 }
 func helperChanged(_ value: ProvisioningRecoveryExpectation, key: String, text: String) throws -> ProvisioningRecoveryExpectation {
     var object = try JSONSerialization.jsonObject(with: helperJSON(value)) as! [String: Any]

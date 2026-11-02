@@ -127,6 +127,20 @@ def run_checks(binaries, launcher_binaries):
                 package.require(invoke(command, ok=False)["code"] == "provisioning-execution-disabled")
             package.require(invoke("--verify-package-json", ok=False, extra={"PACKAGE_RESOURCE_BUNDLE_PATH": str(binaries)})["code"] == "provisioning-package-invalid")
             for scenario in ("valid", "mac", "bootstrap"): ownership_fixture(scenario)
+            # The Swift fixture uses the real admitted-launch factory. It is a
+            # debug-only build product, never staged into the application.
+            for scenario in ("policy", "tamper", "replace", "normal"):
+                control_root = root / str(uuid.uuid4()); control_root.mkdir(mode=0o700)
+                result = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(contents), str(control_root), scenario],
+                                        env=environment, cwd=root, capture_output=True, timeout=20)
+                if result.returncode != 0:
+                    diagnostic = json.loads(result.stdout)
+                    # Fixture emits only fixed typed codes/stages, never errors or bootstrap bytes.
+                    print("admitted-helper-fixture:", scenario, diagnostic.get("code"), diagnostic.get("step"))
+                package.require(result.returncode == 0 and not result.stderr, "Admitted helper launch fixture failed: " + scenario)
+                value = json.loads(result.stdout)
+                package.require(value.get("policyRejected") or value.get("changedSourceRejected") or
+                                (value.get("registered") and value.get("reconciled") and value.get("exited") and value.get("executionEnabled") is False))
             package.require(invoke("--ownership-channel-fd", "0", ok=False)["ok"] is False)
             (source / "vm.yml").write_text("schema_version: 1\nid: fixture\nid: duplicate\n")
             package.require(invoke("--validate-manifest-json", source / "vm.yml", ok=False)["ok"] is False)

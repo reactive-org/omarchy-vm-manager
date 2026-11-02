@@ -24,6 +24,7 @@ public actor ProvisioningCoordinator {
     private var jobs: [UUID: ProvisioningJobRecord]
     private var active: Active?
     private var recovering: [UUID: Recovery] = [:]
+    private var helperAuthorities: [UUID: any ProvisioningRecoveryAuthorizing] = [:]
     private var admitting = false
     private var storageFailed = false
     private var closed = false
@@ -83,7 +84,7 @@ public actor ProvisioningCoordinator {
         guard !closed, active == nil, !admitting else { throw ProvisioningJobFailure.busy }
         admitting = true; defer { admitting = false }
         try await manager.uninstallProvisioningCoordinator(ownerID)
-        journal.close(); recovering.removeAll(); closed = true
+        journal.close(); recovering.removeAll(); helperAuthorities.removeAll(); closed = true
     }
     func frozenInputs(_ jobID: UUID) throws -> FrozenInputsArchive {
         guard !closed, let record = jobs[jobID], let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
@@ -105,7 +106,7 @@ public actor ProvisioningCoordinator {
             guard existing.reviewDigest == request.reviewIdentity else { throw ProvisioningJobFailure.jobConflict }
             return existing.snapshot
         }
-        guard active == nil, !admitting else { throw ProvisioningJobFailure.busy }
+        guard active == nil, !admitting, !jobs.values.contains(where: { $0.helperIdentity != nil && $0.cleanupRequired }) else { throw ProvisioningJobFailure.busy }
         guard !storageFailed, jobs.count < ProvisioningJobJournal.maximumJobs else { throw ProvisioningJobFailure.journalUnavailable }
         guard !jobs.values.contains(where: { $0.vmID == request.target.vmID && $0.cleanupRequired }) else { throw ProvisioningJobFailure.cleanupRequired }
         admitting = true; defer { admitting = false }
@@ -148,6 +149,82 @@ public actor ProvisioningCoordinator {
         }
     }
 
+    /// Reserve and register one inert helper worker. This does not run the
+    /// sequencer or delegate a body command; operational dispatch is separate.
+    @discardableResult
+    func registerHelperWorker(_ request: ProvisioningRequest, approval: ProvisioningApproval,
+                              launcher: any ProvisioningHelperLaunching) async throws -> ProvisioningJobSnapshot {
+        guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
+        guard approval.reviewIdentity == request.reviewIdentity else { throw ProvisioningJobFailure.approvalRequired }
+        if let existing = jobs[request.jobID] {
+            guard existing.reviewDigest == request.reviewIdentity else { throw ProvisioningJobFailure.jobConflict }
+            return existing.snapshot
+        }
+        guard active == nil, !admitting, !jobs.values.contains(where: { $0.helperIdentity != nil && $0.cleanupRequired }) else { throw ProvisioningJobFailure.busy }
+        guard !storageFailed, jobs.count < ProvisioningJobJournal.maximumJobs else { throw ProvisioningJobFailure.journalUnavailable }
+        guard !jobs.values.contains(where: { $0.vmID == request.target.vmID && $0.cleanupRequired }) else { throw ProvisioningJobFailure.cleanupRequired }
+        admitting = true; defer { admitting = false }
+        guard request.selectedTasks.isEmpty || approval.customTasksReviewed,
+              request.mode == .check || approval.persistentGrantAcknowledged else { throw ProvisioningJobFailure.approvalRequired }
+        do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
+        do { try request.plan.verify(in: request.repository) } catch { throw ProvisioningJobFailure.sourceChanged }
+        guard try Self.engineIdentity(request.plan) == engineDigest else { throw ProvisioningJobFailure.invalidRequest }
+        do { try await authority.revalidate(request.target, dependencyDigest: request.dependencyDigest) }
+        catch { throw ProvisioningJobFailure.dependencyChanged }
+        let lease = try await reserve(request.jobID, target: request.target, generation: UUID())
+        var ticket: ProvisioningHelperLaunchTicket?
+        do {
+            try await manager.validateProvisioning(lease, cleanup: false)
+            guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
+            let payload = UUID(), worker = UUID()
+            let files = try artifacts.prepare(request, payloadID: payload, workerToken: worker, engineDigest: engineDigest)
+            var record = ProvisioningJobRecord(jobID: request.jobID, vmID: request.target.vmID, sessionID: request.target.sessionID,
+                reviewDigest: request.reviewIdentity, planDigest: request.plan.identity, inputDigest: request.plan.snapshot.identity,
+                engineDigest: engineDigest, dependencyDigest: request.dependencyDigest, bindingDigest: try Self.bindingIdentity(request.target), mode: request.mode)
+            record.payloadID = payload; record.workerToken = worker
+            record.inputArchiveSHA256 = files.inputsSHA256; record.cleanupCheckpointSHA256 = files.cleanupSHA256
+            let scope = ProvisioningRecoveryExpectation(challenge: UUID(), jobID: record.jobID, vmID: record.vmID, sessionID: record.sessionID,
+                payloadID: payload, workerToken: worker, engineDigest: record.engineDigest, dependencyDigest: record.dependencyDigest,
+                bindingDigest: record.bindingDigest, reviewDigest: record.reviewDigest, checkpointDigest: files.cleanupSHA256)
+            let prepared = try await launcher.prepare(.init(scope: scope, planDigest: record.planDigest, inputDigest: record.inputDigest, mode: record.mode))
+            ticket = prepared
+            var expected = scope; expected.helperIdentity = prepared.identity
+            try prepared.identity.validate()
+            guard prepared.registration.scope == expected, prepared.registration.planDigest == record.planDigest,
+                  prepared.registration.inputDigest == record.inputDigest, prepared.registration.mode == record.mode,
+                  prepared.identity.packageLockSHA256 == ProvisioningPackagePin.lockSHA256,
+                  !jobs.values.contains(where: { $0.helperIdentity?.instanceID == prepared.identity.instanceID }) else { throw ProvisioningJobFailure.invalidRequest }
+            do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
+            do { try request.plan.verify(in: request.repository) } catch { throw ProvisioningJobFailure.sourceChanged }
+            do { try await authority.revalidate(request.target, dependencyDigest: request.dependencyDigest) }
+            catch { throw ProvisioningJobFailure.dependencyChanged }
+            try await manager.validateProvisioning(lease, cleanup: false)
+            record.helperIdentity = prepared.identity; record.helperRegistrationDigest = try prepared.registration.digest
+            record.helperRegistered = false; record.cleanupRequired = true
+            try persist(record) // Original owner and pending registration precede spawn.
+            helperAuthorities[record.jobID] = launcher
+            let receipt = try await launcher.launch(prepared)
+            guard receipt.identity == prepared.identity, receipt.registrationDigest == record.helperRegistrationDigest,
+                  receipt.state == "registered" else { throw ProvisioningJobFailure.ownershipUnverified }
+            do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
+            try request.plan.verify(in: request.repository)
+            try await authority.revalidate(request.target, dependencyDigest: request.dependencyDigest)
+            try await manager.validateProvisioning(lease, cleanup: false)
+            record.helperRegistered = true; try advance(&record); try persist(record)
+            await manager.releaseProvisioning(lease, cleanupRequired: true)
+            return record.snapshot
+        } catch {
+            if let ticket { await launcher.abandon(ticket) }
+            if var record = jobs[request.jobID] {
+                record.state = .cleanupRequired; record.cleanupRequired = true; record.workerOutstanding = false
+                record.failure = storageFailed ? .journalUnavailable : .helperUnavailable
+                try? advance(&record); try? persist(record)
+            }
+            await manager.releaseProvisioning(lease, cleanupRequired: jobs[request.jobID]?.cleanupRequired ?? storageFailed)
+            throw error
+        }
+    }
+
     @discardableResult
     func recover(_ jobID: UUID, target: GuestBinding? = nil, adapter: any ProvisioningGuestAdapter) async throws -> ProvisioningJobSnapshot {
         guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
@@ -161,11 +238,11 @@ public actor ProvisioningCoordinator {
         admitting = true; defer { admitting = false }
         do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
         if let token = record.workerToken, let payload = record.payloadID, let checkpoint = record.cleanupCheckpointSHA256 {
-            guard let recoveryAuthority else { throw ProvisioningJobFailure.ownershipUnverified }
+            guard let recoveryAuthority = helperAuthorities[jobID] ?? recoveryAuthority else { throw ProvisioningJobFailure.ownershipUnverified }
             let expected = ProvisioningRecoveryExpectation(challenge: UUID(), jobID: jobID, vmID: record.vmID,
                 sessionID: record.sessionID, payloadID: payload, workerToken: token, engineDigest: record.engineDigest,
                 dependencyDigest: record.dependencyDigest, bindingDigest: record.bindingDigest,
-                reviewDigest: record.reviewDigest, checkpointDigest: checkpoint)
+                reviewDigest: record.reviewDigest, checkpointDigest: checkpoint, helperIdentity: record.helperIdentity)
             do {
                 let permit = try await recoveryAuthority.reconcile(expected)
                 guard permit.expectation == expected, permit.priorWorker == .stoppedAndFenced else { throw ProvisioningJobFailure.ownershipUnverified }
@@ -330,6 +407,10 @@ public actor ProvisioningCoordinator {
         catch { record.state = .cleanupRequired; record.cleanupRequired = true; record.failure = .journalUnavailable; jobs[record.jobID] = record }
         // active stays installed across actor hops so another job cannot race
         // lifecycle release or hijack an old completion.
+        if !record.cleanupRequired, let identity = record.helperIdentity {
+            await (helperAuthorities[record.jobID] ?? recoveryAuthority)?.releaseAfterCleanup(jobID: record.jobID, helperIdentity: identity)
+            helperAuthorities.removeValue(forKey: record.jobID)
+        }
         await manager.releaseProvisioning(running.lease, cleanupRequired: record.cleanupRequired)
         active = nil
     }

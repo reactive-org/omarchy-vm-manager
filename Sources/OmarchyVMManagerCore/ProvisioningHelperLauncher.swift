@@ -1,0 +1,98 @@
+import Foundation
+
+/// Explicit internal factory only. App/CLI execution gates do not construct it.
+/// One admitted helper reservation at a time; no automatic restart or adoption.
+actor ProvisioningHelperLauncher: ProvisioningHelperLaunching, ProvisioningRecoveryAuthorizing {
+    enum Phase: Sendable { case prepared, launching, registered, abandoned, exited, unconfirmed }
+    private struct Pending: Sendable {
+        let admission: ProvisioningHelperLaunchAdmission
+        let credentials: ProvisioningHelperCredentials
+    }
+    private struct Entry {
+        let ticket: ProvisioningHelperLaunchTicket
+        var pending: Pending?
+        let directory: URL
+        var phase = Phase.prepared
+        var child: ProvisioningHelperChild?
+        var client: ProvisioningHelperIPCClient?
+    }
+    private let layout: ProvisioningPackageLayout
+    private let directory: URL
+    private let policy: ProvisioningHelperSigningPolicy
+    private var entries: [UUID: Entry] = [:]
+    private var preparing = false
+    init(layout: ProvisioningPackageLayout, directory: URL, policy: ProvisioningHelperSigningPolicy = .sameApplicationTeam) throws {
+        self.layout = layout; self.directory = directory; self.policy = policy
+        try PrivateFiles.directory(directory, create: true)
+    }
+    func prepare(_ original: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperLaunchTicket {
+        try original.validate()
+        guard original.scope.helperIdentity == nil, !preparing, entries.count < 128,
+              !entries.values.contains(where: { $0.ticket.registration.scope.jobID == original.scope.jobID || $0.phase != .exited }) else { throw ProvisioningHelperIPCFailure.ownership }
+        preparing = true; defer { preparing = false }
+        let layout = layout, policy = policy
+        let admitted = try await helperBlocking { try ProvisioningHelperLaunchAdmission(layout: layout, policy: policy) }
+        let identity = ProvisioningHelperIdentity(instanceID: UUID(), executableSHA256: admitted.executableSHA256, packageLockSHA256: ProvisioningPackagePin.lockSHA256)
+        var registration = original; registration.scope.helperIdentity = identity
+        let credentials = try ProvisioningHelperCredentials(identity: identity, registration: registration)
+        let ticket = ProvisioningHelperLaunchTicket(id: UUID(), identity: identity, registration: registration)
+        let root = directory.appendingPathComponent(identity.instanceID.uuidString)
+        try PrivateFiles.directory(directory); try PrivateFiles.directory(root, create: true)
+        entries[ticket.id] = Entry(ticket: ticket, pending: Pending(admission: admitted, credentials: credentials), directory: root)
+        return ticket
+    }
+    func launch(_ ticket: ProvisioningHelperLaunchTicket) async throws -> ProvisioningHelperRegistrationReceipt {
+        guard var entry = entries[ticket.id], entry.ticket == ticket, entry.phase == .prepared, let pending = entry.pending else { throw ProvisioningHelperIPCFailure.ownership }
+        entry.phase = .launching; entries[ticket.id] = entry
+        do {
+            let root = entry.directory
+            let child = try await helperBlocking { try ProvisioningHelperChild.spawn(admission: pending.admission, directory: root) }
+            entries[ticket.id]?.child = child
+            Task { [self] in let exit = await child.waitForExit(); observedExit(ticket.id, child: child.identity, exit: exit) }
+            guard entries[ticket.id]?.phase == .launching else { child.disconnect(); throw ProvisioningHelperIPCFailure.unavailable }
+            let client = ProvisioningHelperIPCClient(socket: child.socket, credentials: pending.credentials)
+            entries[ticket.id]?.client = client
+            // Verify both held file identity and the owned live child's loaded
+            // code before giving that child the anonymous capability bytes.
+            try await helperBlocking {
+                try pending.admission.revalidate(); try pending.admission.verifyOwnedChild(child.pid)
+                try child.bootstrap(pending.credentials.privateBootstrap())
+            }
+            let receipt = try await client.awaitRegistration(ticket)
+            guard entries[ticket.id]?.phase == .launching else { throw ProvisioningHelperIPCFailure.unavailable }
+            entries[ticket.id]?.phase = .registered
+            return receipt
+        } catch {
+            if entries[ticket.id]?.child == nil {
+                entries[ticket.id]?.phase = .exited; entries[ticket.id]?.pending = nil
+            } else { await abandon(ticket) }
+            throw error
+        }
+    }
+    func abandon(_ ticket: ProvisioningHelperLaunchTicket) async {
+        guard let entry = entries[ticket.id], entry.ticket == ticket, entry.phase != .exited else { return }
+        entries[ticket.id]?.phase = .abandoned
+        entry.child?.disconnect(); entry.client?.disconnect()
+        if entry.child == nil, entry.phase == .prepared { entries[ticket.id]?.pending = nil; entries[ticket.id]?.phase = .exited }
+    }
+    func reconcile(_ expectation: ProvisioningRecoveryExpectation) async throws -> ProvisioningRecoveryPermit {
+        guard let entry = entries.values.first(where: { $0.ticket.registration.scope.sameWorker(as: expectation) }),
+              entry.phase == .registered, let client = entry.client,
+              expectation.helperIdentity == entry.ticket.identity else { throw ProvisioningHelperIPCFailure.ownership }
+        return try await client.reconcile(expectation)
+    }
+    func phase(_ ticket: ProvisioningHelperLaunchTicket) -> Phase? { entries[ticket.id]?.phase }
+    func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) async {
+        guard let entry = entries.values.first(where: { $0.ticket.identity == helperIdentity && $0.ticket.registration.scope.jobID == jobID }) else { return }
+        await abandon(entry.ticket)
+    }
+    private func observedExit(_ id: UUID, child: UUID, exit: ProvisioningHelperChild.Exit) {
+        guard entries[id]?.child?.identity == child else { return }
+        switch exit {
+        case .exited:
+            entries[id]?.phase = .exited; entries[id]?.client?.disconnect()
+            entries[id]?.pending = nil; entries[id]?.client = nil; entries[id]?.child = nil
+        case .unconfirmed: entries[id]?.phase = .unconfirmed
+        }
+    }
+}

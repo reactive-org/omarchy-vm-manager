@@ -14,21 +14,33 @@ final class ProvisioningHelperIPCClient: ProvisioningRecoveryAuthorizing, @unche
         self.socket = socket; codec = .init(credentials: credentials, role: .manager)
     }
     func disconnect() { socket.stop() }
+    func awaitRegistration(_ ticket: ProvisioningHelperLaunchTicket) async throws -> ProvisioningHelperRegistrationReceipt {
+        try await transaction { codec, socket in
+            let receipt = try ProvisioningHelperRegistrationReceipt.decode(codec.decode(socket.receive()))
+            guard receipt.identity == ticket.identity, receipt.registrationDigest == (try ticket.registration.digest) else { throw ProvisioningHelperIPCFailure.authentication }
+            return receipt
+        }
+    }
     func reconcile(_ expectation: ProvisioningRecoveryExpectation) async throws -> ProvisioningRecoveryPermit {
         try expectation.validate()
-        return try await withCheckedThrowingContinuation { continuation in
+        return try await transaction { codec, socket in
+            let request = ProvisioningHelperReconcileRequest(requestID: UUID(), expectation: expectation)
+            try socket.send(codec.encode(helperJSON(request)))
+            let response = try ProvisioningHelperReconcileResponse.decode(codec.decode(socket.receive()))
+            guard response.requestID == request.requestID, response.expectation == expectation else { throw ProvisioningHelperIPCFailure.authentication }
+            return ProvisioningRecoveryPermit(expectation: response.expectation, priorWorker: response.priorWorker)
+        }
+    }
+    private func transaction<T: Sendable>(_ operation: @escaping @Sendable (inout ProvisioningHelperFrameCodec, ProvisioningHelperSocket) throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
             guard admission.withLock({ if inFlight { return false }; inFlight = true; return true }) else {
                 continuation.resume(throwing: ProvisioningHelperIPCFailure.unavailable); return
             }
             queue.async { [self] in
-                let result: Result<ProvisioningRecoveryPermit, any Error> = Result {
+                let result: Result<T, any Error> = Result {
                     do {
                         guard !poisoned else { throw ProvisioningHelperIPCFailure.unavailable }
-                        let request = ProvisioningHelperReconcileRequest(requestID: UUID(), expectation: expectation)
-                        try socket.send(codec.encode(helperJSON(request)))
-                        let response = try ProvisioningHelperReconcileResponse.decode(codec.decode(socket.receive()))
-                        guard response.requestID == request.requestID, response.expectation == expectation else { throw ProvisioningHelperIPCFailure.authentication }
-                        return ProvisioningRecoveryPermit(expectation: response.expectation, priorWorker: response.priorWorker)
+                        return try operation(&codec, socket)
                     } catch {
                         poisoned = true; socket.stop()
                         throw ProvisioningHelperIPCFailure.authentication
@@ -54,9 +66,11 @@ final class ProvisioningHelperIPCServer: Sendable {
     private let credentials: ProvisioningHelperCredentials
     private let registry: ProvisioningHelperOwnershipRegistry
     private let gate = ProvisioningHelperServeGate()
+    private let registration: ProvisioningHelperWorkerRegistration?
     init(socket: ProvisioningHelperSocket, credentials: ProvisioningHelperCredentials, registry: ProvisioningHelperOwnershipRegistry) throws {
         guard credentials.identity == registry.identity else { throw ProvisioningHelperIPCFailure.authentication }
         self.socket = socket; self.credentials = credentials; self.registry = registry
+        registration = credentials.registration
     }
     func stop() { socket.stop() }
     func serve() async {
@@ -70,6 +84,12 @@ final class ProvisioningHelperIPCServer: Sendable {
         defer { monitor.cancel(); socket.stop() }
         var codec = ProvisioningHelperFrameCodec(credentials: credentials, role: .helper)
         do {
+            if let registration {
+                try await registry.registerPrepared(registration)
+                let receipt = ProvisioningHelperRegistrationReceipt(identity: credentials.identity, registrationDigest: try registration.digest, state: "registered")
+                let frame = try codec.encode(helperJSON(receipt))
+                try await helperBlocking { try self.socket.send(frame) }
+            }
             while true {
                 let packet = try await helperBlocking { try self.socket.receive(idle: true) }
                 let request = try ProvisioningHelperReconcileRequest.decode(codec.decode(packet))
@@ -100,8 +120,8 @@ public enum ProvisioningHelperControl {
         _ = try BundledProvisioning.inspect(layout)
         let registry = try ProvisioningHelperOwnershipRegistry(identity: credentials.identity)
         let server = try ProvisioningHelperIPCServer(socket: socket, credentials: credentials, registry: registry)
-        // Empty registry deliberately reports unknown. Operational construction
-        // will register live owned runners here only after its separate admission.
+        // A version-2 bootstrap reserves one inert worker before its receipt.
+        // It still has no operational runner or engine-dispatch entry point.
         await server.serve()
     }
 }

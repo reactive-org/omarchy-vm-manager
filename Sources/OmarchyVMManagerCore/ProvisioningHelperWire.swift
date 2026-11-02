@@ -18,11 +18,14 @@ struct ProvisioningHelperCredentials: Sendable, CustomStringConvertible, CustomD
     let identity: ProvisioningHelperIdentity
     let channelID: UUID
     private let secret: Data
+    let registration: ProvisioningHelperWorkerRegistration?
     var description: String { "ProvisioningHelperCredentials(redacted)" }
     var debugDescription: String { description }
-    init(identity: ProvisioningHelperIdentity) throws {
+    init(identity: ProvisioningHelperIdentity, registration: ProvisioningHelperWorkerRegistration? = nil) throws {
         try identity.validate()
         self.identity = identity; channelID = UUID()
+        self.registration = registration
+        if let registration { try registration.validate(); guard registration.scope.helperIdentity == identity else { throw ProvisioningHelperIPCFailure.ownership } }
         let key = SymmetricKey(size: .bits256)
         secret = key.withUnsafeBytes { Data($0) }
     }
@@ -31,19 +34,25 @@ struct ProvisioningHelperCredentials: Sendable, CustomStringConvertible, CustomD
         let identity: ProvisioningHelperIdentity
         let channelID: UUID
         let secret: Data
+        let registration: ProvisioningHelperWorkerRegistration?
     }
     /// Anonymous bootstrap pipe only; never argv, environment, disk or diagnostics.
     func privateBootstrap() throws -> Data {
-        try helperJSON(Bootstrap(version: 1, identity: identity, channelID: channelID, secret: secret))
+        try helperJSON(Bootstrap(version: registration == nil ? 1 : 2, identity: identity, channelID: channelID, secret: secret, registration: registration))
     }
     init(privateBootstrap data: Data) throws {
-        let fields = try helperObject(data, keys: ["version", "identity", "channelID", "secret"])
-        guard fields["version"] == .integer(1), let identity = fields["identity"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard case .object(let fields) = try PlainDataParser.parse(data, format: .json), data.count <= 4096 else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        let base: Set<String> = ["version", "identity", "channelID", "secret"]
+        guard (fields["version"] == .integer(1) && Set(fields.keys) == base) || (fields["version"] == .integer(2) && Set(fields.keys) == base.union(["registration"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard let identity = fields["identity"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
         try Self.validateIdentity(identity)
+        if let registration = fields["registration"] { try ProvisioningHelperWorkerRegistration.validateDocument(registration) }
         let value = try JSONDecoder().decode(Bootstrap.self, from: data)
         try value.identity.validate()
         guard value.secret.count == 32 else { throw ProvisioningHelperIPCFailure.authentication }
         self.identity = value.identity; channelID = value.channelID; secret = value.secret
+        registration = value.registration
+        if let registration { try registration.validate(); guard registration.scope.helperIdentity == value.identity else { throw ProvisioningHelperIPCFailure.ownership } }
     }
     static func validateIdentity(_ value: ManifestValue) throws {
         guard case .object(let fields) = value, Set(fields.keys) == ["instanceID", "executableSHA256", "packageLockSHA256"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
@@ -114,8 +123,10 @@ struct ProvisioningHelperReconcileResponse: Codable, Sendable {
         try value.expectation.validate(); return value
     }
 }
-private func validateExpectation(_ value: ManifestValue?) throws {
-    guard case .object(let fields) = value, Set(fields.keys) == ["challenge", "jobID", "vmID", "sessionID", "payloadID", "workerToken", "engineDigest", "dependencyDigest", "bindingDigest", "reviewDigest", "checkpointDigest"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
+func validateExpectation(_ value: ManifestValue?) throws {
+    let required: Set<String> = ["challenge", "jobID", "vmID", "sessionID", "payloadID", "workerToken", "engineDigest", "dependencyDigest", "bindingDigest", "reviewDigest", "checkpointDigest"]
+    guard case .object(let fields) = value, required.isSubset(of: Set(fields.keys)), Set(fields.keys).isSubset(of: required.union(["helperIdentity"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+    if let identity = fields["helperIdentity"] { try ProvisioningHelperCredentials.validateIdentity(identity) }
 }
 func helperJSON<T: Encodable>(_ value: T) throws -> Data {
     let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

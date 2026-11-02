@@ -119,11 +119,13 @@ struct ProvisioningRecoveryExpectation: Sendable, Equatable, Codable {
     let challenge: UUID
     let jobID: UUID, vmID: UUID, sessionID: UUID, payloadID: UUID, workerToken: UUID
     let engineDigest: String, dependencyDigest: String, bindingDigest: String, reviewDigest: String, checkpointDigest: String
+    var helperIdentity: ProvisioningHelperIdentity? = nil
     func validate() throws {
         guard [engineDigest, dependencyDigest, bindingDigest, reviewDigest, checkpointDigest].allSatisfy(provisioningDigest) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        try helperIdentity?.validate()
     }
     func sameWorker(as other: Self) -> Bool {
-        jobID == other.jobID && vmID == other.vmID && sessionID == other.sessionID && payloadID == other.payloadID && workerToken == other.workerToken && engineDigest == other.engineDigest && dependencyDigest == other.dependencyDigest && bindingDigest == other.bindingDigest && reviewDigest == other.reviewDigest && checkpointDigest == other.checkpointDigest
+        jobID == other.jobID && vmID == other.vmID && sessionID == other.sessionID && payloadID == other.payloadID && workerToken == other.workerToken && engineDigest == other.engineDigest && dependencyDigest == other.dependencyDigest && bindingDigest == other.bindingDigest && reviewDigest == other.reviewDigest && checkpointDigest == other.checkpointDigest && helperIdentity == other.helperIdentity
     }
 }
 enum ProvisioningPriorWorkerState: String, Sendable, Codable { case stoppedAndFenced, running, unknown }
@@ -133,4 +135,8 @@ struct ProvisioningRecoveryPermit: Sendable {
 }
 protocol ProvisioningRecoveryAuthorizing: Sendable {
     func reconcile(_ expectation: ProvisioningRecoveryExpectation) async throws -> ProvisioningRecoveryPermit
+    func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) async
+}
+extension ProvisioningRecoveryAuthorizing {
+    func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) async {}
 }

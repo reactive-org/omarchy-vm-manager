@@ -1680,3 +1680,73 @@ stall deadlines, live terminal streams/input leases and UI/CLI. This slice can
 reconcile a surviving helper after coordinator reopen; an empty replacement helper
 cannot prove lost ownership. Existing real-guest evidence labels remain unchanged.
 See the [helper-control handoff](docs/DevVMProvisioningPlan.md#milestone-3-authenticated-helper-ipc-and-ownership--3-november-2026).
+
+
+## Admitted provisioning helper launch and inert registration — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes
+and local fixtures only. No real SSH/Ansible, host installs, VM launches or UI
+operations. Admit and register an inert helper worker only; engine/job dispatch,
+transport activation and product setup entry points remain disabled.
+
+**IMPLEMENTED:** an internal launcher verifies package/resource/binary pins,
+strict outer/nested signatures, and the retained executable's identity. Default
+admission requires non-ad-hoc matching app/helper Team IDs; only explicit internal
+fixtures may choose ad-hoc/no-team admission. Before capability handoff, verify
+the owned spawned child's dynamic code against the admitted cdhash requirement.
+The PID is a transient lookup from this waitable child, never stored or used for
+adoption/signaling/ownership proof. Spawn passes explicit cwd/private HOME/TMPDIR,
+empty tool PATH, anonymous bootstrap stdin, null stdout/stderr and one inherited
+control fd, with CLOEXEC-default exclusion of unrelated descriptors. Capabilities
+remain volatile and never enter arguments/environment/disk/diagnostics.
+
+Private bootstrap 2 reserves one metadata-only original worker and receives an
+authenticated exact-digest receipt. Bootstrap 1 stays empty/unknown. Reserved
+workers have no activation or engine API; fencing retires them permanently.
+Unknown/partial registrations, receipts, owner substitution and duplicate launch
+tickets fail closed. A helper instance is freshly minted per new job; a saved
+owner cannot create a replacement helper claiming earlier work.
+
+The coordinator freezes inputs and publishes schema-3 helper instance/executable/
+package pins, registration digest and pending marker before spawn. It revalidates
+review/package/source/session/dependencies before and after registration, then
+marks the receipt accepted while keeping the job queued/no engine worker and a
+conservative cleanup hold. Duplicate submissions cannot dispatch body work.
+Schema 1/2 records preserve risk without invented helper authority; partial/unknown
+owner fields and owner fields in legacy schemas are rejected. Existing private
+file/lock/hash/size/quota/orphan rules remain. After owner publication, failures
+retain its exact identity and cleanup-required status rather than quietly retrying.
+
+Explicit cleanup after coordinator reopen requires the same retained authenticated
+launch service, fresh original-owner proof and original guest/session checks.
+Confirmed remote cleanup closes the exact helper channel; child handles/capabilities
+remain owned until matching helper exit, independently of VM ownership. A lost
+child wait retains uncertainty; there is no arbitrary PID kill or automatic
+replacement. Control metadata roots are explicit/private, not VM storage. The
+shared engine/resource pin and VM `.exited` lifecycle policy are unchanged.
+
+**PRIVATE COUPLING:** schema 3, private bootstrap 2 and metadata-only receipt extend
+the earlier authenticated control contract. A debug-only Swift fixture target
+exercises the real factory against an ad-hoc sealed disposable app and is excluded
+from app staging; its release entry point is disabled. No signing credentials or
+real identity are used. The screenshot remains the terminal design reference.
+
+**VERIFIED — fake/local checks:** `make test` passes 284 Swift functions/42 suites
+(9 new registration/coordinator/journal functions), 49 script tests and expanded
+read-only signed package fixtures. Fakes cover journal-before-spawn, changed
+admission/session, failed/mismatched receipts, final-write failure, duplicate
+submissions, persisted owner pins and original-service recovery after reopen.
+The debug-only fixture runs the real factory with an explicit ad-hoc policy:
+production policy rejects ad-hoc code; resource tamper and executable inode
+replacement fail before admission; normal bootstrap/registration/reconciliation
+passes and the matching child is reaped with no control-directory output.
+Existing protocol/signature/tamper checks pass. Fixture lookup was corrected to
+use either admitted SwiftPM resource layout. No real signing credentials,
+authentication UI, host installs, guest transport or VM operation is used. Existing
+local socket/mock-auth sandbox exceptions apply; shared code/pins are unchanged.
+
+**TO PROVE:** product wiring and operational engine/backend dispatch, actual
+release signer/Team policy, full manager restart/reconnect and reviewed VM/session
+adoption, real helper/guest failures and grant cleanup, hard kernel stalls,
+retention/removal, SSH waits and terminal/input/UI/CLI. Earlier real-guest evidence
+keeps its labels. See [the admitted-launch handoff](docs/DevVMProvisioningPlan.md#milestone-3-admitted-helper-launch-and-worker-registration--3-november-2026).

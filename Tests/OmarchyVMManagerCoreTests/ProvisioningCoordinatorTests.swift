@@ -164,6 +164,40 @@ private final class JobFixture: Sendable {
     }
 }
 
+private actor JobAdmittedHelper: ProvisioningHelperLaunching {
+    private(set) var prepares = 0, launches = 0, abandons = 0, releases = 0
+    private var ticket: ProvisioningHelperLaunchTicket?
+    private let gate: JobGate?
+    private let prepareGate: JobGate?
+    private let failure: String?
+    private let observe: (@Sendable (ProvisioningHelperLaunchTicket) async throws -> Void)?
+    init(failure: String? = nil, gate: JobGate? = nil, prepareGate: JobGate? = nil, observe: (@Sendable (ProvisioningHelperLaunchTicket) async throws -> Void)? = nil) {
+        self.failure = failure; self.gate = gate; self.prepareGate = prepareGate; self.observe = observe
+    }
+    func prepare(_ original: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperLaunchTicket {
+        prepares += 1
+        await prepareGate?.pause()
+        if failure == "prepare" { throw ProvisioningHelperIPCFailure.authentication }
+        let identity = ProvisioningHelperIdentity(instanceID: UUID(), executableSHA256: String(repeating: "e", count: 64), packageLockSHA256: ProvisioningPackagePin.lockSHA256)
+        var registration = original; registration.scope.helperIdentity = identity
+        let value = ProvisioningHelperLaunchTicket(id: UUID(), identity: identity, registration: registration)
+        ticket = value; return value
+    }
+    func launch(_ ticket: ProvisioningHelperLaunchTicket) async throws -> ProvisioningHelperRegistrationReceipt {
+        launches += 1; try await observe?(ticket); await gate?.pause()
+        if failure == "launch" { throw ProvisioningHelperIPCFailure.unavailable }
+        return .init(identity: ticket.identity, registrationDigest: failure == "receipt" ? String(repeating: "f", count: 64) : try ticket.registration.digest, state: "registered")
+    }
+    func abandon(_ ticket: ProvisioningHelperLaunchTicket) { abandons += 1 }
+    func reconcile(_ expectation: ProvisioningRecoveryExpectation) throws -> ProvisioningRecoveryPermit {
+        guard let ticket, abandons == 0, ticket.registration.scope.sameWorker(as: expectation) else { throw ProvisioningHelperIPCFailure.ownership }
+        return .init(expectation: expectation, priorWorker: .stoppedAndFenced)
+    }
+    func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) {
+        if ticket?.registration.scope.jobID == jobID, ticket?.identity == helperIdentity { releases += 1 }
+    }
+}
+
 @Suite("Provisioning coordinator — fake runtimes and adapters only") struct ProvisioningCoordinatorTests {
     @Test func writeAheadDurabilityAndSanitizedResults() async throws {
         let f = try await JobFixture(), request = try f.request()
@@ -631,4 +665,101 @@ private final class JobFixture: Sendable {
         #expect(await reopened.status(request.jobID)?.cleanupRequired == true)
         await #expect(throws: VMFailure.self) { try await f.manager.configure(f.profile) }
     }
+    @Test func admittedRegistrationIsJournaledBeforeLaunchAndNeverDispatchesBody() async throws {
+        let f = try await JobFixture(), request = try f.request(), unused = JobGuest()
+        let launcher = JobAdmittedHelper(observe: { ticket in
+            let row = try #require(f.journal.load().first)
+            #expect(row.helperIdentity == ticket.identity && row.helperRegistered == false)
+            #expect(row.helperRegistrationDigest == (try ticket.registration.digest))
+            #expect(row.payloadID == ticket.registration.scope.payloadID && row.workerToken == ticket.registration.scope.workerToken)
+            #expect(row.operation == nil && !row.workerOutstanding && row.cleanupRequired)
+        })
+        let queued = try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        #expect(queued.state == .queued && queued.cleanupRequired && !queued.workerOutstanding)
+        #expect(try f.journal.load().first?.helperRegistered == true)
+        _ = try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        _ = try await f.coordinator.submit(request, approval: f.approve(request), adapter: unused)
+        #expect(await launcher.prepares == 1)
+        #expect(await launcher.launches == 1)
+        #expect(await unused.commands.isEmpty)
+        let next = try f.request()
+        await #expect(throws: ProvisioningJobFailure.busy) { try await f.coordinator.submit(next, approval: f.approve(next), adapter: unused) }
+        await #expect(throws: VMFailure.self) { try await f.manager.pause(f.profile.id) }
+        try await f.coordinator.recover(request.jobID, target: f.target, adapter: unused)
+        #expect(try await f.coordinator.wait(request.jobID).state == .cleanupConfirmed)
+        #expect(await launcher.releases == 1)
+        #expect(await unused.commands.allSatisfy { $0.plan == nil && $0.inputLeaseID == nil })
+        #expect(f.runtime.startedHandles.count == 1 && f.runtime.startedHandles[0].shutdownCount == 0)
+    }
+    @Test(arguments: ["prepare", "journal", "launch", "receipt", "final-write"])
+    func failedAdmittedRegistrationNeverDelegatesAndPreservesOriginalOwner(kind: String) async throws {
+        let f = try await JobFixture(), request = try f.request()
+        if kind == "journal" { f.faults.failWrites() }
+        let launcher = JobAdmittedHelper(failure: kind, observe: { _ in if kind == "final-write" { f.faults.failWrites() } })
+        await #expect(throws: Error.self) { try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher) }
+        if kind == "prepare" {
+            #expect(await f.coordinator.statuses().isEmpty)
+            #expect(await launcher.launches == 0)
+        } else {
+            let result = try #require(await f.coordinator.status(request.jobID))
+            #expect(result.cleanupRequired && result.state == .cleanupRequired && !result.workerOutstanding)
+            #expect(await launcher.abandons == 1)
+            if kind != "journal" {
+                let durable = try #require(f.journal.load().first)
+                #expect(durable.helperIdentity != nil && durable.operation == nil)
+                #expect(durable.helperRegistered == false)
+            } else { #expect(await launcher.launches == 0) }
+            await #expect(throws: VMFailure.self) { try await f.manager.configure(f.profile) }
+        }
+    }
+    @Test func sessionExitDuringRegistrationCannotTurnAcknowledgementIntoReadyJob() async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = JobGate(), launcher = JobAdmittedHelper(gate: gate)
+        let preparing = Task { try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher) }
+        #expect(await eventually { await gate.entered })
+        f.runtime.startedHandles[0].emit(.exited(status: 0))
+        #expect(await eventually { await f.manager.activeSessionCount == 0 })
+        await gate.release()
+        await #expect(throws: ProvisioningJobFailure.targetChanged) { _ = try await preparing.value }
+        #expect(await launcher.abandons == 1)
+        #expect(await f.coordinator.status(request.jobID)?.cleanupRequired == true)
+        #expect(try f.journal.load().first?.helperRegistered == false)
+    }
+    @Test func registeredOwnerSurvivesCoordinatorReopenAndRejectsSubstituteHelper() async throws {
+        let f = try await JobFixture(), request = try f.request(), launcher = JobAdmittedHelper()
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        let row = try #require(f.journal.load().first)
+        let original = try #require(row.helperIdentity)
+        var substitute = try helperTestExpectation(record: row, target: f.target)
+        substitute.helperIdentity = .init(instanceID: UUID(), executableSHA256: original.executableSHA256, packageLockSHA256: original.packageLockSHA256)
+        await #expect(throws: ProvisioningHelperIPCFailure.ownership) { _ = try await launcher.reconcile(substitute) }
+        try await f.coordinator.closeForReopen()
+        let reopened = try await ProvisioningCoordinator.open(manager: f.manager,
+            journal: ProvisioningJobJournal(directory: f.journal.directory), authority: f.authority, artifacts: f.artifacts,
+            recoveryAuthority: launcher, engineDigest: ProvisioningCoordinator.engineIdentity(f.plan), admitPackage: {})
+        #expect(await reopened.status(request.jobID)?.state == .cleanupRequired)
+        try FileManager.default.removeItem(at: f.source)
+        let guest = JobGuest()
+        try await reopened.recover(request.jobID, target: f.target, adapter: guest)
+        #expect(try await reopened.wait(request.jobID).state == .cleanupConfirmed)
+        #expect(await launcher.releases == 1)
+        #expect(original.packageLockSHA256 == ProvisioningPackagePin.lockSHA256)
+    }
+
+    @Test(arguments: ["source", "dependency", "package"])
+    func admissionChangesWhilePreparingAHelperPreventSpawn(kind: String) async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = JobGate(), launcher = JobAdmittedHelper(prepareGate: gate)
+        let preparing = Task { try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher) }
+        #expect(await eventually { await gate.entered })
+        if kind == "source" { try Data("changed".utf8).write(to: f.source.appendingPathComponent("vm.yml")) }
+        if kind == "dependency" { await f.authority.deny() }
+        if kind == "package" { f.package.refuse() }
+        await gate.release()
+        let failure: ProvisioningJobFailure = kind == "source" ? .sourceChanged : kind == "dependency" ? .dependencyChanged : .invalidRequest
+        await #expect(throws: failure) { _ = try await preparing.value }
+        #expect(await launcher.launches == 0)
+        #expect(await launcher.abandons == 1)
+        #expect(await f.coordinator.statuses().isEmpty)
+        #expect(f.runtime.startedHandles[0].shutdownCount == 0)
+    }
+
 }

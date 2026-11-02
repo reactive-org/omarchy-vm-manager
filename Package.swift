@@ -9,7 +9,8 @@ let package = Package(
         .executable(name: "omarchy-vm", targets: ["OmarchyVMCLI"]),
         .library(name: "OmarchyVMManagerCore", targets: ["OmarchyVMManagerCore"]),
         .executable(name: "OmarchyVMStorageHelper", targets: ["OmarchyVMStorageHelper"]),
-        .executable(name: "OmarchyVMProvisioningHelper", targets: ["OmarchyVMProvisioningHelper"])
+        .executable(name: "OmarchyVMProvisioningHelper", targets: ["OmarchyVMProvisioningHelper"]),
+        .executable(name: "OmarchyProvisioningLaunchFixture", targets: ["OmarchyProvisioningLaunchFixture"])
     ],
     dependencies: [.package(path: ".build/runtime-source/macos"), .package(path: "Vendor/dev-vm")],
     targets: [
@@ -21,6 +22,7 @@ let package = Package(
         .executableTarget(name: "OmarchyVMCLI", dependencies: ["OmarchyVMManagerCore"]),
         .executableTarget(name: "OmarchyVMStorageHelper", dependencies: ["OmarchyVMManagerCore"]),
         .executableTarget(name: "OmarchyVMProvisioningHelper", dependencies: ["OmarchyVMManagerCore"]),
+        .executableTarget(name: "OmarchyProvisioningLaunchFixture", dependencies: ["OmarchyVMManagerCore"], path: "Tests/ProvisioningLaunchFixture"),
         .testTarget(name: "OmarchyVMManagerCoreTests", dependencies: ["OmarchyVMManagerCore"])
     ],
     swiftLanguageModes: [.v6]

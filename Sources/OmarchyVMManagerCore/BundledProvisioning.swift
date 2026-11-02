@@ -84,7 +84,7 @@ public enum BundledProvisioning {
     private static func invalid() -> VMFailure {
         VMFailure(code: "provisioning-package-invalid", message: "The bundled provisioning package is missing, changed or incompatible.")
     }
-    private static func resourceRoot(_ layout: ProvisioningPackageLayout) throws -> URL {
+    static func resourceRoot(_ layout: ProvisioningPackageLayout) throws -> URL {
         let bundle = layout.resources.appendingPathComponent(ProvisioningPackagePin.resourceBundle)
         let candidates = [bundle.appendingPathComponent("Resources"), bundle.appendingPathComponent("Contents/Resources/Resources")]
             .filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("engine-identity.json").path) }

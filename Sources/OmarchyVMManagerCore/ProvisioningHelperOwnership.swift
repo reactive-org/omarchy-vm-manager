@@ -76,7 +76,7 @@ actor ProvisioningHelperOwnershipRegistry {
     let identity: ProvisioningHelperIdentity
     private struct Record {
         let scope: ProvisioningRecoveryExpectation
-        let runner: ProvisioningFencedProcessRunner
+        let runner: ProvisioningFencedProcessRunner?
         var reconciliation: Attempt?
         var proven = false
     }
@@ -84,6 +84,12 @@ actor ProvisioningHelperOwnershipRegistry {
     private var records: [UUID: Record] = [:]
     private var disconnected = false
     init(identity: ProvisioningHelperIdentity) throws { try identity.validate(); self.identity = identity }
+    func registerPrepared(_ registration: ProvisioningHelperWorkerRegistration) throws {
+        try registration.validate()
+        guard registration.scope.helperIdentity == identity, !disconnected, records.count < 128,
+              records[registration.scope.workerToken] == nil else { throw ProvisioningHelperIPCFailure.ownership }
+        records[registration.scope.workerToken] = Record(scope: registration.scope, runner: nil)
+    }
     func register(_ scope: ProvisioningRecoveryExpectation, runner: ProvisioningFencedProcessRunner) async throws {
         try scope.validate()
         guard !disconnected, records.count < 128, records[scope.workerToken] == nil, await runner.matches(scope) else { throw ProvisioningHelperIPCFailure.ownership }
@@ -94,10 +100,12 @@ actor ProvisioningHelperOwnershipRegistry {
     func reconcile(_ scope: ProvisioningRecoveryExpectation) async -> ProvisioningPriorWorkerState {
         guard var record = records[scope.workerToken], record.scope.sameWorker(as: scope) else { return .unknown }
         if record.proven { return .stoppedAndFenced }
+        // A bootstrap reservation has no execution API. Fencing it permanently
+        // retires the reservation; future activation must never reopen it.
+        guard let runner = record.runner else { records[scope.workerToken]?.proven = true; return .stoppedAndFenced }
         let attempt: Attempt
         if let current = record.reconciliation { attempt = current }
         else {
-            let runner = record.runner
             attempt = Attempt(task: Task.detached { await runner.fenceAndReconcile() })
             record.reconciliation = attempt; records[scope.workerToken] = record
         }
@@ -112,7 +120,7 @@ actor ProvisioningHelperOwnershipRegistry {
         guard !disconnected else { return }
         disconnected = true
         for (token, var record) in records where !record.proven && record.reconciliation == nil {
-            let runner = record.runner
+            guard let runner = record.runner else { record.proven = true; records[token] = record; continue }
             record.reconciliation = Attempt(task: Task.detached { await runner.fenceAndReconcile() })
             records[token] = record
         }

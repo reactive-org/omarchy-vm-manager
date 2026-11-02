@@ -13,6 +13,7 @@ public enum ProvisioningJobFailure: String, Codable, Error, Sendable {
     case jobConflict, unknownJob, journalUnavailable, managerRestarted, cleanupRequired
     case recoveryUnavailable, lifecycleChanged, cleanupDeadline, driverFailed
     case artifactUnavailable, ownershipUnverified
+    case helperUnavailable
 }
 public struct ProvisioningJobSnapshot: Codable, Equatable, Sendable {
     public let jobID: UUID
@@ -56,6 +57,9 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
     var inputArchiveSHA256: String?
     var cleanupCheckpointSHA256: String?
     var workerToken: UUID?
+    var helperIdentity: ProvisioningHelperIdentity?
+    var helperRegistrationDigest: String?
+    var helperRegistered: Bool?
     var snapshot: ProvisioningJobSnapshot {
         .init(jobID: jobID, vmID: vmID, sessionID: sessionID, sequence: sequence, state: state,
               outcome: outcome, failure: failure, engineFailure: engineFailure, cleanupFailures: cleanupFailures,
@@ -65,9 +69,13 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
         case jobID, vmID, sessionID, reviewDigest, planDigest, inputDigest, engineDigest, dependencyDigest, bindingDigest, mode
         case sequence, state, outcome, failure, engineFailure, cleanupFailures, cleanupRequired, workerOutstanding, payloadID, commandID, operation, attempts
         case inputArchiveSHA256, cleanupCheckpointSHA256, workerToken
+        case helperIdentity, helperRegistrationDigest, helperRegistered
     }
     func validate() throws {
         let durable = inputArchiveSHA256 != nil || cleanupCheckpointSHA256 != nil || workerToken != nil
+        let helper = helperIdentity != nil || helperRegistrationDigest != nil || helperRegistered != nil
+        guard !helper || (helperIdentity != nil && helperRegistrationDigest.map(provisioningDigest) == true && helperRegistered != nil && durable) else { throw ProvisioningJobFailure.journalUnavailable }
+        if let helperIdentity { do { try helperIdentity.validate() } catch { throw ProvisioningJobFailure.journalUnavailable } }
         guard !durable || (inputArchiveSHA256.map(provisioningDigest) == true && cleanupCheckpointSHA256.map(provisioningDigest) == true && workerToken != nil && payloadID != nil),
               sequence > 0, sequence <= UInt64(Int64.max), attempts > 0, attempts <= 1000, cleanupFailures.count <= 32,
               [reviewDigest, planDigest, inputDigest, engineDigest, dependencyDigest, bindingDigest].allSatisfy(provisioningDigest),
@@ -136,7 +144,7 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                 if loaded { guard fingerprint == KitVerifier.sha256(data) else { throw ProvisioningJobFailure.journalUnavailable } }
                 let value = try PlainDataParser.parse(data, format: .json)
                 guard case .object(let root) = value, Set(root.keys) == ["schemaVersion", "revision", "jobs"],
-                      [ManifestValue.integer(1), .integer(2)].contains(root["schemaVersion"] ?? .null),
+                      [ManifestValue.integer(1), .integer(2), .integer(3)].contains(root["schemaVersion"] ?? .null),
                       case .array(let jobs) = root["jobs"], jobs.count <= Self.maximumJobs
                 else { throw ProvisioningJobFailure.journalUnavailable }
                 for job in jobs {
@@ -145,6 +153,12 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                     if root["schemaVersion"] == .integer(1) {
                         guard Set(fields.keys).isDisjoint(with: ["inputArchiveSHA256", "cleanupCheckpointSHA256", "workerToken"]) else { throw ProvisioningJobFailure.journalUnavailable }
                     }
+                    if root["schemaVersion"] != .integer(3) {
+                        guard Set(fields.keys).isDisjoint(with: ["helperIdentity", "helperRegistrationDigest", "helperRegistered"]) else { throw ProvisioningJobFailure.journalUnavailable }
+                    }
+                    let helperKeys: Set<String> = ["helperIdentity", "helperRegistrationDigest", "helperRegistered"]
+                    guard helperKeys.isDisjoint(with: Set(fields.keys)) || helperKeys.isSubset(of: Set(fields.keys)) else { throw ProvisioningJobFailure.journalUnavailable }
+                    if let identity = fields["helperIdentity"] { try ProvisioningHelperCredentials.validateIdentity(identity) }
                 }
                 let document = try JSONDecoder().decode(Document.self, from: data)
                 try validate(document.jobs)
@@ -163,7 +177,7 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                 let current = try PrivateFiles.exists(file) ? KitVerifier.sha256(PrivateFiles.read(file, maximum: Self.maximumBytes)) : nil
                 guard current == fingerprint else { throw ProvisioningJobFailure.journalUnavailable }
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-                let data = try encoder.encode(Document(schemaVersion: 2, revision: revision + 1, jobs: records.sorted { $0.jobID.uuidString < $1.jobID.uuidString }))
+                let data = try encoder.encode(Document(schemaVersion: 3, revision: revision + 1, jobs: records.sorted { $0.jobID.uuidString < $1.jobID.uuidString }))
                 guard data.count <= Self.maximumBytes else { throw ProvisioningJobFailure.journalUnavailable }
                 try PrivateFiles.write(data, name: "jobs.json", in: directory)
                 guard try PrivateFiles.read(file, maximum: Self.maximumBytes) == data else { throw ProvisioningJobFailure.journalUnavailable }
