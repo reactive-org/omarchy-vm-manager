@@ -211,3 +211,12 @@ The host fix and reported no-prompt failure are detailed in [Guest Touch ID](Gue
 
 
 **VERIFIED — approved disposable cleanup completed:** the user authorized Trash for A/B after their exits/process cleanup were verified. Both were moved through the installed manager guarded deletion path; profiles and original roots are absent, Trash destination inode/device identities match, and the 16 captured runtime processes remain gone. [Completed scope and remaining native gates](GuestTouchID.md#approved-disposable-guest-trash-cleanup-completed--3-november-2026) close this guided build 26 run without implying cloned-ID, lease-busy or crash-path proof. No other guest was targeted.
+
+
+## Integrated sudo milestone release preparation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** after merging PR #3, the user requested tagging and signing a release. Prepare the next supported signed development prerelease, `v0.11.0-dev.3`, manager 0.11.0 (27), from integrated main `653f1336be01f1fc86f2edcd6615358e701e8bd9`. Its main CI run 41584792689 passed. This release changes the build identity and records the integrated validation; application/runtime logic stays as tested in build 26. Use only the existing tag-driven CI signing/notarization path, retain all acceptance/archive, signature/profile/team/entitlement, stapling/Gatekeeper and extracted-ZIP gates, and preserve every existing tag/asset.
+
+**DESIGN DECISION — exact signed-runtime reuse:** retain active/versioned dev.2 runtime provenance unchanged and reuse exact signed runtime `4f62b8e9494e2192895d815b7861c197a56c706205b97d6e77054406b7c5f96d`, source `37c635f8992a9e19cc99696542bf061baff804c0`, source-lock `328acd039129cd6d5dae139cd1f426e18c50cfeaf91268e63541b6186686fd9d`. No runtime rebuild/re-signing/submission is required. CI signs and submits the new app archive. Native known limits remain **TO PROVE** as documented; default-off guest authentication and disabled managed 1Password are unchanged. No local real identity, credential access, installation, permission or VM/storage operation is part of this release request.
+
+**TO PROVE:** this tag's CI signing, app acceptance and publication; the previously recorded native follow-ups remain separate. Do not claim an unpublished candidate is a completed release.
