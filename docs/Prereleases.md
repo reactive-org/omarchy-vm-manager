@@ -199,3 +199,6 @@ The host fix and reported no-prompt failure are detailed in [Guest Touch ID](Gue
 
 
 **VERIFIED — user-reported Mac sleep/wake case:** in the build 26 verification sequence, the user confirmed actual Mac sleep/wake, failure of the old password-fallback-disabled test and success of a fresh Touch ID test. Separate read-only helper reports show host-sleeping then running for the same active session. [Scoped evidence and remaining gates](GuestTouchID.md#user-confirmed-mac-sleepwake-cancellation-and-recovery--3-november-2026) distinguish user observations from helper acknowledgements; shutdown/crash and multi-VM behavior remain **TO PROVE**.
+
+
+**VERIFIED — user-confirmed shutdown/restart case:** the user confirmed pending-prompt cancellation at shutdown and successful fresh guest authentication after restart without re-enrollment. The CLI reports stopped/inactive and the existing helper report records matching old-session exit status 0. [Scoped evidence](GuestTouchID.md#user-confirmed-shutdown-cancellation-and-restart-recovery--3-november-2026) marks this manual build 26 case passed; forced-stop/crash and two-VM behavior remain **TO PROVE**.
