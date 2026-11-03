@@ -632,6 +632,74 @@ compilation/signature/profile/loaded-child and original-Mac scope evidence. No
 real build/signing caller is invoked here. Notarization and every real guest row
 retain their separate approvals and NOT_RUN status.
 
+## Named material inspection and private staging — 4 November 2026
+
+**IMPLEMENTED — developer tooling, fake execution only:**
+`Scripts/private_provisioning_materials.py` adds an explicit one-shot
+`MaterialInspectionCaller`. This step can check selected material files and stage
+the exact pinned profile; its result is data, never signing or guest authority.
+There is no command-line entrypoint, selector discovery, key export/import,
+keychain unlock, search-list change or automatic signing continuation.
+
+The trusted composition must supply a typed `MaterialSelection` with the named
+source profile, isolated-keychain path, identity/team, frozen runtime, local client
+and parser checkouts, plus a separately supplied DER **public** leaf certificate.
+`ReviewedMaterialInspection` independently binds the version-2 source request,
+selection, public-certificate and trusted runtime-inspector hashes, and new private
+output path. Its request digest has a distinct version/domain. The native runner
+requires a matching in-memory authorization with **only** the `inspect` effect
+before any material IO or output. Source-signing authority, gate JSON, sidecars
+and environment flags cannot authorize this step. Fixture reviews refuse native
+execution even with matching authorization.
+
+After separately approved inspection, the implementation checks named keychain
+**metadata only**, without opening its contents or querying identities, locked
+state or private-key availability. Profile/certificate/inspector hashes must match
+review. Local client/parser revisions and cleanliness are checked before/after.
+The profile and public certificate are copied into a fresh owned 0700 directory
+as 0600 files. Bounded CMS decoding validates profile team, macOS distribution,
+expiry and exact manager App ID/entitlements. The selected public leaf must appear
+in the profile, match the identity's common name and be within its validity dates.
+Local public-certificate parsing does not establish certificate trust or key
+possession; OS validation remains required. A hash-bound upstream verifier checks
+the exact admitted runtime through an inspect-only command. No runtime is rebuilt
+or signed. Inputs, staged files, runtime inventory and named-keychain metadata are
+rechecked across process callbacks; failures retain fixed private diagnostics and
+consume the caller without automatic retry.
+
+The receipt reports `privateKeyAvailability: NOT_QUERIED`,
+`keychainUnlocked: NOT_CHECKED`, and `signingAuthorized: false`. The returned
+`InspectedMaterial` names the privately staged profile; that changes the material
+binding. Any later app build/signing caller still needs separate approval for the
+source request, scope, **staged** material binding and its build/inspection/signing
+effects, including secure timestamp requests. An inspection authorization cannot
+authorize that caller. Notarization and real guest rows remain separate.
+
+```sh
+make test-private-provisioning-materials
+```
+
+**VERIFIED — fake/local:** 19 new tests cover staging, no keychain-content reads,
+default denial before material IO, effect/domain separation, fixture isolation,
+profile/certificate mismatches, expiry, unsafe files, dependency drift, callback
+mutation, bounded command failure, private diagnostics and concurrent replay.
+The allowed full Python suite discovers 151 tests: 146 pass and five signing/
+PKCS12 cases are deliberately skipped. Auditing observes only local Git/Python
+processes and no forbidden-tool attempt. No real profile/certificate parser,
+SDK/CMS verifier or keychain is exercised by this work.
+
+All 1,161 retained private artifact entries and frozen pins remain unchanged;
+evidence stays separately private. Ordinary product approval remains nil and shared
+Swift/package source and pins are unchanged. No signing, credential access,
+Apple request, SSH/Ansible, install, app/UI, disk image or VM operation occurs.
+
+**NEXT / TO PROVE:** select the actual isolated-keychain/profile/public-certificate
+paths and independent hashes, then separately approve a bounded real inspection
+of those named files/runtime. None is selected or inspected here. Private-key
+availability, actual app compilation/signatures/profile trust/loaded-child checks,
+original-Mac scope evidence and all real guest behavior remain TO PROVE/NOT_RUN.
+The historical frozen gate remains a preparation record, not an authorization.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

@@ -206,3 +206,10 @@ independent review bindings and immutable source/runtime checks are tested with
 fake runners. Eighteen new tests and 127 allowed Python passes succeed, with five
 signing cases skipped. The actual packet admits as data only, all private artifacts
 stay unchanged, and profile/keychain/real signing and guest gates remain pending.
+
+[Named material inspection and staging](DevVMMilestone6Runbook.md#named-material-inspection-and-private-staging--4-november-2026)
+adds an inspect-only, one-shot caller with private profile/public-certificate
+staging, independent review bindings and callback revalidation. It never reads
+keychain contents or grants signing authority. Nineteen new fake tests pass;
+the full allowed Python suite has 146 passes/five signing skips. Actual material
+selection/inspection remains pending, and frozen artifacts/pins stay unchanged.

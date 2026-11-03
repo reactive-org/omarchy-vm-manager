@@ -3097,3 +3097,33 @@ compiler/SDK/signing/loaded-child/original-Mac evidence. No actual signing,
 credentials/profile bytes, Apple request, SSH/Ansible, install, UI, image or VM
 operation occurs. Guest acceptance stays NOT_RUN. See the
 [versioned caller](DevVMMilestone6Runbook.md#version-2-source-only-admission-and-caller--4-november-2026).
+
+## Named material inspection and staging — 4 November 2026
+
+**IMPLEMENTED — developer tooling:** a typed, one-shot material-inspection caller
+binds the admitted source request, named selectors, independent public-certificate
+and runtime-inspector hashes, and private output in its own authorization domain.
+Default execution refuses before material IO/output; native authorization must
+grant only inspection. Fake source reviews cannot run native inspectors. No CLI,
+credential discovery/import/unlock, automatic signing or publication is added.
+
+After separately authorized inspection, exact profile/public-certificate bytes are
+staged privately. Profile team/App ID/distribution/expiry, authorized public leaf,
+certificate common name/dates, local dependency revisions/cleanliness and frozen
+runtime inspection are checked. Source/runtime/staged-file hashes and named
+keychain metadata are rechecked across callbacks. Keychain contents are never
+read; key availability/unlocked state remain explicitly unknown. Public-certificate
+parsing does not prove trust. Returned material names the staged profile and
+requires a distinct later signing approval; no receipt grants execution authority.
+
+**VERIFIED — fake/local:** 19 new tests pass; the allowed full Python suite has
+146 passes and five deliberately skipped signing/PKCS12 tests (151 discovered).
+Auditing observes only local Git/Python processes, with no forbidden-tool attempt.
+All 1,161 retained private entries and frozen pins stay unchanged. Shared/product
+source and pins are unchanged; ordinary provisioning approval stays nil.
+
+**TO PROVE:** actual named material selection and separately approved inspection,
+private-key availability, real compilation/signatures/profile trust/loaded-child,
+original-Mac and guest evidence. No actual profile/certificate parser, SDK/CMS,
+keychain, signing, Apple request, SSH/Ansible, install, UI, image or VM operation
+occurs. See the [inspection gate](DevVMMilestone6Runbook.md#named-material-inspection-and-private-staging--4-november-2026).

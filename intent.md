@@ -2944,3 +2944,30 @@ remains the visual target for milestone 5.
   operation. Shared/product source and pins are unchanged, provisioning approval
   stays nil and real guest rows NOT_RUN. See the
   [caller](docs/DevVMMilestone6Runbook.md#version-2-source-only-admission-and-caller--4-november-2026).
+
+## Named material inspection and staging — 4 November 2026
+
+- **DESIGN DECISION:** an explicit typed one-shot caller has its own inspection
+  request digest, binding source review, named material selectors, public-leaf and
+  trusted runtime-inspector hashes, and private staging path. Default denial and
+  inspect-only native authorization precede material IO/output. Gate/env/file
+  claims and signing authorization do not authorize this step; fixtures cannot
+  execute native inspectors. There is no CLI or automatic signing continuation.
+- **PRIVATE COUPLING:** profile/certificate staging, profile scope/expiry and
+  public-leaf membership/name/dates, dependency revisions/cleanliness and admitted
+  runtime inspection are checked with callback revalidation. Named keychain
+  metadata is checked in memory; contents, identity searches, key availability and
+  locked state are never queried. Public-certificate parsing does not prove trust.
+  Returned staged material changes its binding and still needs separate signing
+  authorization. Receipts grant neither signing nor guest authority.
+- **VERIFIED — fake/local:** 19 new tests; 146 allowed Python passes/five deliberate
+  signing/PKCS12 skips (151 discovered). Audit records only local Git/Python, with
+  no forbidden-tool attempt. All 1,161 retained private entries and pins remain
+  unchanged. New evidence stays separate/private; shared/product source and pins
+  are unchanged and ordinary provisioning approval stays nil.
+- **TO PROVE:** actual material selection and separately approved bounded real
+  inspection, private-key availability, compiler/signatures/profile trust/loaded
+  child, original-Mac scope and guests. No real profile/certificate parser, SDK/CMS,
+  keychain, signing, credentials, Apple requests, SSH/Ansible, installs, UI, image or
+  VM operation occurs. See the
+  [inspection gate](docs/DevVMMilestone6Runbook.md#named-material-inspection-and-private-staging--4-november-2026).
