@@ -66,6 +66,19 @@ def run(label, *arguments):
     return result
 
 
+def retry_ticket_network(label, *arguments):
+    for attempt in range(3):
+        try:
+            return run(label, *arguments)
+        except RuntimeError as error:
+            transient = any(marker in str(error) for marker in (
+                "NSURLErrorDomain Code=-1005", "NSURLErrorDomain Code=-1001", "NSURLErrorDomain Code=-1009"))
+            if not transient or attempt == 2:
+                raise
+            print(f"{label}: transient Apple ticket connection failure; retrying the same bytes", flush=True)
+            time.sleep(5 * (attempt + 1))
+
+
 def check_submission(identifier, archive=None):
     """Read an existing submission in CI without importing a signing identity."""
     if os.environ.get("GITHUB_ACTIONS") != "true" or not os.environ.get("RUNNER_TEMP"):
@@ -302,6 +315,11 @@ def stage_retained_runtime(retained, folder, source, source_bytes, profile, team
     assert len(code_paths) == receipt["signedMachOFiles"], "unexpected runtime code inventory"
     validate_payload(source["files"], inventory(folder / "TryOmarchyKit.bundle"), code_paths)
     accepted_submission(folder / "TryOmarchyKit.zip", profile, "runtime", receipt["appleSubmissionID"])
+    submitted = ROOT / ".build/signed-release/notary-runtime.zip"
+    assert not submitted.exists(), "existing submitted runtime was preserved"
+    shutil.copy2(archive, submitted)
+    if receipt.get("artifactLayout") == "complete-build-v1":
+        shutil.copy2(retained / "RuntimeCandidate.json", ROOT / ".build/notarization/runtime-candidate.json")
 
 
 def download(archive, url):
@@ -336,7 +354,7 @@ def prepare_runtime(source, source_bytes, profile, team, identity, tag, work, re
             run("Build signed runtime through upstream kit pipeline", upstream / "macos/build-kit.sh", "--app", original,
                 "--output", folder, "--sign-identity", identity)
             notarize(folder / "TryOmarchyKit.zip", profile, "runtime")
-        run("Staple runtime ticket through upstream pipeline", "python3", signature, "staple", folder / "TryOmarchyKit.bundle")
+        retry_ticket_network("Staple runtime ticket through upstream pipeline", "python3", signature, "staple", folder / "TryOmarchyKit.bundle")
         (folder / "TryOmarchyKit.zip").unlink()
         run("Archive notarized runtime", "ditto", "-c", "-k", "--keepParent", folder / "TryOmarchyKit.bundle", folder / "TryOmarchyKit.zip")
         signed_files = inventory(folder / "TryOmarchyKit.bundle")
@@ -397,7 +415,7 @@ def release(retained=None):
             submission_archive = work / "notary-app.zip"
             run("Archive app for Apple submission", "ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, submission_archive)
             status = notarize(submission_archive, profile, "app")
-            run("Staple app ticket", "xcrun", "stapler", "staple", app)
+            retry_ticket_network("Staple app ticket", "xcrun", "stapler", "staple", app)
             run("Verify notarized app and Gatekeeper acceptance", "python3", ROOT / "Scripts/verify_signed_app.py", app)
             run("Package and verify the final notarized ZIP", "python3", ROOT / "Scripts/package_prerelease.py", "--signed", "--runtime-lock", lock_path)
             output = ROOT / "dist/prerelease"
