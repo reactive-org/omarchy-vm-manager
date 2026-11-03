@@ -2486,3 +2486,27 @@ remains the visual target for milestone 5.
   SSH/owner/input configuration, verified factory bytes and actual loaded-child/
   guest behavior. Product approval remains nil and guest rows remain NOT_RUN. See
   the [audit record](docs/DevVMMilestone6Runbook.md#offline-signing-and-readiness-audit).
+
+## Private signing/packaging handoff — fake/local, 3 November 2026
+
+- **DESIGN DECISION:** private build-input bindings and a frozen signing request
+  confer no guest/signing consent. CLI preparation never reads the target VM root,
+  recaptures original pins, runs a signer or accesses credentials. Ordinary product
+  approval stays nil. Real requests cannot enter the synthetic signing runner;
+  production signature requirements and public release automation are unchanged.
+- **PRIVATE COUPLING:** existing runtime-origin/payload, profile-entitlement and
+  provisioning seal validators enforce fake profile/rebuild/child-sign/seal/outer-
+  sign/verify/archive ordering. Both component receipts/code bodies retain the same
+  scope. Private fresh outputs, immutable input digests, tag/release/VM namespace
+  guards, archive checks and private failure retention prevent overwrite/replay or
+  publishing. Build tooling remains separate from the shipped Swift controller.
+- **VERIFIED — local fixtures:** eighteen new functions/22 rejection variants and
+  all 79 script tests pass. The actual candidate yields a private 101-file request;
+  synthetic ZIP roundtrip evidence records no process, network or credential call.
+  Real request simulation is refused. Original candidate/root/registry are unchanged;
+  detailed artifacts and pins stay ignored. See the
+  [handoff](docs/DevVMMilestone6Runbook.md#private-signing-and-packaging-handoff--fakelocal-path).
+- **TO PROVE:** authorized real signer/compilation, cryptographic/profile/loaded-child
+  validation and original-Mac scope evidence; prior factory/tool/account and all
+  guest gates remain pending. No real signing, installs, SSH/Ansible, workflow,
+  credential, UI or VM operation occurs. Guest acceptance remains NOT_RUN.

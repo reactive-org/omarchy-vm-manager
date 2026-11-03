@@ -8,7 +8,7 @@ SWIFT_FLAGS := --disable-sandbox --skip-update --cache-path "$(CURDIR)/.build/sw
 
 .PHONY: prepare-source help build build-signed icon test test-build-policies test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-provisioning-tools | test-provisioning-terminal | test-provisioning-ui-cli | test-provisioning-review | test-provisioning-actions | test-provisioning-selection | test-provisioning-appearance | test-provisioning-identity | test-provisioning-admission | provisioning-preflight | test-provisioning-preflight | test-provisioning-screens | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-provisioning-tools | test-provisioning-terminal | test-provisioning-ui-cli | test-provisioning-review | test-provisioning-actions | test-provisioning-selection | test-provisioning-appearance | test-provisioning-identity | test-provisioning-admission | provisioning-preflight | test-provisioning-preflight | test-private-provisioning-package | private-provisioning-handoff | test-provisioning-screens | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -43,6 +43,15 @@ provisioning-preflight:
 test-provisioning-preflight:
 	python3 -m unittest discover -s Tests/ScriptTests -p 'test_provisioning_preflight.py' -v
 	python3 -m unittest discover -s Tests/ScriptTests -p 'test_provisioning_package.py' -v
+
+# No build, signing, workflow, tool probing or guest prerequisites. All input
+# identity values stay in an explicit private file; none are printed by make.
+.PHONY: private-provisioning-handoff test-private-provisioning-package
+private-provisioning-handoff:
+	@python3 Scripts/private_provisioning_package.py prepare --candidate "$(PRIVATE_CANDIDATE)" --output "$(PRIVATE_OUTPUT)" --reviewed-identity "$(PRIVATE_IDENTITY)"
+
+test-private-provisioning-package:
+	python3 -m unittest discover -s Tests/ScriptTests -p 'test_private_provisioning_package.py' -v
 
 .PHONY: test-provisioning-package test-provisioning-bundle
 test-provisioning-package: build

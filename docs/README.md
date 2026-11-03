@@ -119,6 +119,13 @@ Tool files/static Core metadata are present but unprobed; factory bytes remain
 unverified after OS access refusal. No permission, credential, signing, installed-
 tool, workflow or guest operation occurred.
 
+The [private signing/packaging handoff](DevVMMilestone6Runbook.md#private-signing-and-packaging-handoff--fakelocal-path)
+now freezes reviewed source/scope/runtime/resource inputs privately. Its CLI prepares
+requests only; the fake-only packager tests profile/build/sign/seal/verify/archive
+ordering, tamper refusal and private failures. Eighteen focused tests and all 79
+script tests pass. The real request cannot enter the simulation path. A real signer
+is not connected, ordinary execution stays disabled, and guest acceptance is NOT_RUN.
+
 [Milestone 6 disposable admission](DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
 adds independent manager/helper approval checks for exact disposable UUID/root
 identity pins, including restart, cleanup and terminal input. Twelve fake/local

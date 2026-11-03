@@ -192,6 +192,69 @@ the private handoff and its checks using fake/local fixtures; actual signing,
 permission grants, metadata/account changes, tool execution and guest runs need
 their own explicit authorization.
 
+## Private signing and packaging handoff — fake/local path
+
+**IMPLEMENTED — 3 November 2026:** `Scripts/private_provisioning_package.py` freezes
+a reviewed private candidate into a self-contained signing request. The CLI exposes
+`prepare` only. It never signs, compiles, uploads, starts an app/guest, probes tools,
+reads credentials or visits the root named by the scope. No real-signer adapter,
+credential entrypoint or CI workflow is installed by this slice. This is developer
+packaging tooling using existing Python build tools, not a manager Python runtime.
+
+The caller supplies a private mode-0600 identity file with `candidateSHA256` and
+`scopeSHA256`, taken from the reviewed audit. These are build-input bindings, not
+guest/signing consent or an application approval loader. Candidate/receipt/scope,
+source archive/overlay, exact runtime/resource inventories and expected profile pin
+must match before copying. Original constants are copied from the recorded inputs;
+they are never recaptured from a replacement filesystem root. The real handoff
+contains 101 frozen input files and an independently retainable request digest.
+
+```sh
+make private-provisioning-handoff \
+  PRIVATE_CANDIDATE=/absolute/private/candidate \
+  PRIVATE_OUTPUT=/absolute/private/new-handoff \
+  PRIVATE_IDENTITY=/absolute/private/reviewed-identity.json
+make test-private-provisioning-package
+```
+
+The destination must be new, below an owned mode-0700 parent, outside the source,
+manager UUID storage and standard release/upload directories. Checks include
+case-insensitive namespace aliases. Tag/release contexts are refused. Inputs,
+request and copied runtime/resources stay private; links, changed data, unsafe
+archives, duplicate JSON keys and guest disk-image payloads are refused. Partial
+captures remain private with a failure marker. Failed or changed requests cannot
+be reused; there is no automatic resume/replay or source/output overwrite.
+
+**VERIFIED — fake/local:** the complete simulation orders profile validation,
+signed-runtime provenance, signed-prerelease rebuild with the same manager/helper
+scope, child signatures, post-sign helper seal, outer signature, verification,
+private ZIP, extraction and verification again. It reuses existing signed-runtime
+origin/payload, protected-profile entitlement and provisioning seal validators.
+Frozen inputs are revalidated across callbacks; signature checks may not mutate
+signed bytes. Late runtime/profile/resource/child/scope changes, wrong team/origin/
+build pins, child Keychain entitlements and archive tampering are refused.
+
+The runner accepts synthetic fixtures and an injected fake signer only. Its code
+and signatures are explicitly non-Mach-O/simulated; outputs are named and labelled
+SIMULATION_ONLY, with `productionSigningVerified: false` and no launch authority.
+It refuses the actual candidate's request before invoking a fake signer. There is
+no plugin/shell/publisher backend or environment switch to select real signing.
+The checked fake build receipt is not proof of a real Swift compilation/signature.
+
+Eighteen new test functions (including a 22-case rejection matrix) and the complete
+79-test script suite pass. A synthetic ZIP roundtrip is retained privately; guarded
+process/network/credential hooks report zero calls. The actual handoff, prior
+candidate and original root/registry remain private and unchanged. No shared Swift
+source, product approval gate, signature policy or public release workflow changes.
+
+**TO PROVE:** a separately authorized real-signer/private execution adapter,
+reconstruction and actual signed-prerelease compilation, certificate/profile/code
+verification, notarization/loaded-child admission and original-Mac scope checks.
+Production signing remains unavailable here. The prior OS-denied factory checksum,
+actual CLI checks, SSH/owner/input configuration and all real guest rows remain
+pending. Guest acceptance remains NOT_RUN. Keep the real credential/signing step
+and all guest operations behind their existing separate authorization.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

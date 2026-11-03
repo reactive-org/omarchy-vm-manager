@@ -2861,3 +2861,52 @@ tool/guest operations still separately authorized. Ordinary product approval sta
 nil and guest acceptance stays NOT_RUN. The
 [runbook](DevVMMilestone6Runbook.md#offline-signing-and-readiness-audit) distinguishes
 static passes, access refusal, source inference and live evidence still missing.
+
+## Milestone 6 private handoff and packaging path — fake/local, 3 November 2026
+
+**IMPLEMENTED:** a developer-only `prepare` CLI captures a reviewed candidate's
+original scope/receipt/source archive/overlay, runtime and provisioning resources,
+locks and profile pin into a new private handoff. It requires explicit private
+candidate/scope digest bindings, validates strict JSON and original file identities,
+and emits a frozen request plus digest. It never reads the root named in the scope,
+recaptures identity pins, runs a child process or touches credentials. The actual
+retained candidate produces a private 101-file handoff; its original input bytes
+stay unchanged. The public product source remains nil/disabled and the existing
+tag/publishing workflow is untouched. These build tools add no shipped Python.
+
+**DESIGN DECISION:** the CLI offers no real signing command. A trusted fake-only
+packaging runner exercises the entire sequence using synthetic runtime/profile/
+app bytes and checked build/scope receipts: profile validation, signed-runtime
+provenance, signed-prerelease rebuild, child signing, post-sign executable seal,
+outer signing, verification, private ZIP, extraction and verification again. It
+reuses existing runtime/payload, profile-entitlement and provisioning validators.
+The real request cannot enter this runner. All fake artifacts are non-executable
+simulation evidence, with `productionSigningVerified: false`; no simulated receipt
+establishes real compilation, signing, loaded-child identity or guest authority.
+
+**PRIVATE COUPLING:** request digests bind inputs independently of a mutable checksum
+sidecar. Original constants must match both component build receipts and synthetic
+code bodies. Inputs are re-admitted across callbacks; immutable runtime/resource/
+profile/pin checks, post-sign seals and read-only verification preserve that binding
+through archive roundtrip. New owned/private destinations, source-overlap and
+case-insensitive VM/release namespace guards, tag/release refusal and no publishing
+interface keep outputs out of ordinary release paths. Changed/failed requests,
+unsafe links/archives and disk payloads fail closed. Partial outputs remain private,
+diagnostics omit backend errors and existing outputs are never overwritten/replayed.
+
+**VERIFIED — fake/local:** eighteen new unit functions, including 22 signer/build/
+profile/runtime/scope/entitlement tamper cases, and all **79 script tests** pass.
+Process/network/credential hooks are prohibited in the fixture runner and record
+zero calls in the retained synthetic demonstration. The actual candidate's frozen
+request is independently loaded and refused by the fake runner before a callback.
+Original candidate/evidence/root/registry remain unchanged; private identities and
+artifacts stay ignored. Source changes are limited to developer scripts, Make
+targets, tests and docs; shared/package/runtime/signature policies are unchanged.
+
+**TO PROVE:** an authorized real-signer adapter and actual private signed-prerelease
+build/sign verification, notarization, loaded-child admission and final original-
+Mac scope observation. Real credential/signing and guest operations remain separate
+authorizations. Factory bytes still lack access, installed tools remain unprobed,
+SSH/owner/frozen setup configuration is pending and all real rows remain NOT_RUN.
+See the [runbook](DevVMMilestone6Runbook.md#private-signing-and-packaging-handoff--fakelocal-path)
+for command inputs, privacy guards and current limitations.
