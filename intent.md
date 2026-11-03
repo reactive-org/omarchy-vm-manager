@@ -1508,3 +1508,12 @@ All nine published asset sizes/digests and both ZIP checksums match. Downloaded 
 
 
 **DESIGN DECISION — next native sleep/wake check, 3 November 2026:** after the user requested the sleep/wake test, prepare a focus-preserving manual `pmset sleepnow` timer with the running test guest and upstream password-fallback-disabled test. Source inspection confirms epoch revocation before host sleep and eligibility-gated renewal on wake; the local manual distinguishes host sleep from display sleep. The shell snippet passes syntax checking. Native sleep cancellation, old-request failure and fresh-request recovery remain **TO PROVE** until user observation. The agent did not sleep the Mac, operate a guest, control authentication/unlock UI or modify power settings. See [the manual procedure](docs/GuestTouchID.md#focus-preserving-mac-sleepwake-check).
+
+
+## User-confirmed Mac sleep/wake cancellation and recovery — 3 November 2026
+
+**VERIFIED — user report:** in the build 26 verification sequence, the user reported that the Mac slept and woke successfully, the old password-fallback-disabled guest test failed, and a fresh Touch ID test passed. Record this described manual host sleep/wake denial/recovery case as passed. The statement establishes these test outcomes; it does not independently measure prompt timing/count or every host sleep mode.
+
+**VERIFIED — separate read-only helper evidence:** the manager's existing report for the same currently active guest and launch session contains `Execution: host-sleeping` at `2026-11-03T04:44:47Z` and `Execution: running` at `2026-11-03T04:45:04Z`. These are helper-reported execution transitions, not an independent measurement of hardware sleep duration. Only state/timing tokens are retained; guest names, UUIDs, paths, process IDs, credentials and key identifiers are excluded. The agent sent no sleep, wake, guest-control or authentication command and changed no power setting.
+
+**TO PROVE:** shutdown/forced-stop/crash cancellation, rapid focus transitions and exact prompt counts, unavailable-biometry fallback, re-pairing and two-VM contention/key isolation remain pending. This user-confirmed case supersedes the prior pending sleep/wake result only for the described sequence and does not grant agent-driven native interaction.

@@ -196,3 +196,6 @@ The host fix and reported no-prompt failure are detailed in [Guest Touch ID](Gue
 
 
 **VERIFIED — user-reported pause/resume case:** helper reports show a five-second pause/resume cycle; the user observed prompt cancellation and subsequently supplied the old password-fallback-disabled test failing and a fresh test passing. Record that manual cancellation/recovery case as passed for build 26. [Exact scope and remaining native gates](GuestTouchID.md#user-confirmed-pause-cancellation-and-recovery--3-november-2026) remain distinct from independent agent observation.
+
+
+**VERIFIED — user-reported Mac sleep/wake case:** in the build 26 verification sequence, the user confirmed actual Mac sleep/wake, failure of the old password-fallback-disabled test and success of a fresh Touch ID test. Separate read-only helper reports show host-sleeping then running for the same active session. [Scoped evidence and remaining gates](GuestTouchID.md#user-confirmed-mac-sleepwake-cancellation-and-recovery--3-november-2026) distinguish user observations from helper acknowledgements; shutdown/crash and multi-VM behavior remain **TO PROVE**.
