@@ -21,6 +21,7 @@ from kit_artifacts import ROOT, digest
 from build_patched_kit import inventory
 from fetch_runtime_kit import archive_manifest, verify, MAX_ARCHIVE_BYTES
 from package_prerelease import validate_tag
+from ticket_network import retry_ticket_call
 from upstream_source import prepare
 from keychain_profile import decode_profile, profile_entitlements, verify_profile_bytes
 
@@ -66,7 +67,11 @@ def run(label, *arguments):
     return result
 
 
-def check_submission(identifier):
+def retry_ticket_network(label, *arguments):
+    return retry_ticket_call(lambda: run(label, *arguments), label)
+
+
+def check_submission(identifier, archive=None):
     """Read an existing submission in CI without importing a signing identity."""
     if os.environ.get("GITHUB_ACTIONS") != "true" or not os.environ.get("RUNNER_TEMP"):
         raise RuntimeError("Notarization credentials are restricted to the authorized GitHub release job")
@@ -90,9 +95,12 @@ def check_submission(identifier):
         folder = ROOT / ".build/notarization"
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "existing-submission.json").write_text(json.dumps(status, indent=2) + "\n")
-        if status["status"] in {"Invalid", "Rejected"}:
-            run("Read Apple rejection details", "xcrun", "notarytool", "log", identifier,
+        if status["status"] in {"Accepted", "Invalid", "Rejected"}:
+            run("Read Apple submission log", "xcrun", "notarytool", "log", identifier,
                 *authentication, folder / "existing-submission-log.json")
+        if archive is not None:
+            assert status["status"] == "Accepted", "the retained archive is still pending"
+            validate_accepted_log(json.loads((folder / "existing-submission-log.json").read_bytes()), identifier, digest(archive))
         print(f"::notice title=Existing Apple submission::{identifier}: {status['status']}", flush=True)
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a") as output:
@@ -209,22 +217,32 @@ def credentials():
 def notarize(archive, profile, label):
     folder = ROOT / ".build/notarization"
     folder.mkdir(parents=True, exist_ok=True)
+    candidate = ROOT / ".build/signed-release" / ("notary-" + label + ".zip")
+    candidate.parent.mkdir(parents=True, exist_ok=True)
+    if candidate.resolve() != archive.resolve():
+        assert not candidate.exists(), "existing submitted candidate was preserved"
+        shutil.copy2(archive, candidate)
     submission = json.loads(run("Submit " + label + " to Apple", "xcrun", "notarytool", "submit", archive,
                                 *profile, "--output-format", "json").stdout)
     identifier = submission["id"]
-    assert re.fullmatch(r"[0-9a-fA-F-]{36}", identifier)
+    assert re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", identifier)
+    (folder / (label + "-submission.json")).write_text(json.dumps(submission, indent=2) + "\n")
+    (folder / (label + "-candidate.json")).write_text(json.dumps({
+        "submissionID": identifier, "archiveSHA256": digest(archive), "archiveName": archive.name,
+        "releaseTag": os.environ.get("RELEASE_TAG")}, indent=2, sort_keys=True) + "\n")
     deadline = time.monotonic() + 45 * 60
     previous_status = None
     while True:
         status = json.loads(run("Check Apple notarization status for " + label, "xcrun", "notarytool", "info", identifier,
                                 *profile, "--output-format", "json").stdout)
+        assert status["id"].lower() == identifier.lower(), "Apple returned a different submission"
         (folder / (label + "-submission.json")).write_text(json.dumps(status, indent=2) + "\n")
         print(f"{label}: Apple status {status.get('status')} (submission {identifier})", flush=True)
         if status.get("status") != previous_status:
             print(f"::notice title=Apple notarization::{label}: {status.get('status')} (submission {identifier})", flush=True)
             previous_status = status.get("status")
         if status.get("status") == "Accepted":
-            return status
+            return accepted_submission(archive, profile, label, identifier)
         if status.get("status") not in {"In Progress", "InProgress"}:
             run("Retrieve Apple rejection details", "xcrun", "notarytool", "log", identifier,
                 *profile, folder / (label + "-log.json"))
@@ -232,6 +250,68 @@ def notarize(archive, profile, label):
         if time.monotonic() >= deadline:
             raise RuntimeError(label + " is still pending at Apple; submission ID is retained in the diagnostic artifact")
         time.sleep(30)
+
+
+def validate_accepted_log(value, identifier, archive_sha):
+    assert value.get("jobId", "").lower() == identifier.lower(), "Apple log submission mismatch"
+    assert value.get("status") == "Accepted" and value.get("statusCode") == 0, "Apple log is not accepted"
+    assert value.get("sha256", "").lower() == archive_sha, "Apple accepted a different archive"
+    assert value.get("issues") in (None, []), "Apple acceptance log has issues"
+    assert value.get("ticketContents"), "Apple acceptance log contains no tickets"
+
+
+def accepted_submission(archive, profile, label, identifier):
+    folder = ROOT / ".build/notarization"
+    folder.mkdir(parents=True, exist_ok=True)
+    status = json.loads(run("Verify existing accepted " + label + " submission", "xcrun", "notarytool", "info",
+                            identifier, *profile, "--output-format", "json").stdout)
+    assert status["id"].lower() == identifier.lower(), "Apple returned a different submission"
+    (folder / (label + "-submission.json")).write_text(json.dumps(status, indent=2) + "\n")
+    assert status.get("status") == "Accepted", label + " has not been accepted by Apple"
+    log = folder / (label + "-log.json")
+    run("Retrieve accepted Apple archive binding for " + label, "xcrun", "notarytool", "log",
+        identifier, *profile, log)
+    validate_accepted_log(json.loads(log.read_bytes()), identifier, digest(archive))
+    return status
+
+
+def stage_retained_runtime(retained, folder, source, source_bytes, profile, team, signature, original):
+    import zipfile
+    from fetch_runtime_kit import MAX_EXPANDED_BYTES
+    from retained_candidate import validate_source
+    receipt = json.loads((retained / "CandidateReceipt.json").read_bytes())
+    validate_source(receipt, ROOT)
+    assert hashlib.sha256(source_bytes).hexdigest() == receipt["sourceLockSHA256"]
+    assert (retained / "SourceRuntime.lock.json").read_bytes() == source_bytes
+    archive = retained / "TryOmarchyKit.zip"
+    assert digest(archive) == receipt["runtimeArchiveSHA256"], "retained runtime digest mismatch"
+    # Construct a candidate inventory for the existing archive validator before extraction.
+    with zipfile.ZipFile(archive) as zipped:
+        assert sum(item.file_size for item in zipped.infolist()) <= MAX_EXPANDED_BYTES
+        files = {str(Path(item.filename).relative_to("TryOmarchyKit.bundle")):
+                 hashlib.sha256(zipped.read(item)).hexdigest()
+                 for item in zipped.infolist() if not item.is_dir() and not Path(item.filename).name.startswith("._")}
+    value = json.loads((retained / "TryOmarchyKit.json").read_bytes())
+    candidate = dict(source, kitSHA256=receipt["runtimeArchiveSHA256"], files=files, buildDate=value["buildDate"])
+    archive_manifest(archive, candidate)
+    folder.mkdir()
+    shutil.copy2(archive, folder / "TryOmarchyKit.zip")
+    shutil.copy2(retained / "TryOmarchyKit.json", folder / "TryOmarchyKit.json")
+    run("Extract exact retained signed runtime", "ditto", "-x", "-k", folder / "TryOmarchyKit.zip", folder)
+    verify(folder, candidate)
+    run("Verify retained runtime signatures, entitlements and network pins", "python3", signature,
+        "verify", "--team", team, "--signature-only", folder / "TryOmarchyKit.bundle")
+    sys.path.insert(0, str(signature.parent))
+    import kit_signature
+    code_paths = {path.relative_to(original).as_posix() for path in kit_signature.code_files(kit_signature.layout(original))}
+    assert len(code_paths) == receipt["signedMachOFiles"], "unexpected runtime code inventory"
+    validate_payload(source["files"], inventory(folder / "TryOmarchyKit.bundle"), code_paths)
+    accepted_submission(folder / "TryOmarchyKit.zip", profile, "runtime", receipt["appleSubmissionID"])
+    submitted = ROOT / ".build/signed-release/notary-runtime.zip"
+    assert not submitted.exists(), "existing submitted runtime was preserved"
+    shutil.copy2(archive, submitted)
+    if receipt.get("artifactLayout") == "complete-build-v1":
+        shutil.copy2(retained / "RuntimeCandidate.json", ROOT / ".build/notarization/runtime-candidate.json")
 
 
 def download(archive, url):
@@ -243,7 +323,7 @@ def download(archive, url):
             target.write(data)
 
 
-def prepare_runtime(source, source_bytes, profile, team, identity, tag, work):
+def prepare_runtime(source, source_bytes, profile, team, identity, tag, work, retained=None):
     upstream = prepare()
     folder = work / "kit"
     assert not folder.exists(), "existing signed runtime staging was preserved"
@@ -260,10 +340,13 @@ def prepare_runtime(source, source_bytes, profile, team, identity, tag, work):
         verify(folder, lock)
     else:
         original = ROOT / ("VendorArtifacts/patched-" + source["patchCommit"][:12]) / "TryOmarchyKit.bundle"
-        run("Build signed runtime through upstream kit pipeline", upstream / "macos/build-kit.sh", "--app", original,
-            "--output", folder, "--sign-identity", identity)
-        notarize(folder / "TryOmarchyKit.zip", profile, "runtime")
-        run("Staple runtime ticket through upstream pipeline", "python3", signature, "staple", folder / "TryOmarchyKit.bundle")
+        if retained is not None:
+            stage_retained_runtime(retained, folder, source, source_bytes, profile, team, signature, original)
+        else:
+            run("Build signed runtime through upstream kit pipeline", upstream / "macos/build-kit.sh", "--app", original,
+                "--output", folder, "--sign-identity", identity)
+            notarize(folder / "TryOmarchyKit.zip", profile, "runtime")
+        retry_ticket_network("Staple runtime ticket through upstream pipeline", "python3", signature, "staple", folder / "TryOmarchyKit.bundle")
         (folder / "TryOmarchyKit.zip").unlink()
         run("Archive notarized runtime", "ditto", "-c", "-k", "--keepParent", folder / "TryOmarchyKit.bundle", folder / "TryOmarchyKit.zip")
         signed_files = inventory(folder / "TryOmarchyKit.bundle")
@@ -278,14 +361,14 @@ def prepare_runtime(source, source_bytes, profile, team, identity, tag, work):
                     composition=source["composition"] + "; Developer ID signed/notarized variant through upstream kit pipeline")
         validate_signed_lock(lock, source, source_sha, team)
         archive_manifest(folder / "TryOmarchyKit.zip", lock)
-    run("Verify every runtime signature, entitlement, network pin and notarization", "python3", signature,
+    retry_ticket_network("Verify every runtime signature, entitlement, network pin and notarization", "python3", signature,
         "verify", "--team", team, "--require-notarization", folder / "TryOmarchyKit.bundle")
     lock_path = work / "TryOmarchySignedRuntime.lock.json"
     lock_path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
     return lock, lock_path, folder
 
 
-def release():
+def release(retained=None):
     import plistlib
     version = plistlib.loads((ROOT / "App/Info.plist").read_bytes())["CFBundleShortVersionString"]
     tag = validate_tag(os.environ.get("RELEASE_TAG", ""), version)
@@ -293,8 +376,17 @@ def release():
     source = json.loads(source_bytes)
     work = ROOT / ".build/signed-release"
     work.mkdir(parents=True, exist_ok=True)
+    (work / "SourceRuntime.lock.json").write_bytes(source_bytes)
+    (work / "ReleaseSource.json").write_text(json.dumps({
+        "releaseTag": tag,
+        "applicationSourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "sourceLockSHA256": hashlib.sha256(source_bytes).hexdigest(),
+        "sourceKitSHA256": source["kitSHA256"],
+        "workflowRunID": os.environ.get("GITHUB_RUN_ID"),
+        "workflowRunAttempt": os.environ.get("GITHUB_RUN_ATTEMPT")
+    }, indent=2, sort_keys=True) + "\n")
     with provisioning_profile() as keychain_profile, credentials() as (profile, team, identity):
-        lock, lock_path, folder = prepare_runtime(source, source_bytes, profile, team, identity, tag, work)
+        lock, lock_path, folder = prepare_runtime(source, source_bytes, profile, team, identity, tag, work, retained)
         pin = ROOT / "Sources/OmarchyVMManagerCore/RuntimePin.swift"
         signed_pin = ROOT / "Sources/OmarchyVMManagerCore/SignedBuildPin.swift"
         original_pin = pin.read_bytes()
@@ -315,7 +407,7 @@ def release():
             submission_archive = work / "notary-app.zip"
             run("Archive app for Apple submission", "ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, submission_archive)
             status = notarize(submission_archive, profile, "app")
-            run("Staple app ticket", "xcrun", "stapler", "staple", app)
+            retry_ticket_network("Staple app ticket", "xcrun", "stapler", "staple", app)
             run("Verify notarized app and Gatekeeper acceptance", "python3", ROOT / "Scripts/verify_signed_app.py", app)
             run("Package and verify the final notarized ZIP", "python3", ROOT / "Scripts/package_prerelease.py", "--signed", "--runtime-lock", lock_path)
             output = ROOT / "dist/prerelease"
@@ -324,6 +416,19 @@ def release():
             archive.with_suffix(".zip.sha256").write_text(digest(archive) + "  " + archive.name + "\n")
             shutil.copy2(lock_path, output / lock_path.name)
             (output / "SourceRuntime.lock.json").write_bytes(source_bytes)
+            shutil.copy2(work / "ReleaseSource.json", output / "ReleaseSource.json")
+            for label in ("runtime", "app"):
+                log = ROOT / ".build/notarization" / (label + "-log.json")
+                if log.exists():
+                    shutil.copy2(log, output / (label.capitalize() + "NotarizationLog.json"))
+            if retained is not None:
+                for name in ("CandidateReceipt.json", "SourceRun.json", "SourceArtifact.json", "SourceJobs.json"):
+                    shutil.copy2(retained / name, output / name)
+                (output / "Continuation.json").write_text(json.dumps({
+                    "applicationSourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+                    "toolingCommit": os.environ["CONTINUATION_TOOLING_COMMIT"],
+                    "runtime": json.loads((ROOT / ".build/notarization/runtime-submission.json").read_bytes()),
+                    "app": status}, indent=2, sort_keys=True) + "\n")
             (output / "Notarization.json").write_text(json.dumps({"app": status, "runtimeArchiveSHA256": lock["kitSHA256"],
                 "sourceLockSHA256": lock["sourceLockSHA256"], "sourceKitSHA256": lock["sourceKitSHA256"]}, indent=2) + "\n")
         finally:
@@ -337,10 +442,14 @@ if __name__ == "__main__":
     try:
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument("--check-submission", help="Read an existing Apple submission in CI without uploading or signing")
+        parser.add_argument("--check-archive", type=Path, help="Require accepted Apple log binding to this exact archive")
+        parser.add_argument("--resume-runtime", type=Path, help="Use the exact verified retained runtime candidate without signing or resubmitting it")
         args = parser.parse_args()
+        assert not (args.check_submission and args.resume_runtime)
+        assert not args.check_archive or args.check_submission
         if args.check_submission:
-            check_submission(args.check_submission)
+            check_submission(args.check_submission, args.check_archive)
         else:
-            release()
+            release(args.resume_runtime)
     except Exception as error:
         sys.exit(redact(str(error)))

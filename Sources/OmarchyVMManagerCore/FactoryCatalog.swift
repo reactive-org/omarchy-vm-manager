@@ -43,6 +43,7 @@ struct FactoryImportReceipt: Codable, Equatable {
     let factory: FactoryIdentity
     let runtimeLockSHA256: String
     let importedAt: Date
+    var guestIntegrationContractSHA256: String? = nil
 }
 
 public struct FactoryCatalog: Sendable {
@@ -50,6 +51,7 @@ public struct FactoryCatalog: Sendable {
     let kit: TryOmarchyKit
     let lockData: Data
     let reviewed: Set<String>
+    let integrationContract: VMGuestIntegrationContract
     public init(applicationSupport: URL, kit: TryOmarchyKit, lockData: Data) throws {
         _ = try KitVerifier.inspect(kit: kit, lockData: lockData, expectedLockSHA256: RuntimePin.lockSHA256, policy: .current, preflight: { nil })
         let signature = Process()
@@ -62,8 +64,8 @@ public struct FactoryCatalog: Sendable {
         self.init(applicationSupport: applicationSupport, kit: kit, lockData: lockData,
                   reviewed: try Self.decodeReviews(VMFactorySelection.readMetadata(url), expectedSHA256: FactoryReviewPin.sha256))
     }
-    init(applicationSupport: URL, kit: TryOmarchyKit, lockData: Data, reviewed: Set<String>) {
-        self.applicationSupport = applicationSupport; self.kit = kit; self.lockData = lockData; self.reviewed = reviewed
+    init(applicationSupport: URL, kit: TryOmarchyKit, lockData: Data, reviewed: Set<String>, integrationContract: VMGuestIntegrationContract = .current) {
+        self.applicationSupport = applicationSupport; self.kit = kit; self.lockData = lockData; self.reviewed = reviewed; self.integrationContract = integrationContract
     }
     static func decodeReviews(_ data: Data, expectedSHA256: String) throws -> Set<String> {
         guard data.count <= 65536, KitVerifier.sha256(data) == expectedSHA256 else { throw invalid("The factory review catalog differs from the compiled pin.") }
@@ -80,23 +82,45 @@ public struct FactoryCatalog: Sendable {
         try PrivateFiles.directory(directory); try PrivateFiles.directory(receipts)
         let url = receiptURL(digest)
         guard PrivateFiles.exists(url) else { return nil }
-        let receipt = try JSONDecoder().decode(FactoryImportReceipt.self, from: PrivateFiles.read(url))
+        let receipt: FactoryImportReceipt
+        do { receipt = try JSONDecoder().decode(FactoryImportReceipt.self, from: PrivateFiles.read(url)) }
+        catch { throw Self.invalid("The factory import receipt is malformed or unsafe. Preserve it and explicitly re-import a separately prepared bundle after review.") }
         try receipt.factory.validate()
-        guard receipt.schemaVersion == 1, receipt.factory.kind == .custom, receipt.factory.manifestSHA256 == digest,
-              receipt.runtimeLockSHA256 == KitVerifier.sha256(lockData), receipt.importedAt.timeIntervalSince1970.isFinite else {
-            throw Self.invalid("This factory’s import record is damaged or belongs to a different runtime.")
+        guard receipt.factory.kind == .custom, receipt.factory.manifestSHA256 == digest,
+              VMFactorySelection.isDigest(receipt.runtimeLockSHA256), receipt.importedAt.timeIntervalSince1970.isFinite else {
+            throw Self.invalid("This factory’s import record is damaged. Preserve it and prepare a separate bundle for explicit re-import.")
+        }
+        switch receipt.schemaVersion {
+        case 1:
+            guard receipt.guestIntegrationContractSHA256 == nil, receipt.runtimeLockSHA256 == KitVerifier.sha256(lockData) else {
+                throw Self.invalid("This legacy import receipt requires its original runtime. Prepare a separate bundle with the reviewed guest package archive and explicitly import it; the disk need not be rebuilt if that evidence is available.")
+            }
+        case 2:
+            guard receipt.guestIntegrationContractSHA256 == integrationContractSHA256 else {
+                throw Self.invalid("This import receipt requires an unsupported guest integration contract. Review and prepare a separate supported bundle for explicit import.")
+            }
+        default:
+            throw Self.invalid("Unknown factory import receipt version. Preserve it and explicitly import a separately prepared supported bundle.")
         }
         return receipt
     }
     private func recordImport(_ factory: FactoryIdentity) throws {
         try PrivateFiles.directory(receipts, create: true)
         try Self.flushDirectory(directory)
+        let manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: VMFactorySelection.readMetadata(root(factory.manifestSHA256).appendingPathComponent("reviewed-factory.json")))
         if let existing = try receipt(for: factory.manifestSHA256) {
             guard existing.factory == factory else { throw Self.invalid("The imported factory differs from its saved identity.") }
+            guard (existing.schemaVersion == 2) == (manifest.format == 2) else { throw Self.invalid("The existing receipt uses a different compatibility policy. Preserve it and explicitly import a separately prepared bundle.") }
             return
         }
-        let receipt = FactoryImportReceipt(schemaVersion: 1, factory: factory, runtimeLockSHA256: KitVerifier.sha256(lockData), importedAt: Date())
+        let receipt = FactoryImportReceipt(schemaVersion: manifest.format == 2 ? 2 : 1, factory: factory,
+                                           runtimeLockSHA256: KitVerifier.sha256(lockData), importedAt: Date(),
+                                           guestIntegrationContractSHA256: manifest.format == 2 ? integrationContractSHA256 : nil)
         try PrivateFiles.write(JSONEncoder().encode(receipt), name: receiptURL(factory.manifestSHA256).lastPathComponent, in: receipts, exclusively: true)
+    }
+    var integrationContractSHA256: String {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return KitVerifier.sha256(try! encoder.encode(integrationContract))
     }
     static func invalid(_ message: String) -> VMFailure { VMFailure(code: "factory-verification-failed", message: message) }
 
@@ -104,7 +128,13 @@ public struct FactoryCatalog: Sendable {
         let receipt = try receipt(for: digest)
         guard reviewed.contains(digest) || receipt != nil else { throw Self.invalid("Import this prepared factory through Import Factory before selecting it.") }
         let identity = try verifyCandidate(url, digest: digest)
-        if let receipt, receipt.factory != identity { throw Self.invalid("The imported factory differs from its saved identity.") }
+        if let receipt {
+            guard receipt.factory == identity else { throw Self.invalid("The imported factory differs from its saved identity.") }
+            let manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: VMFactorySelection.readMetadata(url.appendingPathComponent("reviewed-factory.json")))
+            guard (receipt.schemaVersion == 2) == (manifest.format == 2) else {
+                throw Self.invalid("The factory manifest and receipt use different compatibility policies. Prepare a separate bundle for explicit re-import.")
+            }
+        }
         return identity
     }
 
@@ -114,14 +144,22 @@ public struct FactoryCatalog: Sendable {
         guard lock.customFactoryVersion == 1, lock.managedSSHVersion == 1, lock.managedSetupVersion == 1, lock.ownerSetupReportVersion == VMOwnerSetupContract.reportVersion else { throw Self.invalid("The runtime lacks the reviewed custom-factory and provisioning capabilities.") }
         let selection = VMFactorySelection(bundlePath: url.path, manifestSHA256: digest)
         let manifest: VMFactoryManifest
-        do { manifest = try selection.verified(runtimeBundle: kit.bundleURL) }
+        do { manifest = try selection.verified(runtimeBundle: kit.bundleURL, reviewedIntegrationContract: integrationContract) }
         catch is CancellationError { throw CancellationError() }
-        catch { throw Self.invalid("The factory payload, image metadata or runtime hashes failed verification.") }
+        catch let error as VMFactoryCompatibilityError { throw Self.invalid(error.localizedDescription) }
+        catch { throw Self.invalid("The factory payload checksum, image metadata or legacy runtime inventory failed verification. Preserve this bundle and prepare a separate one with supported evidence.") }
         try Task.checkCancellation()
-        guard manifest.runtimeFiles == lock.files,
-              manifest.integrationPackageSHA256 == lock.files[VMFactorySelection.packagePath],
-              VMOwnerSetupContract.isSupported(manifest.ownerSetupContractSHA256),
-              manifest.ownerSetupContractSHA256 != VMOwnerSetupContract.lean || (lock.ownerSetupContractsVersion == 1 && manifest.imageIntegrationSourceCommit == lock.patchCommit) else { throw Self.invalid("Factory runtime, integration package or provisioning contract provenance differs from this kit.") }
+        guard VMOwnerSetupContract.isSupported(manifest.ownerSetupContractSHA256) else {
+            throw Self.invalid("Unsupported owner provisioning contract.")
+        }
+        if manifest.format == 1 {
+            guard manifest.runtimeFiles == lock.files else { throw Self.invalid("Legacy factory runtime inventory differs. Prepare a separate bundle with reviewed integration evidence; retain the existing image if its package is supported.") }
+            guard manifest.integrationPackageSHA256 == lock.files[VMFactorySelection.packagePath] else { throw Self.invalid("Legacy factory runtime integration package checksum differs.") }
+        } else {
+            guard lock.factoryCompatibilityVersion == 1 else { throw Self.invalid("The runtime lacks reviewed factory compatibility support. Build and verify the updated runtime kit first.") }
+            guard lock.files[VMFactorySelection.packagePath] == integrationContract.runtimePackageSHA256 else { throw Self.invalid("Runtime guest integration package checksum is not supported by the reviewed compatibility contract.") }
+        }
+        guard manifest.ownerSetupContractSHA256 != VMOwnerSetupContract.lean || lock.ownerSetupContractsVersion == 1 else { throw Self.invalid("The runtime lacks reviewed lean owner contract support.") }
         let image = try Self.decodeImage(VMFactorySelection.readMetadata(url.appendingPathComponent("factory.json")), expectedSHA256: manifest.files["factory.json"])
         return FactoryIdentity(kind: .custom, name: manifest.name, manifestSHA256: digest, diskSHA256: image.disk.sha256)
     }
@@ -216,7 +254,7 @@ public struct FactoryCatalog: Sendable {
                 try PrivateFiles.directory(root(digest))
                 factories.append(try verify(root(digest), digest: digest))
             } catch {
-                issues.append(FactoryCatalogIssue(selector: digest, message: "This imported factory or its import record failed verification and cannot be selected."))
+                issues.append(FactoryCatalogIssue(selector: digest, message: (error as? VMFailure)?.message ?? "This imported factory or its import record is malformed and cannot be selected. Prepare a separate supported bundle for explicit import."))
             }
         }
         return FactoryCatalogListing(factories: factories, issues: issues)

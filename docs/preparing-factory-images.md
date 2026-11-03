@@ -1,5 +1,8 @@
 # Preparing and customising a factory image
 
+**Current compatibility policy:** [reviewed guest integration contract](FactoryCompatibility.md). Unrelated manager/source changes do not require a lean disk rebuild. Legacy lean descriptors require a separate format-2 bundle, the original reviewed package archive and explicit import. Historical source/rebuild records below describe their original validation and are not the current admission rule.
+
+
 [User guide](README.md) · [Factory images](../README.md#factory-images) · [Bundle contract](CustomFactories.md)
 
 A factory is a sealed starting disk for new guests. Use the official Try Omarchy
@@ -16,10 +19,11 @@ and ARM64 Omarchy with UEFI/Limine boot.
 
 Use an existing Omarchy VM Manager checkout and matching built app/CLI, plus a
 [dev-vm checkout](https://github.com/reactive-org/dev-vm). The lean path below
-matches the reviewed **0.9.3** runtime, integration package **0.1.0-43** and
-`lean-e4fffc6` owner-setup contract. Check [Lean owner setup](LeanOwnerSetup.md)
-when using another revision; factory compatibility is tied to exact runtime
-hashes, rather than the app version alone.
+uses guest integration contract 1, runtime package **0.1.0-43**, lean package
+**0.1.0-43.1** and the `lean-e4fffc6` owner-setup contract. The supported complete
+archive identities are listed in [Factory compatibility](FactoryCompatibility.md).
+Factory compatibility is independent of source commit equality; current runtime
+execution still requires its complete pinned inventory and signatures.
 
 Have Git, Python 3.10+, make and Docker already available on the Mac, with Docker
 providing an ARM64 Linux engine. A full build needs the requested image capacity
@@ -87,16 +91,18 @@ workstation='/absolute/path/to/dev-vm'
 cd "$manager"
 make prepare-source
 integration_source=$(cd .build/runtime-source && pwd -P)
-integration_commit=80156396a5daa795487c0f4a8308eee53f6ea68b
-test "$(git -C "$integration_source" rev-parse HEAD)" = "$integration_commit"
+integration_commit=$(git -C "$integration_source" rev-parse HEAD)
 ```
 
-The final check must succeed before continuing. Keep this generated source
-clean. This revision retains the stock v1.3.0 factory builder and adds the
+Keep this generated source clean. Record its resolved commit as build provenance.
+This source retains the stock v1.3.0 factory builder and adds the
 reviewed managed owner/SSH integration. The dev-vm builder produces the matched
 hardware-policy package **0.1.0-43.1**, which the runtime preserves as newer than
 its bundled 43 package. A stock-source build or older lean artifact is not a
-substitute for this managed lean path.
+substitute for this managed lean path. A freshly built archive may differ in
+package metadata even with identical integration code; it must undergo explicit
+package review and support before preparation. Reuse an existing supported disk
+and its original archive when a rebuild is unnecessary.
 
 Preview the inputs without Docker, downloads or disk creation:
 
@@ -146,12 +152,15 @@ mkdir "$bundle"
 cp "$artifact/factory.json" "$artifact/omarchy-workstation-aarch64-edge.img.zst" \
   "$artifact/compatibility.json" "$artifact/image-build.json" \
   "$artifact/source-compatibility.json" "$artifact/provisioning-check.json" \
-  "$artifact/user-provisioning-check.json" "$bundle/"
+  "$artifact/user-provisioning-check.json" \
+  "$artifact/packages/try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst" "$bundle/"
 
 cd "$manager"
 python3 Scripts/prepare_factory_bundle.py "$bundle" \
   --name 'Custom lean Omarchy' --owner-contract lean-e4fffc6 \
   --compatibility compatibility.json --image-build image-build.json \
+  --integration-package try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst \
+  --provisioning try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst \
   --provisioning compatibility.json --provisioning image-build.json \
   --provisioning source-compatibility.json --provisioning provisioning-check.json \
   --provisioning user-provisioning-check.json
@@ -159,8 +168,9 @@ python3 Scripts/prepare_factory_bundle.py "$bundle" \
 
 The tool checks the compressed image against `factory.json`, checks lean
 compatibility/build evidence, writes `reviewed-factory.json` and prints its
-SHA-256. The descriptor records the payload/evidence hashes and exact runtime,
-integration package and owner contract. For an image preserving the supported
+SHA-256. The format-2 lean descriptor records payload/evidence hashes, supported
+guest protocols/capabilities, the reviewed complete package identity, owner
+contract and source/runtime provenance. For an image preserving the supported
 official owner programs, the default contract is `official`; use the
 [general preparation command](CustomFactories.md#prepared-bundle) instead.
 

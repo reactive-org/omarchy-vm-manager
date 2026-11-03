@@ -209,7 +209,7 @@ public actor VMManager {
     }
 
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
-                       clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true,
+                       clipboardEnabled: Bool, guestTouchIDEnabled: Bool = false, immersiveMode: Bool, sshEnabled: Bool = true,
                        publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true, factory: String = "official",
                        ownerOverrides: GuestOwnerOverrides? = nil, sharedFolder: SharedFolderMapping? = nil,
                        setupConsent: ProvisioningCreationConsent? = nil) async throws -> UUID {
@@ -246,6 +246,7 @@ public actor VMManager {
         }
         var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus, diskGiB: diskGiB,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
+        profile.guestTouchIDEnabled = guestTouchIDEnabled
         try sharedFolder?.validate()
         if let sharedFolder, sharedFolder.enabled {
             guard sshEnabled else { throw SharedFolderPolicy.failure("Native sharing requires managed SSH to verify the mount.") }
@@ -309,10 +310,10 @@ public actor VMManager {
         return try ownerDefaults.save(enabled: enabled, configuration: configuration, password: password, sshPublicKey: sshPublicKey)
     }
 
-    public func upgradeSavedGuestPassword() async throws {
+    public func upgradeSavedGuestPassword() async throws -> OwnerPasswordUpgradeResult {
         guard !quitting, let registry, let ownerDefaults else { throw OwnerConfiguration.invalid("Guest Defaults is unavailable while the manager is quitting.") }
         try registry.checkRevision()
-        try await Task.detached(priority: .userInitiated) { try ownerDefaults.upgradeSavedPassword() }.value
+        return try await Task.detached(priority: .userInitiated) { try ownerDefaults.upgradeSavedPassword() }.value
     }
 
     public func update(_ id: UUID, configuration: GuestConfigurationPatch) throws {
@@ -322,6 +323,7 @@ public actor VMManager {
         if let value = configuration.memoryMiB { profile.memoryMiB = value }
         if let value = configuration.cpus { profile.cpus = value }
         if let value = configuration.diskGiB { profile.diskGiB = value }
+        if let value = configuration.guestTouchID { profile.guestTouchIDEnabled = value }
         if let value = configuration.clipboard { profile.clipboardEnabled = value }
         if let value = configuration.immersive { profile.immersiveMode = value }
         profile.sharedFolder = try configuration.sharing(replacing: profile.sharedFolder)
@@ -430,10 +432,16 @@ public actor VMManager {
     public func snapshots() -> [VMSnapshot] {
         profiles.map {
             VMSnapshot(profile: $0, state: states[$0.id] ?? .stopped,
-                       sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: notices[$0.id],
+                       sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: authenticationNotice($0.id) ?? notices[$0.id],
                        sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped),
                        ownerSetupReadiness: ownerReadiness($0), sharedFolderReadiness: sharingReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false)
         }
+    }
+
+    private func authenticationNotice(_ id: UUID) -> String? {
+        guard profiles.first(where: { $0.id == id })?.guestTouchIDEnabled == true,
+              let standardError = sessions[id]?.handle?.recentStandardError else { return nil }
+        return VMGuestAuthenticationDiagnostic.latest(in: standardError)?.explanation
     }
 
     private func ownerReadiness(_ profile: VMProfile) -> OwnerSetupReadiness {

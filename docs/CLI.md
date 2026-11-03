@@ -24,13 +24,15 @@ Replies are one compact JSON object on stdout. `--help` prints human-readable us
 
 Native host folders are opt-in: `create work --share on` uses `~/Shared`; `--share-path "$HOME/WorkShare"` overrides the path and opts in. Update a stopped guest with `--share off` to disable on its next start. The native guest destination is `/mnt/mac`, access is read-write, and the dedicated host folder must already exist. Managed SSH is required for mount verification. See [sharing configuration, prerequisites and recovery](SharedFolders.md).
 
-Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `clipboard`, `immersive`, `ssh`, `ownerDefaults`, `ownerOverrides`, `publicKey`, `inheritDefaultPublicKey`, `share`, `sharePath` and creation-only `factory`. Unknown keys and nulls are rejected. For example:
+Use flags or `--config FILE.json`. Explicit flags override file settings. Supported JSON keys are `name`, `memoryMiB`, `cpus`, `diskGiB`, `guestTouchID`, `clipboard`, `immersive`, `ssh`, `ownerDefaults`, `ownerOverrides`, `publicKey`, `inheritDefaultPublicKey`, `share`, `sharePath` and creation-only `factory`. Unknown keys and nulls are rejected. For example:
 
 ```json
 {"memoryMiB":8192,"cpus":8,"diskGiB":64,"clipboard":true,"immersive":false}
 ```
 
 The current policy requires at least 4 CPU cores and 4 GiB RAM, with RAM in whole GiB, within the Mac's existing guest budget. New guests use a 64 GiB sparse disk. `--disk 64GiB` and `--disk-gib 64` set capacity from 64 through 8192 GiB; an existing disk can only grow. `--memory` accepts MiB or GiB suffixes; a plain integer means MiB. `--memory-mib` is also available. Boolean flags take `on`/`off` or `true`/`false`.
+
+`--guest-touch-id on|off` (JSON `guestTouchID`) is off by default. Change it only while stopped; it applies on next start. Pair sudo explicitly inside the guest. Status reports the host bridge request separately from `guestPairing: "unknown"`; a checkbox or running state does not prove enrollment. See [guest Touch ID and native validation](GuestTouchID.md).
 
 Factory selection, SSH and owner setup are creation-only. New guests inherit saved Guest Defaults and enable managed SSH by default. `--owner-defaults off` selects the normal guest owner wizard. `--ssh off` disables SSH enrollment. `--public-key FILE.pub` imports only an explicitly selected public key; no personal credentials are scanned. Configure reusable passwords locally in the app's Guest Defaults page; no CLI password argument or secret field is supported.
 

@@ -7,6 +7,7 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     public var memoryMiB: Int?
     public var cpus: Int?
     public var diskGiB: Int?
+    public var guestTouchID: Bool?
     public var clipboard: Bool?
     public var immersive: Bool?
     public var ssh: Bool?
@@ -18,10 +19,11 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     public var sharePath: String?
     public var inheritDefaultPublicKey: Bool?
     public init(name: String? = nil, memoryMiB: Int? = nil, cpus: Int? = nil, diskGiB: Int? = nil,
-                clipboard: Bool? = nil, immersive: Bool? = nil,
+                clipboard: Bool? = nil, immersive: Bool? = nil, guestTouchID: Bool? = nil,
                 ssh: Bool? = nil, ownerDefaults: Bool? = nil, publicKey: String? = nil, factory: String? = nil,
                 ownerOverrides: GuestOwnerOverrides? = nil, inheritDefaultPublicKey: Bool? = nil, share: Bool? = nil, sharePath: String? = nil) {
         self.name = name; self.memoryMiB = memoryMiB; self.cpus = cpus; self.diskGiB = diskGiB
+        self.guestTouchID = guestTouchID
         self.clipboard = clipboard; self.immersive = immersive
         self.ssh = ssh; self.ownerDefaults = ownerDefaults; self.publicKey = publicKey; self.factory = factory
         self.ownerOverrides = ownerOverrides
@@ -30,7 +32,7 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     }
     public static func decodeStrict(_ data: Data) throws -> Self {
         guard data.count <= 32768, let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              Set(object.keys).isSubset(of: ["name", "memoryMiB", "cpus", "diskGiB", "clipboard", "immersive", "ssh", "ownerDefaults", "ownerOverrides", "publicKey", "inheritDefaultPublicKey", "factory", "share", "sharePath"]),
+              Set(object.keys).isSubset(of: ["name", "memoryMiB", "cpus", "diskGiB", "guestTouchID", "clipboard", "immersive", "ssh", "ownerDefaults", "ownerOverrides", "publicKey", "inheritDefaultPublicKey", "factory", "share", "sharePath"]),
               !object.values.contains(where: { $0 is NSNull }) else { throw commandFailure("invalid-config", "Configuration must contain only supported, non-null guest settings.") }
         if let overrides = object["ownerOverrides"] { try GuestOwnerOverrides.validateJSON(overrides) }
         return try JSONDecoder().decode(Self.self, from: data)
@@ -88,7 +90,7 @@ public struct GuestCommandRequest: Codable, Sendable {
         if command == .update, config?.factory != nil { throw commandFailure("creation-only", "Factory selection is fixed at creation.") }
         if command == .create, let factory = config?.factory, factory != "official", !VMFactorySelection.isDigest(factory) { throw FactoryCatalog.invalid("Select official or an imported manifest SHA-256.") }
         if command == .update, let config {
-            guard config.name != nil || config.memoryMiB != nil || config.cpus != nil || config.diskGiB != nil || config.clipboard != nil || config.immersive != nil || config.share != nil || config.sharePath != nil else { throw commandFailure("invalid-config", "Supply at least one setting to update.") }
+            guard config.name != nil || config.memoryMiB != nil || config.cpus != nil || config.diskGiB != nil || config.guestTouchID != nil || config.clipboard != nil || config.immersive != nil || config.share != nil || config.sharePath != nil else { throw commandFailure("invalid-config", "Supply at least one setting to update.") }
             guard config.ssh == nil, config.ownerDefaults == nil, config.publicKey == nil, config.factory == nil else { throw commandFailure("creation-only", "SSH and owner enrollment are chosen at guest creation.") }
         }
     }
@@ -132,7 +134,9 @@ public struct GuestCommandRecord: Codable, Sendable {
     public let memoryMiB: Int
     public let cpus: Int
     public let diskGiB: Int?
+    public let guestTouchID: GuestTouchIDRecord
     public let clipboard: Bool
+    public let notice: String?
     public let sharedFolder: SharedFolderMapping?
     public let sharedFolderStatus: String
     public let sharedFolderError: String?
@@ -205,7 +209,7 @@ public actor GuestCommandService {
                 let c = request.config!
                 target = try await manager.create(name: c.name!, memoryMiB: c.memoryMiB ?? 4096, cpus: c.cpus ?? 4,
                     diskGiB: c.diskGiB ?? 64,
-                    clipboardEnabled: c.clipboard ?? true, immersiveMode: c.immersive ?? false, sshEnabled: c.ssh ?? true,
+                    clipboardEnabled: c.clipboard ?? true, guestTouchIDEnabled: c.guestTouchID ?? false, immersiveMode: c.immersive ?? false, sshEnabled: c.ssh ?? true,
                     publicKey: c.publicKey, useOwnerDefaults: c.ownerDefaults, inheritDefaultPublicKey: c.inheritDefaultPublicKey ?? true,
                     factory: c.factory ?? "official", ownerOverrides: c.ownerOverrides,
                     sharedFolder: try c.sharing(replacing: nil), setupConsent: request.setupConsent)
@@ -332,7 +336,7 @@ public actor GuestCommandService {
         }
         return GuestCommandRecord(id: value.id, name: value.profile.name, protected: value.profile.isRetainedPOC,
             memoryMiB: value.profile.memoryMiB, cpus: value.profile.cpus, diskGiB: value.profile.diskGiB,
-            clipboard: value.profile.clipboardEnabled,
+            guestTouchID: GuestTouchIDRecord(value), clipboard: value.profile.clipboardEnabled, notice: value.notice,
             sharedFolder: value.profile.sharedFolder, sharedFolderStatus: value.sharedFolderReadiness.status,
             sharedFolderError: { if case .failed(let message) = value.sharedFolderReadiness { return message }; return nil }(),
             immersive: value.profile.immersiveMode, factory: value.profile.factory, developerSetup: value.profile.developerSetup, unattended: value.profile.ownerSetup != nil, state: state, active: value.sessionID != nil,

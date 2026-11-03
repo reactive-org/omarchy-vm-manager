@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-01T07:58:27+00:00",
+  "authorDate": "2026-11-03T03:56:16+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-01T07:58:27+00:00",
-  "subject": "Report exact guest display identity for explicit launch intent",
-  "commit": "85f5e561e5a277ccec08d7725c8714cb090c9011",
-  "patchSHA256": "7a402c8771dd180a411b71675dbea1425218593e7562c120996d597b3549dae5"
+  "committerDate": "2026-11-03T03:56:16+00:00",
+  "subject": "Service guest authentication focus and prompt completion on the main run loop",
+  "commit": "37c635f8992a9e19cc99696542bf061baff804c0",
+  "patchSHA256": "b4184dfdd39de0dfa7e0796e037db675fe372e1b1349216cfb8ac5b7d866c46e"
 }

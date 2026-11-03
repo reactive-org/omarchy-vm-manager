@@ -1,5 +1,8 @@
 # Reviewed lean owner setup
 
+**Current compatibility policy:** [reviewed guest integration contract](FactoryCompatibility.md). Unrelated manager/source changes do not require a lean disk rebuild. Legacy lean descriptors require a separate format-2 bundle, the original reviewed package archive and explicit import. Historical source/rebuild records below describe their original validation and are not the current admission rule.
+
+
 The official contract remains byte-for-byte unchanged in `Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json`. Its digest is `d381667f407b5f82cfb9f9c391eccf2898ba8a064bc6b2f082e28f959e76aef8`. Explicit `--owner-contract lean-e4fffc6` selects `LeanOwnerSetupContract.json`, digest `1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310`. The app's normal official choice remains **Offical Try Omarchy**.
 
 ## Source review
@@ -20,9 +23,9 @@ The official contract remains byte-for-byte unchanged in `Sources/OmarchyVMManag
 
 ## Integration boundary and required rebuild
 
-**The supplied disk needs rebuilding for managed lean setup.** Its integration package lacks this adapter and managed SSH. Injecting the old manager package would also restore software-rendering policy. Do not patch the existing disk or alter an official cache.
+**An image without the reviewed adapter and managed SSH needs a new supported integration build.** The originally supplied disk lacked them; that historical rebuild is recorded below. An existing image with the supported complete package does not need rebuilding for unrelated source changes. Do not patch an existing disk or alter an official cache.
 
-The current integration source, including the [preparation progress correction](PreparationProgress.md), is commit **`80156396a5daa795487c0f4a8308eee53f6ea68b`**, reproduced by `make prepare-source` at `.build/runtime-source`. It retains the exact stock factory builder and descends from Try Omarchy v1.3.0. The complete kit offers `try-omarchy 0.1.0-43`. The dev-vm builder's existing, checked hardware-policy transformation produces **0.1.0-43.1** from the same source, retaining the managed adapter/SSH/contracts while removing its documented software-rendering wrappers. The existing installer compares package versions and preserves this newer variant rather than overwriting it with 43. Factory admission requires evidence of that source/version; the evidence remains a declaration until live validation.
+The current integration source, including the [preparation progress correction](PreparationProgress.md), is commit **`80156396a5daa795487c0f4a8308eee53f6ea68b`**, reproduced by `make prepare-source` at `.build/runtime-source`. It retains the exact stock factory builder and descends from Try Omarchy v1.3.0. The complete kit offers `try-omarchy 0.1.0-43`. The dev-vm builder's existing, checked hardware-policy transformation produces **0.1.0-43.1** from the same source, retaining the managed adapter/SSH/contracts while removing its documented software-rendering wrappers. The existing installer compares package versions and preserves this newer variant rather than overwriting it with 43. Current admission requires the complete reviewed package archive and supported capabilities, with the source/version retained as provenance. See the current compatibility policy above; this historical source pin is not a compatibility requirement.
 
 Use the existing builder and tools; these commands do not install host tools:
 
@@ -39,7 +42,7 @@ make build-omarchy-image \
   OMARCHY_IMAGE_SIZE_GIB=20
 ```
 
-The output directory and disk digest will change. Keep the original artifact. Future source/package changes require another review and matched runtime lock; do not substitute a newer hash into an old descriptor.
+The output directory and disk digest will change. Keep the original artifact. Guest package/provisioning/protocol changes require compatibility review. Source-only changes do not require a disk rebuild. Preserve the original descriptor and prepare a separate format-2 bundle with complete package evidence.
 
 Use the resolved checkout path as shown: the image builder deliberately rejects a symlink as its source directory. Its `--plan` option can check these inputs without Docker, downloads or an image build.
 
@@ -54,12 +57,15 @@ mkdir "$bundle"
 cp "$artifact/factory.json" "$artifact/omarchy-workstation-aarch64-edge.img.zst" \
   "$artifact/compatibility.json" "$artifact/image-build.json" \
   "$artifact/source-compatibility.json" "$artifact/provisioning-check.json" \
-  "$artifact/user-provisioning-check.json" "$bundle/"
+  "$artifact/user-provisioning-check.json" \
+  "$artifact/packages/try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst" "$bundle/"
 
 cd '/Users/danwas/Development/Projects/Omarchy VM Manager'
 python3 Scripts/prepare_factory_bundle.py "$bundle" \
   --name 'Lean Omarchy e4fffc6' --owner-contract lean-e4fffc6 \
   --compatibility compatibility.json --image-build image-build.json \
+  --integration-package try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst \
+  --provisioning try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst \
   --provisioning compatibility.json --provisioning image-build.json \
   --provisioning source-compatibility.json --provisioning provisioning-check.json \
   --provisioning user-provisioning-check.json

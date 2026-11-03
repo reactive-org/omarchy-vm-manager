@@ -45,6 +45,22 @@ final class CreationFixture: Sendable {
 }
 
 @Suite("Native feature selection and New VM handoff — local fixtures") struct ProvisioningSelectionTests {
+    @Test func guestTouchIDAndSetupReviewSurviveTheSameCreateRequestAndProfile() async throws {
+        let f = try await CreationFixture(); defer { try? FileManager.default.removeItem(at: f.root) }
+        let review = try await f.prepare()
+        let request = try #require(GuestCLIInvocation.parse(["create", "Merged fixture", "--guest-touch-id", "on",
+            "--ssh", "off", "--owner-defaults", "off", "--inherit-default-public-key", "off",
+            "--setup-review-id", review.id.uuidString, "--setup-review", review.reviewIdentity, "--ack-setup-selection"]).request)
+        let decoded = try GuestCommandRequest.decodeStrict(helperJSON(request))
+        #expect(decoded.config?.guestTouchID == true && decoded.setupConsent == request.setupConsent)
+        let result = await GuestCommandService(manager: f.manager, applicationSupport: f.root).execute(decoded)
+        #expect(result.ok)
+        let profile = try #require(await f.manager.snapshots().first?.profile)
+        #expect(profile.guestTouchIDEnabled && profile.developerSetup != nil)
+        #expect(try JSONDecoder().decode(VMProfile.self, from: JSONEncoder().encode(profile)) == profile)
+        await f.assertInert(); await f.close()
+    }
+
     @Test func nativeChoicesReplaceAliasesAndPreserveFrozenSourceAndModes() async throws {
         let text = "schema_version: 1\nid: feature-fixture\nsetup: {features: {enable: [builtin.cli], disable: [builtin.docker]}, options: {docker: {access: sudoless}}}\nvars: {private: SELECTION-PRIVATE-VALUE}\n"
         let f = try await CreationFixture(manifest: text)

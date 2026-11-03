@@ -477,6 +477,40 @@ credentials, signing/SDK tools, Apple/network requests, SSH/Ansible, installs,
 normal UI, VM launch or disk-image operation occurs. Product approval stays nil
 and real guest acceptance stays NOT_RUN.
 
+## After merging main — 4 November 2026
+
+The provisioning branch now integrates latest main `741be20`, confirmed using
+credential-free HTTPS. Ordinary source/runtime pins and guest Touch ID integration
+follow main. Seven content conflicts are reconciled without dropping Setup review,
+helper packaging, native loading behavior, Touch ID configuration or either
+validation history. A new fake regression creates metadata with Touch ID and the
+same frozen Setup review, then roundtrips both profile fields together.
+
+Offline debug build, 300 selected Swift tests and 109 Python tests pass; five
+software-signing/PKCS12 Python cases are deliberately skipped. Eleven local socket
+functions need a retry outside the tool sandbox; all pass with disposable fixture
+channels. Offscreen Setup/New VM acceptance passes 100 checks without a visible
+window or runtime start. No native SSH, ad-hoc signed-bundle fixture or real
+credential/signing check is run. These are selected offline/fake checks only.
+Release and `SIGNED_PRERELEASE` compile-policy checks also pass two tests per mode
+without an identity or signing command; SDK dSYM generation needs a retry outside
+the tool sandbox. This does not establish a real signed candidate.
+
+**Frozen inputs remain historical and unchanged:** a before/after inventory proves
+all 930 private artifact entries retain exact bytes, modes and link targets. This
+includes original scope pins, source archive/overlay, candidate, frozen request/
+gate and discovered/staged runtime. No original VM root or registry is read or
+modified. Existing approvals stay ungranted and product provisioning approval nil.
+
+The existing candidate and its matching discovered runtime continue to describe
+their **pre-merge source**. They are not a signed candidate for this integrated
+tree. Preserve them as evidence; prepare a fresh reviewed source/runtime binding
+before any integrated signing attempt. Do not rewrite a frozen request, relabel
+an old archive, repin its runtime, or recapture VM identity to imply compatibility.
+Any new candidate or signing/material/guest operation retains its separate scope
+and approval requirements. No signing, credential access, Apple requests,
+SSH/Ansible, installs, normal UI, image operation or VM launch occurs in this merge.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

@@ -5,6 +5,7 @@ import json
 import os
 import plistlib
 from pathlib import Path
+from ticket_network import run_ticket_checked
 import shutil
 import subprocess
 
@@ -12,6 +13,7 @@ from kit_artifacts import ROOT, digest
 from build_patched_kit import inventory
 from keychain_profile import stage_keychain_profile, verify_keychain_profile
 import provisioning_package
+from release_metadata import release_info
 
 
 def run(*args, **kwargs):
@@ -32,6 +34,8 @@ def assemble():
     assert not (args.preview and args.layout_preview)
     assert args.keychain_profile is None or args.signed_prerelease, "a Keychain profile requires authorized Developer ID signing"
     assert not args.signed_prerelease or args.keychain_profile is not None, "signed prereleases require the pinned Touch ID profile"
+    info = release_info(plistlib.loads((ROOT / "App/Info.plist").read_bytes()), os.environ.get("RELEASE_TAG", ""))
+    assert not args.signed_prerelease or info.get("OmarchyReleaseTag"), "signed prereleases require RELEASE_TAG"
     lock_path = args.runtime_lock
     lock = json.loads(lock_path.read_bytes())
     assert lock["kitVersion"] == "development" and lock["focusAwareClipboard"] is True
@@ -62,7 +66,6 @@ def assemble():
             "--package-path", str(ROOT / ".build/provisioning-launcher-source"), "--scratch-path", str(ROOT / ".build/provisioning-launcher"),
             "-c", configuration, "--show-bin-path"], cwd=ROOT, text=True).strip())
         provisioning_package.stage(binaries, launcher_binaries, stage / "Contents")
-        info = plistlib.loads((ROOT / "App/Info.plist").read_bytes())
         if args.layout_preview:
             info["CFBundleIdentifier"] = "dev.omarchy.vm-manager.layout-preview"
             info["CFBundleName"] = info["CFBundleDisplayName"] = "Omarchy VM Manager Layout Preview"
@@ -90,7 +93,7 @@ def assemble():
         if not args.preserve_runtime_signatures:
             run("python3", signature, "sign", "--identity", "-", kit)
         if args.signed_prerelease:
-            run("python3", signature, "verify", "--team", lock["signingTeamID"], "--require-notarization", kit)
+            run_ticket_checked("python3", signature, "verify", "--team", lock["signingTeamID"], "--require-notarization", kit)
         else:
             run("python3", signature, "verify", "--signature-only", kit)
         assert inventory(kit) == lock["files"], "embedding changed pinned kit bytes"

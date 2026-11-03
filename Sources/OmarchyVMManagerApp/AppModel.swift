@@ -20,9 +20,15 @@ final class AppModel: ObservableObject {
     var factorySelectionNotice: String? { factoryLibrary.selectionNotice }
     @Published var ownerDefaults: OwnerDefaults?
     @Published var defaultsError: String?
+    @Published private var passwordUpgrade: (reference: UUID, result: OwnerPasswordUpgradeResult)?
+    var passwordUpgradeResult: OwnerPasswordUpgradeResult? {
+        guard let passwordUpgrade, passwordUpgrade.reference == ownerDefaults?.credentialReference else { return nil }
+        return passwordUpgrade.result
+    }
     @Published var diagnostics: KitDiagnostics?
     @Published var diagnosticError: String?
     @Published var registryError: String?
+    @Published private(set) var isLoading = true
     @Published var checking = true
     @Published var snapshots: [VMSnapshot] = []
     @Published var records: [VMLifecycleRecord] = []
@@ -50,7 +56,7 @@ final class AppModel: ObservableObject {
     init(isolatedManager: VMManager, support: URL, snapshots: [VMSnapshot], service: any ProvisioningObserving,
          save: @escaping @MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile) {
         manager = isolatedManager; self.support = support; self.snapshots = snapshots
-        isolatedService = service; isolatedSave = save; isolated = true; checking = false
+        isolatedService = service; isolatedSave = save; isolated = true; checking = false; isLoading = false
     }
     #endif
     var setupService: (any ProvisioningObserving)? {
@@ -83,6 +89,7 @@ final class AppModel: ObservableObject {
             support = FileManager.default.temporaryDirectory.appendingPathComponent("omarchy-layout-preview")
             manager = VMManager(runtime: FakeRuntime(), profiles: [], applicationSupport: support)
             checking = false
+            isLoading = false
             return
         }
         support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
@@ -137,6 +144,7 @@ final class AppModel: ObservableObject {
         if isolated { return }
         #endif
         await refresh()
+        guard !Task.isCancelled else { return }
         if !Self.layoutPreview, registryError == nil, provisioningService == nil {
             do { provisioningService = try await manager.installProvisioningService(layout: .init(contents: Bundle.main.bundleURL.appendingPathComponent("Contents"))) }
             catch { actionError = "Setup coordination is unavailable. Recovery metadata was preserved." }
@@ -146,6 +154,8 @@ final class AppModel: ObservableObject {
             do { setupServer = try ProvisioningExternalServer(endpoint: ManagerCommandEndpoint(applicationSupport: support), service: provisioningService) }
             catch { actionError = "Setup CLI endpoint unavailable. Existing job metadata was preserved." }
         }
+        // An empty snapshot list is meaningful only after the first full refresh.
+        isLoading = false
         while !Task.isCancelled {
             await update()
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
@@ -164,7 +174,7 @@ final class AppModel: ObservableObject {
     func stopCommandServer() { commandServer?.stop(); commandServer = nil; setupServer?.stop(); setupServer = nil }
 
     func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, diskGiB: Int,
-              clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath, setupConsent: ProvisioningCreationConsent? = nil) async -> UUID? {
+              clipboard: Bool, guestTouchID: Bool = false, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath, setupConsent: ProvisioningCreationConsent? = nil) async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
         do {
@@ -172,7 +182,7 @@ final class AppModel: ObservableObject {
             if isolated {
                 guard profile == nil, let isolatedSave else { throw ProvisioningReviewFailure.invalid }
                 let config = GuestConfigurationPatch(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
-                    clipboard: clipboard, immersive: immersive, ssh: sshEnabled, ownerDefaults: useOwnerDefaults,
+                    clipboard: clipboard, immersive: immersive, guestTouchID: guestTouchID, ssh: sshEnabled, ownerDefaults: useOwnerDefaults,
                     publicKey: publicKey, factory: factory, inheritDefaultPublicKey: false, share: share, sharePath: sharePath)
                 let saved = try await isolatedSave(config, setupConsent)
                 if !snapshots.contains(where: { $0.id == saved.id }) { snapshots.append(.init(profile: saved, state: .stopped)) }; return saved.id
@@ -182,12 +192,13 @@ final class AppModel: ObservableObject {
             if var profile {
                 guard setupConsent == nil else { throw ProvisioningReviewFailure.invalid }
                 profile.name = name; profile.memoryMiB = memoryGiB * 1024; profile.cpus = cpus; profile.diskGiB = diskGiB
+                profile.guestTouchIDEnabled = guestTouchID
                 profile.clipboardEnabled = clipboard; profile.immersiveMode = immersive
                 if share || profile.sharedFolder != nil { profile.sharedFolder = try SharedFolderPolicy.mapping(path: sharePath, enabled: share) }
                 try await manager.configure(profile); id = profile.id
             } else {
                 id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
-                                              clipboardEnabled: clipboard, immersiveMode: immersive, sshEnabled: sshEnabled,
+                                              clipboardEnabled: clipboard, guestTouchIDEnabled: guestTouchID, immersiveMode: immersive, sshEnabled: sshEnabled,
                                               publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false, factory: factory,
                                               sharedFolder: share ? try SharedFolderPolicy.mapping(path: sharePath) : nil, setupConsent: setupConsent)
             }
@@ -236,7 +247,9 @@ final class AppModel: ObservableObject {
 
     func upgradeSavedGuestPassword() async -> Bool {
         do {
-            try await manager.upgradeSavedGuestPassword()
+            let reference = ownerDefaults?.credentialReference
+            let result = try await manager.upgradeSavedGuestPassword()
+            if let reference { passwordUpgrade = (reference, result) }
             defaultsError = nil; return true
         } catch { defaultsError = error.localizedDescription; return false }
     }

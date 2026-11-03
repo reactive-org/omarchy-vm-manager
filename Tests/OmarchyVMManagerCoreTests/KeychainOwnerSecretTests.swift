@@ -173,6 +173,7 @@ struct KeychainOwnerSecretTests {
     func failedReads() throws {
         for (status, code) in [(errSecUserCanceled, "owner-authentication-cancelled"),
                                (errSecAuthFailed, "owner-keychain-unavailable"),
+                               (errSecInteractionNotAllowed, "owner-authentication-ui-unavailable"),
                                (errSecMissingEntitlement, "owner-keychain-provisioning-required"),
                                (errSecItemNotFound, "owner-keychain-upgrade-required")] {
             let keychain = FixtureOwnerKeychain()
@@ -197,18 +198,69 @@ struct KeychainOwnerSecretTests {
         #expect(throws: VMFailure.self) { _ = try store.snapshot(for: UUID()) }
         #expect(keychain.copies.count == 2)
         for (query, context) in zip(keychain.copies, keychain.copyContexts) {
-            #expect(query[kSecReturnData as String] == nil)
+            #expect(query[kSecReturnData as String] as? Bool == false)
             #expect(query[kSecReturnAttributes as String] as? Bool == true)
             #expect(context.interactionNotAllowed == true)
         }
         #expect(!FileManager.default.fileExists(atPath: f.storage.vms.path))
     }
 
+    @Test("blocked metadata defers only admission; first-launch password reads still fail closed")
+    func blockedMetadataAdmission() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let keychain = FixtureOwnerKeychain()
+        let vault = KeychainOwnerSecretStore(keychain: keychain)
+        let store = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
+        let defaults = try store.save(enabled: true, configuration: OwnerConfiguration(), password: secret)
+        let reference = try #require(defaults.credentialReference)
+        let original = try PrivateFiles.read(f.storage.directory.appendingPathComponent("guest-defaults.json"))
+        keychain.replies = [(errSecInteractionNotAllowed, nil), (errSecInteractionNotAllowed, nil),
+                            (errSecInteractionNotAllowed, nil)]
+        #expect(try store.snapshot(for: UUID()) != nil)
+        #expect(try store.upgradeSavedPassword() == .authenticationPending)
+        #expect(keychain.copies.count == 2)
+        for (query, context) in zip(keychain.copies, keychain.copyContexts) {
+            #expect(query[kSecReturnAttributes as String] as? Bool == true)
+            #expect(query[kSecReturnData as String] as? Bool == false)
+            #expect(query[kSecAttrAccount as String] as? String == reference.uuidString)
+            #expect(context.interactionNotAllowed == true)
+        }
+        do {
+            _ = try vault.read(reference: reference)
+            Issue.record("A blocked protected read returned a password")
+        } catch let failure as VMFailure {
+            #expect(failure.code == "owner-authentication-ui-unavailable")
+            #expect(failure.message.contains(String(errSecInteractionNotAllowed)))
+        }
+        #expect(keychain.copies.count == 3)
+        #expect(keychain.copies[2][kSecReturnData as String] as? Bool == true)
+        #expect(keychain.copyContexts[2].interactionNotAllowed == false)
+        #expect(keychain.additions.count == 1 && keychain.deletions.isEmpty)
+        #expect(try PrivateFiles.read(f.storage.directory.appendingPathComponent("guest-defaults.json")) == original)
+        #expect(!FileManager.default.fileExists(atPath: f.storage.vms.path))
+    }
+
+    @Test("metadata authentication/provisioning failures stay distinct from deferred approval")
+    func metadataFailures() throws {
+        for status in [errSecAuthFailed, errSecMissingEntitlement, errSecItemNotFound, errSecParam] {
+            let keychain = FixtureOwnerKeychain()
+            keychain.replies = [(status, nil)]
+            #expect(throws: VMFailure.self) {
+                try KeychainOwnerSecretStore(keychain: keychain).requireProtectedCredential(reference: UUID())
+            }
+            #expect(keychain.copies.count == 1)
+            #expect(keychain.additions.isEmpty && keychain.deletions.isEmpty)
+        }
+        let failure = KeychainOwnerSecretStore.failure(errSecParam)
+        #expect(failure.message.contains(String(errSecParam)))
+        #expect(!failure.message.contains(String(decoding: secret, as: UTF8.self)))
+    }
+
     @Test("explicit upgrade keeps the reference and legacy item, and does not authenticate a modern read")
     func legacyUpgrade() throws {
         let keychain = FixtureOwnerKeychain(), reference = UUID()
         keychain.replies = [(errSecItemNotFound, nil), (errSecSuccess, secret as CFData)]
-        try KeychainOwnerSecretStore(keychain: keychain).upgradeLegacyCredential(reference: reference)
+        #expect(try KeychainOwnerSecretStore(keychain: keychain).upgradeLegacyCredential(reference: reference) == .upgraded)
         #expect(keychain.copies.count == 2)
         let legacy = keychain.copies[1]
         #expect(legacy[kSecUseDataProtectionKeychain as String] as? Bool == false)
@@ -226,7 +278,7 @@ struct KeychainOwnerSecretTests {
                                                  [(errSecItemNotFound, nil), (errSecUserCanceled, nil)]] {
             let keychain = FixtureOwnerKeychain(); keychain.replies = replies
             let store = KeychainOwnerSecretStore(keychain: keychain)
-            if replies[0].0 == errSecSuccess { try store.upgradeLegacyCredential(reference: UUID()) }
+            if replies[0].0 == errSecSuccess { #expect(try store.upgradeLegacyCredential(reference: UUID()) == .alreadyProtected) }
             else { #expect(throws: VMFailure.self) { try store.upgradeLegacyCredential(reference: UUID()) } }
             #expect(keychain.additions.isEmpty && keychain.deletions.isEmpty)
             #expect(keychain.copies.count == replies.count)
@@ -267,15 +319,17 @@ struct KeychainOwnerSecretTests {
         let root = f.storage.root(for: profile), owner = ManagedOwnerStorage(root: root)
         #expect(try owner.passwordForLaunch(profile, secrets: store) == nil)
         profile.ownerSetup = try OwnerDefaults(enabled: true, credentialReference: UUID()).snapshot(for: profile.id)
-        keychain.replies = [(errSecUserCanceled, nil)]
-        #expect(throws: VMFailure.self) { _ = try owner.passwordForLaunch(profile, secrets: store) }
-        #expect(!FileManager.default.fileExists(atPath: root.path))
+        for status in [errSecUserCanceled, errSecInteractionNotAllowed] {
+            keychain.replies = [(status, nil)]
+            #expect(throws: VMFailure.self) { _ = try owner.passwordForLaunch(profile, secrets: store) }
+            #expect(!FileManager.default.fileExists(atPath: root.path))
+        }
         keychain.replies = [(errSecSuccess, secret as CFData)]
         #expect(try owner.passwordForLaunch(profile, secrets: store) == secret)
-        #expect(keychain.copies.count == 2)
+        #expect(keychain.copies.count == 3)
         _ = try f.storage.prepare(profile, ownerPassword: secret)
         try owner.finish(profile)
         #expect(try owner.passwordForLaunch(profile, secrets: store) == nil)
-        #expect(keychain.copies.count == 2)
+        #expect(keychain.copies.count == 3)
     }
 }

@@ -122,7 +122,7 @@ class SignedProvenanceTests(unittest.TestCase):
                     return SimpleNamespace(stdout=json.dumps(dict(id=identifier, status=outcome)))
                 with patch.dict(os.environ, values, clear=True), patch.object(signed_prerelease, "ROOT", root), patch.object(signed_prerelease, "REDACTIONS", []), patch.object(signed_prerelease, "run", side_effect=command) as commands:
                     self.assertEqual(signed_prerelease.check_submission(identifier)["status"], outcome)
-                self.assertEqual(commands.call_count, 2 if outcome == "Invalid" else 1)
+                self.assertEqual(commands.call_count, 2 if outcome in ("Accepted", "Invalid") else 1)
                 self.assertEqual(list(private.iterdir()), [])
                 self.assertEqual((root / "outputs").read_text(), "status=" + outcome + "\n")
                 self.assertEqual(json.loads((root / ".build/notarization/existing-submission.json").read_text())["id"], identifier)
@@ -141,15 +141,22 @@ class SignedProvenanceTests(unittest.TestCase):
         identifier = "12345678-1234-1234-1234-123456789abc"
         for outcome in ["Accepted", "Invalid"]:
             with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temp:
+                archive = Path(temp) / "fixture.zip"
+                archive.write_bytes(b"synthetic-candidate")
                 responses = [SimpleNamespace(stdout=json.dumps({"id": identifier})),
                              SimpleNamespace(stdout=json.dumps({"id": identifier, "status": "In Progress"})),
                              SimpleNamespace(stdout=json.dumps({"id": identifier, "status": outcome})), SimpleNamespace(stdout="")]
-                with patch.object(signed_prerelease, "ROOT", Path(temp)), patch.object(signed_prerelease, "run", side_effect=responses), patch.object(signed_prerelease.time, "sleep"):
+                with patch.object(signed_prerelease, "ROOT", Path(temp)), patch.object(signed_prerelease, "run", side_effect=responses), patch.object(signed_prerelease.time, "sleep"), patch.object(signed_prerelease, "accepted_submission", return_value={"id": identifier, "status": "Accepted"}) as acceptance:
                     if outcome == "Accepted":
-                        self.assertEqual(signed_prerelease.notarize(Path("fixture.zip"), [], "app")["status"], "Accepted")
+                        self.assertEqual(signed_prerelease.notarize(archive, [], "app")["status"], "Accepted")
                     else:
                         with self.assertRaisesRegex(RuntimeError, "not accepted"):
-                            signed_prerelease.notarize(Path("fixture.zip"), [], "app")
+                            signed_prerelease.notarize(archive, [], "app")
+                if outcome == "Accepted":
+                    acceptance.assert_called_once_with(archive, [], "app", identifier)
+                else:
+                    acceptance.assert_not_called()
+                self.assertEqual((Path(temp) / ".build/signed-release/notary-app.zip").read_bytes(), archive.read_bytes())
                 saved = json.loads((Path(temp) / ".build/notarization/app-submission.json").read_text())
                 self.assertEqual(saved["status"], outcome)
 
@@ -187,3 +194,27 @@ class SignedProvenanceTests(unittest.TestCase):
                 with patch.dict(os.environ, {"MACOS_CERTIFICATE_PASSWORD": "wrong-synthetic-password"}), self.assertRaisesRegex(RuntimeError, "could not be decrypted"):
                     signed_prerelease.compatible_certificate(archive, folder)
                 self.assertFalse((folder/"identity.pem").exists())
+
+
+class TicketNetworkRetryTests(unittest.TestCase):
+    def test_transient_ticket_retry_uses_the_same_command_and_never_submits(self):
+        result = SimpleNamespace(stdout='validated')
+        arguments = ('python3', 'kit_signature.py', 'staple', '/fixture/kit.bundle')
+        with patch.object(signed_prerelease, 'run', side_effect=[RuntimeError('NSURLErrorDomain Code=-1005'), result]) as command, patch.object(signed_prerelease.time, 'sleep') as wait:
+            self.assertIs(signed_prerelease.retry_ticket_network('fixture ticket', *arguments), result)
+            self.assertEqual([item.args for item in command.call_args_list], [('fixture ticket', *arguments)] * 2)
+            wait.assert_called_once_with(5)
+
+    def test_signature_or_policy_errors_are_not_retried(self):
+        with patch.object(signed_prerelease, 'run', side_effect=RuntimeError('invalid signature')) as command, patch.object(signed_prerelease.time, 'sleep') as wait:
+            with self.assertRaisesRegex(RuntimeError, 'invalid signature'):
+                signed_prerelease.retry_ticket_network('fixture ticket', 'stapler', 'validate', '/fixture')
+            self.assertEqual(command.call_count, 1)
+            wait.assert_not_called()
+
+    def test_persistent_ticket_network_failure_is_bounded_and_still_fails(self):
+        with patch.object(signed_prerelease, 'run', side_effect=RuntimeError('NSURLErrorDomain Code=-1005')) as command, patch.object(signed_prerelease.time, 'sleep') as wait:
+            with self.assertRaises(RuntimeError):
+                signed_prerelease.retry_ticket_network('fixture ticket', 'stapler', 'validate', '/fixture')
+            self.assertEqual(command.call_count, 3)
+            self.assertEqual(wait.call_count, 2)

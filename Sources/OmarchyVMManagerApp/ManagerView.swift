@@ -21,6 +21,17 @@ struct ManagerView: View {
     private var active: [VMSnapshot] { model.snapshots.filter { $0.sessionID != nil } }
 
     var body: some View {
+        Group {
+            if model.isLoading {
+                ManagerLoadingView()
+            } else {
+                managerContent
+            }
+        }
+        .frame(minWidth: 920, minHeight: 650)
+    }
+
+    private var managerContent: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 List(selection: $destination) {
@@ -86,7 +97,6 @@ struct ManagerView: View {
                     .keyboardShortcut("n", modifiers: .command)
             }
         }
-        .frame(minWidth: 920, minHeight: 650)
         .onChange(of: destination) { page = .home }
         .onChange(of: model.snapshots.compactMap(\.sessionID)) { previous, current in
             guard let session = current.last(where: { !previous.contains($0) }),
@@ -219,6 +229,9 @@ struct ManagerView: View {
                     Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
                 Divider().padding(.horizontal, 20)
+                SettingsRow("Guest Touch ID", subtitle: "Pair through Setup → Security → Touch ID for sudo inside the guest. Guest pairing status is unknown to the manager.", icon: "touchid", color: .purple) {
+                    Text(GuestTouchIDRecord(snapshot).hostBridge.capitalized).foregroundStyle(.secondary)
+                }
                 SettingsRow("Clipboard", subtitle: snapshot.profile.clipboardEnabled ? "Syncs with the Mac while this guest is focused." : "Clipboard sharing is off for this guest.", icon: "doc.on.clipboard", color: .cyan) {
                     Text(snapshot.profile.clipboardEnabled ? "Enabled" : "Off").foregroundStyle(.secondary)
                 }
@@ -239,7 +252,7 @@ struct ManagerView: View {
                     Text(ByteCountFormatter.string(fromByteCount: model.storageBytes[snapshot.id] ?? 0, countStyle: .file)).foregroundStyle(.secondary)
                 }
             }
-            Text(snapshot.profile.isRetainedPOC ? "This profile’s original configuration is preserved with its retained disk." : "Shut down this guest to change its name, resources or clipboard. Changes apply on its next start.").font(.callout).foregroundStyle(.secondary)
+            Text(snapshot.profile.isRetainedPOC ? "This profile’s original configuration is preserved with its retained disk." : "Shut down this guest to change its name, resources, guest Touch ID or clipboard. Changes apply on its next start.").font(.callout).foregroundStyle(.secondary)
         }
     }
 
@@ -255,7 +268,7 @@ struct ManagerView: View {
                     Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
             }
-            Text("Managed SSH uses a guest-specific Mac loopback port. Host-folder changes apply on the next start. Disable sharing in Configure to remove the export on that start. USB, camera and authentication remain off.").font(.callout).foregroundStyle(.secondary)
+            Text("Managed SSH uses a guest-specific Mac loopback port. Host-folder changes apply on the next start. Disable sharing in Configure to remove the export on that start. Guest Touch ID is configured separately. USB and camera remain off.").font(.callout).foregroundStyle(.secondary)
         }
     }
 
@@ -408,6 +421,7 @@ struct VMEditor: View {
     @State private var memory: Int
     @State private var cpus: Int
     @State private var disk: Int
+    @State private var guestTouchID: Bool
     @State private var clipboard: Bool
     @State private var immersive: Bool
     @State private var share: Bool
@@ -427,6 +441,7 @@ struct VMEditor: View {
         _memory = State(initialValue: (profile?.memoryMiB ?? 4096) / 1024)
         _cpus = State(initialValue: profile?.cpus ?? 4)
         _disk = State(initialValue: profile?.diskGiB ?? 64)
+        _guestTouchID = State(initialValue: profile?.guestTouchIDEnabled ?? false)
         _clipboard = State(initialValue: profile?.clipboardEnabled ?? true)
         _immersive = State(initialValue: profile?.immersiveMode ?? false)
         _share = State(initialValue: profile?.sharedFolder?.enabled ?? false)
@@ -458,6 +473,8 @@ struct VMEditor: View {
                 Stepper("Memory: \(memory) GiB", value: $memory, in: 4...maximumMemory)
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
                 Stepper("Disk capacity: \(disk) GiB", value: $disk, in: max(64, profile?.diskGiB ?? 64)...8192, step: 16)
+                Toggle("Allow Touch ID inside this VM", isOn: $guestTouchID)
+                Text("Enables the host bridge at next start. Pair sudo explicitly inside the guest; pairing status is checked there. Uses the Linux password if Touch ID is unavailable.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Clipboard integration", isOn: $clipboard)
                 Toggle("Immersive Mode", isOn: $immersive)
                 Toggle("Share a host folder", isOn: $share).disabled(!sshEnabled)
@@ -497,7 +514,7 @@ struct VMEditor: View {
             }.formStyle(.grouped)
             if let error = keyError { Text(error).foregroundStyle(.red).font(.callout) }
             if let error = model.configurationError { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }
-            Text(profile == nil ? "The selected factory prepares on first launch. Each guest has independent storage. Networking uses NAT. Host-folder sharing is opt-in; USB, camera and authentication are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.callout).foregroundStyle(.secondary)
+            Text(profile == nil ? "The selected factory prepares on first launch. Each guest has independent storage. Networking uses NAT. Host-folder sharing and guest Touch ID are opt-in. USB and camera are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.callout).foregroundStyle(.secondary)
             HStack {
                 Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(profile == nil ? "Create VM" : "Save Changes") {
@@ -528,7 +545,7 @@ struct VMEditor: View {
         guard canSave else { return }
         saving = true
         Task {
-            if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, setupConsent: setupConsent) { saved(id) }
+            if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, guestTouchID: guestTouchID, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, setupConsent: setupConsent) { saved(id) }
             saving = false
         }
     }
@@ -537,6 +554,26 @@ struct VMEditor: View {
         catch { keyError = error.localizedDescription }
     }
 
+}
+
+private struct ManagerLoadingView: View {
+    var body: some View {
+        VStack(spacing: 24) {
+            ManagerArtwork(size: 112)
+            VStack(spacing: 8) {
+                Text("Omarchy VM Manager").font(.title.bold())
+                Text("Loading your virtual machines…")
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView()
+                .controlSize(.regular)
+                .accessibilityLabel("Loading your virtual machines")
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .navigationTitle("Omarchy VM Manager")
+    }
 }
 
 private struct ManagerArtwork: View {

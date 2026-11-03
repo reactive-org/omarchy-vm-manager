@@ -51,8 +51,11 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 [Suspend-to-disk investigation](Suspend.md) records the clarified RAM-release requirement, pinned graphics blocker and proposed disposable hibernation POC.
 
 - [Reviewed custom factories](CustomFactories.md): prepared-bundle review, import, creation-time selection and validation limits.
+- [Factory compatibility](FactoryCompatibility.md): reviewed guest package identities, supported protocols, migration and when an image rebuild is necessary.
 
 - [Native host-folder sharing](SharedFolders.md): opt-in configuration, runtime limitations, factory prerequisites and approval-gated existing-VM validation.
+
+- [Guest Touch ID for sudo](GuestTouchID.md) — default-off settings, isolation policy and separately approved native validation.
 
 ## Implementation plans
 
@@ -180,3 +183,11 @@ toggle. Current fake-service visual acceptance passes 92 checks; execution remai
 [Visual dev-vm layout examples](DevVMProvisioningPlan.md#bundled-dev-vm-layout-example-cards--3-november-2026)
 adds four wireframe cards backed by bundled, hash-checked Lua sources. App lists are
 prerequisites; choosing a layout does not add package installs or authorize execution.
+
+[Main integration](DevVMMilestone6Runbook.md#after-merging-main--4-november-2026)
+combines latest main's loading, release and guest Touch ID work with provisioning.
+Offline build, 300 selected Swift tests, 109 Python passes (five signing cases
+skipped), and 100 offscreen UI checks pass, including scoped local-socket retries.
+Private artifacts and frozen pins are unchanged. They still represent pre-merge
+source; an integrated candidate needs fresh source/runtime review. Product
+provisioning remains disabled and no signing, credential or guest action occurs.

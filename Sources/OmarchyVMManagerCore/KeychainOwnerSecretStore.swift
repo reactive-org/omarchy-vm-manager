@@ -122,7 +122,10 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
         // Read/authenticate the existing login-Keychain item only at first launch.
         guard storage == .protectedKeychain else { return }
         let status = protectedCredentialStatus(reference)
-        guard status == errSecSuccess else { throw Self.failure(status) }
+        // A locked/approval-required metadata query cannot prove absence. Defer
+        // that check without reading a secret or allowing authentication UI here.
+        // The interactive first-launch read remains mandatory before any VM storage.
+        guard status == errSecSuccess || status == errSecInteractionNotAllowed else { throw Self.failure(status) }
     }
 
     private func protectedCredentialStatus(_ reference: UUID) -> OSStatus {
@@ -130,16 +133,20 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
         defer { context.invalidate() }
         var values = query(reference, context: context)
         values[kSecReturnAttributes as String] = true
+        values[kSecReturnData as String] = false
         values[kSecMatchLimit as String] = kSecMatchLimitOne
         return keychain.copy(values).0
     }
 
     /// Only an explicit Guest Defaults upgrade copies an old item into protected storage.
     /// Keep its reference and original item so pending guest snapshots remain valid.
-    public func upgradeLegacyCredential(reference: UUID) throws {
+    @discardableResult public func upgradeLegacyCredential(reference: UUID) throws -> OwnerPasswordUpgradeResult {
         guard storage == .protectedKeychain else { throw Self.failure(errSecMissingEntitlement) }
         let status = protectedCredentialStatus(reference)
-        if status == errSecSuccess { return }
+        if status == errSecSuccess { return .alreadyProtected }
+        // Do not call an unreadable item missing or attempt another legacy copy.
+        // Keychain may also be locked; no successful upgrade/authorization is inferred.
+        if status == errSecInteractionNotAllowed { return .authenticationPending }
         guard status == errSecItemNotFound else { throw Self.failure(status) }
         let context = context(interactive: true)
         defer { context.invalidate() }
@@ -155,6 +162,7 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
         let (legacyStatus, item) = keychain.copy(values)
         guard legacyStatus == errSecSuccess, let data = item as? Data else { throw Self.failure(legacyStatus) }
         try save(data, reference: reference)
+        return .upgraded
     }
 
     public func remove(reference: UUID) throws {
@@ -177,8 +185,10 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
             VMFailure(code: "owner-keychain-provisioning-required", message: "Touch ID password storage requires a signed app with a valid Keychain provisioning profile. This development build cannot access it. Existing credentials were preserved.")
         case errSecItemNotFound:
             VMFailure(code: "owner-keychain-upgrade-required", message: "The protected guest password is unavailable. In Guest Defaults, upgrade the saved password to Touch ID or save it again. Older pending guests need their original credential upgraded; no credential was replaced.")
+        case errSecInteractionNotAllowed:
+            VMFailure(code: "owner-authentication-ui-unavailable", message: "macOS could not present guest-password authentication. Unlock your Mac and retry from the manager. Keychain status \(status). No credential was replaced.")
         default:
-            VMFailure(code: "owner-keychain-unavailable", message: "The saved guest password could not be authorized. Retry using Touch ID or your Mac login password. No credential was replaced.")
+            VMFailure(code: "owner-keychain-unavailable", message: "The saved guest password could not be authorized. Keychain status \(status). Retry using Touch ID or your Mac login password. No credential was replaced.")
         }
     }
 }

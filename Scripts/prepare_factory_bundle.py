@@ -50,7 +50,20 @@ def is_digest(value):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
 
 
-def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRuntime.lock.json', owner_contract='official', compatibility=None, image_build=None):
+def reviewed_contract():
+    contract = metadata(ROOT / 'Config/GuestIntegrationCompatibility.json')
+    capabilities = {'guestStatus': 1, 'managedSSH': 1, 'managedSetup': 1, 'ownerSetupContracts': 1, 'ownerSetupReport': 1}
+    if (not isinstance(contract, dict)
+            or any(type(contract.get(key)) is not int or contract[key] != 1 for key in ('schemaVersion', 'contractVersion'))
+            or contract.get('capabilities') != capabilities
+            or any(type(value) is not int for value in contract.get('capabilities', {}).values())
+            or contract.get('leanPackageVersion') != '0.1.0-43.1'
+            or any(not is_digest(contract.get(key)) for key in ('runtimePackageSHA256', 'leanPackageSHA256', 'ownerSetupContractSHA256'))):
+        raise ValueError('The reviewed guest compatibility policy is malformed or unsupported; restore the reviewed source policy')
+    return contract
+
+
+def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRuntime.lock.json', owner_contract='official', compatibility=None, image_build=None, integration_package=None):
     bundle = Path(bundle).absolute()
     if bundle.resolve() != bundle or not bundle.is_dir():
         raise ValueError('Use a real prepared bundle directory without symbolic links')
@@ -78,6 +91,8 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
     if not isinstance(disk, dict) or not safe_name(disk.get('path')) or not disk['path'].endswith('.img') or type(disk.get('bytes')) is not int or not 0 < disk['bytes'] <= 8192 * 1073741824 or not is_digest(disk.get('sha256')):
         raise ValueError('Invalid prepared disk size or digest')
     lock = metadata(Path(runtime_lock))
+    if not isinstance(lock, dict) or type(lock.get('runProtocolVersion')) is not int or lock['runProtocolVersion'] != 1:
+        raise ValueError('Unsupported runtime run protocol version; use the reviewed protocol-1 kit')
     if not isinstance(lock, dict) or any(type(lock.get(key)) is not int or lock[key] != 1 for key in ('customFactoryVersion', 'managedSSHVersion', 'managedSetupVersion', 'ownerSetupReportVersion')):
         raise ValueError('Build the reviewed factory/provisioning capable kit first')
     runtime_files = lock.get('files')
@@ -103,13 +118,28 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
         build = metadata(bundle / image_build)
         expected = metadata(selected)['programs'].copy()
         del expected['/usr/share/omarchy/install/provisioning/progress-icon.sh']
-        if (evidence.get('owner_programs') != expected or evidence.get('packages', {}).get('try-omarchy') != '0.1.0-43.1'
-                or build.get('try_commit') != lock.get('patchCommit') or not re.fullmatch('[0-9a-f]{40}', str(build.get('try_commit', '')))):
-            raise ValueError('Rebuild the lean disk from this reviewed manager integration source; owner programs, package or source differ')
+        contract = reviewed_contract()
+        if type(lock.get('factoryCompatibilityVersion')) is not int or lock['factoryCompatibilityVersion'] != 1:
+            raise ValueError('Build the reviewed factory-compatibility capable runtime kit first')
+        if not isinstance(evidence, dict) or evidence.get('owner_programs') != expected:
+            raise ValueError('Lean owner provisioning program hashes differ from the reviewed contract')
+        if not isinstance(evidence.get('packages'), dict) or evidence['packages'].get('try-omarchy') != contract['leanPackageVersion']:
+            raise ValueError('Lean guest integration package version differs from the reviewed contract')
+        if not isinstance(build, dict) or not isinstance(build.get('try_commit'), str) or not re.fullmatch('[0-9a-f]{40}', build['try_commit']):
+            raise ValueError('Missing or malformed image integration source provenance; include a valid image-build.json')
+        if not safe_name(integration_package) or integration_package not in provisioning or not integration_package.endswith('.pkg.tar.zst'):
+            raise ValueError('Missing guest integration package evidence; include the complete reviewed package archive with --integration-package and --provisioning in a separate bundle')
+        if files.get(integration_package) != contract['leanPackageSHA256']:
+            raise ValueError('Lean guest integration package SHA-256 is unreviewed; supply the reviewed archive or review and support the changed package first')
+        if runtime_files[PACKAGE] != contract['runtimePackageSHA256']:
+            raise ValueError('Runtime guest integration package SHA-256 is not supported by the reviewed compatibility contract')
         extra = {'ownerSetupEvidence': compatibility, 'imageBuildEvidence': image_build,
-                 'imageIntegrationVersion': '0.1.0-43.1', 'imageIntegrationSourceCommit': build['try_commit']}
+                 'imageIntegrationVersion': contract['leanPackageVersion'], 'imageIntegrationSourceCommit': build['try_commit'],
+                 'guestIntegration': {'contractVersion': contract['contractVersion'], 'capabilities': contract['capabilities'],
+                                      'packageFile': integration_package, 'packageSHA256': files[integration_package]}}
+
     value = {
-        'format': 1, 'name': name, 'architecture': 'aarch64', 'boot': 'uefi-limine',
+        'format': 2 if owner_contract == 'lean-e4fffc6' else 1, 'name': name, 'architecture': 'aarch64', 'boot': 'uefi-limine',
         'customFactoryVersion': 1, 'managedSSHVersion': 1, 'managedSetupVersion': 1, 'ownerSetupReportVersion': 1,
         'integrationPackageSHA256': lock['files'][PACKAGE],
         'ownerSetupContractSHA256': digest(selected),
@@ -128,10 +158,11 @@ def main():
     parser.add_argument('--name', required=True)
     parser.add_argument('--owner-contract', choices=['official', 'lean-e4fffc6'], default='official')
     parser.add_argument('--compatibility', help='Included compatibility evidence filename for lean')
+    parser.add_argument('--integration-package', help='Included complete reviewed lean package archive; also select it with --provisioning')
     parser.add_argument('--image-build', help='Included integration source evidence filename for lean')
     parser.add_argument('--provisioning', required=True, action='append', help='Included basename; repeat for every provisioning evidence file')
     args = parser.parse_args()
-    print(prepare(args.bundle, args.name, args.provisioning, owner_contract=args.owner_contract, compatibility=args.compatibility, image_build=args.image_build))
+    print(prepare(args.bundle, args.name, args.provisioning, owner_contract=args.owner_contract, compatibility=args.compatibility, image_build=args.image_build, integration_package=args.integration_package))
 
 
 if __name__ == '__main__':

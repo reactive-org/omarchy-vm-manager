@@ -8,12 +8,16 @@ import subprocess
 import sys
 
 from kit_artifacts import ROOT
+from ticket_network import run_ticket_checked
 from keychain_profile import verify_keychain_profile
 import provisioning_package
 
 
 def run(*arguments):
-    result = subprocess.run([str(value) for value in arguments], capture_output=True, text=True)
+    values = [str(value) for value in arguments]
+    if "--require-notarization" in values or "--check-notarization" in values or values[0] == "spctl" or values[:2] == ["xcrun", "stapler"]:
+        return run_ticket_checked(*values)
+    result = subprocess.run(values, capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError(f"Signed-package verification failed: {Path(str(arguments[0])).name}: {result.stderr[-3000:]}")
     return result

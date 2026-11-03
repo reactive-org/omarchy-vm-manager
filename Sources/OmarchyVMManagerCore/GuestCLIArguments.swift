@@ -48,7 +48,7 @@ public struct GuestCLIInvocation: Sendable {
 
     Config: --config FILE.json, --name NAME, --memory 4GiB (or MiB),
             --memory-mib 4096, --cpus 4, --disk 64GiB, --disk-gib 64,
-            --clipboard on|off, --immersive on|off
+            --clipboard on|off, --immersive on|off, --guest-touch-id on|off (default off)
             --share on|off, --share-path PATH (default ~/Shared → /mnt/mac, read-write)
     Creation only: --factory official|MANIFEST_SHA256, --ssh on|off, --owner-defaults on|off, --public-key FILE.pub
             --inherit-default-public-key on|off (default on)
@@ -73,7 +73,7 @@ public struct GuestCLIInvocation: Sendable {
         guard let command = GuestCommand(rawValue: aliases[arguments[0]] ?? arguments[0]) else { throw commandFailure("usage", "Unknown command. Run omarchy-vm --help.") }
         var config = GuestConfigurationPatch(), selector: String?, positional: String?
         var values: [String: String] = [:], flags: Set<String> = [], index = 1
-        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--clipboard", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard", "--share", "--share-path", "--setup-review-id", "--setup-review"]
+        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--clipboard", "--guest-touch-id", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard", "--share", "--share-path", "--setup-review-id", "--setup-review"]
         while index < arguments.count {
             let key = arguments[index]; index += 1
             if key == "--wait" {
@@ -104,6 +104,7 @@ public struct GuestCLIInvocation: Sendable {
             config.diskGiB = try diskGiB(disk)
         }
         if let value = values["--disk-gib"] { config.diskGiB = try positiveInteger(value) }
+        if let value = values["--guest-touch-id"] { config.guestTouchID = try boolean(value) }
         if let value = values["--clipboard"] { config.clipboard = try boolean(value) }
         if let value = values["--immersive"] { config.immersive = try boolean(value) }
         if let value = values["--share"] { config.share = try boolean(value) }

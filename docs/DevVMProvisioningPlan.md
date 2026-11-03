@@ -3009,3 +3009,33 @@ use/timestamps and later gates remain separate approvals. No credential access,
 signing/SDK execution, Apple/network, SSH/Ansible, install, UI, image or VM operation
 occurs; product approval stays nil. See the
 [discovery record](DevVMMilestone6Runbook.md#local-signed-runtime-discovery--4-november-2026).
+
+## Main integration and offline acceptance — 4 November 2026
+
+Latest main `741be20` is confirmed by credential-free public HTTPS and merged into
+the provisioning branch. Seven content conflicts are resolved by retaining both
+histories and combining Setup with guest Touch ID across profile persistence, CLI
+options, native save and packaging. Loading/cancellation behavior is preserved;
+isolated fake models bypass the loading screen. Provisioning's creation review,
+helper staging/seals and disabled product execution remain intact.
+
+**VERIFIED — offline/fake:** debug build; 300 selected Swift tests, including a new
+combined Touch ID/Setup creation and Codable regression; 109 Python passes with
+five software-signing/PKCS12 cases explicitly skipped; 100 offscreen UI checks
+with zero runtime starts or visible windows. Eleven local socket test functions
+initially fail under the tool sandbox and pass on scoped retry outside it. Python
+process auditing records no forbidden tool invocation. Native SSH, signed-bundle
+fixtures and real signing/credential checks are not run. This is selected offline
+coverage, not every CI/native test or real guest acceptance.
+Release and `SIGNED_PRERELEASE` policy checks pass two tests per mode, confirming
+compiled launch/credential gating without signing. SDK dSYM generation initially
+hits the tool sandbox and succeeds on scoped retry outside it.
+
+**PRIVATE COUPLING / TO PROVE:** the 930 private artifact entries are unchanged in
+bytes, mode and link targets; actual scope pins stay ignored. Ordinary source pins
+adopt main, while the retained candidate/gate/runtime still belong to their original
+pre-merge source. A new integrated candidate requires separate source/runtime
+freezing and review; no previous request is rewritten or silently promoted. The
+companion worktree is unchanged. No credentials, signing, Apple request, real
+SSH/Ansible, install, normal UI, image or VM operation occurs. See the
+[integration boundary](DevVMMilestone6Runbook.md#after-merging-main--4-november-2026).
