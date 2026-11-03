@@ -208,3 +208,6 @@ The host fix and reported no-prompt failure are detailed in [Guest Touch ID](Gue
 
 
 **VERIFIED — two-VM run shutdown/process cleanup:** the user stopped A/B; both captured launch sessions have exit status 0. All 16 captured process identities are gone, no process holds either test disk open, and the stopped UUID roots retain their captured identities. [Exact cleanup scope](GuestTouchID.md#two-vm-test-guests-stopped-and-verified--3-november-2026) records the separate optional Trash decision. No deletion or extra native gate is inferred from these checks.
+
+
+**VERIFIED — approved disposable cleanup completed:** the user authorized Trash for A/B after their exits/process cleanup were verified. Both were moved through the installed manager guarded deletion path; profiles and original roots are absent, Trash destination inode/device identities match, and the 16 captured runtime processes remain gone. [Completed scope and remaining native gates](GuestTouchID.md#approved-disposable-guest-trash-cleanup-completed--3-november-2026) close this guided build 26 run without implying cloned-ID, lease-busy or crash-path proof. No other guest was targeted.
