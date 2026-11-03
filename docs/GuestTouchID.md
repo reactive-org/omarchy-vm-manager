@@ -188,3 +188,12 @@ After sudo validation and separate authorization: install/sign in to 1Password i
 **VERIFIED — separate read-only helper evidence:** the manager's existing report for the same currently active guest and launch session contains `Execution: host-sleeping` at `2026-11-03T04:44:47Z` and `Execution: running` at `2026-11-03T04:45:04Z`. These are helper-reported execution transitions, not an independent measurement of hardware sleep duration. Only state/timing tokens are retained; guest names, UUIDs, paths, process IDs, credentials and key identifiers are excluded. The agent sent no sleep, wake, guest-control or authentication command and changed no power setting.
 
 **TO PROVE:** shutdown/forced-stop/crash cancellation, rapid focus transitions and exact prompt counts, unavailable-biometry fallback, re-pairing and two-VM contention/key isolation remain pending. This user-confirmed case supersedes the prior pending sleep/wake result only for the described sequence and does not grant agent-driven native interaction.
+
+
+## Shutdown exit confirmed; authentication outcome pending — 3 November 2026
+
+**VERIFIED — user CLI output:** the user supplied the timed `stop --wait` reply reporting `ok: true`, `active: false` and `state: stopped`. Record only these state/result fields; exclude the supplied guest/request UUIDs, name, endpoint and other personal/profile identifiers.
+
+**VERIFIED — separate read-only runtime report:** the latest shutdown sequence contains `Stopping` at `2026-11-03T04:48:21Z` and matching `Exited (0)` at `2026-11-03T04:48:22Z` for the same VM and old launch session. At inspection, that guest's current row was already active and running again. These reports support successful shutdown and matching terminal cleanup, rather than a wait timeout; they do not independently prove native prompt cancellation or post-restart guest authentication. No agent-driven stop/start or authentication action occurred.
+
+**TO PROVE:** whether the pending native prompt cancelled during this shutdown, whether any old prompt resurfaced, and whether a fresh post-restart `try-omarchy-touch-id-test` passes without re-enrollment. Do not mark the complete shutdown cancellation/recovery case passed from the stopped JSON alone. Other crash/forced-stop and two-VM checks remain pending.

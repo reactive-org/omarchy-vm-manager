@@ -1520,3 +1520,12 @@ All nine published asset sizes/digests and both ZIP checksums match. Downloaded 
 
 
 **DESIGN DECISION — next native shutdown check, 3 November 2026:** after the user requested shutdown cancellation testing, prepare the existing CLI background `stop --wait --timeout 120` with the selected test guest and password-fallback-disabled guest authentication test. Require prompt cancellation and confirmed terminal exit; shutdown may close the guest terminal before its old test prints, so missing text is not a pass. After a user-initiated launch of the same VM, require fresh authentication without re-enrollment and no old prompt resurrection. Source wait/revocation paths and shell syntax are checked; actual shutdown/cancellation/restart recovery remain **TO PROVE**. No agent-driven lifecycle action or native interaction occurred. See [the manual procedure](docs/GuestTouchID.md#focus-preserving-graceful-shutdown-check).
+
+
+## Shutdown exit confirmed; authentication outcome pending — 3 November 2026
+
+**VERIFIED — user CLI output:** the user supplied the timed `stop --wait` reply reporting `ok: true`, `active: false` and `state: stopped`. Record only these state/result fields; exclude the supplied guest/request UUIDs, name, endpoint and other personal/profile identifiers.
+
+**VERIFIED — separate read-only runtime report:** the latest shutdown sequence contains `Stopping` at `2026-11-03T04:48:21Z` and matching `Exited (0)` at `2026-11-03T04:48:22Z` for the same VM and old launch session. At inspection, that guest's current row was already active and running again. These reports support successful shutdown and matching terminal cleanup, rather than a wait timeout; they do not independently prove native prompt cancellation or post-restart guest authentication. No agent-driven stop/start or authentication action occurred.
+
+**TO PROVE:** whether the pending native prompt cancelled during this shutdown, whether any old prompt resurfaced, and whether a fresh post-restart `try-omarchy-touch-id-test` passes without re-enrollment. Do not mark the complete shutdown cancellation/recovery case passed from the stopped JSON alone. Other crash/forced-stop and two-VM checks remain pending.
