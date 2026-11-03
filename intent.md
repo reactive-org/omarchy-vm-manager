@@ -1539,3 +1539,12 @@ All nine published asset sizes/digests and both ZIP checksums match. Downloaded 
 
 
 **DESIGN DECISION — two-VM guided test preparation, 3 November 2026:** following the request to continue, prepare two fresh disposable 4 GiB/4 CPU/64 GiB sparse official-factory profiles with guest Touch ID enabled, NAT, no shared folder/clipboard or personal SSH-key inheritance, and user-approved saved setup defaults. Read-only host and current-allocation checks show capacity; creation/launch/pairing remain user-driven steps and were not executed by the agent. Shell syntax and CLI/source contracts are reviewed. First establish A paired and B initially unpaired; distinguish focus rejection from native lease contention, and independent guest IDs from the stronger cloned-ID isolation case. See [the concrete setup and scope](docs/GuestTouchID.md#two-vm-manual-setup-and-observation-scope). Native multi-VM results remain **TO PROVE**. No existing guest, registry, factory, disk, key, credential, permission or UI was modified during preparation.
+
+
+## User-confirmed independent two-guest enrollment — 3 November 2026
+
+**VERIFIED — user reports:** the user completed A's enrollment/test, then reported B's password-fallback-disabled test failed without a Mac prompt while B was unpaired. After explicit enrollment of B, the user confirmed B's built-in test passed and A's subsequent fresh test still passed. Record independent guest enrollment and no observed interference from B's enrollment with A. The unpaired failure alone is not proof of host UUID-key isolation: the fresh guests have distinct guest IDs and their PAM setup differs before enrollment.
+
+**VERIFIED — read-only manager report:** both proposed disposable test profiles are active/running, with distinct UUIDs and distinct storage roots. Only these booleans and anonymized A/B labels are retained; no profile/root/process/key identifiers or credentials are recorded. The agent did not create, boot, enroll, alter or control either guest.
+
+**TO PROVE:** overlapping focus routing, actual native `lease-busy` contention, cross-guest disable/re-enrollment effects and cloned-identical-guest-ID isolation remain untested. Existing synthetic cross-process lease and cloned-ID namespace fixtures remain separate evidence.

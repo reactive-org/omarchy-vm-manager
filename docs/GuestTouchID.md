@@ -119,6 +119,14 @@ The next observations must distinguish background focus rejection from actual le
 
 After the user-driven test run, shut down both disposable guests, confirm matching exits and absence of their captured helper/QEMU processes, then offer to move their verified stopped UUID roots to Trash under the compatible lock. No deletion or existing-guest changes are included in setup. No profile, factory, guest, pairing or permission action has been executed by the agent.
 
+## Overlapping requests with one focused guest
+
+**Manual procedure / TO PROVE:** with A and B independently enrolled and running, execute `sleep 15; try-omarchy-touch-id-test` in B's guest terminal as a foreground command (no `&`). Immediately focus A and run `try-omarchy-touch-id-test` before B's 15-second timer expires. Leave A's native prompt open for about 20 seconds, maintaining focus on A or its native authentication dialog, then approve A.
+
+B's delayed request should fail without opening another Mac prompt or dismissing A's prompt. A should pass after its approval. Return to B and inspect its completed output; a host "Touch ID was not approved" denial distinguishes an exchanged host request from an earlier missing-TTY/guest-policy failure. Then run a fresh focused B test and approve it; B should pass. Record all three outcomes and any extra/queued prompt. Do not count a request that ran before A's prompt opened as an overlapping case.
+
+The foreground delayed command preserves B's controlling terminal; no detached/background-shell input assumptions are needed. Source broker inspection checks `PAM_TTY` and root/sudo context before exchange, and the test disables password fallback. Since the host checks focus before acquiring its lease, the expected B denial is focus rejection. This procedure does not by itself establish native `lease-busy` contention or same-guest-ID key isolation. No guest command or native interaction was performed by the agent.
+
 ## Optional 1Password follow-up
 
 The upstream package already ships its narrowly scoped polkit agent, password dialog and disabled service unit. This sudo milestone refuses `onepassword-unlock` in manager-scoped helpers. A follow-up must deliberately enable that operation and validate its existing signed context/cancellation boundary before native testing.
@@ -226,3 +234,12 @@ After sudo validation and separate authorization: install/sign in to 1Password i
 **VERIFIED — user report plus terminal-exit evidence:** the user confirmed that the pending Touch ID prompt cancelled during shutdown and that a fresh `try-omarchy-touch-id-test` passed after restarting the same guest without re-enrollment. Together with the supplied `stop --wait` reply (`ok: true`, stopped, inactive) and matching old-session `Exited (0)` report recorded above, mark this described manual shutdown cancellation/restart recovery case passed in the build 26 sequence. This confirmation supersedes the preceding pending prompt/fresh-test outcomes. The agent did not stop/start the guest, operate native authentication, read keys/credentials or independently observe prompt timing. No personal/key identifiers are retained.
 
 **TO PROVE:** forced-stop/crash cancellation and extended late-prompt/replay scenarios, exact prompt counts/rapid focus transitions, unavailable-biometry fallback, re-pairing and two-VM contention/key isolation remain pending native observation. The passed single-guest shutdown case does not establish every lifecycle failure path or authorize agent-driven VM, factory, storage or UI operations.
+
+
+## User-confirmed independent two-guest enrollment — 3 November 2026
+
+**VERIFIED — user reports:** the user completed A's enrollment/test, then reported B's password-fallback-disabled test failed without a Mac prompt while B was unpaired. After explicit enrollment of B, the user confirmed B's built-in test passed and A's subsequent fresh test still passed. Record independent guest enrollment and no observed interference from B's enrollment with A. The unpaired failure alone is not proof of host UUID-key isolation: the fresh guests have distinct guest IDs and their PAM setup differs before enrollment.
+
+**VERIFIED — read-only manager report:** both proposed disposable test profiles are active/running, with distinct UUIDs and distinct storage roots. Only these booleans and anonymized A/B labels are retained; no profile/root/process/key identifiers or credentials are recorded. The agent did not create, boot, enroll, alter or control either guest.
+
+**TO PROVE:** overlapping focus routing, actual native `lease-busy` contention, cross-guest disable/re-enrollment effects and cloned-identical-guest-ID isolation remain untested. Existing synthetic cross-process lease and cloned-ID namespace fixtures remain separate evidence.
