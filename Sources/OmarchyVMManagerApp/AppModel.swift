@@ -20,6 +20,11 @@ final class AppModel: ObservableObject {
     var factorySelectionNotice: String? { factoryLibrary.selectionNotice }
     @Published var ownerDefaults: OwnerDefaults?
     @Published var defaultsError: String?
+    @Published private var passwordUpgrade: (reference: UUID, result: OwnerPasswordUpgradeResult)?
+    var passwordUpgradeResult: OwnerPasswordUpgradeResult? {
+        guard let passwordUpgrade, passwordUpgrade.reference == ownerDefaults?.credentialReference else { return nil }
+        return passwordUpgrade.result
+    }
     @Published var diagnostics: KitDiagnostics?
     @Published var diagnosticError: String?
     @Published var registryError: String?
@@ -186,7 +191,9 @@ final class AppModel: ObservableObject {
 
     func upgradeSavedGuestPassword() async -> Bool {
         do {
-            try await manager.upgradeSavedGuestPassword()
+            let reference = ownerDefaults?.credentialReference
+            let result = try await manager.upgradeSavedGuestPassword()
+            if let reference { passwordUpgrade = (reference, result) }
             defaultsError = nil; return true
         } catch { defaultsError = error.localizedDescription; return false }
     }

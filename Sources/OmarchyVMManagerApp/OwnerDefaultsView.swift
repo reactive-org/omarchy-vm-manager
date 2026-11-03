@@ -12,9 +12,15 @@ struct OwnerDefaultsView: View {
     @State private var saving = false
     @State private var error: String?
     @State private var saved = false
-    @State private var passwordUpgraded = false
     private let protectedPasswordsAvailable = KeychainOwnerSecretStore.supportsProtectedStorage
     private let developmentPasswords = KeychainOwnerSecretStore.usesDevelopmentKeychain
+    private var upgradeButtonTitle: String {
+        switch model.passwordUpgradeResult {
+        case .authenticationPending: "Retry Touch ID upgrade…"
+        case .upgraded, .alreadyProtected: "Touch ID storage configured"
+        case nil: "Upgrade Saved Password to Touch ID…"
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Guest Defaults").font(.largeTitle.bold())
@@ -34,21 +40,23 @@ struct OwnerDefaultsView: View {
                     if developmentPasswords {
                         Text("This development build uses your existing login Keychain password. macOS may ask for your login password or permission to access it. Completed guests do not read the password again.").font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Text("The password is protected in Keychain. Each new guest’s first setup asks once for Touch ID, with your Mac login password as fallback. Completed guests do not ask again.").font(.caption).foregroundStyle(.secondary)
+                        Text("The manager retrieves the saved password from protected Keychain storage at first launch, using Touch ID or your Mac login password. Creating a VM only saves its profile. Completed guests do not ask again.").font(.caption).foregroundStyle(.secondary)
                     }
                     Text("A private temporary seed sets the guest owner and root passwords; SSH uses independent keys.").font(.caption).foregroundStyle(.secondary)
                     if !protectedPasswordsAvailable && !developmentPasswords {
                         Label("Touch ID password storage requires a signed, provisioned build. Your existing saved password is preserved.", systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
                     }
+                    if model.passwordUpgradeResult == .authenticationPending {
+                        Text("Keychain needs authentication before protection can be confirmed. You can retry the upgrade after unlocking your Mac. First launch still requires the protected password; this check did not read or replace it.").font(.caption).foregroundStyle(.secondary)
+                    }
                     if model.ownerDefaults?.credentialReference != nil && protectedPasswordsAvailable {
-                        Button(passwordUpgraded ? "Touch ID protection ready" : "Upgrade Saved Password to Touch ID…") {
+                        Button(upgradeButtonTitle) {
                             error = nil; saving = true
                             Task {
-                                passwordUpgraded = await model.upgradeSavedGuestPassword()
-                                if !passwordUpgraded { error = model.defaultsError }
+                                if !(await model.upgradeSavedGuestPassword()) { error = model.defaultsError }
                                 saving = false
                             }
-                        }.disabled(saving || passwordUpgraded || !protectedPasswordsAvailable || model.registryError != nil)
+                        }.disabled(saving || (model.passwordUpgradeResult != nil && model.passwordUpgradeResult != .authenticationPending) || !protectedPasswordsAvailable || model.registryError != nil)
                         Text("For passwords saved by older versions, this one-time upgrade may request login-Keychain access. It preserves the original entry and pending guest references. Touch ID storage requires a provisioned app build.").font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -91,7 +99,6 @@ struct OwnerDefaultsView: View {
                     Task {
                         if await model.saveDefaults(enabled: enabled, configuration: configuration, password: password.isEmpty ? nil : Data(password.utf8), publicKey: publicKey) {
                             password = ""; confirmation = ""; saved = true
-                            passwordUpgraded = false
                         } else { error = model.defaultsError }
                         saving = false
                     }

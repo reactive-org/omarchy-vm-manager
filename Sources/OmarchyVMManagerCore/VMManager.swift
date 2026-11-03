@@ -249,10 +249,10 @@ public actor VMManager {
         return try ownerDefaults.save(enabled: enabled, configuration: configuration, password: password, sshPublicKey: sshPublicKey)
     }
 
-    public func upgradeSavedGuestPassword() async throws {
+    public func upgradeSavedGuestPassword() async throws -> OwnerPasswordUpgradeResult {
         guard !quitting, let registry, let ownerDefaults else { throw OwnerConfiguration.invalid("Guest Defaults is unavailable while the manager is quitting.") }
         try registry.checkRevision()
-        try await Task.detached(priority: .userInitiated) { try ownerDefaults.upgradeSavedPassword() }.value
+        return try await Task.detached(priority: .userInitiated) { try ownerDefaults.upgradeSavedPassword() }.value
     }
 
     public func update(_ id: UUID, configuration: GuestConfigurationPatch) throws {

@@ -1,15 +1,23 @@
 import Foundation
 
+public enum OwnerPasswordUpgradeResult: Equatable, Sendable {
+    case upgraded
+    case alreadyProtected
+    // A noninteractive probe cannot confirm presence while authentication is required.
+    // This is not proof of authorization; first launch still performs the protected read.
+    case authenticationPending
+}
+
 public protocol OwnerSecretStoring: Sendable {
     func save(_ value: Data, reference: UUID) throws
     func read(reference: UUID) throws -> Data
     func remove(reference: UUID) throws
     func requireProtectedCredential(reference: UUID) throws
-    func upgradeLegacyCredential(reference: UUID) throws
+    @discardableResult func upgradeLegacyCredential(reference: UUID) throws -> OwnerPasswordUpgradeResult
 }
 
 public extension OwnerSecretStoring {
-    func upgradeLegacyCredential(reference: UUID) throws {
+    @discardableResult func upgradeLegacyCredential(reference: UUID) throws -> OwnerPasswordUpgradeResult {
         throw VMFailure(code: "owner-keychain-upgrade-unavailable", message: "This credential store does not support upgrading saved passwords.")
     }
 }
@@ -57,7 +65,7 @@ public final class OwnerDefaultsStore: @unchecked Sendable {
             return snapshot
         }
     }
-    public func upgradeSavedPassword() throws {
+    @discardableResult public func upgradeSavedPassword() throws -> OwnerPasswordUpgradeResult {
         let reference = try access.withLock {
             let value = try load()
             if let revision {
@@ -67,7 +75,7 @@ public final class OwnerDefaultsStore: @unchecked Sendable {
             return reference
         }
         // Authentication may wait for the user. Hold no defaults lock while it does.
-        try vault.upgradeLegacyCredential(reference: reference)
+        return try vault.upgradeLegacyCredential(reference: reference)
     }
     public func save(enabled: Bool, configuration: OwnerConfiguration, password: Data?, sshPublicKey: String? = nil) throws -> OwnerDefaults {
         try access.withLock {

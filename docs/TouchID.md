@@ -1,6 +1,6 @@
 # Touch ID for guest setup
 
-Status: the development compatibility build was installed on 2 November 2026 without retaining a backup, while the provisioned release awaits Apple notarization. Saved credentials and VM data are unchanged. Native authentication checks remain pending.
+Status: signed v0.10.0-dev.1 passed CI signing, notarization and bundle/process checks. The user subsequently reported pre-launch authorization failures without a Touch ID prompt. The exact native Security status and end-to-end authentication remain unverified; see the 3 November regression below.
 
 **DESIGN DECISION — provisioned builds:** an automatically configured new VM authorizes its setup-password retrieval once on first launch. macOS offers Touch ID with the Mac login password as fallback. Creating a profile without starting it reads only protected-item metadata. Manual setup and completed guests do not read a password. Retrying interrupted setup requires another approval; there is no shared unlock session across guests.
 
@@ -28,7 +28,7 @@ In a provisioned build, **Guest Defaults → Upgrade Saved Password to Touch ID�
 
 The UUID remains unchanged, so pending snapshots referencing that credential can use the upgraded item. The original entry is retained, including its original Keychain ACL; older copies have not acquired biometric protection. Repeated upgrade actions check metadata and return without reading either password. If migration fails, the original and Guest Defaults file remain untouched. Saving a freshly entered password also writes to the protected service, under a new UUID as before.
 
-In protected-storage mode, new profiles using unattended defaults are refused until the saved credential is protected. Older pending guests whose snapshots reference a different historical credential also fail closed; upgrading the current defaults does not silently replace their original passwords. Completed guests continue to bypass password retrieval.
+In protected-storage mode, an explicit missing credential or failed provisioning check refuses new unattended profiles. A noninteractive query blocked by authentication defers that check; it does not prove an item exists or grant access. Older pending guests whose snapshots reference a different historical credential also fail closed; upgrading the current defaults does not silently replace their original passwords. Completed guests continue to bypass password retrieval.
 
 ## Provisioning profile
 
@@ -49,3 +49,12 @@ Ad-hoc debug builds retain empty entitlements and use the authorized development
 **VERIFIED — synthetic:** the credential-policy tests inject a fake Security adapter and synthetic secrets. They cover the actual user-presence access-control object, device-only storage, no synchronization, one read per attempt, fresh contexts, no recent-unlock reuse, cancellation and entitlement failures without retry, noninteractive metadata admission, explicit/idempotent upgrade, original preservation and completed/manual guest bypass. Disposable UUID-root seed fixtures start no guest. Profile tests cover scope/expiry/platform/team mismatches, development/wildcard profile refusal, no shared entitlement grants and final-bundle entitlement checks.
 
 **TO PROVE:** native authentication prompts and fallback, cancellation/prompt count, upgrade UI and changed-binary login-Keychain authorization, final profile/certificate admission, background focus and real guest behavior. No real credential, authentication UI, permission grant, installed app, existing guest or factory was used for these checks. Exact build/test/package commands and counts are recorded in [Validation](Validation.md#touch-id-feature-preparation--1-november-2026).
+
+
+## Noninteractive pre-launch regression — 3 November 2026
+
+The upgrade and new-profile checks request only attributes, explicitly refuse returned password data and disable authentication UI. Apple documents that [a noninteractive request can return errSecInteractionNotAllowed](https://developer.apple.com/documentation/security/ksecuseauthenticationuifail); [data-protection unavailability can also produce this error](https://developer.apple.com/forums/thread/724013). Treating it as proof of missing data, a successful upgrade or completed authentication is incorrect.
+
+The fix candidate defers profile admission for this one status, while keeping the original mandatory interactive protected read at first launch before any VM storage preparation. Repeated explicit upgrade returns an unconfirmed pending state without reading/copying/deleting a secret. It remains retryable after the Mac is unlocked. Missing items, entitlement failures, authentication rejection and other errors remain failures; other failures now expose a non-secret numeric Security status. No legacy fallback or reduced Keychain accessibility is added.
+
+Upgrade UI results stay in AppModel for the current credential reference instead of resetting with the view. A confirmed upgrade/existing item and an unconfirmed blocked probe have different labels; neither claims that native authentication was tested. Creating a VM only saves a profile, and Touch ID/Mac-password approval belongs to its first launch. Actual native cause and prompt/fallback behavior remain TO PROVE.
