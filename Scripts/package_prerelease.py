@@ -51,6 +51,13 @@ def package():
         ("Guest setup passwords use a provisioned private Keychain item with Touch ID and Mac login password fallback. "
          "Use Guest Defaults to explicitly upgrade an older saved password before creating a new unattended guest. "
          "Native biometric prompts and real guest behavior still require user validation.\n\n" if args.signed else "") +
+        ("Guest sudo Touch ID is now off by default and opt-in per VM through Allow Touch ID inside this VM. "
+         "Stop the guest before changing it, then pair explicitly inside the guest through Setup → Security → Touch ID for sudo. "
+         "Host bridge configuration does not prove guest pairing. Denial or contention falls back to the Linux guest password. "
+         "Manager UUIDs isolate pairing keys; one manager guest prompt is allowed at a time. "
+         "Native success, focus, cancellation and multi-VM behavior still require validation. "
+         "Guest 1Password unlock remains disabled in this sudo milestone.\n\n"
+         if lock.get("managedAuthenticationVersion") == 1 else "") +
         f"Embedded runtime source: `{lock['patchCommit']}`; runtime archive SHA-256: `{lock['kitSHA256']}`. " +
         ("The original development runtime is unchanged; this build uses separate signed-runtime provenance. "
          "Custom factories bound to the ad-hoc runtime remain preserved but need a bundle compatible with this signed runtime. "
