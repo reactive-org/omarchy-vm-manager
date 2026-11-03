@@ -205,3 +205,6 @@ The host fix and reported no-prompt failure are detailed in [Guest Touch ID](Gue
 
 
 **VERIFIED — user-confirmed two-VM cases:** independently enrolled A/B pass; overlapping A succeeds while delayed background B fails, then focused fresh B succeeds. B enrollment removal reports guest-and-host cleanup, disabled B fails without a prompt, and A remains functional. These manual build 26 routing/disable cases are passed. [Scope and remaining limits](GuestTouchID.md#user-confirmed-two-guest-routing-and-disable-independence--3-november-2026) retain native lease-busy, cloned-identical-ID and crash-path distinctions. Private read-only process identities are captured for cleanup; both test guests are still running pending user shutdown and matching-exit/process checks.
+
+
+**VERIFIED — two-VM run shutdown/process cleanup:** the user stopped A/B; both captured launch sessions have exit status 0. All 16 captured process identities are gone, no process holds either test disk open, and the stopped UUID roots retain their captured identities. [Exact cleanup scope](GuestTouchID.md#two-vm-test-guests-stopped-and-verified--3-november-2026) records the separate optional Trash decision. No deletion or extra native gate is inferred from these checks.
