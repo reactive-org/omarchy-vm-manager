@@ -61,3 +61,8 @@ After sudo validation and separate authorization: install/sign in to 1Password i
 - `git diff --check` passes. Original checkout and historical signed locks are unchanged. No real signing/notarization identity, credential read, permission grant, installed app change, UI control, real enrollment, guest PAM change or VM launch was performed.
 
 **TO PROVE:** all native multi-VM authentication, actual Mac dialog focus, success/fallback/cancellation, installed guest dependency availability, lifecycle/crash behavior and UI layout. The app bundle remains local and uninstalled. 1Password unlock is deliberately deferred. Native testing and release publication are separate approval steps.
+
+
+## Signed verification candidate
+
+[v0.11.0-dev.1, version 0.11.0 (25)](https://github.com/reactive-org/omarchy-vm-manager/releases/tag/v0.11.0-dev.1) is Developer ID signed, notarized and independently verified. The app source remains `01631ee`; runtime source remains `8d5015ec740aad5417b601e05d451b28ed45d573`. The [release record](Prereleases.md#published-guest-sudo-touch-id-candidate--3-november-2026) distinguishes successful distribution checks from native behavior, which remains **TO PROVE**. No VM was launched for release verification. Guest sudo Touch ID is off by default; 1Password remains deferred.
