@@ -105,6 +105,13 @@ checks and 61 script tests pass. Guest acceptance stays NOT_RUN; the report cann
 approve a scope or enable execution. A new stopped disposable profile proposal and
 its explicit preparation approval precede any real candidate/guest run.
 
+A [private scoped preparation candidate](DevVMMilestone6Runbook.md#private-scoped-candidate-preparation)
+is now retained outside version control. Both compiled components verify the same
+original disposable pins; thirteen offline checks and the twelve-test ordinary
+admission suite pass. Fake-runtime probes start nothing. The candidate is ad-hoc
+signed, and its unchanged production helper-signing policy correctly blocks it.
+The ordinary build stays disabled; real guest acceptance remains NOT_RUN.
+
 [Milestone 6 disposable admission](DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
 adds independent manager/helper approval checks for exact disposable UUID/root
 identity pins, including restart, cleanup and terminal input. Twelve fake/local

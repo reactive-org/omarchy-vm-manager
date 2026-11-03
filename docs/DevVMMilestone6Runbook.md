@@ -3,7 +3,9 @@
 Status: **PREPARED / NOT RUN**. This document authorizes no operation.
 Prepared 3 November 2026 for the native Swift provisioning integration.
 
-The current product execution gate remains false. The full-screen UI acceptance
+The ordinary product execution gate remains false. A separate private scoped
+candidate has been prepared offline; see [its evidence and limits](#private-scoped-candidate-preparation).
+The full-screen UI acceptance
 uses isolated fake services; it establishes neither real guest identity nor a
 successful setup, cleanup, restart or check. Keep VERIFIED, DESIGN DECISION,
 PRIVATE COUPLING and TO PROVE evidence distinct in the eventual results.
@@ -95,6 +97,53 @@ No host install is a fallback. Homebrew and a compatible, matching Homebrew
 and pinned transport policy. A missing/wrapped/mismatched/replaced dependency stops
 this run. Do not uninstall or replace tools to manufacture a failure case; use the
 existing fake dependency suite for those cases.
+
+## Private scoped candidate preparation
+
+**VERIFIED — offline/local, 3 November 2026:** a private debug candidate was built
+from commit `1cb2bdd929ac147f15b4a682291418fa699372ba` plus an exact six-file overlay.
+The new stopped disposable profile/root has an original preparation receipt. Its
+UUID, absolute root, device/inode and ownership-marker hash are compiled into the
+same Core composition in manager and helper. The private scope, receipts, overlay,
+base source archive, app inventory, binary/signature hashes and reports remain in
+an ignored private artifact directory, not this repository's tracked sources.
+No private identifiers or approval pins are recorded in this tracked documentation.
+
+**DESIGN DECISION:** candidate preparation is distinct from guest-run approval.
+The main worktree keeps `disposableApproval = nil`. Only the separate snapshot
+references the original constants; it adds no file/environment/CLI/IPC approval
+loader. A missing/changed original scope terminates private scope initialization
+instead of returning nil and falling back to ordinary composition. The actual root
+was not modified for fault tests. Fail-closed initialization is reviewed source;
+read-only constructor probes independently refuse wrong device/inode/marker pins.
+
+The private read-only inspection entrypoint runs before AppModel, registry and
+worker dispatch. Both packaged components validate identical scope digests and
+original pins, refuse wrong UUID/path/pins and admit their exact package/resources.
+Their production same-application-team helper signing check correctly refuses the
+ad-hoc app/helper. That policy is unchanged; no fixture signing policy substitutes
+for it. Existing kit signatures are preserved byte-for-byte, the runtime archive
+and inventory match the lock, and local app signatures pass deep/strict verification.
+This establishes package integrity, not operational or loaded-child acceptance.
+
+The candidate was copied into its private retained location, compared byte-for-byte
+and inspected again there. Thirteen offline checks are recorded. A probe linked
+against its actual Core library uses only fake runtimes and temporary metadata:
+other UUIDs, a same-UUID different namespace and retained POC IDs are refused before
+runtime start, including before coordinator installation, with a permissive fixture
+coordinator and after coordinator close. All fake runtime start counts remain zero.
+The ordinary admission suite also passes twelve fake/local tests. The real root,
+its five metadata files and the complete registry remain unchanged.
+
+**TO PROVE / BLOCKED:** production signing and loaded-child admission; independently
+approved managed SSH/owner configuration (currently disabled in the stopped profile);
+an actual available factory and fresh Homebrew Ansible readiness; exact frozen
+inputs and relevant privilege/task consent; all guest execution/TTY/cleanup/restart/
+check/failure rows. No VM launch, real transport, tool install, credentials, normal
+UI entrypoint or operational worker activation occurred. Real acceptance stays
+NOT_RUN. The package verifier's `executionEnabled: false` describes its offline
+command contract; the private inspection separately reports `scopeConfigured: true`.
+Neither report supplies guest-run consent or bypasses signing/session/tool checks.
 
 ## Offline candidate preflight
 

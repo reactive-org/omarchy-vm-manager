@@ -2787,3 +2787,42 @@ for concrete new disposable metadata preparation; it does not authorize boot or
 real provisioning. This checkpoint includes the previously uncommitted admission,
 native Source/profile/permission/trim/theme/layout work and related docs in both
 worktrees. Earlier "uncommitted" notes describe their original slice handoffs.
+
+## Milestone 6 private scoped candidate preparation — 3 November 2026
+
+**IMPLEMENTED — private artifact only:** the explicitly approved new stopped
+profile/root was prepared separately, then a candidate was built from commit
+`1cb2bdd929ac147f15b4a682291418fa699372ba` with a recorded six-file private overlay.
+Original UUID/root/device/inode/marker pins are constants in the Core linked into
+both manager and helper. The main worktree's product gate remains nil. The private
+composition fails closed on unavailable original pins, with no nil fallback and no
+new approval file, environment, CLI or IPC loader. A private inspection command
+runs before AppModel/registry/worker dispatch. All actual identifiers/pins, the
+source archive/overlay, app, signatures, digests and reports remain ignored/private.
+No manager/helper runtime implementation or shared package source was changed.
+
+**VERIFIED — offline/local:** the isolated SwiftPM/make debug build succeeds using
+cached dependencies with automatic resolution disabled. Existing pinned kit
+archive/inventory hashes match; its original signatures survive packaging unchanged.
+Manager/helper/CLI/storage/launcher and app use ad-hoc signing only, without signing
+credentials. Strict/deep local signature and static layout/package/resource checks
+pass. The retained app is byte-identical to the assembly and both relocated manager/
+helper inspection reports match: identical original scope, wrong UUID/root and
+wrong device/inode/marker refusal, unchanged production signing refusal. Thirteen
+offline checks are recorded in its private manifest. A probe against the actual
+candidate Core confirms scope before coordinator installation, despite a permissive
+fixture coordinator and after its close; another UUID, the same UUID in a different
+namespace and retained POC IDs all refuse with zero fake runtime starts. The ordinary
+admission suite passes twelve functions. Real root/metadata and full registry hashes
+are unchanged. No real guest, transport, installed-tool probe, host install, credential
+operation, normal app entrypoint or worker body ran.
+
+**DESIGN DECISION / TO PROVE:** this is an offline preparation candidate. Production
+helper admission still requires a non-ad-hoc same-team app/helper and correctly
+blocks this artifact; its fixture policy is not substituted. Operational loaded-
+child admission remains unproven. The stopped profile has SSH/owner setup disabled;
+configuring those, selecting an actual available factory, fresh Homebrew tool
+readiness, exact frozen-input/privilege/task consent and real execution still need
+their own scoped approval/evidence. No launch or real provisioning is authorized by
+candidate preparation. Every guest acceptance row remains NOT_RUN; milestone 6 is
+not complete. See the [runbook](DevVMMilestone6Runbook.md#private-scoped-candidate-preparation).

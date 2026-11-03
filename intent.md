@@ -2443,3 +2443,27 @@ remains the visual target for milestone 5.
   [runbook](docs/DevVMMilestone6Runbook.md#offline-candidate-preflight).
 - **TO PROVE:** approved original root identities and operational candidate,
   signatures/loaded code, fresh real factory/tool admission and all guest rows.
+
+## Private scoped provisioning candidate — 3 November 2026
+
+- **DESIGN DECISION:** the approved stopped disposable profile/root and its original
+  pins can identify a private candidate without authorizing launch or provisioning.
+  Main source remains nil/disabled. Private source overlay and actual identifiers
+  stay outside version control; constants cannot be supplied by a file, environment,
+  CLI, manifest or IPC. Invalid original scope fails closed rather than falling
+  back to ordinary composition. Production helper-signing policy is unchanged.
+- **PRIVATE COUPLING:** a private six-file overlay over commit `1cb2bdd` installs the
+  original scope in both manager/helper and a read-only inspection path before
+  AppModel/registry/worker dispatch. Existing make/SwiftPM, exact kit resources and
+  packaging are retained. No virtualization implementation or shared source changes.
+- **VERIFIED — offline/local:** thirteen artifact checks, actual packaged component
+  reports before/after relocation, fake-runtime refusal probes with zero starts,
+  and twelve ordinary admission tests pass. Kit archive/inventory and signatures
+  match; local app signatures verify. Only ad-hoc signing is used. Root, metadata
+  and full registry are unchanged. Production same-team signing correctly refuses
+  the candidate; no fixture policy replaces it. See the
+  [runbook](docs/DevVMMilestone6Runbook.md#private-scoped-candidate-preparation).
+- **TO PROVE:** authorized signing/loaded-child admission, separately approved SSH/
+  owner configuration, existing factory/tool readiness, exact inputs/consents and
+  all real guest acceptance. No launch, real SSH/Ansible, install, credential use,
+  normal UI or worker body occurred. Real acceptance remains NOT_RUN.
