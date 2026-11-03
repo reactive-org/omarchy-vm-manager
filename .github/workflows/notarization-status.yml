@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   status:
-    name: Check Apple submission for v0.10.0-dev.1
+    name: Check Apple submission for v0.10.0-dev.2
     # This job only queries notarytool; it does not build or execute the arm64 app.
     # Use the Intel pool after arm64 runner capacity prevented status checks.
     runs-on: macos-15-intel
@@ -16,23 +16,23 @@ jobs:
           path: tooling
       - uses: actions/checkout@v7
         with:
-          ref: v0.10.0-dev.1
+          ref: v0.10.0-dev.2
           path: release-source
       - name: Verify immutable release source
         working-directory: release-source
-        run: test "$(git rev-parse HEAD)" = d72dd2b05281767dfcb472442eea37af72dcc921
+        run: test "$(git rev-parse HEAD)" = e0122077401e6fec16a9cb7d4415ac0b93ca6aac
       - name: Query existing Apple submission without a new upload
         id: apple
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-        run: python3 tooling/Scripts/signed_prerelease.py --check-submission a4d1cedd-f04e-4a73-a9a1-694b4dfaca68
+        run: python3 tooling/Scripts/signed_prerelease.py --check-submission 4bde8c3b-cb6a-4cbc-9bc6-b6b291106770
       - name: Retain current Apple result
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: notarization-status-v0.10.0-dev.1
+          name: notarization-status-v0.10.0-dev.2
           path: tooling/.build/notarization/*.json
           include-hidden-files: true
           if-no-files-found: ignore
