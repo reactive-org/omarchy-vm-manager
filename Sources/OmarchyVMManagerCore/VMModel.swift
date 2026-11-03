@@ -7,6 +7,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public var memoryMiB: Int
     public var cpus: Int
     public var diskGiB: Int?
+    public var guestTouchIDEnabled: Bool = false
     public var clipboardEnabled: Bool
     public let createdAt: Date
     public var immersiveMode: Bool?
@@ -32,7 +33,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, memoryMiB, cpus, diskGiB, clipboardEnabled, createdAt, immersiveMode
-        case settingsFingerprint, ssh, ownerSetup, factory, sharedFolder
+        case settingsFingerprint, ssh, ownerSetup, factory, sharedFolder, guestTouchIDEnabled
     }
 
     public init(from decoder: any Decoder) throws {
@@ -42,6 +43,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
         memoryMiB = try values.decode(Int.self, forKey: .memoryMiB)
         cpus = try values.decode(Int.self, forKey: .cpus)
         diskGiB = try values.decodeIfPresent(Int.self, forKey: .diskGiB)
+        guestTouchIDEnabled = try values.decodeIfPresent(Bool.self, forKey: .guestTouchIDEnabled) ?? false
         clipboardEnabled = try values.decode(Bool.self, forKey: .clipboardEnabled)
         createdAt = try values.decode(Date.self, forKey: .createdAt)
         immersiveMode = try values.decodeIfPresent(Bool.self, forKey: .immersiveMode)

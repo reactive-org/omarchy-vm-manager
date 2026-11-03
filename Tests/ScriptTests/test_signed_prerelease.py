@@ -194,3 +194,27 @@ class SignedProvenanceTests(unittest.TestCase):
                 with patch.dict(os.environ, {"MACOS_CERTIFICATE_PASSWORD": "wrong-synthetic-password"}), self.assertRaisesRegex(RuntimeError, "could not be decrypted"):
                     signed_prerelease.compatible_certificate(archive, folder)
                 self.assertFalse((folder/"identity.pem").exists())
+
+
+class TicketNetworkRetryTests(unittest.TestCase):
+    def test_transient_ticket_retry_uses_the_same_command_and_never_submits(self):
+        result = SimpleNamespace(stdout='validated')
+        arguments = ('python3', 'kit_signature.py', 'staple', '/fixture/kit.bundle')
+        with patch.object(signed_prerelease, 'run', side_effect=[RuntimeError('NSURLErrorDomain Code=-1005'), result]) as command, patch.object(signed_prerelease.time, 'sleep') as wait:
+            self.assertIs(signed_prerelease.retry_ticket_network('fixture ticket', *arguments), result)
+            self.assertEqual([item.args for item in command.call_args_list], [('fixture ticket', *arguments)] * 2)
+            wait.assert_called_once_with(5)
+
+    def test_signature_or_policy_errors_are_not_retried(self):
+        with patch.object(signed_prerelease, 'run', side_effect=RuntimeError('invalid signature')) as command, patch.object(signed_prerelease.time, 'sleep') as wait:
+            with self.assertRaisesRegex(RuntimeError, 'invalid signature'):
+                signed_prerelease.retry_ticket_network('fixture ticket', 'stapler', 'validate', '/fixture')
+            self.assertEqual(command.call_count, 1)
+            wait.assert_not_called()
+
+    def test_persistent_ticket_network_failure_is_bounded_and_still_fails(self):
+        with patch.object(signed_prerelease, 'run', side_effect=RuntimeError('NSURLErrorDomain Code=-1005')) as command, patch.object(signed_prerelease.time, 'sleep') as wait:
+            with self.assertRaises(RuntimeError):
+                signed_prerelease.retry_ticket_network('fixture ticket', 'stapler', 'validate', '/fixture')
+            self.assertEqual(command.call_count, 3)
+            self.assertEqual(wait.call_count, 2)

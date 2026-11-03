@@ -27,6 +27,7 @@ public struct RuntimeProvenance: Codable, Equatable, Sendable {
     public let runProtocolVersion: Int
     public let buildDate: String
     public let focusAwareClipboard: Bool
+    public var managedAuthenticationVersion: Int? = nil
     public var managedSSHVersion: Int? = nil
     public var manualPauseVersion: Int? = nil
     public var launchIntentVersion: Int? = nil
@@ -126,6 +127,9 @@ public enum KitVerifier {
         }
         if let version = lock.manualPauseVersion, version != 1 {
             throw invalid("Manual execution control capability is unknown.")
+        }
+        if let version = lock.managedAuthenticationVersion, version != 1 {
+            throw invalid("Managed authentication capability is unknown.")
         }
         if let version = lock.launchIntentVersion, version != 1 {
             throw invalid("Guest launch intent capability is unknown.")

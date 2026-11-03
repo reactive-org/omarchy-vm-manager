@@ -5,6 +5,7 @@ import json
 import os
 import plistlib
 from pathlib import Path
+from ticket_network import run_ticket_checked
 import shutil
 import subprocess
 
@@ -87,7 +88,7 @@ def assemble():
         if not args.preserve_runtime_signatures:
             run("python3", signature, "sign", "--identity", "-", kit)
         if args.signed_prerelease:
-            run("python3", signature, "verify", "--team", lock["signingTeamID"], "--require-notarization", kit)
+            run_ticket_checked("python3", signature, "verify", "--team", lock["signingTeamID"], "--require-notarization", kit)
         else:
             run("python3", signature, "verify", "--signature-only", kit)
         assert inventory(kit) == lock["files"], "embedding changed pinned kit bytes"

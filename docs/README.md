@@ -54,3 +54,5 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 - [Factory compatibility](FactoryCompatibility.md): reviewed guest package identities, supported protocols, migration and when an image rebuild is necessary.
 
 - [Native host-folder sharing](SharedFolders.md): opt-in configuration, runtime limitations, factory prerequisites and approval-gated existing-VM validation.
+
+- [Guest Touch ID for sudo](GuestTouchID.md) — default-off settings, isolation policy and separately approved native validation.

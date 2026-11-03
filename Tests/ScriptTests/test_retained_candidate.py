@@ -111,3 +111,43 @@ class RetainedCandidateTests(unittest.TestCase):
                 result = signed_prerelease.accepted_submission(archive, [], "runtime", identifier)
                 self.assertEqual(result["status"], "Accepted")
                 self.assertEqual(commands.call_count, 2)
+
+    def test_complete_build_layout_binds_every_member_to_source_and_acceptance(self):
+        for problem in (None, 'extra', 'member', 'source', 'acceptance', 'candidate'):
+            with self.subTest(problem=problem), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                receipt = dict(self.receipt, artifactLayout='complete-build-v1',
+                               runtimeArchiveSHA256=hashlib.sha256(b'runtime').hexdigest(),
+                               sourceLockSHA256=hashlib.sha256(b'source-lock').hexdigest())
+                status = dict(id=receipt['appleSubmissionID'], createdDate=receipt['appleCreatedDate'], status='Accepted')
+                candidate = dict(submissionID=receipt['appleSubmissionID'], archiveSHA256=receipt['runtimeArchiveSHA256'], releaseTag=receipt['releaseTag'])
+                origin = dict(applicationSourceCommit=receipt['sourceCommit'], workflowRunID=str(receipt['sourceRun']), releaseTag=receipt['releaseTag'])
+                accepted = dict(jobId=receipt['appleSubmissionID'], status='Accepted', statusCode=0,
+                                sha256=receipt['runtimeArchiveSHA256'], ticketContents=[dict(path='runtime')], issues=None)
+                if problem == 'source': origin['applicationSourceCommit'] = 'f' * 40
+                if problem == 'acceptance': accepted['status'] = 'In Progress'
+                if problem == 'candidate': candidate['submissionID'] = 'wrong'
+                members = {
+                    '.build/signed-release/kit/TryOmarchyKit.zip': b'runtime',
+                    '.build/signed-release/kit/TryOmarchyKit.json': b'{}',
+                    '.build/signed-release/notary-runtime.zip': b'runtime',
+                    '.build/signed-release/SourceRuntime.lock.json': b'source-lock',
+                    '.build/signed-release/ReleaseSource.json': json.dumps(origin).encode(),
+                    '.build/notarization/runtime-submission.json': json.dumps(status).encode(),
+                    '.build/notarization/runtime-candidate.json': json.dumps(candidate).encode(),
+                    '.build/notarization/runtime-log.json': json.dumps(accepted).encode(),
+                }
+                receipt['artifactMemberSHA256'] = {name: hashlib.sha256(data).hexdigest() for name, data in members.items()}
+                if problem == 'extra': members['../injected'] = b'unsafe'
+                if problem == 'member': receipt['artifactMemberSHA256']['.build/signed-release/kit/TryOmarchyKit.zip'] = 'f' * 64
+                archive = root / 'artifact.zip'
+                with zipfile.ZipFile(archive, 'w') as zipped:
+                    for name, data in members.items(): zipped.writestr(name, data)
+                receipt['artifactSHA256'] = retained_candidate.sha256(archive)
+                if problem is None:
+                    retained_candidate.extract_candidate(receipt, archive, root / 'result')
+                    self.assertEqual((root / 'result/SubmittedRuntime.zip').read_bytes(), b'runtime')
+                    self.assertEqual(json.loads((root / 'result/RuntimeNotarizationLog.json').read_bytes())['status'], 'Accepted')
+                else:
+                    with self.assertRaises(AssertionError):
+                        retained_candidate.extract_candidate(receipt, archive, root / 'result')

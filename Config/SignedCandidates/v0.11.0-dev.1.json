@@ -1,0 +1,25 @@
+{
+  "appleCreatedDate": "2026-11-03T03:13:10.716Z",
+  "appleStatusAtCIStop": "Accepted",
+  "appleSubmissionID": "4c6a7ba6-f9ce-4740-93f3-38c276534f3f",
+  "artifactID": 13201332381,
+  "artifactLayout": "complete-build-v1",
+  "artifactMemberSHA256": {
+    ".build/notarization/runtime-candidate.json": "8d51464c9125ffeecab027dcd5ace7650b764f9c931f332f33b959b6bffc7f75",
+    ".build/notarization/runtime-log.json": "ab80b1b9b7567e3bfe7fd32ae34e263489394d0a3736a4a336d767429e9e9d1b",
+    ".build/notarization/runtime-submission.json": "4c188bb3d88501738359a552d70219c477ee4ee6a474cb49541f18698175864d",
+    ".build/signed-release/ReleaseSource.json": "affab2a39587d4451bb9d0efb5901af93ee7a12c2d0e2daa9d496d5dd244b2bb",
+    ".build/signed-release/SourceRuntime.lock.json": "91223707e872d9113a5b54ddf83a2d09fc9ebb65f9e23e3a377d657bc3c0f0e6",
+    ".build/signed-release/kit/TryOmarchyKit.json": "bb298c5ec77e746aa63dec83b4c09e85439c81e88d3a358bcc582e0af165e9a8",
+    ".build/signed-release/kit/TryOmarchyKit.zip": "8597cfef14d02db91b1fb011e84aa2f1b433c8f837c4624fb08171694f4c7e61",
+    ".build/signed-release/notary-runtime.zip": "8597cfef14d02db91b1fb011e84aa2f1b433c8f837c4624fb08171694f4c7e61"
+  },
+  "artifactSHA256": "cd1ee3723e4a59cfe4ff2e63fa37eeef18a54b3a848f385b1ca8a6fe1e33e2ae",
+  "releaseTag": "v0.11.0-dev.1",
+  "runtimeArchiveSHA256": "8597cfef14d02db91b1fb011e84aa2f1b433c8f837c4624fb08171694f4c7e61",
+  "signedMachOFiles": 22,
+  "sourceCommit": "01631ee6ba261e85a22dd3f7959b60d678ababf8",
+  "sourceKitSHA256": "ec002c2b241454d7430729ebf850cb6f58612db2b96b8a6c8c30f2f6d64e3ded",
+  "sourceLockSHA256": "91223707e872d9113a5b54ddf83a2d09fc9ebb65f9e23e3a377d657bc3c0f0e6",
+  "sourceRun": 41570011640
+}
