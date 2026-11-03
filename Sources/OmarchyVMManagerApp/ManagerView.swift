@@ -451,7 +451,7 @@ struct VMEditor: View {
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    NewVMSetupSelectionView(model: model, consent: $setupConsent, ready: $setupReady).disabled(saving)
+                    NewVMSetupSelectionView(model: model, factory: $factory, consent: $setupConsent, ready: $setupReady).disabled(saving)
                     Button("Import Factory…") { importingFactory = true }
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
                 } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
@@ -513,6 +513,7 @@ struct VMEditor: View {
             if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
                 acceptance.bind("editor", action: { command in
                     switch command {
+                    case .factory(let value): factory = value
                     case .name(let value): name = value
                     case .resources(let ram, let cores, let size): memory = ram; cpus = cores; disk = size
                     case .save: save()

@@ -70,7 +70,8 @@ def pin_source(raw, lock):
             "    public static let resources: [String: String] = [\n" + entries + "\n    ]\n}\n")
 
 
-def prepare(root=ROOT):
+def verify_source(root=ROOT):
+    """Verify the export without generating pins or build inputs."""
     require(not any(os.environ.get(name) == "1" for name in
                     ("TOMLDECODER_BENCHMARKS", "TOMLDECODER_DOCS", "TOMLDECODER_FORMATTING"))
             and "SPI_GENERATE_DOCS" not in os.environ, "Optional parser build plugins are not admitted")
@@ -91,6 +92,11 @@ def prepare(root=ROOT):
                 require(result.returncode == 0, "Provisioning integration patch cannot be verified")
             require(files(checkout) == lock["baseFiles"], "Provisioning patch base differs")
     require(lock["engineSHA256"] == lock["files"]["Sources/DevVMProvisioningCore/Resources/engine-identity.json"])
+    return raw, lock
+
+
+def prepare(root=ROOT):
+    raw, lock = verify_source(root)
     pin = root / "Sources/OmarchyVMManagerCore/ProvisioningPackagePin.swift"
     require(not pin.is_symlink())
     expected = pin_source(raw, lock)

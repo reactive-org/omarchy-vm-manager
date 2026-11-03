@@ -49,14 +49,17 @@ struct ProvisioningCreationDraft: Sendable {
     var reservation: ProvisioningSelectionReceipt?
 }
 extension ProvisioningService: ProvisioningCreationPlanning {
-    public func prepareCreation(id: UUID = UUID(), source: ProvisioningSetupSource) throws -> ProvisioningCreationReview {
+    public func prepareCreation(id: UUID = UUID(), source: ProvisioningSetupSource) async throws -> ProvisioningCreationReview {
         try reviewAvailable(); try source.validate()
         if let draft = creations[id] {
             guard draft.frozen.selection == source else { throw ProvisioningJobFailure.jobConflict }
             return try creation(id)
         }
         guard reviewCount < 16, !draftCaptures.contains(id), drafts[id] == nil, status(id) == nil else { throw ProvisioningReviewFailure.quota }
-        let frozen = try freezeSelection(source)
+        draftCaptures.insert(id); defer { draftCaptures.remove(id) }
+        let appearance = try await freezeAppearance(source.appearance)
+        try reviewAvailable()
+        let frozen = try freezeSelection(source, appearance: appearance)
         let review = ProvisioningCreationReview(id: id, planDigest: frozen.plan.identity, inputDigest: frozen.plan.snapshot.identity,
             engineDigest: environment.engineDigest, reviewIdentity: try ProvisioningCreationReview.identity(id, frozen.plan.identity, frozen.plan.snapshot.identity, environment.engineDigest),
             proposal: frozen.proposal, tasks: frozen.tasks, restartRequired: frozen.restartRequired)
@@ -71,10 +74,11 @@ extension ProvisioningService: ProvisioningCreationPlanning {
         try environment.admitPackage(); try draft.frozen.storage.verifyRoot()
         do { try draft.frozen.plan.verify(in: draft.frozen.storage.directory) } catch { throw ProvisioningReviewFailure.changed }
     }
-    func reserveCreation(_ consent: ProvisioningCreationConsent, vmID: UUID, configurationDigest: String) throws -> ProvisioningSelectionReceipt {
+    func reserveCreation(_ consent: ProvisioningCreationConsent, vmID: UUID, configurationDigest: String, factory: FactoryIdentity?) throws -> ProvisioningSelectionReceipt {
         try reviewAvailable(); try consent.validate()
         guard var draft = creations[consent.reviewID], draft.review.reviewIdentity == consent.reviewIdentity else { throw ProvisioningReviewFailure.consentRequired }
         try verifyCreation(draft)
+        try ProvisioningTrim.admit(draft.frozen.plan, factory: factory)
         let receipt = ProvisioningSelectionReceipt(reviewID: consent.reviewID, vmID: vmID, reviewIdentity: consent.reviewIdentity,
             planDigest: draft.review.planDigest, inputDigest: draft.review.inputDigest, engineDigest: draft.review.engineDigest, configurationDigest: configurationDigest)
         try receipt.validate(vmID: vmID)

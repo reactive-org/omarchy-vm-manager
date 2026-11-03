@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "examples": [
+    {
+      "id": "four-terminals",
+      "title": "Four terminals",
+      "summary": "Four equal windows in a 2 \u00d7 2 grid.",
+      "file": "four-terminals.lua",
+      "applications": [
+        "Foot"
+      ],
+      "windows": [
+        {
+          "label": "Terminal 1",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.47,
+          "height": 0.44
+        },
+        {
+          "label": "Terminal 2",
+          "kind": "terminal",
+          "x": 0.51,
+          "y": 0.04,
+          "width": 0.47,
+          "height": 0.44
+        },
+        {
+          "label": "Terminal 3",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.52,
+          "width": 0.47,
+          "height": 0.44
+        },
+        {
+          "label": "Terminal 4",
+          "kind": "terminal",
+          "x": 0.51,
+          "y": 0.52,
+          "width": 0.47,
+          "height": 0.44
+        }
+      ],
+      "sha256": "6289607b1be0fd8bd49c45449df0b69ba62e2ed2e0336c20be23f3b083ef96ad"
+    },
+    {
+      "id": "terminal-browser",
+      "title": "Terminal + browser",
+      "summary": "Terminal on the left 40%, browser on the right 60%.",
+      "file": "terminal-browser.lua",
+      "applications": [
+        "Foot",
+        "Chromium"
+      ],
+      "windows": [
+        {
+          "label": "Terminal",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.37,
+          "height": 0.92
+        },
+        {
+          "label": "Browser",
+          "kind": "browser",
+          "x": 0.41,
+          "y": 0.04,
+          "width": 0.57,
+          "height": 0.92
+        }
+      ],
+      "sha256": "da18bb3a01c584ad35aaf7e96c423f1b7b1ba21189ca1725db8638bf457efac1"
+    },
+    {
+      "id": "vscode-browser",
+      "title": "VS Code + browser",
+      "summary": "Editor on the left 60%, browser on the right 40%.",
+      "file": "vscode-browser.lua",
+      "applications": [
+        "VS Code",
+        "Chromium"
+      ],
+      "windows": [
+        {
+          "label": "VS Code",
+          "kind": "editor",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.57,
+          "height": 0.92
+        },
+        {
+          "label": "Browser",
+          "kind": "browser",
+          "x": 0.61,
+          "y": 0.04,
+          "width": 0.37,
+          "height": 0.92
+        }
+      ],
+      "sha256": "67fd8bd91c2dc515142579dacbfe44aca2209a44761940511d81b7379f5812c3"
+    },
+    {
+      "id": "claude-two-terminals-browser",
+      "title": "Claude workspace",
+      "summary": "Two terminals left, Claude right, with a floating browser.",
+      "file": "claude-two-terminals-browser.lua",
+      "applications": [
+        "Claude Desktop",
+        "Foot",
+        "Chromium"
+      ],
+      "windows": [
+        {
+          "label": "Terminal 1",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.37,
+          "height": 0.44
+        },
+        {
+          "label": "Terminal 2",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.52,
+          "width": 0.37,
+          "height": 0.44
+        },
+        {
+          "label": "Claude",
+          "kind": "claude",
+          "x": 0.41,
+          "y": 0.04,
+          "width": 0.57,
+          "height": 0.92
+        },
+        {
+          "label": "Browser",
+          "kind": "browser",
+          "x": 0.27,
+          "y": 0.18,
+          "width": 0.46,
+          "height": 0.62,
+          "floating": true
+        }
+      ],
+      "sha256": "d8deb32ae7bc50424c1e7b52a0dc571e17fb3f49f5e153ec16304ece28cf398d"
+    }
+  ]
+}

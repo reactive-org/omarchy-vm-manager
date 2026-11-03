@@ -97,6 +97,7 @@ extension ProvisioningService: ProvisioningWorkflowActing {
             try enabled(); try validateActionState(review)
             return try await approveRestart(original, identity: original.identity)
         case .check(let original, let prepared):
+            try await manager.validateProvisioningTransport(prepared.transport)
             let report = try await environment.dependencies.inspect()
             try enabled(); try validateActionState(review)
             let fresh = try await manager.admitProvisioningTransport(target: prepared.request.target, report: report, policy: environment.transportPolicy)
@@ -106,6 +107,7 @@ extension ProvisioningService: ProvisioningWorkflowActing {
             return try await approveRebind(original, identity: original.identity)
         case .recover(let record, let admission):
             guard let make = environment.makeRecoveryAdapter, record == (try await cleanupRecord(id)) else { throw ProvisioningReviewFailure.changed }
+            try await manager.validateProvisioningTransport(admission)
             let report = try await environment.dependencies.inspect()
             try enabled(); try validateActionState(review)
             let fresh = try await manager.admitProvisioningTransport(target: admission.target, report: report, policy: environment.transportPolicy)

@@ -270,6 +270,12 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
                 if try await !succeeded(shellJoin(["mise", "where", name]) + " >/dev/null 2>&1") { try await install(["mise", "install", name]) }
             }
         }
+        if let plan = command.plan, plan.document.object?["vm"]?.object?["lean_developer"] == .bool(true) {
+            let keep = LeanDeveloperPolicy.keep(vmPackages: values.compactMap(\.string), features: plan.document.object!["features"]!)
+            let arguments = ["/usr/bin/python3", "-I", remoteRoot + "/data/kit/omarchy/guest/apply-lean-developer.py"]
+                + keep.flatMap { ["--keep", $0] }
+            _ = try await control(command, purpose: .packages, action: "run", arguments: ["bash", "-lc", shellJoin(arguments)], streaming: true, interactive: true)
+        }
     }
     private func receipt(_ data: Data, command: GuestCommand, state: String) throws {
         let object = try controlObject(data)

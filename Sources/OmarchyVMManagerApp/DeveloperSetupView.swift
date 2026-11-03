@@ -14,7 +14,9 @@ struct DeveloperSetupView: View {
     let snapshot: VMSnapshot
     @StateObject private var screen = ProvisioningTerminalScreen()
     @State private var source = "none"
-    @State private var features = ProvisioningFeatureSelection()
+    @State private var trimOptionalApps = false
+    @State private var appearance = ProvisioningAppearanceDraft()
+    @State private var profiles: Set<String> = ["developer"]
     @State private var selectedWorkflow: UUID?
     @State private var folder: URL?
     @State private var choosingFolder = false
@@ -66,32 +68,57 @@ struct DeveloperSetupView: View {
                     HStack {
                         Picker("Source", selection: $source) {
                             Text("None").tag("none")
-                            ForEach(BundledProvisioning.presets, id: \.self) { Text($0).tag($0) }
+                            Text("Bundled configuration").tag("bundled")
                             Text("Local setup folder").tag("local")
-                        }.frame(maxWidth: 340).disabled(planning || preparingApply || submitting || applyReview != nil)
+                        }.help(ProvisioningSetupHelp.source).frame(maxWidth: 340).disabled(planning || preparingApply || submitting || applyReview != nil)
                         if source == "local" { Button("Choose folder…") { choosingFolder = true }.disabled(planning || preparingApply || submitting || applyReview != nil) }
                         Spacer()
-                        Button(frozen == nil ? "Preview plan" : "Refresh preview") { Task { await plan() } }.accessibilityIdentifier("setup.preview").disabled(source == "none" || planning || preparingApply || submitting || applyReview != nil || (source == "local" && folder == nil))
+                        Button(frozen == nil ? "Review setup" : "Update preview") { Task { await plan() } }.accessibilityIdentifier("setup.preview").disabled(source == "none" || planning || preparingApply || submitting || applyReview != nil || (source == "local" && folder == nil) || (source == "bundled" && profiles.isEmpty) || appearance.failure != nil)
                         if planning { ProgressView().controlSize(.small) }
                     }
-                    if source != "none" { ProvisioningFeatureSelectionView(selection: $features).disabled(planning || preparingApply || submitting || applyReview != nil) }
+                    if source != "none" { ProvisioningProfileSelectionView(selection: $profiles, localSource: source == "local").disabled(planning || preparingApply || submitting || applyReview != nil) }
+                    if source != "none", ProvisioningTrim.isAvailable(for: snapshot.profile.factory) {
+                        ProvisioningTrimSelectionView(selection: $trimOptionalApps).disabled(planning || preparingApply || submitting || applyReview != nil)
+                    }
+                    if source != "none" { ProvisioningAppearanceSelectionView(draft: $appearance).disabled(planning || preparingApply || submitting || applyReview != nil) }
                     if let folder, source == "local" { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
                     Text("Preview software, removals, update policy, dotfiles and restart requirements before applying. Custom tasks require separate trust tied to the frozen inputs.").font(.callout).foregroundStyle(.secondary)
                     Text("Setup execution is disabled pending guest acceptance. A preview does not change this VM or its resource settings.").font(.callout).foregroundStyle(.secondary)
-                    HStack {
-                        TextField("Frozen preview UUID from CLI", text: $previewLookup).textFieldStyle(.roundedBorder)
-                        Button("Open preview") { Task { await loadPreview() } }.accessibilityIdentifier("setup.lookup").disabled(UUID(uuidString: previewLookup) == nil || planning || preparingApply || submitting || applyReview != nil)
+                    DisclosureGroup("Details") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                TextField("Preview ID from CLI", text: $previewLookup).textFieldStyle(.roundedBorder)
+                                Button("Open preview") { Task { await loadPreview() } }.accessibilityIdentifier("setup.lookup").disabled(UUID(uuidString: previewLookup) == nil || planning || preparingApply || submitting || applyReview != nil)
+                            }
+                            if let frozen {
+                                Text("Preview ID: " + frozen.id.uuidString).font(.caption).textSelection(.enabled)
+                                Text("Input fingerprint: " + frozen.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                                ForEach(frozen.tasks, id: \.name) { task in
+                                    Text(task.name + " fingerprint: " + task.sha256).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                                }
+                            }
+                            if let review = applyReview {
+                                Text("Apply review: " + review.reviewIdentity).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                                if let trust = review.taskTrustIdentity { Text("Task trust: " + trust).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }
+                            }
+                            if let preview {
+                                Text("Exact frozen proposal").font(.caption.bold())
+                                ScrollView([.horizontal, .vertical]) {
+                                    Text(preview).font(.system(.caption, design: .monospaced)).textSelection(.enabled).padding(12)
+                                }.frame(height: 220)
+                            }
+                        }.padding(.top, 8)
                     }
                     if frozen != nil, source == "none" {
                         Text("A saved frozen selection is loaded below. Choose a source only to create a new preview.").font(.caption).foregroundStyle(.secondary)
                     }
-                    if let frozen { reviewActions(frozen) }
+                    if let frozen {
+                        ProvisioningReviewedProfilesView(proposal: frozen.proposal)
+                        ProvisioningReviewedTrimView(proposal: frozen.proposal)
+                        ProvisioningReviewedAppearanceView(proposal: frozen.proposal)
+                        reviewActions(frozen)
+                    }
                 }.padding(20)
-            }
-            if let preview {
-                DisclosureGroup("Reviewed proposal · offline") {
-                    ScrollView([.horizontal, .vertical]) { Text(preview).font(.system(.caption, design: .monospaced)).textSelection(.enabled).padding(12) }.frame(height: 220)
-                }
             }
             if let failure { Text(failure).foregroundStyle(.orange) }
             if workflows.count > 1 {
@@ -131,8 +158,11 @@ struct DeveloperSetupView: View {
         .onChange(of: workflow?.id) { _, _ in
             workflowActionReview = nil; actionRequestID = nil; actionRequested = nil; actionAcknowledged = false; actionAttempted = false
         }
-        .onChange(of: source) { _, _ in invalidatePreview() }
-        .onChange(of: features) { _, _ in invalidatePreview() }
+        .onChange(of: source) { _, _ in profiles = source == "bundled" ? ["developer"] : []; invalidatePreview() }
+        .onChange(of: snapshot.profile.factory) { _, _ in trimOptionalApps = false; invalidatePreview() }
+        .onChange(of: appearance) { _, _ in invalidatePreview() }
+        .onChange(of: trimOptionalApps) { _, _ in invalidatePreview() }
+        .onChange(of: profiles) { _, _ in invalidatePreview() }
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { invalidatePreview(); folder = url }
         }
@@ -161,7 +191,9 @@ struct DeveloperSetupView: View {
                 acceptance.bind("setup", action: { command in
                     switch command {
                     case .source(let value): source = value
-                    case .feature(let feature, let choice): features = features.setting(feature, to: choice)
+                    case .profiles(let value): profiles = Set(value)
+                    case .appearance(let value): appearance = ProvisioningAppearanceDraft(value)
+                    case .trim(let value): if ProvisioningTrim.isAvailable(for: snapshot.profile.factory) { trimOptionalApps = value }
                     case .folder(let value): folder = value; invalidatePreview()
                     case .preview: Task { await plan() }
                     case .lookup(let id): previewLookup = id.uuidString; Task { await loadPreview() }
@@ -175,7 +207,7 @@ struct DeveloperSetupView: View {
                     case .confirmCancel: if confirmCancel { confirmCancel = false; cancelConfirmed() }
                     default: break
                     }
-                }, snapshot: { ["source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "expanded": String(expanded), "cancelPending": String(confirmCancel)] })
+                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "expanded": String(expanded), "cancelPending": String(confirmCancel)] })
             } }
             #endif
         }
@@ -211,9 +243,11 @@ struct DeveloperSetupView: View {
                     if let review = workflowActionReview, review.workflowID == workflow.id {
                         Text(review.action.title).bold()
                         Text(review.action.explanation).font(.callout)
-                        Text("Session: " + review.sessionID.uuidString).font(.caption).textSelection(.enabled)
-                        Text("Inputs: " + review.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                        Text("Review: " + review.reviewIdentity).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                        DisclosureGroup("Details") {
+                            Text("Session: " + review.sessionID.uuidString).font(.caption).textSelection(.enabled)
+                            Text("Input fingerprint: " + review.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                            Text("Review: " + review.reviewIdentity).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                        }
                         Toggle("I approve this exact " + review.action.title.lowercased() + " action for this guest and session.", isOn: $actionAcknowledged)
                             .disabled(actionBusy || actionAttempted)
                         Button(review.action.title) { Task { await performWorkflowAction(workflow, review: review) } }
@@ -302,25 +336,29 @@ struct DeveloperSetupView: View {
     }
     private func reviewActions(_ value: ProvisioningPlanPreview) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Frozen preview: " + value.id.uuidString).font(.caption).textSelection(.enabled)
-            Text("Inputs: " + value.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
             ForEach(value.tasks, id: \.name) { task in
                 HStack {
                     Text(task.name).bold()
-                    Text(String(task.sha256.prefix(12))).font(.system(.caption, design: .monospaced))
                     Spacer()
                     Button(inspectedTasks.contains(task.name) ? "Inspect again…" : "Inspect frozen task…") { Task { await inspectTask(value, task: task) } }.accessibilityIdentifier("setup.inspect").disabled(inspectingTask || submitting)
                 }
             }
             if let review = applyReview {
-                Text("Review: " + review.reviewIdentity).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                Toggle("I approve a persistent sudo grant for this setup until its cleanup is confirmed.", isOn: $grantConsent)
-                if review.dockerRootAccessRequired { Toggle("I approve Docker access equivalent to root and the separate restart review.", isOn: $dockerConsent) }
-                if let trust = review.taskTrustIdentity {
-                    Text("Custom Ansible can run on this Mac, use controller credentials and delegate work. Trust covers all frozen input files and referenced tasks/assets; it is separate from Apply approval.").font(.callout)
-                    Text("Task trust: " + trust).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                    Toggle("I explicitly trust these custom tasks and the complete frozen input snapshot.", isOn: $taskConsent)
+                if review.persistentGrantRequired {
+                    Toggle("Allow admin access during setup", isOn: $grantConsent)
+                        .help("Allow a sudo grant in this VM across setup steps, until cleanup revokes it. Unconfirmed cleanup keeps the job marked Cleanup required.")
+                    Text("Admin access stays active until cleanup revokes it.").font(.caption).foregroundStyle(.secondary)
+                }
+                if review.dockerRootAccessRequired {
+                    Toggle("Allow Docker without sudo", isOn: $dockerConsent)
+                        .help("Allow the guest owner to use Docker without sudo. This is root-equivalent access inside the VM; restart needs a separate review.")
+                    Text("This gives the guest owner access equivalent to root. Restart is reviewed separately.").font(.caption).foregroundStyle(.secondary)
+                }
+                if review.taskTrustIdentity != nil {
+                    Toggle("Allow custom tasks from this configuration", isOn: $taskConsent)
+                        .help("Trust the exact reviewed configuration, inspected task files and assets. This permission is separate from admin and Docker access.")
                         .disabled(!value.tasks.allSatisfy { inspectedTasks.contains($0.name) })
+                    Text("Custom Ansible tasks can run on this Mac and in the VM, using credentials available to Ansible. Approval covers the reviewed configuration, task files and assets.").font(.callout)
                 }
                 Button("Apply reviewed setup") { Task { await submit(value, review: review) } }
                     .accessibilityIdentifier("setup.apply")
@@ -335,17 +373,19 @@ struct DeveloperSetupView: View {
     }
     @MainActor private func plan() async {
         guard let service = reviewingService else { failure = "Setup coordination is unavailable."; return }
+        guard !planning, appearance.failure == nil, !preparingApply, !submitting, applyReview == nil, source != "none", source != "local" || folder != nil, source != "bundled" || !profiles.isEmpty else { return }
         planning = true; failure = nil; preview = nil
         let revision = UUID(); planRevision = revision
         let id = frozen == nil ? (captureID ?? UUID()) : UUID(); captureID = id; frozen = nil
         let selection: ProvisioningSetupSource
-        if source == "local", let folder { selection = .init(directory: folder.path, features: features.isEmpty ? nil : features) }
-        else { selection = .init(preset: source, features: features.isEmpty ? nil : features) }
+        if source == "local", let folder { selection = .init(directory: folder.path, profiles: profiles.isEmpty ? nil : profiles.sorted(), trimOptionalApps: ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && trimOptionalApps, appearance: appearance.selection) }
+        else { selection = .init(profiles: profiles.sorted(), trimOptionalApps: ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && trimOptionalApps, appearance: appearance.selection) }
         defer { planning = false }
         do {
             let value = try await service.preview(id: id, vmID: snapshot.id, source: selection)
             guard revision == planRevision else { return }; try display(value)
-        } catch { guard revision == planRevision else { return }; failure = "This setup could not be frozen. Check its manifest, files, package admission and private preview quota." }
+        } catch ProvisioningReviewFailure.conflictingProfiles { guard revision == planRevision else { return }; failure = "These profiles have conflicting settings. Choose a compatible combination or resolve the settings in your local vm.yml."
+        } catch { guard revision == planRevision else { return }; failure = ProvisioningAppearance.failureMessage(error) ?? "This setup could not be frozen. Check its manifest, files, package admission and private preview quota." }
     }
     @MainActor private func loadPreview() async {
         guard let service = reviewingService, let id = UUID(uuidString: previewLookup) else { return }

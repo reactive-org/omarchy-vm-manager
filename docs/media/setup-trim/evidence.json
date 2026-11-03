@@ -1,0 +1,18 @@
+{
+  "checks": 74,
+  "generated_images": 12,
+  "hover_tooltip_tested": false,
+  "inspected_trim_images": 4,
+  "physical_input_tested": false,
+  "retained": {
+    "new-vm-proposal.json": "43f527a8dfc5ee88f75762a919c64b336e0a43f3a2b5c484b09c36379f7f81d5",
+    "new-vm-trim-dark.png": "14e4fedb961a60a35e4b635ad1a0bd7698b52718c45be2ba3d1097e97923c1bc",
+    "new-vm-trim-light.png": "06ba04e4b02ba5f47ea064078f49fa17a7fc11d5e1728e98fb73ffd008a0c970",
+    "report.json": "f00e844b4bb288936b16dda8f85640fb5374f3402603681694a009f9ec4bdb1d",
+    "setup-trim-dark.png": "38bd96a2efbff07ae24e1e139f6a6aa77ad17b55decc10f8769e852e7251cda7",
+    "setup-trim-light.png": "9900559bf23ccfeef1f0354868e02fad6984ccaad0848bdfcea6b8b64800beba"
+  },
+  "schema": 1,
+  "source": "Isolated offscreen fake-service acceptance; no guest or transport operation",
+  "temporary_full_gallery": "/private/tmp/omarchy-screen-acceptance-y7_o0q7n/result"
+}

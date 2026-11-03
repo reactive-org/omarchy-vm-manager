@@ -3,7 +3,14 @@ import Foundation
 
 /// Build-time acceptance gate only. No environment, manifest, tool readiness,
 /// command-line option or saved receipt can enable product execution.
-enum ProvisioningProductExecution { static let enabled = false }
+enum ProvisioningProductExecution {
+    // No approved candidate is installed. A future private acceptance build must
+    // embed the SAME reviewed identity pins in manager and helper, never observe
+    // fresh pins at each launch or load an approval from writable guest metadata.
+    static let disposableApproval: ProvisioningDisposableAdmission? = nil
+    static var enabled: Bool { disposableApproval != nil }
+    static var admission: ProvisioningExecutionAdmission { disposableApproval.map { .disposable($0) } ?? .disabled }
+}
 
 struct ProvisioningRecoveryTransportAuthority: ProvisioningSessionAuthority {
     let manager: VMManager
@@ -27,10 +34,13 @@ enum ProvisioningOperationalBackends {
     }
     static func recovery(admission: ProvisioningTransportAdmission, authority: any ProvisioningSessionAuthority,
                          admitPackage: @Sendable () throws -> Void,
-                         makeRunner: @Sendable () throws -> any ProvisioningProcessRunner) throws -> any ProvisioningGuestAdapter {
+                         makeRunner: @Sendable () throws -> any ProvisioningProcessRunner,
+                         executionAdmission: ProvisioningExecutionAdmission = .fixture) throws -> any ProvisioningGuestAdapter {
+        try executionAdmission.verify(vmID: admission.target.vmID, root: URL(fileURLWithPath: admission.selection.endpoint.root))
         try admitPackage()
         let reference = try admission.selection.verify(target: admission.target, policy: admission.policy)
         try reference.connection.verify(); try reference.tools.verify(); try admitPackage()
+        try executionAdmission.verify(vmID: admission.target.vmID, root: URL(fileURLWithPath: admission.selection.endpoint.root))
         return try SSHAnsibleGuestAdapter(connection: reference.connection, tools: reference.tools, authority: authority, runner: makeRunner())
     }
 }

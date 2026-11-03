@@ -57,6 +57,7 @@ public enum SetupPlanner {
             "packages": .array(manifest.vm.packages.map(ManifestValue.string)), "lean_developer": .bool(manifest.vm.leanDeveloper)]
         if let factory = manifest.vm.factory { vm["factory"] = .string(factory) }
         let inputs = snapshot.receipts.map { ManifestValue.object(["path": .string($0.path), "sha256": .string($0.sha256), "mode": .integer(Int64($0.mode))]) }
+        let removals = manifest.vm.leanDeveloper ? try LeanDeveloperPolicy.candidates(keeping: LeanDeveloperPolicy.keep(vmPackages: manifest.vm.packages, features: features.document)) : []
         let restart = features.options["docker"]?.object?["access"] == .string("sudoless")
         var document: [String: ManifestValue] = [
             "schema_version": .integer(1), "planning_api": .integer(1), "id": .string(manifest.id), "vm": .object(vm),
@@ -64,10 +65,10 @@ public enum SetupPlanner {
             "inputs": .array(inputs), "input_digest": .string(snapshot.identity), "execution_available": .bool(false),
             "custom_task_effects": .string("Opaque trusted Ansible code; may execute on the host as well as the guest"),
             "requirements": .object(["planning_tools": .array([]),
-                "application_tools": .array((features.features.isEmpty && dotfiles.isEmpty && tasks.isEmpty ? [] : ["bash", "ssh", "scp", "sftp", "ansible-playbook", "ansible-inventory"]).map(ManifestValue.string)),
+                "application_tools": .array((features.features.isEmpty && dotfiles.isEmpty && tasks.isEmpty && !manifest.vm.leanDeveloper ? [] : ["bash", "ssh", "scp", "sftp", "ansible-playbook", "ansible-inventory"]).map(ManifestValue.string)),
                 "trusted_tasks_required": .bool(!tasks.isEmpty), "desktop_restart_required": .bool(restart),
                 "guest_state": .string("not_observed"), "dotfile_conflicts": .string("not_checked"),
-                "removals": .array([]), "update_policy": .string("Native Omarchy/mise ownership; no implicit removal or update"),
+                "removals": .array(removals.map(ManifestValue.string)), "update_policy": .string(manifest.vm.leanDeveloper ? "Opt-in optional-app trim through Omarchy; candidates only, installed state and dependency safety checked in the guest; selected software and required components retained; no implicit update" : "Native Omarchy/mise ownership; no implicit removal or update"),
                 "factory_admission": .string("manager_verification_required")])]
         document["plan_digest"] = .string(digest(try canonicalData(ManifestValue.object(document))))
         return SetupPlan(document: .object(document), snapshot: snapshot, manifestPath: path)

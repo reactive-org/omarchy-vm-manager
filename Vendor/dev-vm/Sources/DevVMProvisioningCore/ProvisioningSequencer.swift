@@ -81,7 +81,7 @@ public actor ProvisioningSequencer {
                 try await checked(.requestPersistentGrant)
                 try await checked(.verifyGrantActive)
                 transition(.applying)
-                if !(request.plan.document.object?["vm"]?.object?["packages"]?.array ?? []).isEmpty {
+                if !(request.plan.document.object?["vm"]?.object?["packages"]?.array ?? []).isEmpty || request.plan.document.object?["vm"]?.object?["lean_developer"] == .bool(true) {
                     try await checked(.installManifestPackages)
                 }
             } else { transition(.checking) }

@@ -2272,3 +2272,174 @@ remains the visual target for milestone 5.
   disposable-guest consent before execution. No real transport, host installation,
   VM launch/change, factory download, personal credential or desktop takeover
   occurred. Milestone 6 real acceptance and milestone 7 distribution remain open.
+
+## Milestone 6 disposable admission — 3 November 2026
+
+- **DESIGN DECISION:** ordinary product approval is `nil` and execution stays false.
+  A future private candidate may embed only the original explicitly reviewed
+  disposable UUID/root/device/inode/ownership-marker pins in both manager/helper.
+  There is no separate Boolean bypass or approval loader from CLI, environment,
+  manifest, registry, journal, readiness or IPC. Internal fixture injection remains
+  trusted test composition. An ownership marker does not itself mean disposable.
+- **DESIGN DECISION:** hold root descriptors; recheck private ownership/mode,
+  canonical namespace, device/inode and strict markers. Reject retained POC IDs,
+  replaced roots, arbitrary symlinks and unlisted UUIDs. The manager also checks
+  its profile/session root at preparation, transport, leases, cleanup and both
+  sides of restart. A compiled candidate's initial start and coordinator-close
+  paths retain scope. The helper independently checks before runner construction
+  and before/after reverse RPC for every command/invocation. Input claim/send/resize
+  failure releases ownership; output remains viewable. Recovery never bypasses
+  approval or original-worker quiescence/session/provenance/cleanup requirements.
+- **VERIFIED:** 12 fake/local admission test functions cover admitted work,
+  unlisted/foreign/same-UUID roots, invalid/stale pins, marker/mode/symlink changes,
+  independent manager/helper refusals, RPC races, restart/replacement, recovery
+  construction/commands and terminal ownership. See the
+  [implementation record](docs/DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
+  and updated [runbook](docs/DevVMMilestone6Runbook.md). Full `make test` passes
+  440 Swift functions in 57 suites, 52 script tests, signed local helper fixtures
+  and 56 isolated screen checks. The final focused admission target, release
+  compilation without signing credentials, package/export and diff checks pass.
+- **TO PROVE:** approval of concrete newly prepared disposable roots and a real
+  signed operational candidate, then guest/SSH/Ansible/TTY/apply/cleanup/restart/
+  check/crash/sleep/wake and milestone-7 distribution. No actual approval values,
+  host installs, VM launches/changes, factory downloads, real transport, personal
+  credentials or desktop takeover occur in this slice. Shared package/resources/
+  export/engine pins remain unchanged.
+
+## Separate setup Source and multiple profile cards — 3 November 2026
+
+- **DESIGN DECISION:** native Source selects bundled configuration or a local
+  `vm.yml` folder; profile cards select one or more bundled profiles. Local declared
+  profiles/settings/tasks stay included and cards add profiles. Individual feature
+  overrides are hidden in the native UI. Colored native badges and summaries come
+  from the shared resolver's expected inclusions, not observed guest contents.
+- **PRIVATE COUPLING:** optional bundled/profile source fields use the same strict
+  local protocol and generated frozen-manifest projection. Legacy CLI presets stay
+  compatible. Bounded unique builtin additions preserve source bytes and deduplicate
+  aliases; shared merge/dependency/conflict rules remain authoritative. Conflicts
+  are refused until explicitly resolved; review acknowledgment is invalidated on
+  profile edits. No package/engine/runtime source is duplicated or ported here.
+- **VERIFIED:** 24 focused selection functions (eight new profile tests), 448 Swift
+  functions in 58 suites, 52 script tests, local signed helper fixtures and 62
+  isolated UI checks pass. Eight light/dark/scrolled PNGs were inspected. Release
+  compilation without real signing credentials, package/export and diff checks
+  pass. [UI evidence](docs/DevVMUIAcceptance.md#separate-source-and-multiple-profiles--3-november-2026)
+  records current captures and limits.
+- **TO PROVE:** physical UI/focus/VoiceOver/native dialogs and real candidate/guest/
+  SSH/Ansible/TTY/cleanup/restart/check/crash/sleep/wake/distribution. Product approval
+  stays nil and execution disabled; no host install, factory download, real VM or
+  transport operation occurred. Shared package/resources/export/engine pins are
+  unchanged. Local custom profiles stay manifest-defined, outside the bundled card
+  catalogue; their task trust and all execution consent remain independent.
+
+## Conditional optional-app trimming — 3 November 2026
+
+- **DESIGN DECISION:** expose Trim optional apps only for the official Try Omarchy
+  factory, initially off. The tooltip describes its broad bundled apps and a more
+  sensible base. Guest setup changes the VM, not reusable factory bytes. Trim and
+  factory edits invalidate review; unsupported provenance resets/hides the choice.
+  Native on/off explicitly overrides local manifest trimming; legacy absent
+  overrides preserve the existing `vm.lean_developer` setting.
+- **PRIVATE COUPLING:** freeze the Boolean in the private selection manifest and
+  enforce actual official identity at creation reservation/workflow preparation.
+  The shared planner lists candidate removals, excluding selected software. Reuse
+  the upstream guest helper/allowlist through the supervised, streamed apply path;
+  check never trims. The optional-app-trim integration patch updates the pinned
+  source/resources/tests and compiled admission identity. No host Python is added.
+- **TO PROVE:** real guest trim/dependency closures/reapply and live terminal under
+  an explicitly approved disposable candidate. Product approval remains nil and
+  execution disabled. No host installation, image change/download or VM launch.
+- **VERIFIED:** 28 focused manager selection functions, 452 manager Swift functions
+  in 59 suites, 52 script tests, final seven package functions/six package scripts
+  and signed local helper fixtures pass. Final shared tests pass 77 functions;
+  twelve upstream helper tests use mocked subprocess replies. Final screen checks
+  pass 74 checks with twelve synthetic PNGs; four new scrolled trim images were
+  inspected. Release compilation, immutable patch verification and diff checks pass.
+- **VERIFICATION EXCEPTION:** the companion broad test target invoked installed
+  Ansible against temporary local inventories and fake helper files before its
+  full scope was inspected. This exceeded the no-real-Ansible instruction; it
+  contacted no guest and installed no host tools. The run failed (10 failures,
+  44 errors, one skip/235 tests), so it is not acceptance evidence. Subsequent trim
+  tests use fake runners/mocked helpers. Exact checks, limits and this exception
+  are recorded in the [implementation plan](docs/DevVMProvisioningPlan.md#optional-app-trim-selection--3-november-2026).
+
+## Theme and layout selection — 3 November 2026
+
+- **DESIGN DECISION:** native New VM/Setup use an initially collapsed Theme & layout
+  section for a GitHub repository URL, random/most-starred and keep/select/remove
+  for a Lua layout. Blank preserves source/current choices. Random uses ten stars
+  by default; zero skips ranking. Star-based choices require existing authenticated
+  gh; no install/sign-in flow is initiated. Theme/layout edits invalidate review.
+- **PRIVATE COUPLING:** shared Swift selector/resolver with injected HTTP/star
+  providers owns strict roots, catalogue figures, thresholds/ranking and final GET
+  acceptance. The manager uses bounded credential-free ephemeral GETs and the
+  existing bounded read-only gh runner. It resolves once during review and freezes
+  the concrete URL. GET accessibility establishes neither theme validity nor a Git
+  content pin. Selected regular UTF-8 layout bytes (at most 256 KiB) are captured
+  without following symlinks or executing Lua, copied into private reviewed inputs
+  and hashed. Original files/settings remain unchanged. Existing snapshot/Ansible/
+  native Omarchy paths own apply; workstation disable is refused. CLI/socket review
+  APIs share strict appearance selections. No new lifecycle owner or host Python.
+- **PRIVATE COUPLING:** the theme-selection export patch and lock/engine/snapshot
+  pins include the shared implementation and fake tests. Product approval stays nil
+  and execution disabled; creation/review never authorizes setup or custom tasks.
+- **VERIFIED:** full manager make test passes 463 Swift functions in 61 suites,
+  52 script tests, local signed helper fixtures and 82 offscreen checks. Eleven
+  focused appearance functions, 84 shared Swift functions, eighteen selected
+  upstream mocked/controller or disposable stub-shell fixtures, syntax checks,
+  release compilation, reverse export and diff checks pass. Four new light/dark
+  captures were inspected; [evidence and limits](docs/DevVMProvisioningPlan.md#theme-and-layout-selection--3-november-2026)
+  are recorded. No real HTTP/gh/SSH/Ansible, host install, factory operation or VM
+  launch occurs in this slice. The broad companion Ansible target is skipped to
+  honor the user's explicit fake/local constraint.
+- **TO PROVE:** live catalogue/authentication/rate limits and theme contents,
+  native dialogs/hover/focus/physical input, actual guest apply/reapply/check/layout
+  login behavior, cleanup and distribution under explicit disposable approval.
+
+## Bundled dev-vm layout example cards — 3 November 2026
+
+- **DESIGN DECISION:** Desktop layout → Examples offers the four upstream example
+  layouts as single-select wireframe cards, with split proportions/browser overlap,
+  descriptions and prerequisite apps. The gallery uses full width and adapts to
+  four or two columns in the tested forms. Keep/Custom file/Remove remain. Choosing
+  a card freezes its original Lua; it does not implicitly add app installs or
+  authorize execution. Wireframes illustrate intended floating placement, not
+  observed guest state. Applications must be available separately at guest login.
+- **PRIVATE COUPLING:** shared catalogue/API binds four fixed IDs, metadata and
+  source hashes to bundled copies of the unchanged original Lua. A strict optional
+  appearance field is mutually exclusive with custom-file/removal choices. Native,
+  CLI and socket paths share it; the existing frozen-input/private-manifest/shared
+  planner/transport path owns application. Preview naming uses the actual frozen
+  source hash. A new integration patch updates engine/resource/snapshot/lock pins;
+  product approval remains nil and execution disabled.
+- **VERIFIED:** full manager tests pass 468 Swift functions in 62 suites, 52 scripts,
+  signed local helper fixtures and 100 isolated screen checks. Shared tests pass 86
+  functions. Original and bundled sources/catalogue match byte-for-byte; resource
+  sync syntax parsing and reverse export/diff checks pass. Four new light/dark
+  captures were inspected; [checks and limits](docs/DevVMProvisioningPlan.md#bundled-dev-vm-layout-example-cards--3-november-2026)
+  are recorded. No actual Lua/HTTP/gh/SSH/Ansible, host install, factory operation or
+  VM launch occurs in these checks. The broad Ansible target remains skipped.
+- **TO PROVE:** physical card interaction/VoiceOver and actual guest app availability,
+  startup, placement, manual resizing, reapplication and next-login behavior under
+  explicit disposable approval. Historical dev-vm captures are separate evidence.
+
+## Offline provisioning candidate preflight — 3 November 2026
+
+- **DESIGN DECISION:** an offline build evidence report cannot enable execution or
+  approve a disposable scope. The existing product approval remains nil. Build
+  hashes and source status are observations, not signed/loaded-code admission or
+  proof that binaries were built from HEAD. New stopped disposable root preparation
+  and an actual guest run still require their concrete explicit approvals.
+- **PRIVATE COUPLING:** `make provisioning-preflight` reuses the pinned export,
+  generated source pin and resource inventory, records existing binary hashes and
+  optionally checks an assembled provisioning seal/runtime-lock copy. Read-only
+  export validation creates only its temporary reverse-patch copy, never build
+  inputs. The tool reads no user guest/registry/factory-image or credentials and
+  invokes no candidate or signing/dependency/transport tools. It is repository
+  development tooling, not a product Python runtime.
+- **VERIFIED — offline/local:** ten static checks and all 61 script tests pass,
+  including nine new tamper/replacement/read-only regression fixtures. The previous
+  Swift/shared/UI results remain scoped to their recorded source. See the
+  [runbook](docs/DevVMMilestone6Runbook.md#offline-candidate-preflight).
+- **TO PROVE:** approved original root identities and operational candidate,
+  signatures/loaded code, fresh real factory/tool admission and all guest rows.

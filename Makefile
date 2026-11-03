@@ -8,7 +8,7 @@ SWIFT_FLAGS := --disable-sandbox --skip-update --cache-path "$(CURDIR)/.build/sw
 
 .PHONY: prepare-source help build build-signed icon test test-build-policies test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-provisioning-tools | test-provisioning-terminal | test-provisioning-ui-cli | test-provisioning-review | test-provisioning-actions | test-provisioning-selection | test-provisioning-identity | test-provisioning-screens | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-provisioning-tools | test-provisioning-terminal | test-provisioning-ui-cli | test-provisioning-review | test-provisioning-actions | test-provisioning-selection | test-provisioning-appearance | test-provisioning-identity | test-provisioning-admission | provisioning-preflight | test-provisioning-preflight | test-provisioning-screens | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -31,6 +31,18 @@ test: build
 	python3 -m unittest discover -s Tests/ScriptTests -v
 	$(MAKE) test-provisioning-bundle
 	$(MAKE) test-provisioning-screens
+
+# Deliberately no build, assembly, signing, installed-tool or guest prerequisites.
+# Run `make build` separately if the selected build artifacts do not exist.
+PROVISIONING_PREFLIGHT_BINARIES ?= $(CURDIR)/.build/debug
+PROVISIONING_PREFLIGHT_LAUNCHER_BINARIES ?= $(CURDIR)/.build/provisioning-launcher/debug
+.PHONY: provisioning-preflight test-provisioning-preflight
+provisioning-preflight:
+	@python3 Scripts/provisioning_preflight.py --binaries "$(PROVISIONING_PREFLIGHT_BINARIES)" --launcher-binaries "$(PROVISIONING_PREFLIGHT_LAUNCHER_BINARIES)"
+
+test-provisioning-preflight:
+	python3 -m unittest discover -s Tests/ScriptTests -p 'test_provisioning_preflight.py' -v
+	python3 -m unittest discover -s Tests/ScriptTests -p 'test_provisioning_package.py' -v
 
 .PHONY: test-provisioning-package test-provisioning-bundle
 test-provisioning-package: build
@@ -125,7 +137,7 @@ test-provisioning-actions: build
 
 .PHONY: test-provisioning-selection
 test-provisioning-selection: build
-	swift test $(SWIFT_FLAGS) --no-parallel --filter 'ProvisioningSelection'
+	swift test $(SWIFT_FLAGS) --no-parallel --filter 'ProvisioningSelection|ProvisioningProfileSelection'
 
 .PHONY: test-provisioning-identity
 test-provisioning-identity: build
@@ -134,3 +146,11 @@ test-provisioning-identity: build
 .PHONY: test-provisioning-screens
 test-provisioning-screens: build
 	python3 Scripts/test_setup_screens.py --binary "$$(swift build $(SWIFT_FLAGS) --show-bin-path)/OmarchyVMManager"
+
+.PHONY: test-provisioning-admission
+test-provisioning-admission: build
+	swift test $(SWIFT_FLAGS) --no-parallel --filter ProvisioningDisposableAdmission
+
+.PHONY: test-provisioning-appearance
+test-provisioning-appearance: build
+	swift test $(SWIFT_FLAGS) --no-parallel --filter 'ProvisioningSelectionAppearance|ProvisioningThemeNetwork'

@@ -10,7 +10,7 @@ final class CreationFixture: Sendable {
     let registry: RegistryStore, manager: VMManager, runtime: FakeRuntime
     let provider: SessionFixtureProvider, dependencies: WorkflowFixtureDependencies, launcher: WorkflowFixtureLauncher
     let service: ProvisioningService, engine: String
-    init(manifest: String = "schema_version: 1\nid: creation-fixture\nsetup: {features: {enable: [cli]}}\n") async throws {
+    init(manifest: String = "schema_version: 1\nid: creation-fixture\nsetup: {features: {enable: [cli]}}\n", themeResolver: ThemeResolver? = nil) async throws {
         root = URL(fileURLWithPath: "/private/tmp/provisioning-selection-" + UUID().uuidString)
         source = root.appendingPathComponent("source"); state = root.appendingPathComponent("state")
         try PrivateFiles.directory(root, create: true); try PrivateFiles.directory(source, create: true)
@@ -21,8 +21,10 @@ final class CreationFixture: Sendable {
             registry: registry, portProbe: TransportFixturePorts())
         provider = try SessionFixtureProvider(); dependencies = WorkflowFixtureDependencies(try provider.admittedReport()); launcher = WorkflowFixtureLauncher(provider: provider)
         engine = try ProvisioningCoordinator.engineIdentity(SetupPlanner.plan(repository: source))
-        service = try await ProvisioningService.open(manager: manager, directory: state, environment: .init(executionEnabled: false,
-            engineDigest: engine, dependencies: dependencies, launcher: launcher, transportPolicy: .fixture(provider.root), admitPackage: {}))
+        var environment = ProvisioningServiceEnvironment(executionEnabled: false,
+            engineDigest: engine, dependencies: dependencies, launcher: launcher, transportPolicy: .fixture(provider.root), admitPackage: {})
+        if let themeResolver { environment.themeResolver = themeResolver }
+        service = try await ProvisioningService.open(manager: manager, directory: state, environment: environment)
         try await manager.installProvisioningService(service)
     }
     deinit { try? FileManager.default.removeItem(at: root) }

@@ -12,6 +12,19 @@ import provisioning_package as package
 
 
 class ProvisioningPackageTests(unittest.TestCase):
+    def test_read_only_export_verification_does_not_generate_build_inputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "Config").mkdir()
+            shutil.copy2(package.ROOT / package.LOCK, root / package.LOCK)
+            shutil.copytree(package.ROOT / "Vendor/dev-vm", root / "Vendor/dev-vm")
+            shutil.copytree(package.ROOT / "Patches", root / "Patches")
+            raw, lock = package.verify_source(root)
+            self.assertEqual(raw, (root / package.LOCK).read_bytes())
+            self.assertEqual(lock["files"], package.files(root / "Vendor/dev-vm"))
+            self.assertFalse((root / ".build").exists())
+            self.assertFalse((root / "Sources").exists())
+
     def test_source_export_pin_and_generated_swift_match(self):
         raw, lock = package.read_lock()
         self.assertEqual(lock["revision"], "bb3fae22be45b38035fac52aefa0eb270a9d0fea")

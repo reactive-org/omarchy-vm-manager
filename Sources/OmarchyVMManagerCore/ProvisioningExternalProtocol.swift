@@ -106,7 +106,7 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
         }
         guard v.version == 1, v.requestID == request.requestID, v.sequence == request.sequence, v.operation == request.operation,
               Set(fields.keys) == keys,
-              v.failure == nil || ["unavailable", "busy", "unknown-workflow", "denied", "disabled", "review-required", "task-trust-required", "changed", "quota", "consent-conflict", "ownership-unverified"].contains(v.failure!),
+              v.failure == nil || ["unavailable", "busy", "unknown-workflow", "denied", "disabled", "review-required", "task-trust-required", "changed", "quota", "consent-conflict", "ownership-unverified", "profile-conflict", "theme-invalid", "theme-unavailable", "theme-catalogue", "theme-stars-unavailable", "theme-no-match", "layout-invalid", "workstation-disabled"].contains(v.failure!),
               v.failure != nil || (request.operation != .capabilities || v.executionEnabled != nil),
               v.failure != nil || (![.list, .status, .cancel, .apply, .performAction].contains(request.operation) || v.workflows != nil),
               v.failure != nil || (![.read, .reset].contains(request.operation) || v.page != nil) else { throw ProvisioningTerminalDenial.bounds }
@@ -217,9 +217,20 @@ actor ProvisioningExternalSession {
             case .changed: reply.failure = "changed"
             case .quota: reply.failure = "quota"
             case .conflictingConsent: reply.failure = "consent-conflict"
+            case .conflictingProfiles: reply.failure = "profile-conflict"
             default: reply.failure = "denied"
             }
         }
+        catch let failure as ThemeSelectionFailure {
+            switch failure {
+            case .invalidSelector: reply.failure = "theme-invalid"
+            case .inaccessible: reply.failure = "theme-unavailable"
+            case .catalogue, .responseTooLarge: reply.failure = "theme-catalogue"
+            case .starsUnavailable: reply.failure = "theme-stars-unavailable"
+            case .noEligibleThemes: reply.failure = "theme-no-match"
+            }
+        }
+        catch let failure as ProvisioningAppearanceFailure { reply.failure = failure == .invalidLayout ? "layout-invalid" : "workstation-disabled" }
         catch { reply.failure = "denied" }
         return reply
     }

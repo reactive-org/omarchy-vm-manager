@@ -9,7 +9,7 @@ import SwiftUI
 /// sockets, accessibility grants, environment toggles or production singleton.
 @MainActor final class SetupUIAcceptanceDriver {
     enum Command {
-        case source(String), feature(ProvisioningCommonFeature, ProvisioningFeatureChoice), folder(URL)
+        case source(String), profiles([String]), folder(URL), trim(Bool), factory(String), appearance(ProvisioningAppearanceSelection?), appearanceExpanded(Bool), themeChoice(ProvisioningThemeChoice), themeRepository(String), layoutExample(ProvisioningLayoutExampleID?)
         case name(String), resources(Int, Int, Int), preview, acknowledge(Bool), save, lookup(UUID), inspect, prepareApply
         case grant(Bool, Bool, Bool), submit, expand(Bool), search(String), requestCancel, confirmCancel
     }
@@ -47,7 +47,13 @@ enum AcceptanceFailure: Error { case check }
     private func document(_ id: UUID, source: ProvisioningSetupSource, target: UUID?) throws -> [String: Any] {
         let input = Self.hash(try JSONEncoder().encode(source)), engine = String(repeating: "a", count: 64)
         let plan = Self.hash(Data((input + "synthetic-plan").utf8))
-        let proposal: [String: Any] = ["schema_version": 1, "id": "synthetic-ui-only", "plan_digest": plan, "input_digest": input, "execution_available": false, "vm": ["name": "Source proposal only", "cpus": 8, "memory_gib": 16, "disk_gib": 256], "features": ["features": source.features?.enable.map(\.rawValue) ?? ["cli"]], "requirements": ["update_policy": "No implicit removal or update", "removals": [], "desktop_restart_required": true], "tasks": [["name": "synthetic", "file": "fixture-task.yml"]]]
+        let appearance = source.appearance
+        let theme = appearance?.theme.map { ["random", "most-starred"].contains($0) ? "https://github.com/example/omarchy-fixture-theme" : $0 } ?? ""
+        let workstation: [String: Any] = ["theme": theme, "layout": appearance?.layoutFile == nil && appearance?.layoutExample == nil ? "" : ".omarchy-manager-layout.lua", "remove_layout": appearance?.removeLayout == true]
+        var proposal: [String: Any] = ["schema_version": 1, "id": "synthetic-ui-only", "plan_digest": plan, "input_digest": input, "execution_available": false, "vm": ["name": "Source proposal only", "cpus": 8, "memory_gib": 16, "disk_gib": 256, "lean_developer": source.trimOptionalApps == true], "features": ["profiles": source.profiles ?? source.preset.map { [$0] } ?? [], "features": source.features?.enable.map(\.rawValue) ?? ["cli"], "options": ["workstation": workstation]], "requirements": ["update_policy": "No implicit removal or update", "removals": [], "desktop_restart_required": true], "tasks": [["name": "synthetic", "file": "fixture-task.yml"]]]
+        if let id = appearance?.layoutExample, let example = try BundledProvisioning.layoutExamples().first(where: { $0.id == id }) {
+            proposal["inputs"] = [["path": ".omarchy-manager-layout.lua", "sha256": example.sourceSHA256, "mode": 384]]
+        }
         var fields: [String: Any] = ["id": id.uuidString, "planDigest": plan, "inputDigest": input, "engineDigest": engine, "proposal": try JSONSerialization.data(withJSONObject: proposal, options: [.sortedKeys]).base64EncodedString(), "tasks": [["name": "synthetic", "file": "fixture-task.yml", "sha256": Self.hash(task)]], "restartRequired": true]
         if let target { fields["vmID"] = target.uuidString }
         else { fields["reviewIdentity"] = Self.hash(Data((id.uuidString + input).utf8)) }

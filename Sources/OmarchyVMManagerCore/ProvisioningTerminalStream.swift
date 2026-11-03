@@ -114,15 +114,16 @@ actor ProvisioningTerminalHub {
     let terminal: ProvisioningTerminal
     let jobID: UUID
     private let leaseID: UUID?
+    private let admitInput: @Sendable () throws -> Void
     private let lifetime: Duration
     private let now: @Sendable () -> ContinuousClock.Instant
     private var viewers: [UUID: Viewer] = [:]
     private var owner: (viewer: UUID, token: UUID, sequence: UInt64)?
     private var terminalSequence: UInt64 = 0
     private var stopped = false, finished = false
-    init(terminal: ProvisioningTerminal, request: ProvisioningRequest, lifetime: Duration = .seconds(15), now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }) throws {
+    init(terminal: ProvisioningTerminal, request: ProvisioningRequest, lifetime: Duration = .seconds(15), now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }, admitInput: @escaping @Sendable () throws -> Void = {}) throws {
         guard lifetime > .zero, lifetime <= .seconds(30) else { throw ProvisioningTerminalDenial.bounds }
-        self.terminal = terminal; jobID = request.jobID; leaseID = request.inputLeaseID; self.lifetime = lifetime; self.now = now
+        self.terminal = terminal; jobID = request.jobID; leaseID = request.inputLeaseID; self.lifetime = lifetime; self.now = now; self.admitInput = admitInput
         if request.inputLeaseID != nil { try terminal.reserveInput(for: request) }
     }
     func expire() {
@@ -156,6 +157,10 @@ actor ProvisioningTerminalHub {
                 viewer.resetRequired = true; viewers[id] = viewer
                 releaseOwner(id)
                 throw ProvisioningTerminalDenial.resetRequired
+            }
+            if [.claim, .input, .resize].contains(request.operation) {
+                do { try admitInput() }
+                catch { if let current = owner { releaseOwner(current.viewer) }; throw ProvisioningTerminalDenial.unavailable }
             }
             switch request.operation {
             case .attach: break

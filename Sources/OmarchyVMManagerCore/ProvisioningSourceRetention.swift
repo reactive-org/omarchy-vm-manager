@@ -6,7 +6,7 @@ import Foundation
 /// This is metadata accounting, never an ownership proof or deletion policy.
 enum ProvisioningSourceRetention {
     static func admit(_ archive: FrozenInputsArchive, into root: URL, additionalBytes: Int = 0, additionalEntries: Int = 0) throws {
-        guard (0...PlainDataParser.maximumBytes).contains(additionalBytes), (0...1).contains(additionalEntries) else { throw ProvisioningJobFailure.artifactUnavailable }
+        guard (0...(PlainDataParser.maximumBytes + 256 * 1024)).contains(additionalBytes), (0...2).contains(additionalEntries) else { throw ProvisioningJobFailure.artifactUnavailable }
         try PrivateFiles.directory(root)
         let trees = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
         guard trees.count < 128 else { throw ProvisioningJobFailure.artifactUnavailable }

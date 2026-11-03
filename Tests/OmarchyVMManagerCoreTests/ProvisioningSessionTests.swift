@@ -123,6 +123,7 @@ actor LocalTransportLauncher: ProvisioningServiceLaunching {
     let bypassGuest = EngineFixtureGuest()
     let bypassAuthority: Bool
     let processRunner: (any ProvisioningProcessRunner)?
+    let executionAdmission: ProvisioningExecutionAdmission
     private var ticket: ProvisioningHelperLaunchTicket?
     private var credentials: ProvisioningHelperCredentials?
     private var delivery: ProvisioningFrozenDeliverySource?
@@ -135,7 +136,7 @@ actor LocalTransportLauncher: ProvisioningServiceLaunching {
     private var parent: URL?
     private var helperExited = false
     private(set) var activations = 0
-    init(provider: SessionFixtureProvider, bypassAuthority: Bool = false, processRunner: (any ProvisioningProcessRunner)? = nil) { self.provider = provider; self.bypassAuthority = bypassAuthority; self.processRunner = processRunner }
+    init(provider: SessionFixtureProvider, bypassAuthority: Bool = false, processRunner: (any ProvisioningProcessRunner)? = nil, executionAdmission: ProvisioningExecutionAdmission = .fixture) { self.provider = provider; self.bypassAuthority = bypassAuthority; self.processRunner = processRunner; self.executionAdmission = executionAdmission }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration) throws -> ProvisioningHelperLaunchTicket { throw ProvisioningJobFailure.invalidRequest }
     func prepare(_ original: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource) throws -> ProvisioningHelperLaunchTicket {
         guard original.sessionAuthorityVersion == 1 else { throw ProvisioningJobFailure.invalidRequest }
@@ -159,9 +160,9 @@ actor LocalTransportLauncher: ProvisioningServiceLaunching {
         sessionTask = Task { await sessionServer.serve() }
         let admitted = try transportHandoff.map { try ProvisioningValidatedTransport.load($0.bytes, registration: ticket.registration, input: input, policy: .fixture(provider.root)) }
         let backend: any ProvisioningDeliveredBackendPreparing
-        if let admitted { backend = ProvisioningHelperTransportBackend(provider: ProvisioningDeliveredTransportProvider(transport: admitted, makeProcessRunner: { [provider, processRunner] in processRunner ?? provider.makeAdmittedRunner() }), client: sessionClient, admitPackage: {}) }
+        if let admitted { backend = ProvisioningHelperTransportBackend(provider: ProvisioningDeliveredTransportProvider(transport: admitted, makeProcessRunner: { [provider, processRunner] in processRunner ?? provider.makeAdmittedRunner() }), client: sessionClient, admitPackage: {}, executionAdmission: executionAdmission) }
         else if bypassAuthority { backend = EngineFixtureFactory(request: input.request, approval: input.approval, guest: bypassGuest, authority: EngineFixtureAuthority()) }
-        else { backend = ProvisioningHelperTransportBackend(provider: provider, client: sessionClient, admitPackage: {}) }
+        else { backend = ProvisioningHelperTransportBackend(provider: provider, client: sessionClient, admitPackage: {}, executionAdmission: executionAdmission) }
         let factory = ProvisioningDeliveredEngineFactory(input: input, backend: backend)
         let registry = try ProvisioningHelperOwnershipRegistry(identity: credentials.identity)
         let server = try ProvisioningHelperIPCServer(socket: helperControl, credentials: credentials, registry: registry,

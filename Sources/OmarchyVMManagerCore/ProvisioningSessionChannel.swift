@@ -164,13 +164,14 @@ protocol ProvisioningInvocationAuthorizing: Sendable {
 actor ProvisioningHelperSessionAuthority: ProvisioningCommandSessionAuthorizing, ProvisioningInvocationAuthorizing {
     private let registration: ProvisioningHelperWorkerRegistration
     private let target: GuestBinding
+    private let admitExecution: @Sendable () throws -> Void
     private let client: ProvisioningSessionClient
     private var command: DevVMProvisioningCore.GuestCommand?
     private var stoppedCommands = Set<UUID>()
-    init(registration: ProvisioningHelperWorkerRegistration, target: GuestBinding, client: ProvisioningSessionClient) throws {
+    init(registration: ProvisioningHelperWorkerRegistration, target: GuestBinding, client: ProvisioningSessionClient, admitExecution: @escaping @Sendable () throws -> Void = {}) throws {
         try registration.validate()
         guard registration.sessionAuthorityVersion == 1, try ProvisioningCoordinator.bindingIdentity(target) == registration.scope.bindingDigest else { throw SequencingFailure.identityMismatch }
-        self.registration = registration; self.target = target; self.client = client
+        self.registration = registration; self.target = target; self.client = client; self.admitExecution = admitExecution
     }
     func revalidate(_ binding: GuestBinding, dependencyDigest: String) async throws {
         guard binding == target, dependencyDigest == registration.scope.dependencyDigest else { throw SequencingFailure.identityMismatch }
@@ -198,10 +199,11 @@ actor ProvisioningHelperSessionAuthority: ProvisioningCommandSessionAuthorizing,
         guard self.command?.id == command.id else { throw SequencingFailure.identityMismatch }
     }
     private func query(boundary: ProvisioningSessionBoundary, invocation: ProvisioningProcessInvocation? = nil) async throws {
+        try admitExecution()
         let request = ProvisioningSessionRequest(requestID: UUID(), registrationDigest: try registration.digest, scope: registration.scope,
             boundary: boundary, mode: registration.mode, cleanup: command != nil && command?.plan == nil,
             commandID: command?.id, operation: command?.operation, invocationID: invocation?.id, purpose: invocation?.purpose)
-        do { try await client.authorize(request) }
+        do { try await client.authorize(request); try admitExecution() }
         catch SequencingFailure.cancelled {
             if let command, command.plan != nil { stoppedCommands.insert(command.id) }
             throw SequencingFailure.cancelled

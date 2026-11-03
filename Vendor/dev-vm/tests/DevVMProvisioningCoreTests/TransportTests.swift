@@ -101,7 +101,7 @@ private final class TransportFixture {
     let authority: SessionAuthority
     let plan: SetupPlan
     let key: URL
-    init() throws {
+    init(trim: Bool = false, onlyTrim: Bool = false, appearance: Bool = false) throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         let wire = Data([0,0,0,11] + Array("ssh-ed25519".utf8) + [0,0,0,32] + Array(repeating: UInt8(7), count: 32))
         binding = try GuestBinding(vmID: UUID(), sessionID: UUID(), owner: "owner", ownerUID: 1000, hostKeyDigest: digest(wire))
@@ -116,7 +116,7 @@ private final class TransportFixture {
         }
         tools = ProvisioningTransportTools(ssh: pins[0], scp: pins[1], sftp: pins[2], ansiblePlaybook: pins[3], ansibleInventory: pins[4])
         let repository = root.appendingPathComponent("source"); try FileManager.default.createDirectory(at: repository, withIntermediateDirectories: false)
-        let manifest = """
+        var manifest = """
         schema_version: 1
         id: fixture
         vm: {packages: ['pkg:chromium', 'pkg:claude-desktop', 'pkg:1password', 'pkg:1password-cli', 'pkg:jq', 'mise:uv']}
@@ -129,6 +129,12 @@ private final class TransportFixture {
         tasks: [{name: custom, file: tasks.yml}]
         vars: {secret: synthetic-secret-never-log}
         """
+        if appearance {
+            manifest = manifest.replacingOccurrences(of: "docker: {access: sudoless}", with: "workstation: {theme: 'https://github.com/example/omarchy-fixture-theme', layout: chosen.lua}\n    docker: {access: sudoless}")
+            try Data("-- FROZEN SYNTHETIC LAYOUT\nreturn {}\n".utf8).write(to: repository.appendingPathComponent("chosen.lua"))
+        }
+        if trim { manifest = manifest.replacingOccurrences(of: "vm: {packages:", with: "vm: {lean_developer: true, packages:") }
+        if onlyTrim { manifest = "schema_version: 1\nid: trim-fixture\nvm: {lean_developer: true}\n" }
         try Data(manifest.utf8).write(to: repository.appendingPathComponent("vm.yml"))
         try Data("frozen-bytes".utf8).write(to: repository.appendingPathComponent("config"))
         try Data("not even valid YAML: [ {{ synthetic-secret-never-log }}".utf8).write(to: repository.appendingPathComponent("tasks.yml"))
@@ -370,4 +376,74 @@ func damagedOrRetargetedTransportProofsAreNeverRecaptured(kind: String) throws {
         data = try JSONSerialization.data(withJSONObject: object)
     }
     #expect(throws: Error.self) { _ = try ProvisioningTransportReference(privateData: data, expectedBinding: target) }
+}
+
+@Test func optionalTrimUsesPinnedGuestHelperAndInteractiveJobSupervision() async throws {
+    let fixture = try TransportFixture(trim: true), runner = FakeProcessRunner(), request = try fixture.request()
+    let adapter = try fixture.adapter(runner)
+    let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
+    #expect(result.outcome == .appliedRestartRequired)
+    let calls = await runner.invocations
+    let trim = try #require(calls.first { $0.arguments.last?.contains("apply-lean-developer.py") == true })
+    #expect(trim.purpose == .packages && trim.arguments.contains("-tt"))
+    #expect(trim.arguments.last!.contains("/bin/bash") && trim.arguments.last!.contains("-lc"))
+    if case .terminalLease = trim.input {} else { Issue.record("Trim must retain the reviewed terminal lease") }
+    if case .terminalStream = trim.output {} else { Issue.record("Trim output must stream") }
+    #expect(trim.arguments.last!.contains("--keep") && trim.arguments.last!.contains("jq"))
+    let index = try #require(calls.firstIndex { $0.id == trim.id })
+    #expect(calls.prefix(index).contains { $0.purpose == .packages })
+    #expect(calls.suffix(from: index + 1).contains { $0.purpose == .features })
+    let staged = try Data(contentsOf: trim.workingDirectory.appendingPathComponent("kit/omarchy/guest/apply-lean-developer.py"))
+    #expect(String(decoding: staged, as: UTF8.self).contains("omarchy-pkg-drop"))
+}
+@Test func trimWithNoManifestPackagesStillRunsButCheckAndDefaultNeverTrim() async throws {
+    for (trimOnly, check) in [(true, false), (true, true), (false, false)] {
+        let fixture = try TransportFixture(onlyTrim: trimOnly), runner = FakeProcessRunner(), request = try fixture.request(check: check)
+        let adapter = try fixture.adapter(runner)
+        let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
+        #expect(result.primaryFailure == nil)
+        let trims = await runner.invocations.filter { $0.arguments.last?.contains("apply-lean-developer.py") == true }
+        #expect(trims.count == (trimOnly && !check ? 1 : 0))
+    }
+}
+@Test func trimFailureStopsBeforeFeaturesAndStillCleansUp() async throws {
+    let fixture = try TransportFixture(onlyTrim: true), runner = FakeProcessRunner([.packages: [.status(1)]]), request = try fixture.request()
+    let adapter = try fixture.adapter(runner)
+    let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
+    #expect(result.outcome == .failed && result.recovery == nil)
+    let calls = await runner.invocations
+    #expect(!calls.contains { $0.purpose == .features || $0.purpose == .repository })
+    #expect(calls.contains { $0.purpose == .quiesce } && calls.contains { $0.purpose == .remove })
+}
+@Test func trimCandidatePreviewRetainsManifestAndResolvedFeaturePackages() throws {
+    let keep = LeanDeveloperPolicy.keep(vmPackages: [" pkg:libreoffice-fresh ", "obsidian ", "mise:uv"], features: .object(["packages": .object(["pinta": .array([.string("custom")])])]))
+    let candidates = try LeanDeveloperPolicy.candidates(keeping: keep)
+    #expect(keep == ["libreoffice-fresh", "obsidian", "pinta", "uv"])
+    #expect(!candidates.contains("obsidian") && !candidates.contains("pinta") && !candidates.contains("libreoffice-fresh"))
+    #expect(candidates.contains("moonlight-qt"))
+}
+
+@Test func trimKeepNormalizesRepositoryQualifiedNativePackages() throws {
+    let keep = LeanDeveloperPolicy.keep(vmPackages: ["pkg:extra/obsidian"], features: .object([:]))
+    #expect(keep.contains("obsidian"))
+    #expect(try !LeanDeveloperPolicy.candidates(keeping: keep).contains("obsidian"))
+}
+
+@Test func themeAndLayoutReachAnsibleFromFrozenFilesWithoutExecutingEither() async throws {
+    for check in [false, true] {
+        let fixture = try TransportFixture(appearance: true), runner = FakeProcessRunner(), request = try fixture.request(check: check)
+        let adapter = try fixture.adapter(runner)
+        let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
+        #expect(result.primaryFailure == nil)
+        let calls = await runner.invocations
+        let features = try #require(calls.first { $0.purpose == .features })
+        let varsFile = try #require(features.arguments.first { $0.hasSuffix("-vars.json") })
+        let variables = try jsonFile(URL(fileURLWithPath: String(varsFile.dropFirst())))
+        #expect(variables["omarchy_theme"] == .string("https://github.com/example/omarchy-fixture-theme"))
+        let layoutPath = try #require(variables["omarchy_layout_file"]?.string)
+        #expect(layoutPath.hasPrefix(features.workingDirectory.path + "/repository/"))
+        #expect(try Data(contentsOf: URL(fileURLWithPath: layoutPath)) == fixture.plan.snapshot.data(for: "chosen.lua"))
+        #expect(features.arguments.contains("--check") == check)
+        #expect(!calls.contains { $0.arguments.first == "git" || $0.arguments.first == "lua" })
+    }
 }

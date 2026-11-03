@@ -62,6 +62,7 @@ public actor ProvisioningCoordinator {
     static func open(manager: VMManager, journal: any ProvisioningJobJournaling, authority: any ProvisioningSessionAuthority,
                      artifacts: ProvisioningJobArtifacts? = nil, recoveryAuthority: (any ProvisioningRecoveryAuthorizing)? = nil,
                      engineDigest: String, cleanupGrace: Duration = .seconds(240),
+                     executionAdmission: ProvisioningExecutionAdmission = .fixture,
                      admitPackage: @escaping @Sendable () throws -> Void) async throws -> ProvisioningCoordinator {
         guard provisioningDigest(engineDigest), cleanupGrace > .zero, cleanupGrace <= .seconds(300) else { throw ProvisioningJobFailure.invalidRequest }
         var records = try journal.load(), changed = false
@@ -75,7 +76,7 @@ public actor ProvisioningCoordinator {
         let coordinator = ProvisioningCoordinator(manager: manager, journal: journal, authority: authority,
             artifacts: artifacts, recoveryAuthority: recoveryAuthority,
             engineDigest: engineDigest, cleanupGrace: cleanupGrace, admitPackage: admitPackage, records: records)
-        try await manager.installProvisioningCoordinator(coordinator.ownerID, blocked: Set(records.filter(\.cleanupRequired).map(\.vmID)))
+        try await manager.installProvisioningCoordinator(coordinator.ownerID, blocked: Set(records.filter(\.cleanupRequired).map(\.vmID)), admission: executionAdmission)
         return coordinator
     }
 

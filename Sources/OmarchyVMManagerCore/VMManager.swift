@@ -74,6 +74,12 @@ public actor VMManager {
     private var provisioningService: ProvisioningService?
     private var creationSelectionsInFlight = Set<UUID>()
     private var provisioningServiceOpening: Task<ProvisioningService, any Error>?
+    private var provisioningExecutionAdmission: ProvisioningExecutionAdmission?
+    private var currentProvisioningExecutionAdmission: ProvisioningExecutionAdmission? {
+        // A future scoped candidate remains restricted before service installation
+        // and after coordinator close. A test coordinator cannot widen its scope.
+        ProvisioningProductExecution.disposableApproval.map { .disposable($0) } ?? provisioningExecutionAdmission
+    }
     private var provisioningOwner: UUID?
     private var provisioningReservation: ProvisioningReservation?
     private var provisioningBlocks: Set<UUID> = []
@@ -277,7 +283,7 @@ public actor VMManager {
         do {
             if let setupConsent {
                 guard let provisioningService, let configurationDigest else { throw ProvisioningReviewFailure.unavailable }
-                profile.developerSetup = try await provisioningService.reserveCreation(setupConsent, vmID: profile.id, configurationDigest: configurationDigest)
+                profile.developerSetup = try await provisioningService.reserveCreation(setupConsent, vmID: profile.id, configurationDigest: configurationDigest, factory: profile.factory)
                 // The service hop may admit another create or shutdown. Never save stale reservations.
                 try Task.checkCancellation()
                 guard !quitting else { throw ProvisioningReviewFailure.unavailable }
@@ -446,6 +452,7 @@ public actor VMManager {
     public func start(_ vmID: UUID, launchIntent: VMLaunchIntent = .background) async throws { try await start(vmID, restoreVerificationTimeout: nil, launchIntent: launchIntent) }
 
     private func start(_ vmID: UUID, restoreVerificationTimeout: Duration?, launchIntent: VMLaunchIntent = .background, restartToken: UUID? = nil) async throws {
+        if case .disposable? = currentProvisioningExecutionAdmission { try requireProvisioningExecutionAdmission(vmID) }
         try requireNoProvisioning(vmID, restartToken: restartToken)
         guard !unsafeSuspensions.contains(vmID), suspensions[vmID] == nil || restoreVerificationTimeout != nil else {
             throw VMFailure(code: "suspended-disk-protected", message: "Use Restore Experimental Session. Ordinary launch is blocked while a saved session may exist.")
@@ -916,10 +923,11 @@ extension VMManager {
                 environment: .init(executionEnabled: ProvisioningProductExecution.enabled, engineDigest: engine, dependencies: HomebrewProvisioningDependencies(), launcher: launcher,
                     transportPolicy: .host, admitPackage: { _ = try BundledProvisioning.inspect(layout) },
                     resolveTarget: { try await manager.resolveProvisioningTarget(vmID: $0, sessionID: $1) },
+                    executionAdmission: ProvisioningProductExecution.admission,
                     makeRecoveryAdapter: { admission in
                         try ProvisioningOperationalBackends.recovery(admission: admission,
                             authority: ProvisioningRecoveryTransportAuthority(manager: manager, admission: admission, admitPackage: { _ = try BundledProvisioning.inspect(layout) }),
-                            admitPackage: { _ = try BundledProvisioning.inspect(layout) }, makeRunner: { LocalProvisioningProcessRunner() })
+                            admitPackage: { _ = try BundledProvisioning.inspect(layout) }, makeRunner: { LocalProvisioningProcessRunner() }, executionAdmission: ProvisioningProductExecution.admission)
                     }))
         }
         provisioningServiceOpening = task
@@ -933,6 +941,7 @@ extension VMManager {
     func clearUnstartedProvisioningHold(vmID: UUID) { if provisioningReservation == nil { provisioningBlocks.remove(vmID) } }
     func seedProvisioningRisk(_ ids: Set<UUID>) { provisioningBlocks.formUnion(ids) }
     func provisioningSSHAdmission(_ target: GuestBinding) throws -> ProvisioningSSHAdmission {
+        try requireProvisioningExecutionAdmission(target.vmID, root: sessions[target.vmID]?.root)
         guard !quitting, let session = sessions[target.vmID], session.id == target.sessionID,
               !session.shutdownRequested, !session.forceRequested, !session.powerBusy, session.executionCommand == nil,
               !storageTransactions.contains(target.vmID) else { throw ProvisioningJobFailure.targetChanged }
@@ -967,6 +976,7 @@ extension VMManager {
         performShutDown(target.vmID); return lease
     }
     func continueProvisioningRestart(owner: UUID, lease: ProvisioningRestartLease) async throws -> UUID? {
+        try requireProvisioningExecutionAdmission(lease.target.vmID)
         guard var pending = provisioningRestart, pending.owner == owner, pending.lease == lease, !quitting else { throw ProvisioningJobFailure.targetChanged }
         if let sessionID = pending.newSessionID { guard sessions[lease.target.vmID]?.id == sessionID else { throw ProvisioningJobFailure.targetChanged }; return sessionID }
         guard pending.oldExited else { return nil }
@@ -997,6 +1007,7 @@ extension VMManager {
         try admission.verify()
     }
     private func provisioningTransportEndpoint(_ target: GuestBinding, cleanup: Bool = false) throws -> (URL, UInt16) {
+        try requireProvisioningExecutionAdmission(target.vmID, root: sessions[target.vmID]?.root)
         guard (cleanup || !quitting), let session = sessions[target.vmID], session.id == target.sessionID, states[target.vmID] == .running,
               !session.shutdownRequested, !session.forceRequested, !session.powerBusy, session.executionCommand == nil,
               !storageTransactions.contains(target.vmID), case .ready(let owner, _) = sshStates[target.vmID], owner == target.owner,
@@ -1011,13 +1022,21 @@ extension VMManager {
         guard evidence.endpoint.root == root.standardizedFileURL.path, evidence.endpoint.port == port else { throw ProvisioningJobFailure.targetChanged }
         try evidence.verify(); return target
     }
-    func installProvisioningCoordinator(_ owner: UUID, blocked: Set<UUID>) throws {
+    private func requireProvisioningExecutionAdmission(_ vmID: UUID, root: URL? = nil) throws {
+        guard let admission = currentProvisioningExecutionAdmission else { return } // No coordinator owns execution yet.
+        if case .fixture = admission { return }
+        guard let profile = profiles.first(where: { $0.id == vmID }), !profile.isRetainedPOC else { throw ProvisioningJobFailure.targetChanged }
+        let expected = ManagerStorage(applicationSupport: applicationSupport).root(for: profile)
+        if let root { guard ManagerStorage(applicationSupport: applicationSupport).matchesRoot(root, profile: profile) else { throw ProvisioningJobFailure.targetChanged } }
+        try admission.verify(vmID: vmID, root: expected)
+    }
+    func installProvisioningCoordinator(_ owner: UUID, blocked: Set<UUID>, admission: ProvisioningExecutionAdmission = .fixture) throws {
         guard provisioningOwner == nil, provisioningReservation == nil, !quitting else { throw ProvisioningJobFailure.busy }
-        provisioningOwner = owner; provisioningBlocks.formUnion(blocked)
+        provisioningOwner = owner; provisioningExecutionAdmission = admission; provisioningBlocks.formUnion(blocked)
     }
     func uninstallProvisioningCoordinator(_ owner: UUID) throws {
         guard provisioningOwner == owner, provisioningReservation == nil, provisioningPreparation == nil, provisioningRestart == nil else { throw ProvisioningJobFailure.busy }
-        provisioningOwner = nil // Unresolved VM blocks survive a coordinator handoff.
+        provisioningOwner = nil; provisioningExecutionAdmission = nil // Unresolved VM blocks survive a coordinator handoff.
     }
     func reserveProvisioning(owner: UUID, jobID: UUID, target: GuestBinding, recovery: Bool = false,
                              cancel: @escaping @Sendable (ProvisioningLifecycleInterruption) async -> Void) throws -> ProvisioningLifecycleLease {
@@ -1033,12 +1052,14 @@ extension VMManager {
         if let pending = provisioningRestart {
             guard pending.owner == owner, pending.newSessionID == target.sessionID, pending.checkJobID == jobID else { throw ProvisioningJobFailure.busy }
         }
+        try requireProvisioningExecutionAdmission(target.vmID, root: session.root)
         let lease = ProvisioningLifecycleLease(token: UUID(), jobID: jobID, vmID: target.vmID, sessionID: target.sessionID)
         provisioningReservation = ProvisioningReservation(lease: lease, owner: target.owner, cancel: cancel)
         provisioningPreparation = nil; provisioningRestart = nil
         return lease
     }
     func validateProvisioning(_ lease: ProvisioningLifecycleLease, cleanup: Bool) throws {
+        try requireProvisioningExecutionAdmission(lease.vmID, root: sessions[lease.vmID]?.root)
         guard let reservation = provisioningReservation, reservation.lease == lease, reservation.valid,
               let session = sessions[lease.vmID], session.id == lease.sessionID, states[lease.vmID] == .running,
               !session.shutdownRequested, !session.forceRequested, !session.powerBusy, session.executionCommand == nil,

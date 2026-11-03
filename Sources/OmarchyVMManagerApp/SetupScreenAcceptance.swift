@@ -33,12 +33,13 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             window.isReleasedWhenClosed = false; window.appearance = view.appearance; window.contentView = view
             view.layoutSubtreeIfNeeded()
         }
-        func scroll(bottom: Bool) {
+        func scroll(bottom: Bool) { scroll(fraction: bottom ? 1 : 0) }
+        func scroll(fraction: CGFloat) {
             var queue = view.subviews, candidates: [NSScrollView] = []
             while let next = queue.popLast() { queue += next.subviews; if let scroll = next as? NSScrollView, let document = scroll.documentView, document.bounds.height > scroll.contentView.bounds.height + 5 { candidates.append(scroll) } }
             if let scroll = candidates.max(by: { $0.frame.height < $1.frame.height }), let document = scroll.documentView {
                 let low = document.bounds.minY, high = max(low, document.bounds.maxY - scroll.contentView.bounds.height)
-                scroll.contentView.scroll(to: .init(x: 0, y: bottom == document.isFlipped ? high : low)); scroll.reflectScrolledClipView(scroll.contentView)
+                scroll.contentView.scroll(to: .init(x: 0, y: low + (high - low) * (document.isFlipped ? fraction : 1 - fraction))); scroll.reflectScrolledClipView(scroll.contentView)
             }
         }
         func close() { window.close() }
@@ -58,8 +59,12 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             // view identity and @State graph. Capture returns to the fixture
             // appearance before reading the backing surface.
             let dark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            view.rootView = root(!dark); SetupScreenAcceptance.tick(0.04)
-            view.rootView = root(dark); SetupScreenAcceptance.tick(0.04)
+            let alternate = NSAppearance(named: dark ? .aqua : .darkAqua)
+            let restored = NSAppearance(named: dark ? .darkAqua : .aqua)
+            window.appearance = alternate; view.appearance = alternate
+            view.rootView = root(!dark); SetupScreenAcceptance.tick(0.08)
+            window.appearance = restored; view.appearance = restored
+            view.rootView = root(dark); SetupScreenAcceptance.tick(0.08)
             view.layoutSubtreeIfNeeded(); view.needsDisplay = true; view.display()
             guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw AcceptanceFailure.check }
             view.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in: view.bounds, to: bitmap) }
@@ -127,20 +132,82 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try check(model.snapshots.first(where: { $0.id == returned[0] })?.profile.developerSetup == nil, suffix + "-none-creates-metadata-without-setup")
             returned.removeAll()
             try driver.send("editor", .name("Synthetic " + suffix)); try driver.send("editor", .resources(8, 4, 128)); tick()
-            try driver.send("selection", .source("developer")); tick()
+            try driver.send("selection", .source("bundled")); tick()
             try check(driver.state("editor", "ready") == "false", suffix + "-selection-needs-review")
+            try driver.send("selection", .profiles([])); tick()
+            let beforeEmpty = service.captures
+            try driver.send("selection", .preview); tick()
+            try check(service.captures == beforeEmpty && driver.state("editor", "ready") == "false", suffix + "-empty-bundled-profiles-inert")
             let calls = service.savedCalls
             try driver.send("editor", .save); tick(); try check(service.savedCalls == calls, suffix + "-unreviewed-create-refused")
-            try driver.send("selection", .feature(.docker, .disable)); tick()
+            try check(driver.state("selection", "trimAvailable") == "true" && driver.state("selection", "trim") == "false", suffix + "-official-trim-defaults-off")
+            try driver.send("selection", .trim(true)); tick()
+            try driver.send("selection", .profiles(["developer", "web"])); tick()
+            try until { driver.scopes["appearance"] != nil }
+            try check(driver.state("appearance", "expanded") == "false", suffix + "-appearance-starts-collapsed")
+            try driver.send("appearance", .appearanceExpanded(true)); tick()
+            try check(driver.state("appearance", "columns") == "1", suffix + "-appearance-narrow-stacks")
+            try driver.send("appearance", .themeChoice(.repository)); tick()
+            let beforeEmptyRepository = service.captures
+            try driver.send("selection", .preview); tick()
+            try check(driver.state("appearance", "valid") == "false" && service.captures == beforeEmptyRepository, suffix + "-github-choice-requires-url")
+            try driver.send("selection", .appearance(.init(theme: "random", minimumStars: 10, layoutFile: "/private/tmp/synthetic-layout.lua"))); tick()
+            try driver.send("appearance", .themeChoice(.source)); tick()
+            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
+            let keptID = try UUID(uuidString: driver.state("selection", "review")).unwrap()
+            try check(service.sources[keptID]?.appearance?.theme == nil && service.sources[keptID]?.appearance?.layoutFile == "/private/tmp/synthetic-layout.lua", suffix + "-keep-theme-retains-layout")
+            try driver.send("appearance", .themeChoice(.popular)); tick()
+            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
+            let popularID = try UUID(uuidString: driver.state("selection", "review")).unwrap()
+            try check(service.sources[popularID]?.appearance?.theme == "most-starred", suffix + "-popular-theme-forwards-marker")
+            try driver.send("appearance", .themeChoice(.random)); tick()
             try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
             let firstID = driver.state("selection", "review")
+            let selected = service.sources[UUID(uuidString: firstID)!]
+            try check(selected?.bundled == true && selected?.profiles == ["developer", "web"], suffix + "-multiple-profile-selection-forwarded")
+            try check(selected?.appearance?.theme == "random" && selected?.appearance?.layoutFile == "/private/tmp/synthetic-layout.lua", suffix + "-theme-layout-choice-forwarded")
+            try check(selected?.trimOptionalApps == true && ProvisioningTrim.isRequested(in: service.creations[UUID(uuidString: firstID)!]!.proposal), suffix + "-trim-choice-frozen")
             try check(driver.state("editor", "consent") == "false", suffix + "-review-alone-no-consent")
             try driver.send("selection", .acknowledge(true)); tick(); try check(driver.state("editor", "ready") == "true", suffix + "-ack-enables-create")
             try capture(host, "new-vm-review-" + suffix + ".png")
-            try driver.send("selection", .feature(.cli, .enable)); tick()
-            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-feature-edit-invalidates-review-and-ack")
+            host.scroll(fraction: 0.35); tick(); try capture(host, "new-vm-trim-" + suffix + ".png"); host.scroll(bottom: false); tick()
+            host.scroll(fraction: 0.50); tick(); try capture(host, "new-vm-appearance-" + suffix + ".png"); host.scroll(bottom: false); tick()
+            try driver.send("appearance", .layoutExample(nil)); tick()
+            try until { driver.state("layout-cards", "count") == "4" }
+            let beforeEmptyLayout = service.captures
+            try driver.send("selection", .preview); tick()
+            try check(driver.state("appearance", "valid") == "false" && service.captures == beforeEmptyLayout, suffix + "-example-gallery-requires-selection")
+            try driver.send("layout-cards", .layoutExample(.fourTerminals)); tick()
+            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
+            let exampleID = try UUID(uuidString: driver.state("selection", "review")).unwrap()
+            try check(service.sources[exampleID]?.appearance?.layoutExample == .fourTerminals && ProvisioningAppearanceSummary(proposal: service.creations[exampleID]!.proposal).layoutExample?.id == .fourTerminals, suffix + "-layout-card-forwards-frozen-example")
+            try driver.send("selection", .acknowledge(true)); tick()
+            host.scroll(fraction: 0.53); tick(); try capture(host, "new-vm-layout-cards-" + suffix + ".png")
+            try driver.send("layout-cards", .layoutExample(.vscodeBrowser)); tick()
+            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-layout-card-edit-invalidates-review")
+            try driver.send("selection", .appearance(.init(theme: "random", minimumStars: 10, layoutFile: "/private/tmp/synthetic-layout.lua"))); tick()
+            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
+            try driver.send("selection", .acknowledge(true)); tick()
+            try driver.send("appearance", .themeRepository("https://github.com/example/omarchy-other-theme")); tick()
+            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-appearance-edit-invalidates-review")
+            try driver.send("selection", .appearance(nil)); tick()
+            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
+            try driver.send("selection", .acknowledge(true)); tick()
+            if dark, let id = UUID(uuidString: firstID), let review = service.creations[id] {
+                let object = try JSONSerialization.jsonObject(with: review.proposal)
+                try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("new-vm-proposal.json"), options: .withoutOverwriting)
+            }
+            try driver.send("selection", .trim(false)); tick()
+            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-trim-edit-invalidates-consent")
+            try driver.send("selection", .trim(true)); tick()
+            try driver.send("editor", .factory("synthetic-custom")); tick()
+            try check(driver.state("selection", "trimAvailable") == "false" && driver.state("selection", "trim") == "false" && driver.state("editor", "consent") == "false", suffix + "-custom-factory-hides-resets-trim")
+            try driver.send("editor", .factory("official")); tick()
+            try check(driver.state("selection", "trimAvailable") == "true" && driver.state("selection", "trim") == "false", suffix + "-official-return-no-implicit-trim")
+            try driver.send("selection", .profiles(["python"])); tick()
+            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-profile-edit-invalidates-review-and-ack")
             service.holdNext = true; try driver.send("selection", .preview); try until { service.waiting }
-            try driver.send("selection", .source("python")); tick(); service.release(); tick()
+            try driver.send("selection", .profiles(["developer", "project-managed"])); tick(); service.release(); tick()
             try check(driver.state("selection", "review").isEmpty && driver.state("editor", "ready") == "false", suffix + "-late-capture-discarded")
             service.failNext = true; try driver.send("selection", .preview); try until { driver.state("selection", "failure") == "true" }
             try check(driver.state("editor", "consent") == "false", suffix + "-capture-error-no-consent")
@@ -164,9 +231,27 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try capture(setup, "setup-handoff-" + suffix + ".png", screen: setupDriver.terminalScreen)
             try setupDriver.send("setup", .source("local")); tick()
             try check(setupDriver.state("setup", "preview").isEmpty && setupDriver.state("setup", "inspected") == "0", suffix + "-source-edit-clears-inspection")
+            try setupDriver.send("setup", .trim(true)); tick()
+            try until { setupDriver.scopes["appearance"] != nil }
+            try setupDriver.send("appearance", .appearanceExpanded(true)); tick()
+            try check(setupDriver.state("appearance", "columns") == "2", suffix + "-appearance-wide-columns")
+            try setupDriver.send("setup", .appearance(.init(theme: "https://github.com/example/omarchy-fixture-theme", removeLayout: true))); tick()
             try setupDriver.send("setup", .folder(output.appendingPathComponent("selected-source"))); try setupDriver.send("setup", .preview)
             try until { !setupDriver.state("setup", "preview").isEmpty }
             try check(service.sources.values.contains(where: { $0.directory?.hasSuffix("selected-source") == true }), suffix + "-explicit-local-source")
+            try check(service.sources.values.contains(where: { $0.directory?.hasSuffix("selected-source") == true && $0.profiles == nil }), suffix + "-local-profiles-inherited")
+            try check(setupDriver.state("setup", "trimAvailable") == "true" && service.sources.values.contains(where: { $0.directory?.hasSuffix("selected-source") == true && $0.trimOptionalApps == true }), suffix + "-existing-official-trim-forwarded")
+            setup.scroll(fraction: 0.45); tick(); try capture(setup, "setup-trim-" + suffix + ".png", screen: setupDriver.terminalScreen)
+            let localID = try UUID(uuidString: setupDriver.state("setup", "preview")).unwrap()
+            try check(service.sources[localID]?.appearance?.removeLayout == true && service.sources[localID]?.appearance?.theme?.hasPrefix("https://github.com/") == true, suffix + "-existing-theme-layout-forwarded")
+            try capture(setup, "setup-appearance-" + suffix + ".png", screen: setupDriver.terminalScreen)
+            try setupDriver.send("appearance", .layoutExample(nil)); tick()
+            try until { setupDriver.state("layout-cards", "count") == "4" }
+            try setupDriver.send("layout-cards", .layoutExample(.claudeWorkspace)); tick()
+            try setupDriver.send("setup", .preview); try until { !setupDriver.state("setup", "preview").isEmpty }
+            let chosenLayoutID = try UUID(uuidString: setupDriver.state("setup", "preview")).unwrap()
+            try check(setupDriver.state("appearance", "columns") == "1" && service.sources[chosenLayoutID]?.appearance?.layoutExample == .claudeWorkspace, suffix + "-existing-layout-gallery-full-width")
+            setup.scroll(fraction: 0.55); tick(); try capture(setup, "setup-layout-cards-" + suffix + ".png", screen: setupDriver.terminalScreen)
             let wrongID = UUID(); _ = try run { try await service.preview(id: wrongID, vmID: UUID(), source: .init(preset: "web")) }
             let original = setupDriver.state("setup", "preview")
             try setupDriver.send("setup", .lookup(wrongID)); try until { setupDriver.state("setup", "failure") == "true" }
@@ -182,14 +267,16 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let actionDriver = SetupUIAcceptanceDriver()
         let actionHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id), driver: actionDriver, width: 1200, height: 960, dark: true)
         defer { actionHost.close() }; tick(); try until { actionDriver.scopes["setup"] != nil }
-        try actionDriver.send("setup", .source("developer")); tick(); try actionDriver.send("setup", .preview); try until { !actionDriver.state("setup", "preview").isEmpty }
+        try actionDriver.send("setup", .source("bundled")); tick()
+        try actionDriver.send("setup", .profiles(["web"])); tick()
+        try actionDriver.send("setup", .preview); try until { !actionDriver.state("setup", "preview").isEmpty }
         try actionDriver.send("setup", .prepareApply); try until { !actionDriver.state("setup", "review").isEmpty }
         try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "apply-without-grants-refused")
         try actionDriver.send("setup", .grant(true, false, true)); try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "docker-consent-independent")
         try actionDriver.send("setup", .grant(true, true, true)); try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "uninspected-task-cannot-submit")
         try actionDriver.send("setup", .inspect); try until { actionDriver.state("setup", "inspected") == "1" }
         try actionDriver.send("setup", .grant(true, true, false)); try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "task-trust-independent")
-        try actionDriver.send("setup", .grant(true, true, true)); tick(); actionHost.scroll(bottom: false); try capture(actionHost, "setup-fake-consent-dark.png", screen: actionDriver.terminalScreen)
+        try actionDriver.send("setup", .grant(true, true, true)); tick(); actionHost.scroll(bottom: true); tick(); try capture(actionHost, "setup-fake-consent-dark.png", screen: actionDriver.terminalScreen)
         try actionDriver.send("setup", .submit); try until { enabled.submissions == 1 }
         try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 1, "submission-attempt-not-replayed")
         actionHost.close()

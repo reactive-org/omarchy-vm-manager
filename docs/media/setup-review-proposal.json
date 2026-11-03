@@ -1,0 +1,31 @@
+{
+  "execution_available" : false,
+  "features" : {
+    "features" : [
+
+    ]
+  },
+  "id" : "synthetic-ui-only",
+  "input_digest" : "729c0a126fbe511d62ad9bb80680838b0beea321ecceeeacaca88b0b71c7aca8",
+  "plan_digest" : "f259a03382da4af4cebc38c9535671e3e40b66348376192d94faae941e131ef4",
+  "requirements" : {
+    "desktop_restart_required" : true,
+    "removals" : [
+
+    ],
+    "update_policy" : "No implicit removal or update"
+  },
+  "schema_version" : 1,
+  "tasks" : [
+    {
+      "file" : "fixture-task.yml",
+      "name" : "synthetic"
+    }
+  ],
+  "vm" : {
+    "cpus" : 8,
+    "disk_gib" : 256,
+    "memory_gib" : 16,
+    "name" : "Source proposal only"
+  }
+}

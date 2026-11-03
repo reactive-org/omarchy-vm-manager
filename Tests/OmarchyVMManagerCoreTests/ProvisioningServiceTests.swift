@@ -15,13 +15,16 @@ actor WorkflowFixtureDependencies: ProvisioningDependencyProviding {
 }
 actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     let provider: SessionFixtureProvider
+    let executionAdmission: ProvisioningExecutionAdmission
+    private var featureHook: (@Sendable () async -> Void)?
     private var children: [UUID: LocalTransportLauncher] = [:]
     private var runners: [UUID: SessionFixtureRunner] = [:]
     private var gate: IPCWorkerGate?
     private var registrationGate: IPCWorkerGate?
     private var denyExit = false
     var uncertain = false
-    init(provider: SessionFixtureProvider) { self.provider = provider }
+    init(provider: SessionFixtureProvider, executionAdmission: ProvisioningExecutionAdmission = .fixture) { self.provider = provider; self.executionAdmission = executionAdmission }
+    func interceptFeatures(_ hook: @escaping @Sendable () async -> Void) { featureHook = hook }
     func pause(_ gate: IPCWorkerGate) { self.gate = gate }
     func pauseRegistration(_ gate: IPCWorkerGate) { registrationGate = gate }
     func withholdExitProof() { denyExit = true }
@@ -33,7 +36,8 @@ actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     func prepare(_ registration: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource, transport: ProvisioningTransportHandoff) async throws -> ProvisioningHelperLaunchTicket {
         guard children[registration.scope.jobID] == nil else { throw ProvisioningJobFailure.jobConflict }
         let runner = SessionFixtureRunner(uncertainFeatures: uncertain); uncertain = false
-        let child = LocalTransportLauncher(provider: provider, processRunner: runner)
+        let child = LocalTransportLauncher(provider: provider, processRunner: runner, executionAdmission: executionAdmission)
+        if let featureHook { self.featureHook = nil; await child.checks.interceptFeatures(featureHook) }
         if let gate { self.gate = nil; await child.checks.pause(gate) }
         let ticket = try await child.prepare(registration, delivery: delivery, transport: transport)
         children[registration.scope.jobID] = child; runners[registration.scope.jobID] = runner; return ticket
@@ -59,7 +63,9 @@ final class WorkflowFixture: Sendable {
     let provider: SessionFixtureProvider, dependencies: WorkflowFixtureDependencies, launcher: WorkflowFixtureLauncher
     let plan: SetupPlan, service: ProvisioningService
     init(docker: Bool = false, ready: Bool = true, enabled: Bool = true, task: String? = nil, allowRebind: Bool = false,
-         recovery: (@Sendable (ProvisioningTransportAdmission) throws -> any ProvisioningGuestAdapter)? = nil) async throws {
+         recovery: (@Sendable (ProvisioningTransportAdmission) throws -> any ProvisioningGuestAdapter)? = nil,
+         admission: @Sendable (VMProfile, URL) throws -> ProvisioningExecutionAdmission = { _, _ in .fixture },
+         helperAdmission: (@Sendable (VMProfile, URL) throws -> ProvisioningExecutionAdmission)? = nil) async throws {
         root = URL(fileURLWithPath: "/private/tmp/provisioning-workflow-" + UUID().uuidString)
         source = root.appendingPathComponent("source"); state = root.appendingPathComponent("state")
         try PrivateFiles.directory(root, create: true); try PrivateFiles.directory(source, create: true)
@@ -78,13 +84,14 @@ final class WorkflowFixture: Sendable {
         target = try GuestBinding(vmID: id, sessionID: session, owner: "fixture_owner", ownerUID: 1000, hostKeyDigest: sessionFixtureHostKeyDigest)
         try seedTransportEndpoint(root: runtime.startRequests[0].storageRoot, target: target, port: 22222)
         await manager.receiveSSH(ready ? .ready(user: target.owner, command: "fixture-unused") : .connecting, vmID: id, sessionID: session)
-        provider = try SessionFixtureProvider(); dependencies = WorkflowFixtureDependencies(try provider.admittedReport()); launcher = WorkflowFixtureLauncher(provider: provider)
+        let selectedAdmission = try admission(profile, root)
+        provider = try SessionFixtureProvider(); dependencies = WorkflowFixtureDependencies(try provider.admittedReport()); launcher = WorkflowFixtureLauncher(provider: provider, executionAdmission: try helperAdmission?(profile, root) ?? selectedAdmission)
         let fixtureTarget = target
         service = try await ProvisioningService.open(manager: manager, directory: state, environment: .init(executionEnabled: enabled,
             engineDigest: ProvisioningCoordinator.engineIdentity(plan), dependencies: dependencies, launcher: launcher, transportPolicy: .fixture(provider.root), admitPackage: {}, resolveTarget: { vm, session in
                 guard vm == fixtureTarget.vmID, allowRebind || session == fixtureTarget.sessionID else { throw ProvisioningReviewFailure.changed }
                 return try GuestBinding(vmID: vm, sessionID: session, owner: fixtureTarget.owner, ownerUID: fixtureTarget.ownerUID, hostKeyDigest: fixtureTarget.hostKeyDigest)
-            }, makeRecoveryAdapter: recovery))
+            }, executionAdmission: selectedAdmission, makeRecoveryAdapter: recovery))
     }
     deinit { for handle in runtime.startedHandles where handle.isRunning { handle.emit(.exited(status: 0)) }; try? FileManager.default.removeItem(at: root) }
     func preview(_ id: UUID = UUID()) async throws -> ProvisioningPreparedJob {

@@ -97,3 +97,43 @@ not executed: exact scope/approval worksheet, operational candidate prerequisite
 guest/TTY/cleanup/restart/check/failure evidence matrix and stopped-root cleanup.
 Product execution remains disabled; no host install or real transport is authorized
 by the runbook.
+
+The [offline candidate preflight](DevVMMilestone6Runbook.md#offline-candidate-preflight)
+is available as `make provisioning-preflight`. It verifies existing local package/
+resource inputs and fingerprints build artifacts without running them. Ten offline
+checks and 61 script tests pass. Guest acceptance stays NOT_RUN; the report cannot
+approve a scope or enable execution. A new stopped disposable profile proposal and
+its explicit preparation approval precede any real candidate/guest run.
+
+[Milestone 6 disposable admission](DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
+adds independent manager/helper approval checks for exact disposable UUID/root
+identity pins, including restart, cleanup and terminal input. Twelve fake/local
+admission tests pass. Product approval remains nil and execution disabled; the
+[runbook](DevVMMilestone6Runbook.md) records the concrete candidate/approval steps
+still required before a real run.
+
+[Source and multi-profile cards](DevVMUIAcceptance.md#separate-source-and-multiple-profiles--3-november-2026)
+separates configuration location from profile selection in New VM and Setup. Cards
+support multiple selections and show resolved inclusions; local manifest profiles
+stay included and native feature overrides are hidden for now. The current
+fake/local record has 448 Swift tests, 52 script tests and 62 screen checks; real
+provisioning stays disabled.
+
+[Optional-app trimming](DevVMProvisioningPlan.md#optional-app-trim-selection--3-november-2026)
+adds an initially-off control for the official Try Omarchy factory, frozen candidate
+removals and the upstream guest trim helper in the shared Swift adapter. Guest
+trimming remains unproven and product execution remains disabled.
+
+[Theme & layout selection](DevVMProvisioningPlan.md#theme-and-layout-selection--3-november-2026)
+adds collapsed native controls, review-time repository GET validation, frozen
+random/most-starred selection and copied Lua layout inputs. Star lookups use an
+existing authenticated gh; nothing is installed or signed in automatically. Real
+theme/layout guest acceptance remains open and execution stays disabled.
+
+[Refined theme/layout controls](DevVMUIAcceptance.md#themelayout-visual-refinement-and-adjacent-trim-help--3-november-2026)
+use responsive panels and explicit theme choices. Trim help is directly beneath its
+toggle. Current fake-service visual acceptance passes 92 checks; execution remains off.
+
+[Visual dev-vm layout examples](DevVMProvisioningPlan.md#bundled-dev-vm-layout-example-cards--3-november-2026)
+adds four wireframe cards backed by bundled, hash-checked Lua sources. App lists are
+prerequisites; choosing a layout does not add package installs or authorize execution.

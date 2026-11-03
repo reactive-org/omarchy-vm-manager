@@ -77,21 +77,28 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
             var values: [String: String] = [:], flags = Set<String>(), index = 3
             let isSource = ["preview", "prepare-create"].contains(args[1])
             var features = ProvisioningFeatureSelection()
-            let options: Set<String> = isSource ? ["--from", "--preset", "--preview-id"] : ["--review", "--trust-tasks"]
+            let options: Set<String> = isSource ? ["--from", "--preset", "--preview-id", "--theme", "--theme-min-stars", "--layout-file", "--layout-example"] : ["--review", "--trust-tasks"]
             while index < args.count {
                 let option = args[index]; index += 1
                 if isSource, ["--enable", "--disable"].contains(option) {
                     guard index < args.count, let feature = ProvisioningCommonFeature(rawValue: args[index]), features.choice(feature) == .inherit else { throw commandFailure("usage", "Choose each supported feature at most once.") }
                     features = features.setting(feature, to: option == "--enable" ? .enable : .disable); index += 1; continue
                 }
+                if isSource, option == "--remove-layout", flags.insert(option).inserted { continue }
                 if args[1] == "apply", ["--ack-sudo", "--ack-docker-root"].contains(option), flags.insert(option).inserted { continue }
                 guard options.contains(option), values[option] == nil, index < args.count, !args[index].hasPrefix("--") else { throw commandFailure("usage", "Unknown, duplicate or incomplete review option.") }
                 values[option] = args[index]; index += 1
             }
             if isSource, (values["--from"] == nil) != (values["--preset"] == nil) {
+                guard values["--theme-min-stars"] == nil || values["--theme"] != nil,
+                      let stars = Int(values["--theme-min-stars"] ?? "10"), stars >= 0 else { throw commandFailure("usage", "Theme minimum stars must be a non-negative integer with --theme.") }
+                let example = values["--layout-example"].flatMap(ProvisioningLayoutExampleID.init(rawValue:))
+                guard values["--layout-example"] == nil || example != nil else { throw commandFailure("usage", "Choose a bundled dev-vm layout example.") }
+                let appearance = ProvisioningAppearanceSelection(theme: values["--theme"], minimumStars: stars,
+                    layoutFile: values["--layout-file"], removeLayout: flags.contains("--remove-layout"), layoutExample: example)
                 let selection: ProvisioningFeatureSelection? = features.isEmpty ? nil : features
-                let source = values["--from"].map { ProvisioningSetupSource(directory: $0, features: selection) } ?? .init(preset: values["--preset"]!, features: selection)
-                do { try source.validate() } catch { throw commandFailure("usage", "Choose a bundled preset or an absolute setup folder.") }
+                let source = values["--from"].map { ProvisioningSetupSource(directory: $0, features: selection, appearance: appearance.isEmpty ? nil : appearance) } ?? .init(preset: values["--preset"]!, features: selection, appearance: appearance.isEmpty ? nil : appearance)
+                do { try source.validate() } catch { throw commandFailure("usage", "Choose a bundled preset or an absolute setup folder, a GitHub theme URL/random/most-starred, and an absolute layout file or --remove-layout.") }
                 if args[1] == "prepare-create", values["--preview-id"] == nil { return .prepareCreation(id, source) }
                 if args[1] == "preview", let token = values["--preview-id"], let previewID = UUID(uuidString: token) { return .createPreview(id, previewID, source) }
             }

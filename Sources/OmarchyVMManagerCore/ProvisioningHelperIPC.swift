@@ -144,18 +144,19 @@ final class ProvisioningHelperIPCServer: Sendable {
     }
 }
 
-/// Public only for the bundled helper executable's fixed ownership-only mode.
-/// No provisioning runner, VM, Keychain, journal or operational factory is made.
+/// Ordinary builds serve ownership only. A future acceptance candidate requires
+/// its own compiled approval in addition to inherited ownership/frozen transport.
+/// No public argument or received packet can install an execution policy.
 public enum ProvisioningHelperControl {
     public static func serveInheritedOwnershipChannel(descriptor: Int32, layout: ProvisioningPackageLayout) async throws {
         if ProvisioningProductExecution.enabled {
             try await serveInherited(descriptor: descriptor, layout: layout, engineFactory: nil,
-                streamRunnerFactory: { input, terminal in try ProvisioningOperationalBackends.worker(input: input, terminal: terminal, layout: layout) })
+                streamRunnerFactory: { input, terminal in try ProvisioningOperationalBackends.worker(input: input, terminal: terminal, layout: layout) }, executionAdmission: ProvisioningProductExecution.admission)
         } else {
-            try await serveInherited(descriptor: descriptor, layout: layout, engineFactory: nil)
+            try await serveInherited(descriptor: descriptor, layout: layout, engineFactory: nil, executionAdmission: ProvisioningProductExecution.admission)
         }
     }
-    static func serveInherited(descriptor: Int32, layout: ProvisioningPackageLayout, engineFactory: (any ProvisioningHelperEnginePreparing)?, deliveredBackend: (any ProvisioningDeliveredBackendPreparing)? = nil, transportProvider: (any ProvisioningHelperTransportProviding)? = nil, transportPolicy: ProvisioningTransportPolicy = .host, processRunnerFactory: (@Sendable (ProvisioningValidatedFrozenContext) throws -> any ProvisioningProcessRunner)? = nil, streamRunnerFactory: (@Sendable (ProvisioningValidatedFrozenContext, ProvisioningTerminal) throws -> any ProvisioningProcessRunner)? = nil) async throws {
+    static func serveInherited(descriptor: Int32, layout: ProvisioningPackageLayout, engineFactory: (any ProvisioningHelperEnginePreparing)?, deliveredBackend: (any ProvisioningDeliveredBackendPreparing)? = nil, transportProvider: (any ProvisioningHelperTransportProviding)? = nil, transportPolicy: ProvisioningTransportPolicy = .host, processRunnerFactory: (@Sendable (ProvisioningValidatedFrozenContext) throws -> any ProvisioningProcessRunner)? = nil, streamRunnerFactory: (@Sendable (ProvisioningValidatedFrozenContext, ProvisioningTerminal) throws -> any ProvisioningProcessRunner)? = nil, executionAdmission: ProvisioningExecutionAdmission = .fixture) async throws {
         guard (3...1024).contains(descriptor) else { throw ProvisioningHelperIPCFailure.authentication }
         let socket = try ProvisioningHelperSocket(taking: descriptor)
         defer { socket.stop() }
@@ -187,32 +188,33 @@ public enum ProvisioningHelperControl {
             let parent = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             let validated = try ProvisioningValidatedFrozenContext.load(bytes, registration: registration, parent: parent)
             input = validated
-            if registration.terminalVersion == 1 {
-                guard descriptor != 7, registration.transport != nil else { throw ProvisioningHelperIPCFailure.protocolViolation }
-                let terminal = try ProvisioningTerminal()
-                let hub = try ProvisioningTerminalHub(terminal: terminal, request: validated.request)
-                let server = ProvisioningTerminalServer(socket: try ProvisioningHelperSocket(taking: 7), credentials: credentials, hub: hub)
-                streamTerminal = terminal; terminalHub = hub; terminalServer = server
-            }
             if let transportReceipt = registration.transport {
                 guard descriptor != 6, let sessionClient else { throw ProvisioningHelperIPCFailure.protocolViolation }
                 let channel = try ProvisioningHelperSocket(taking: 6); defer { channel.stop() }
                 let bytes = try ProvisioningFrozenChannel.receive(byteCount: transportReceipt.byteCount, sha256: transportReceipt.sha256, maximumBytes: ProvisioningTransportHandoff.maximumBytes, over: channel)
                 let admitted = try ProvisioningValidatedTransport.load(bytes, registration: registration, input: validated, policy: transportPolicy)
                 validatedTransport = admitted
+                let admitExecution = try executionAdmission.helperCheck(input: validated, transport: admitted)
+                if registration.terminalVersion == 1 {
+                    guard descriptor != 7, registration.transport != nil else { throw ProvisioningHelperIPCFailure.protocolViolation }
+                    let terminal = try ProvisioningTerminal()
+                    let hub = try ProvisioningTerminalHub(terminal: terminal, request: validated.request, admitInput: admitExecution)
+                    let server = ProvisioningTerminalServer(socket: try ProvisioningHelperSocket(taking: 7), credentials: credentials, hub: hub)
+                    streamTerminal = terminal; terminalHub = hub; terminalServer = server
+                }
                 if let streamRunnerFactory, let streamTerminal, let terminalHub {
                     let provider = ProvisioningDeliveredTransportProvider(transport: admitted, makeProcessRunner: { try streamRunnerFactory(validated, streamTerminal) })
-                    let backend = ProvisioningHelperTransportBackend(provider: provider, client: sessionClient, admitPackage: { _ = try BundledProvisioning.inspect(layout) }, terminalHub: terminalHub)
+                    let backend = ProvisioningHelperTransportBackend(provider: provider, client: sessionClient, admitPackage: { _ = try BundledProvisioning.inspect(layout) }, terminalHub: terminalHub, executionAdmission: executionAdmission)
                     factory = ProvisioningDeliveredEngineFactory(input: validated, backend: backend)
                 } else if registration.terminalVersion == nil, let processRunnerFactory {
                     let provider = ProvisioningDeliveredTransportProvider(transport: admitted, makeProcessRunner: { try processRunnerFactory(validated) })
-                    let backend = ProvisioningHelperTransportBackend(provider: provider, client: sessionClient, admitPackage: { _ = try BundledProvisioning.inspect(layout) })
+                    let backend = ProvisioningHelperTransportBackend(provider: provider, client: sessionClient, admitPackage: { _ = try BundledProvisioning.inspect(layout) }, executionAdmission: executionAdmission)
                     factory = ProvisioningDeliveredEngineFactory(input: validated, backend: backend)
                 } else { factory = nil }
             } else if let sessionClient {
                 if let transportProvider {
                     let backend = ProvisioningHelperTransportBackend(provider: transportProvider, client: sessionClient,
-                        admitPackage: { _ = try BundledProvisioning.inspect(layout) })
+                        admitPackage: { _ = try BundledProvisioning.inspect(layout) }, executionAdmission: executionAdmission)
                     factory = ProvisioningDeliveredEngineFactory(input: validated, backend: backend)
                 } else { factory = nil } // No downgrade to a helper-local authority.
             } else { factory = deliveredBackend.map { ProvisioningDeliveredEngineFactory(input: validated, backend: $0) } }

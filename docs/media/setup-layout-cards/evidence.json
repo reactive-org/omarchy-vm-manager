@@ -1,0 +1,17 @@
+{
+  "checks": 100,
+  "generated_images": 20,
+  "guest_execution_tested": false,
+  "inspected_gallery_images": 4,
+  "physical_input_tested": false,
+  "retained": {
+    "new-vm-layout-cards-dark.png": "46aefdd139b839cad62a2a83c1620b88a4a13c6533fe13beeff5828f009bfded",
+    "new-vm-layout-cards-light.png": "e45e4ae5a72a6d8ba4ec49b3cfb81f920d2b435a188725726a7f4fe6ae30baa0",
+    "report.json": "2d230b0185e1469bf7021fc71ba3b865502bb9faf78d0267a0cbffca1b65fd88",
+    "setup-layout-cards-dark.png": "515a44dca925c5a26fbab86f9fa67eab772e13316918903b5214dfb0478cffdd",
+    "setup-layout-cards-light.png": "df90736ea3fc288440173d020d8c5d8db7df0f3665570dd1b211c2e68ff5977d"
+  },
+  "schema": 1,
+  "source": "Native offscreen views with synthetic services; wireframes illustrate bundled Lua layouts",
+  "temporary_full_gallery": "/private/tmp/omarchy-screen-acceptance-945rae3w/result"
+}

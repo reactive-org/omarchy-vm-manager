@@ -1,0 +1,19 @@
+{
+  "checks": 92,
+  "generated_images": 16,
+  "inspected_appearance_images": 4,
+  "native_dialogs_tested": false,
+  "physical_input_tested": false,
+  "retained": {
+    "new-vm-appearance-dark.png": "ce3645f01c149647dd1343089766ddca0cd04f30ed5eb4020fb68fee57606e91",
+    "new-vm-appearance-light.png": "fb642d26f9692d53d8360962720a4ea26c0c810fb444ef6a8b3a21625b9ab9a1",
+    "new-vm-trim-dark.png": "8cd14fac25cb18481b8df6892fdaec675a4fa3ffe8a87de401bc9de27008f613",
+    "new-vm-trim-light.png": "bc7aae381f1911a030b9d2dbacb5402d27baffc0de6bd55ded244cc661425947",
+    "report.json": "81d060e3f7f47237ede373f776020586faee3464a58aa307a6c31e8f44a695fc",
+    "setup-appearance-dark.png": "f4a77ae341fe5a02232bf61e93f0fa4a957a215ffcbb1e61f4938f80f8bc1ee9",
+    "setup-appearance-light.png": "208824c4863cf3d76f565574b4b1e1a584506d8cd86de1cd1d73b19eb6ed2ef9"
+  },
+  "schema": 1,
+  "source": "Offscreen native views with synthetic services; no network or guest operations",
+  "temporary_full_gallery": "/private/tmp/omarchy-screen-acceptance-ek7vdltt/result"
+}

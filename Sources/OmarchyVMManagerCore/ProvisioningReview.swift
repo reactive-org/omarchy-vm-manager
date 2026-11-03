@@ -1,19 +1,38 @@
 import DevVMProvisioningCore
 import Foundation
 
-/// Explicitly selected local input. No URL fetching, guest discovery or path
-/// overrides are supported. This value is never a VM launch request.
+/// Explicit configuration and reviewed theme/layout selections. Remote setup
+/// retrieval and guest discovery are unsupported. Never a VM launch request.
 public struct ProvisioningSetupSource: Codable, Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
     public let preset: String?
     public let directory: String?
     public let features: ProvisioningFeatureSelection?
-    public init(preset: String, features: ProvisioningFeatureSelection? = nil) { self.preset = preset; directory = nil; self.features = features }
-    public init(directory: String, features: ProvisioningFeatureSelection? = nil) { preset = nil; self.directory = directory; self.features = features }
+    public let bundled: Bool?
+    /// Additional bundled profiles. A local manifest's profiles stay included.
+    public let profiles: [String]?
+    /// nil preserves a local manifest; native controls pass an explicit choice.
+    public let trimOptionalApps: Bool?
+    public let appearance: ProvisioningAppearanceSelection?
+    public init(preset: String, profiles: [String]? = nil, features: ProvisioningFeatureSelection? = nil, trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil) {
+        self.preset = preset; directory = nil; bundled = nil; self.profiles = profiles; self.features = features; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance
+    }
+    public init(directory: String, profiles: [String]? = nil, features: ProvisioningFeatureSelection? = nil, trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil) {
+        preset = nil; self.directory = directory; bundled = nil; self.profiles = profiles; self.features = features; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance
+    }
+    public init(profiles: [String], trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil) {
+        preset = nil; directory = nil; bundled = true; self.profiles = profiles; features = nil; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance
+    }
     public var description: String { "ProvisioningSetupSource(redacted)" }
     public var debugDescription: String { description }
     func validate() throws {
-        try features?.validate()
-        guard (preset == nil) != (directory == nil) else { throw ProvisioningReviewFailure.invalid }
+        try features?.validate(); try appearance?.validate()
+        guard [preset != nil, directory != nil, bundled == true].filter({ $0 }).count == 1,
+              bundled == nil || bundled == true else { throw ProvisioningReviewFailure.invalid }
+        if let profiles {
+            guard profiles.count <= BundledProvisioning.presets.count, Set(profiles).count == profiles.count,
+                  profiles.allSatisfy(BundledProvisioning.presets.contains) else { throw ProvisioningReviewFailure.invalid }
+        }
+        if bundled == true, profiles?.isEmpty != false { throw ProvisioningReviewFailure.invalid }
         if let preset { guard BundledProvisioning.presets.contains(preset) else { throw ProvisioningReviewFailure.invalid } }
         if let directory {
             guard directory.hasPrefix("/"), directory.utf8.count <= 4096,
@@ -23,7 +42,7 @@ public struct ProvisioningSetupSource: Codable, Equatable, Sendable, CustomStrin
     }
 }
 public enum ProvisioningReviewFailure: String, Error, Sendable {
-    case invalid, unavailable, quota, changed, consentRequired, taskTrustRequired, conflictingConsent
+    case invalid, unavailable, quota, changed, consentRequired, taskTrustRequired, conflictingConsent, conflictingProfiles
 }
 public struct ProvisioningTaskReview: Codable, Equatable, Sendable {
     public let name: String, file: String, sha256: String

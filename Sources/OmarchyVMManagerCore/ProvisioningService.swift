@@ -20,7 +20,7 @@ struct ProvisioningRebindReview: Sendable {
     var identity: String { get throws { KitVerifier.sha256(try helperJSON([workflowID.uuidString, restartID.uuidString, newSessionID.uuidString, requestReviewDigest])) } }
 }
 struct ProvisioningServiceEnvironment: Sendable {
-    let executionEnabled: Bool // Internal fixture injection only; product always false.
+    let executionEnabled: Bool // Trusted composition only; ordinary product false.
     let engineDigest: String
     let dependencies: any ProvisioningDependencyProviding
     let launcher: any ProvisioningServiceLaunching
@@ -28,9 +28,12 @@ struct ProvisioningServiceEnvironment: Sendable {
     let admitPackage: @Sendable () throws -> Void
     // Trusted composition only. Product resolves ephemeral authenticated SSH
     // evidence; fixtures may supply synthetic bindings. Execution stays gated.
+    var themeResolver = ThemeResolver(http: ProvisioningThemeHTTP(), stars: ProvisioningThemeStars())
     var resolveTarget: (@Sendable (UUID, UUID) async throws -> GuestBinding)? = nil
+    // Internal fixtures retain explicit injection; product selects disabled or
+    // its compiled reviewed scope, never a wire/manifest/readiness switch.
+    var executionAdmission: ProvisioningExecutionAdmission = .fixture
     // Inert constructor only, first used behind authenticated cleanup admission.
-    // Product supplies the scoped constructor behind the disabled execution gate.
     var makeRecoveryAdapter: (@Sendable (ProvisioningTransportAdmission) throws -> any ProvisioningGuestAdapter)? = nil
 }
 actor ProvisioningAdmittedSessionAuthority: ProvisioningSessionAuthority {
@@ -120,7 +123,7 @@ public actor ProvisioningService {
         let artifacts = try ProvisioningJobArtifacts(directory: directory.appendingPathComponent("artifacts"))
         let sourceDirectory = directory.appendingPathComponent("sources"); try PrivateFiles.directory(sourceDirectory, create: true)
         let coordinator = try await ProvisioningCoordinator.open(manager: manager, journal: jobs, authority: authority, artifacts: artifacts,
-            recoveryAuthority: environment.launcher, engineDigest: environment.engineDigest, admitPackage: environment.admitPackage)
+            recoveryAuthority: environment.launcher, engineDigest: environment.engineDigest, executionAdmission: environment.executionAdmission, admitPackage: environment.admitPackage)
         return .init(manager: manager, coordinator: coordinator, jobs: jobs, workflows: workflows, artifacts: artifacts,
             sourceDirectory: sourceDirectory, environment: environment, authority: authority, rows: records)
     }
@@ -170,6 +173,11 @@ public actor ProvisioningService {
         guard busyID == nil, rows.count < 128, !rows.values.contains(where: \.cleanupRequired) else { throw ProvisioningServiceFailure.busy }
         try environment.admitPackage(); try plan.verify(in: repository)
         guard try ProvisioningCoordinator.engineIdentity(plan) == environment.engineDigest else { throw ProvisioningJobFailure.invalidRequest }
+        guard let profile = await manager.snapshots().first(where: { $0.id == target.vmID })?.profile else { throw ProvisioningReviewFailure.invalid }
+        try ProvisioningTrim.admit(plan, factory: profile.factory)
+        // Actor reentrancy during the manager snapshot must not admit a second preparation.
+        try enabled()
+        guard busyID == nil, rows[id] == nil, rows.count < 128, !rows.values.contains(where: \.cleanupRequired) else { throw ProvisioningServiceFailure.busy }
         busyID = id
         do {
             let lease = try await coordinator.beginPreparation(jobID: id, target: target) { [weak self] in await self?.cancelForLifecycle(id) }

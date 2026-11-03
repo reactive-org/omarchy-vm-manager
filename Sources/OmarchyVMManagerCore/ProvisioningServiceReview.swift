@@ -13,7 +13,9 @@ extension ProvisioningService: ProvisioningReviewing {
         let snapshots = await manager.snapshots()
         try reviewAvailable()
         guard let target = snapshots.first(where: { $0.id == vmID }) else { throw ProvisioningReviewFailure.invalid }
-        let value = try freezeSelection(source)
+        let appearance = try await freezeAppearance(source.appearance)
+        let value = try freezeSelection(source, appearance: appearance)
+        try ProvisioningTrim.admit(value.plan, factory: target.profile.factory)
         let result = try value.preview(id: id, vmID: vmID, sessionID: target.sessionID, engine: environment.engineDigest)
         drafts[id] = .init(selection: source, preview: result, storage: value.storage, plan: value.plan)
         return result
@@ -90,6 +92,7 @@ extension ProvisioningService: ProvisioningReviewing {
         let value = try await prepared(id)
         guard value.request.reviewIdentity == review.reviewIdentity else { throw ProvisioningReviewFailure.changed }
         // Check both original resource stamps and freshly discovered dependencies.
+        try await manager.validateProvisioningTransport(value.transport)
         let report = try await environment.dependencies.inspect()
         try enabled(); try verify(draft)
         let fresh = try await manager.admitProvisioningTransport(target: value.request.target, report: report, policy: environment.transportPolicy)
