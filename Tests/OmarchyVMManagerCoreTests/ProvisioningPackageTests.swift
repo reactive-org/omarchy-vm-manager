@@ -1,4 +1,5 @@
 import Darwin
+@testable import DevVMProvisioningCore
 import Foundation
 import Testing
 @testable import OmarchyVMManagerCore
@@ -62,4 +63,69 @@ private final class ProvisioningPackageFixture {
         try FileManager.default.removeItem(at: fixture.contents.appendingPathComponent("Resources/" + ProvisioningPackagePin.resourceBundle))
         #expect(throws: VMFailure.self) { _ = try BundledProvisioning.inspect(fixture.layout) }
     }
+    @Test func productCompositionIsSharedAndExecutionRemainsDisabled() async throws {
+        let f = try ProvisioningPackageFixture()
+        let support = f.root.appendingPathComponent("manager-state")
+        try PrivateFiles.directory(support, create: true)
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: support, hostMemoryMiB: 32768, logicalCPUs: 8)
+        let layout = f.layout
+        async let first = manager.installProvisioningService(layout: layout)
+        async let second = manager.installProvisioningService(layout: layout)
+        let (a, b) = try await (first, second)
+        #expect(a === b && !a.executionEnabled)
+        #expect(await a.statuses().isEmpty)
+        #expect(runtime.startRequests.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: support.appendingPathComponent("Omarchy VM Manager/Provisioning/control").path).isEmpty)
+        try await a.closeForReopen()
+    }
+    @Test func changedPackageStillLoadsOldRiskBeforeAdmissionFails() async throws {
+        let f = try ProvisioningPackageFixture(), vmID = UUID()
+        let support = f.root.appendingPathComponent("manager-state")
+        let directory = support.appendingPathComponent("Omarchy VM Manager/Provisioning")
+        try PrivateFiles.directory(support, create: true)
+        try PrivateFiles.directory(directory.deletingLastPathComponent(), create: true)
+        try PrivateFiles.directory(directory, create: true)
+        let workflows = try ProvisioningWorkflowJournal(directory: directory.appendingPathComponent("workflows")); _ = try workflows.load()
+        var row = ProvisioningWorkflowRecord(id: UUID(), vmID: vmID, originalSessionID: UUID(), planDigest: String(repeating: "a", count: 64),
+            inputDigest: String(repeating: "b", count: 64), engineDigest: String(repeating: "c", count: 64))
+        row.stage = .cleanupRequired; row.cleanupRequired = true
+        try workflows.save([row]); workflows.close()
+        let before = try Data(contentsOf: directory.appendingPathComponent("workflows/workflows.json"))
+        try Data("changed".utf8).write(to: f.resources.appendingPathComponent("catalogue.json"))
+        let runtime = FakeRuntime(), profile = VMProfile(id: vmID, name: "Fixture", clipboardEnabled: false)
+        let manager = VMManager(runtime: runtime, profiles: [profile], applicationSupport: support, hostMemoryMiB: 32768, logicalCPUs: 8)
+        await #expect(throws: VMFailure.self) { _ = try await manager.installProvisioningService(layout: f.layout) }
+        await #expect(throws: VMFailure.self) { try await manager.start(vmID) }
+        #expect(runtime.startRequests.isEmpty)
+        #expect(try Data(contentsOf: directory.appendingPathComponent("workflows/workflows.json")) == before)
+    }
+    @Test func bundledRuntimeStreamsOnlyLocalFixtureAndCannotGrantInput() async throws {
+        let f = try ProvisioningPackageFixture(), source = f.root.appendingPathComponent("source"), inputs = f.root.appendingPathComponent("inputs")
+        try PrivateFiles.directory(source, create: true); try PrivateFiles.directory(inputs, create: true)
+        try Data("schema_version: 1\nid: local-fixture\nsetup: {features: {enable: [cli]}}\n".utf8).write(to: source.appendingPathComponent("vm.yml"))
+        let plan = try SetupPlanner.plan(repository: source)
+        let target = try GuestBinding(vmID: UUID(), sessionID: UUID(), owner: "fixture", ownerUID: 1000, hostKeyDigest: String(repeating: "a", count: 64))
+        let request = try ProvisioningRequest(jobID: UUID(), plan: plan, repository: source, target: target, dependencyDigest: String(repeating: "b", count: 64), mode: .check)
+        let delivery = try ProvisioningFrozenDelivery(request: request, approval: .init(reviewIdentity: request.reviewIdentity), archive: plan.snapshot.privateArchive())
+        let scope = ProvisioningRecoveryExpectation(challenge: UUID(), jobID: request.jobID, vmID: target.vmID, sessionID: target.sessionID, payloadID: UUID(),
+            workerToken: UUID(), engineDigest: try ProvisioningCoordinator.engineIdentity(plan), dependencyDigest: request.dependencyDigest,
+            bindingDigest: try ProvisioningCoordinator.bindingIdentity(target), reviewDigest: request.reviewIdentity, checkpointDigest: String(repeating: "c", count: 64))
+        let registration = ProvisioningHelperWorkerRegistration(scope: scope, planDigest: plan.identity, inputDigest: plan.snapshot.identity, mode: .check, delivery: delivery.receipt)
+        let input = try ProvisioningValidatedFrozenContext.load(delivery.bytes, registration: registration, parent: inputs)
+        let local = try BundledProvisioning.localRuntime(for: input, layout: f.layout)
+        let script = source.appendingPathComponent("fixture.sh")
+        try Data("#!/bin/sh\nprintf 'local fixture output\\n'\n".utf8).write(to: script); chmod(script.path, 0o700)
+        let context = GuestJobContext(jobID: request.jobID, payloadID: UUID(), target: target, dependencyDigest: request.dependencyDigest, mode: .check)
+        func invocation(_ input: ProvisioningProcessInput) -> ProvisioningProcessInvocation {
+            .init(id: UUID(), commandID: UUID(), context: context, purpose: .identity, executable: script, arguments: [], environment: [:],
+                workingDirectory: source, input: input, output: .terminalStream, timeoutSeconds: 2)
+        }
+        let result = await local.runner.run(invocation(.closed))
+        if case .exited(status: 0, reason: .normal) = result.termination {} else { Issue.record("Local fixture failed") }
+        #expect(String(decoding: local.terminal.snapshot().frames.flatMap { $0.bytes }, as: UTF8.self).contains("local fixture output"))
+        #expect(!local.terminal.snapshot().acceptsInput)
+        if case .notStarted = await local.runner.run(invocation(.terminalLease(UUID()))).termination {} else { Issue.record("Unowned input was accepted") }
+    }
+
 }

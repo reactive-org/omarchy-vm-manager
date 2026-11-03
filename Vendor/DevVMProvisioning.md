@@ -9,11 +9,12 @@ base commit or that either branch has been published.
 
 The base has 79 files: `Package.swift`, `Package.resolved`, `README.md`, `AGENTS.md`,
 `Sources/**`, `ThirdParty/**`, `tests/DevVMProvisioningCoreTests/**` and
-`tests/ProcessFixture/**`. The durable-state extension adds two core source files
-and one fixture test (82 resulting files). It changes snapshot/checkpoint APIs,
+`tests/ProcessFixture/**`. The durable-state extension adds three core source files
+and one fixture test (83 resulting files). It changes snapshot/checkpoint APIs,
 preallocated payload identity, cleanup helper retention, public read-only reviewed
 manifest path, explicit connection/tool verification and fixed process-purpose
-serialization, with the engine inventory.
+serialization, private original-transport references and link-count proofs, with
+the engine inventory.
 Baseline README/AGENTS/license bytes are retained; current consumer behavior is
 recorded here and in the manager plan. Guest resources, parser code and C launcher
 are unchanged.
@@ -57,11 +58,12 @@ context factory. The product helper independently validates private delivered
 inputs and rebuilds the reviewed context, but provides no backend and rejects
 activation. The internal helper backend can construct the shared adapter with a
 manager-backed session authority and fenced process runner, but product entry
-points supply no transport-resource provider. Delivery/context/authority policy
+points supply no process-runner factory. Original managed-SSH/Homebrew resources
+are now admitted and delivered privately; only their receipt enters the journal. Delivery/context/authority policy
 remains manager-owned.
 The separate debug fixture contains synthetic backends; none are staged into the
 product helper. Manager launch/activation policy is outside the shared source pin;
-see the milestone-3 backend/session-authority handoff in the plan.
+see the milestone-3 transport-resource admission/private-handoff record in the plan.
 The pinned C PTY launcher is built unchanged in a generated standalone SwiftPM
 package because an executable product of a dependency is not a manager root
 product. Only its exact entry-point source and generated manifest are admitted.

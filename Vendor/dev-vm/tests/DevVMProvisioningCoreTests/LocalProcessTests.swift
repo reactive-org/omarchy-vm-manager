@@ -276,3 +276,46 @@ private func noLiveFixtureChild(_ fixture: LocalFixture) throws {
     try noLiveFixtureChild(fixture)
     termination(await fresh.run(fixture.invocation(["exit"])), status: 0)
 }
+
+@Test func localReservedInputNeedsExplicitLiveOwnerAndSuspendDiscardsPendingBytes() throws {
+    let fixture = try LocalFixture(), terminal = try ProvisioningTerminal(), lease = UUID()
+    try Data("schema_version: 1\nid: fixture\n".utf8).write(to: fixture.root.appendingPathComponent("vm.yml"))
+    let request = try ProvisioningRequest(jobID: fixture.context.jobID, plan: SetupPlanner.plan(repository: fixture.root), repository: fixture.root,
+        target: fixture.context.target, dependencyDigest: fixture.context.dependencyDigest, inputLeaseID: lease)
+    try terminal.reserveInput(for: request)
+    let invocation = fixture.invocation(["tty"], input: .terminalLease(lease), output: .terminalStream)
+    _ = try terminal.begin(invocation)
+    defer { terminal.end(invocation.id) }
+    #expect(!terminal.snapshot().acceptsInput)
+    #expect(throws: SequencingFailure.self) { try terminal.sendInput(leaseID: lease, invocationID: invocation.id, sequence: 1, bytes: Data([10])) }
+    let size = try ProvisioningTerminalSize(rows: 35, columns: 100)
+    try terminal.resumeInput(leaseID: lease, size: size)
+    try terminal.sendInput(leaseID: lease, invocationID: invocation.id, sequence: 1, bytes: Data("stale-keystroke-canary\n".utf8))
+    try terminal.resize(leaseID: lease, invocationID: invocation.id, sequence: 2, size: ProvisioningTerminalSize(rows: 50, columns: 130))
+    terminal.suspendInput(leaseID: lease)
+    var master: Int32 = -1, slave: Int32 = -1
+    guard openpty(&master, &slave, nil, nil, nil) == 0 else { throw SequencingFailure.invalidRequest }
+    defer { close(master); close(slave) }
+    #expect(fcntl(slave, F_SETFL, O_NONBLOCK) == 0)
+    try terminal.resumeInput(leaseID: lease, size: size)
+    #expect(terminal.flushInput(invocation.id, fd: master))
+    var buffer = [UInt8](repeating: 0, count: 64)
+    #expect(read(slave, &buffer, buffer.count) == -1 && errno == EAGAIN)
+    try terminal.sendInput(leaseID: lease, invocationID: invocation.id, sequence: 3, bytes: Data("fresh".utf8))
+    #expect(terminal.flushInput(invocation.id, fd: master))
+    usleep(10_000)
+    let count = read(slave, &buffer, buffer.count)
+    #expect(count == 5 && Data(buffer.prefix(max(0, count))) == Data("fresh".utf8))
+    terminal.revokeInput(leaseID: lease)
+    #expect(throws: SequencingFailure.self) { try terminal.resumeInput(leaseID: lease, size: size) }
+}
+
+@Test func localRunnerAcceptsCanonicalAdapterWorkspaceWithoutExecutingTransports() async throws {
+    let fixture = try LocalFixture(), workspace = try TransportWorkspace(), runner = LocalProvisioningProcessRunner()
+    #expect(workspace.root.path == workspace.root.standardizedFileURL.path)
+    let invocation = ProvisioningProcessInvocation(id: UUID(), commandID: UUID(), context: fixture.context, purpose: .native,
+        executable: fixture.executable, arguments: ["exit"], environment: [:], workingDirectory: workspace.root,
+        input: .closed, output: .boundedCapture, timeoutSeconds: 2)
+    termination(await runner.run(invocation), status: 0)
+    try workspace.verify()
+}

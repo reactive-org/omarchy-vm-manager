@@ -18,8 +18,9 @@ actor EngineFixtureGuest: ProvisioningGuestAdapter {
     let failures: Set<GuestOperation>
     private var runner: ProvisioningFencedProcessRunner?
     let useProcess: Bool
-    init(gate: IPCWorkerGate? = nil, failures: Set<GuestOperation> = [], useProcess: Bool = false) {
-        self.gate = gate; self.failures = failures; self.useProcess = useProcess
+    let interruptAsAdapterFailure: Bool
+    init(gate: IPCWorkerGate? = nil, failures: Set<GuestOperation> = [], useProcess: Bool = false, interruptAsAdapterFailure: Bool = false) {
+        self.gate = gate; self.failures = failures; self.useProcess = useProcess; self.interruptAsAdapterFailure = interruptAsAdapterFailure
     }
     func install(_ runner: ProvisioningFencedProcessRunner) { self.runner = runner }
     func perform(_ command: DevVMProvisioningCore.GuestCommand) async throws -> DevVMProvisioningCore.GuestReply {
@@ -33,7 +34,7 @@ actor EngineFixtureGuest: ProvisioningGuestAdapter {
                 _ = await runner.run(value)
             }
         }
-        if interrupted.contains(command.id) { throw SequencingFailure.cancelled }
+        if interrupted.contains(command.id) { throw interruptAsAdapterFailure ? SequencingFailure.adapterFailed : SequencingFailure.cancelled }
         if failures.contains(command.operation) { throw SequencingFailure.adapterFailed }
         let proof: GuestProof
         switch command.operation {
@@ -156,12 +157,12 @@ private final class EngineFixture: Sendable {
     let ticket: ProvisioningHelperLaunchTicket
     let activation: ProvisioningHelperActivation
     init(mode: ProvisioningMode = .apply, gate: IPCWorkerGate? = nil, prepareGate: IPCWorkerGate? = nil,
-         failures: Set<GuestOperation> = [], uncertain: Bool = false) async throws {
+         failures: Set<GuestOperation> = [], uncertain: Bool = false, interruptAsAdapterFailure: Bool = false) async throws {
         root = URL(fileURLWithPath: "/private/tmp/engine-dispatch-" + UUID().uuidString); try PrivateFiles.directory(root, create: true)
         try Data("schema_version: 1\nid: fixture\nsetup: {features: {enable: [cli]}}\nvars: {private: NEVER-PUBLISH-ENGINE-INPUT}\n".utf8).write(to: root.appendingPathComponent("vm.yml"))
         let plan = try SetupPlanner.plan(repository: root), target = try GuestBinding(vmID: UUID(), sessionID: UUID(), owner: "fixture", ownerUID: 1000, hostKeyDigest: String(repeating: "a", count: 64))
         request = try .init(jobID: UUID(), plan: plan, repository: root, target: target, dependencyDigest: String(repeating: "b", count: 64), mode: mode, inputLeaseID: mode == .apply ? UUID() : nil)
-        guest = EngineFixtureGuest(gate: gate, failures: failures, useProcess: uncertain)
+        guest = EngineFixtureGuest(gate: gate, failures: failures, useProcess: uncertain, interruptAsAdapterFailure: interruptAsAdapterFailure)
         factory = EngineFixtureFactory(request: request, approval: .init(reviewIdentity: request.reviewIdentity, customTasksReviewed: true, persistentGrantAcknowledged: true),
             guest: guest, authority: authority, backend: IPCRecordingRunner(result: uncertain ? .uncertain : .exited), prepareGate: prepareGate)
         launcher = LocalEngineLauncher(factory: factory)
@@ -209,6 +210,19 @@ private final class EngineFixture: Sendable {
         let changed = ProvisioningHelperActivation(activationID: UUID(), registrationDigest: f.activation.registrationDigest, scope: f.activation.scope)
         await #expect(throws: ProvisioningHelperDispatchDenial.activationConflict) { _ = try await f.launcher.dispatch(.activate, activation: changed) }
         #expect(await f.factory.prepares == 1); await f.launcher.close()
+    }
+    @Test func cancellationBeforeInvocationAdmissionKeepsCancellationReasonAndCleanup() async throws {
+        let gate = IPCWorkerGate(), f = try await EngineFixture(gate: gate, interruptAsAdapterFailure: true)
+        _ = try await f.launcher.dispatch(.activate, activation: f.activation)
+        #expect(await eventually { await gate.entered })
+        _ = try await f.launcher.dispatch(.cancel, activation: f.activation)
+        let done = try await f.terminal()
+        #expect(done.outcome == .cancelled && done.primaryFailure == .cancelled && !done.cleanupRequired)
+        let commands = await f.guest.commands
+        #expect(commands.contains { $0.operation == .quiesceOwnedWork })
+        #expect(commands.contains { $0.operation == .revokeGrant })
+        #expect(commands.contains { $0.operation == .removePayload })
+        await f.launcher.close()
     }
     @Test func fencingBeforeActivationIsPermanentAndStartsNoFactory() async throws {
         let f = try await EngineFixture()

@@ -7,7 +7,7 @@ final class TransportWorkspace {
     private let inode: ino_t
     private var hashes: [String: String] = [:]
     init() throws {
-        root = FileManager.default.temporaryDirectory.appendingPathComponent("dev-vm-job-" + UUID().uuidString.lowercased())
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("dev-vm-job-" + UUID().uuidString.lowercased()).standardizedFileURL
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         fd = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         var info = stat()

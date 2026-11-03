@@ -5,14 +5,16 @@ Milestone 1A implements the Homebrew Ansible CLI dependency contract from the [s
 The pinned Swift package now provides offline parsing/planning and an internal
 coordinator/helper foundation with private frozen-input delivery and independent
 helper-side context validation, concrete adapter construction and fresh manager
-session authority checks. Product setup execution, job UI/CLI attachment
+session authority checks, with managed-SSH/Homebrew resource admission and private
+helper handoff. Product setup execution, job UI/CLI attachment
 and the live terminal remain unavailable. Every dependency-report feature still
 reports `implemented: false` and `enabled: false`, even when `toolsReady` is true.
 Normal VM management does not depend on these checks.
 
-See the [current milestone-3 handoff](DevVMProvisioningPlan.md#milestone-3-helper-backend-and-manager-session-authority--3-november-2026).
+See the [current milestone-3 handoff](DevVMProvisioningPlan.md#milestone-3-transport-resource-admission-and-private-handoff--3-november-2026).
 The helper validates frozen reviewed inputs before acknowledgement, but the product
-supplies no transport-resource provider and rejects activation. These dependency reports
+supplies no process-runner factory and rejects activation. Resource admission
+consumes an already checked report and never reruns probes by itself. These dependency reports
 and their schema-2 readiness semantics are unchanged.
 
 ## Native and CLI reports
@@ -241,3 +243,29 @@ product helper has no context/backend factory and returns `executionUnavailable`
 Homebrew readiness still enables nothing, and no host tool is installed or invoked
 by the new path. Production frozen-context/session/transport wiring and all terminal
 stream/input/UI/CLI integration remain pending.
+
+
+## Milestone 3 service and lifecycle completion — 3 November 2026
+
+The [completion record](DevVMProvisioningPlan.md#milestone-3-completion--3-november-2026)
+adds the manager-owned service, strict private workflow index, bounded SSH wait,
+review/acceptance deduplication, original helper-exit observation, matching-exit
+restart and separate new-session rebind/check review. Homebrew discovery/report
+schema 2 and original resource proofs are unchanged. The service consumes a report
+only during admitted preparation; installation itself performs no tool probe.
+
+Product execution remains disabled and the packaged helper has no operational
+runner factory. The local runtime constructor captures disposable shell output
+without granting input. No SSH/SCP/SFTP/Ansible command or tool install is required
+by these tests. A fresh process cannot reconstruct helper ownership from a journal;
+it preserves cleanup holds and refuses replay/adoption. Retention never evicts
+private recovery material automatically. Live terminal/input and Setup UI/CLI are
+milestones 4 and 5; genuine guest and distribution acceptance remain 6 and 7.
+
+
+Milestone 4 adds a [separate authenticated terminal stream](DevVMProvisioningPlan.md#milestone-4-completion--3-november-2026),
+view-only attachments and explicit input/resize ownership, bounded output with
+visible-gap/reset requirements, detach/expiry and opt-in local TTY restoration.
+These are tested with disposable local processes/PTYs and signed helper fixtures;
+no dependency readiness report enables execution or installs a tool. Native terminal
+rendering and app/CLI attach surfaces remain milestone 5.

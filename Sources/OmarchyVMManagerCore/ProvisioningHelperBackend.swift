@@ -19,12 +19,15 @@ actor ProvisioningHelperTransportBackend: ProvisioningDeliveredBackendPreparing 
     private let provider: any ProvisioningHelperTransportProviding
     private let client: ProvisioningSessionClient
     private let admitPackage: @Sendable () throws -> Void
+    private let terminalHub: ProvisioningTerminalHub?
     private var used = false
-    init(provider: any ProvisioningHelperTransportProviding, client: ProvisioningSessionClient, admitPackage: @escaping @Sendable () throws -> Void) {
-        self.provider = provider; self.client = client; self.admitPackage = admitPackage
+    init(provider: any ProvisioningHelperTransportProviding, client: ProvisioningSessionClient, admitPackage: @escaping @Sendable () throws -> Void, terminalHub: ProvisioningTerminalHub? = nil) {
+        self.provider = provider; self.client = client; self.admitPackage = admitPackage; self.terminalHub = terminalHub
     }
     func prepare(_ input: ProvisioningValidatedFrozenContext, registration: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperEngineContext {
         guard !used, registration.sessionAuthorityVersion == 1, registration.delivery == input.receipt else { throw ProvisioningJobFailure.invalidRequest }
+        let transport = (provider as? ProvisioningDeliveredTransportProvider)?.transport
+        guard registration.transport == transport?.receipt else { throw ProvisioningJobFailure.invalidRequest }
         used = true // Before any await, including failure. Never build/retry twice.
         try input.storage.verifyRoot(); try input.request.plan.verify(in: input.storage.directory); try admitPackage()
         let request = input.request, scope = registration.scope
@@ -46,6 +49,6 @@ actor ProvisioningHelperTransportBackend: ProvisioningDeliveredBackendPreparing 
             target: request.target, mode: request.mode, authority: authority)
         let adapter = try SSHAnsibleGuestAdapter(connection: resources.connection, tools: resources.tools, authority: authority, runner: runner)
         return .init(request: request, approval: input.approval, adapter: adapter, authority: authority, runner: runner,
-            admitPackage: admitPackage, frozenContext: input)
+            admitPackage: admitPackage, frozenContext: input, transportContext: transport, terminalHub: terminalHub)
     }
 }

@@ -37,12 +37,14 @@ private actor JobGate {
 }
 private actor JobAuthority: ProvisioningSessionAuthority {
     private var allowed = true
+    private var expectedDigest = jobDependencies
+    func expectDigest(_ value: String) { expectedDigest = value }
     private var nextGate: JobGate?
     func deny() { allowed = false }
     func pauseNext(_ gate: JobGate) { nextGate = gate }
     func revalidate(_ binding: GuestBinding, dependencyDigest: String) async throws {
         if let gate = nextGate { nextGate = nil; await gate.pause() }
-        guard allowed, dependencyDigest == jobDependencies else { throw SequencingFailure.dependencyChanged }
+        guard allowed, dependencyDigest == expectedDigest else { throw SequencingFailure.dependencyChanged }
     }
 }
 private actor JobGuest: ProvisioningGuestAdapter {
@@ -117,7 +119,7 @@ private final class JobFixture: Sendable {
     let recoveryAuthority = JobRecoveryAuthority()
     let coordinator: ProvisioningCoordinator
     let package = JobPackageAdmission()
-    init(grace: Duration = .seconds(2), docker: Bool = false, quota: Int = 256 * 1024 * 1024, hostKey: String = String(repeating: "a", count: 64)) async throws {
+    init(grace: Duration = .seconds(2), docker: Bool = false, quota: Int = 256 * 1024 * 1024, hostKey: String = String(repeating: "a", count: 64), managedTransport: Bool = false) async throws {
         root = URL(fileURLWithPath: "/private/tmp/provisioning-job-test-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         source = root.appendingPathComponent("source")
@@ -125,16 +127,19 @@ private final class JobFixture: Sendable {
         let features = docker ? "setup: {features: {enable: [cli, docker]}, options: {docker: {access: sudoless}}}" : "setup: {features: {enable: [cli]}}"
         try Data(("schema_version: 1\nid: fixture\n" + features + "\nvars: {private: NEVER-PERSIST-FIXTURE-SECRET}\n").utf8).write(to: source.appendingPathComponent("vm.yml"))
         plan = try SetupPlanner.plan(repository: source)
-        profile = VMProfile(id: UUID(), name: "Fixture", clipboardEnabled: false)
+        var profile = VMProfile(id: UUID(), name: "Fixture", clipboardEnabled: false)
+        if managedTransport { profile.ssh = .init(hostPort: 22222) }
+        self.profile = profile
         other = VMProfile(id: UUID(), name: "Other fixture", clipboardEnabled: false)
         runtime = FakeRuntime(initialEvents: [.ready])
-        manager = VMManager(runtime: runtime, profiles: [profile, other], applicationSupport: root, hostMemoryMiB: 32768, logicalCPUs: 8)
+        manager = VMManager(runtime: runtime, profiles: [profile, other], applicationSupport: root, hostMemoryMiB: 32768, logicalCPUs: 8, portProbe: TransportFixturePorts())
         try await manager.start(profile.id)
         let id = profile.id, localManager = manager
         #expect(await eventually { await localManager.snapshots().first { $0.id == id }?.state == .running })
         let session = try #require(await manager.snapshots().first { $0.id == id }?.sessionID)
         await manager.receiveSSH(.ready(user: "fixture_owner", command: "synthetic-unused"), vmID: id, sessionID: session)
         target = try GuestBinding(vmID: id, sessionID: session, owner: "fixture_owner", ownerUID: 1000, hostKeyDigest: hostKey)
+        if managedTransport { try seedTransportEndpoint(root: POCProfiles.root(for: profile, applicationSupport: root), target: target, port: 22222) }
         authority = JobAuthority()
         journal = try ProvisioningJobJournal(directory: root.appendingPathComponent("journal"))
         faults = FailingJobJournal(journal)
@@ -148,8 +153,8 @@ private final class JobFixture: Sendable {
         for handle in runtime.startedHandles where handle.isRunning { handle.emit(.exited(status: 0)) }
         try? FileManager.default.removeItem(at: root)
     }
-    func request(id: UUID = UUID(), check: Bool = false, input: Bool = true) throws -> ProvisioningRequest {
-        try ProvisioningRequest(jobID: id, plan: plan, repository: source, target: target, dependencyDigest: jobDependencies,
+    func request(id: UUID = UUID(), check: Bool = false, input: Bool = true, dependencies: String = jobDependencies) throws -> ProvisioningRequest {
+        try ProvisioningRequest(jobID: id, plan: plan, repository: source, target: target, dependencyDigest: dependencies,
                                 mode: check ? .check : .apply, inputLeaseID: check || !input ? nil : UUID())
     }
     func approve(_ request: ProvisioningRequest) -> ProvisioningApproval {
@@ -995,6 +1000,73 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(try await f.coordinator.wait(request.jobID).state == .cleanupConfirmed)
         #expect(provider.builds == 1 && provider.preparations == 1)
         #expect(await launcher.activations == 1)
+        await launcher.close()
+    }
+
+    @Test(arguments: [false, true])
+    func admittedTransportHandoffBindsTheManagedEndpointAndActualJob(check: Bool) async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest, managedTransport: true), provider = try SessionFixtureProvider()
+        let admission = try await f.manager.admitProvisioningTransport(target: f.target, report: provider.admittedReport(), policy: .fixture(provider.root))
+        await f.authority.expectDigest(admission.dependencyDigest)
+        let request = try f.request(check: check, dependencies: admission.dependencyDigest), launcher = LocalTransportLauncher(provider: provider)
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher, transport: admission)
+        let row = try #require(f.journal.load().first)
+        #expect(row.helperTransport?.dependencyDigest == request.dependencyDigest && row.helperRegistered == true)
+        let journal = String(decoding: try Data(contentsOf: f.journal.directory.appendingPathComponent("jobs.json")), as: UTF8.self)
+        #expect(!journal.contains(provider.root.path) && !journal.contains(admission.selection.endpoint.root) && !journal.contains("PRIVATE-FIXTURE"))
+        #expect(provider.builds == 0 && provider.preparations == 0)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+        #expect(try await f.coordinator.wait(request.jobID).state == (check ? .checked : .succeeded))
+        #expect(provider.builds == 1 && provider.preparations == 0)
+        #expect(await !provider.runner.invocations.isEmpty)
+        await launcher.close()
+    }
+    @Test(arguments: ["unmanaged", "session", "report", "foreign", "stale", "review"])
+    func missingOrUnboundTransportAdmissionCannotReachAHelper(kind: String) async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest, managedTransport: kind != "unmanaged"), provider = try SessionFixtureProvider()
+        var report = try provider.admittedReport()
+        if kind == "report" { var tools = report.tools; tools[0].status = .checkFailed; report = .init(tools: tools) }
+        let target = try kind == "session" ? GuestBinding(vmID: f.target.vmID, sessionID: UUID(), owner: f.target.owner, ownerUID: f.target.ownerUID, hostKeyDigest: f.target.hostKeyDigest) : f.target
+        if ["unmanaged", "session", "report", "foreign"].contains(kind) {
+            await #expect(throws: Error.self) { _ = try await f.manager.admitProvisioningTransport(target: target, report: report, policy: kind == "foreign" ? .host : .fixture(provider.root)) }
+        } else {
+            let admission = try await f.manager.admitProvisioningTransport(target: target, report: report, policy: .fixture(provider.root))
+            await f.authority.expectDigest(admission.dependencyDigest)
+            let request = try f.request(dependencies: kind == "review" ? jobDependencies : admission.dependencyDigest)
+            if kind == "stale" { try Data("replaced".utf8).write(to: provider.root.appendingPathComponent("ssh")) }
+            let launcher = LocalTransportLauncher(provider: provider)
+            await #expect(throws: Error.self) { try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher, transport: admission) }
+            #expect(await f.coordinator.statuses().isEmpty)
+            #expect(provider.builds == 0)
+            await launcher.close()
+        }
+    }
+    @Test(arguments: ["activation", "invocation", "reopen"])
+    func originalResourcePinsAreRecheckedAfterRegistrationAndBeforeProcesses(kind: String) async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest, managedTransport: true), provider = try SessionFixtureProvider(), gate = IPCWorkerGate()
+        let admission = try await f.manager.admitProvisioningTransport(target: f.target, report: provider.admittedReport(), policy: .fixture(provider.root))
+        await f.authority.expectDigest(admission.dependencyDigest)
+        let request = try f.request(dependencies: admission.dependencyDigest), launcher = LocalTransportLauncher(provider: provider)
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher, transport: admission)
+        if kind == "reopen" {
+            try await f.coordinator.closeForReopen()
+            let reopened = try await ProvisioningCoordinator.open(manager: f.manager, journal: ProvisioningJobJournal(directory: f.journal.directory), authority: f.authority,
+                artifacts: f.artifacts, recoveryAuthority: launcher, engineDigest: ProvisioningCoordinator.engineIdentity(f.plan), admitPackage: {})
+            await #expect(throws: Error.self) { try await reopened.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher) }
+            #expect(await launcher.activations == 0)
+            #expect(await reopened.status(request.jobID)?.cleanupRequired == true)
+        } else if kind == "activation" {
+            try Data("changed".utf8).write(to: provider.root.appendingPathComponent("ssh"))
+            await #expect(throws: Error.self) { try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher) }
+            #expect(await launcher.activations == 0)
+        } else {
+            await launcher.checks.pause(gate)
+            try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+            #expect(await eventually { await gate.entered })
+            try Data("changed".utf8).write(to: provider.root.appendingPathComponent("brew")); await gate.release()
+            #expect(try await f.coordinator.wait(request.jobID).cleanupRequired)
+            #expect(await !provider.runner.invocations.contains { $0.purpose == .features })
+        }
         await launcher.close()
     }
 

@@ -10,17 +10,23 @@ struct ProvisioningHelperWorkerRegistration: Codable, Equatable, Sendable {
     let mode: ProvisioningMode
     var delivery: ProvisioningFrozenDeliveryReceipt? = nil
     var sessionAuthorityVersion: Int? = nil
+    var transport: ProvisioningTransportReceipt? = nil
+    var terminalVersion: Int? = nil
     func validate() throws {
         try scope.validate()
-        try delivery?.validate()
+        guard terminalVersion == nil || (terminalVersion == 1 && transport != nil) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        try delivery?.validate(); try transport?.validate()
+        guard transport == nil || (sessionAuthorityVersion == 1 && delivery != nil && transport?.dependencyDigest == scope.dependencyDigest) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         guard sessionAuthorityVersion == nil || (sessionAuthorityVersion == 1 && delivery != nil) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         guard provisioningDigest(planDigest), provisioningDigest(inputDigest) else { throw ProvisioningHelperIPCFailure.protocolViolation }
     }
     var digest: String { get throws { KitVerifier.sha256(try helperJSON(self)) } }
     static func validateDocument(_ value: ManifestValue) throws {
         let required: Set<String> = ["scope", "planDigest", "inputDigest", "mode"]
-        guard case .object(let fields) = value, required.isSubset(of: Set(fields.keys)), Set(fields.keys).isSubset(of: required.union(["delivery", "sessionAuthorityVersion"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard case .object(let fields) = value, required.isSubset(of: Set(fields.keys)), Set(fields.keys).isSubset(of: required.union(["delivery", "sessionAuthorityVersion", "transport", "terminalVersion"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         try validateExpectation(fields["scope"])
+        if let version = fields["terminalVersion"] { guard version == .integer(1) else { throw ProvisioningHelperIPCFailure.protocolViolation } }
+        if let transport = fields["transport"] { try ProvisioningTransportReceipt.validateDocument(transport) }
         if let version = fields["sessionAuthorityVersion"] { guard version == .integer(1) else { throw ProvisioningHelperIPCFailure.protocolViolation } }
         if let delivery = fields["delivery"] { try ProvisioningFrozenDeliveryReceipt.validateDocument(delivery) }
     }
@@ -30,15 +36,17 @@ struct ProvisioningHelperRegistrationReceipt: Codable, Sendable {
     let registrationDigest: String
     let state: String
     var deliveryDigest: String? = nil
+    var transportDigest: String? = nil
     static func decode(_ data: Data) throws -> Self {
         guard case .object(let fields) = try PlainDataParser.parse(data, format: .json),
-              Set(fields.keys) == ["identity", "registrationDigest", "state"] || Set(fields.keys) == ["identity", "registrationDigest", "state", "deliveryDigest"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
+              Set(["identity", "registrationDigest", "state"]).isSubset(of: Set(fields.keys)), Set(fields.keys).isSubset(of: ["identity", "registrationDigest", "state", "deliveryDigest", "transportDigest"]) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         guard let identity = fields["identity"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
         try ProvisioningHelperCredentials.validateIdentity(identity)
         let value = try JSONDecoder().decode(Self.self, from: data)
         try value.identity.validate()
         guard value.state == "registered", provisioningDigest(value.registrationDigest) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         if fields["deliveryDigest"] != nil { guard let digest = value.deliveryDigest, provisioningDigest(digest) else { throw ProvisioningHelperIPCFailure.protocolViolation } }
+        if fields["transportDigest"] != nil { guard let digest = value.transportDigest, provisioningDigest(digest), value.deliveryDigest != nil else { throw ProvisioningHelperIPCFailure.protocolViolation } }
         return value
     }
 }

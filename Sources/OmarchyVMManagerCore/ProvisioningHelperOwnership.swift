@@ -90,11 +90,11 @@ actor ProvisioningHelperOwnershipRegistry {
     private var records: [UUID: Record] = [:]
     private var disconnected = false
     init(identity: ProvisioningHelperIdentity) throws { try identity.validate(); self.identity = identity }
-    func registerPrepared(_ registration: ProvisioningHelperWorkerRegistration, bodyAllowed: @escaping @Sendable () -> Bool = { true }) throws {
+    func registerPrepared(_ registration: ProvisioningHelperWorkerRegistration, terminalHub: ProvisioningTerminalHub? = nil, bodyAllowed: @escaping @Sendable () -> Bool = { true }) throws {
         try registration.validate()
         guard registration.scope.helperIdentity == identity, !disconnected, records.count < 128,
               records[registration.scope.workerToken] == nil else { throw ProvisioningHelperIPCFailure.ownership }
-        records[registration.scope.workerToken] = Record(scope: registration.scope, runner: nil, engine: ProvisioningHelperEngineWorker(registration: registration, bodyAllowed: bodyAllowed))
+        records[registration.scope.workerToken] = Record(scope: registration.scope, runner: nil, engine: ProvisioningHelperEngineWorker(registration: registration, terminalHub: terminalHub, bodyAllowed: bodyAllowed))
     }
     func register(_ scope: ProvisioningRecoveryExpectation, runner: ProvisioningFencedProcessRunner) async throws {
         try scope.validate()

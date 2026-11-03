@@ -38,9 +38,11 @@ private struct DispatchFixtureAuthority: ProvisioningSessionAuthority {
         guard binding == target, dependencyDigest == dependencies else { throw SequencingFailure.identityMismatch }
     }
 }
-private actor DispatchFixtureGuest: ProvisioningGuestAdapter {
+actor DispatchFixtureGuest: ProvisioningGuestAdapter {
+    private(set) var calls = 0
     private var interrupted = Set<UUID>()
     func perform(_ command: DevVMProvisioningCore.GuestCommand) async throws -> DevVMProvisioningCore.GuestReply {
+        calls += 1
         if command.operation == .configureFeatures { try await Task.sleep(for: .milliseconds(250)) }
         if interrupted.contains(command.id) { throw SequencingFailure.cancelled }
         let proof: GuestProof
@@ -103,7 +105,7 @@ struct FixtureTransportProvider: ProvisioningHelperTransportProviding {
         return .init(connection: connection, tools: tools, dependencyDigest: input.request.dependencyDigest, makeProcessRunner: { FixtureTransportRunner(holdFeatures: hold) })
     }
 }
-private actor FixtureTransportRunner: ProvisioningProcessRunner {
+actor FixtureTransportRunner: ProvisioningProcessRunner {
     private var interrupted = Set<UUID>()
     private let holdFeatures: Bool
     init(holdFeatures: Bool) { self.holdFeatures = holdFeatures }

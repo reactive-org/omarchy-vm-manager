@@ -39,6 +39,7 @@ final class AppModel: ObservableObject {
     private var observedFactoryRevision: UUID?
     private var factoryImportID: UUID?
     private var commandServer: ManagerCommandServer?
+    private var provisioningService: ProvisioningService?
     private var lastReportID: UUID?
     private var lastAccessibilityTrusted: Bool?
     private var lastOwnerStates: [UUID: OwnerSetupReadiness] = [:]
@@ -106,6 +107,10 @@ final class AppModel: ObservableObject {
 
     func observe() async {
         await refresh()
+        if !Self.layoutPreview, registryError == nil, provisioningService == nil {
+            do { provisioningService = try await manager.installProvisioningService(layout: .init(contents: Bundle.main.bundleURL.appendingPathComponent("Contents"))) }
+            catch { actionError = "Setup coordination is unavailable. Recovery metadata was preserved." }
+        }
         startCommandServer()
         while !Task.isCancelled {
             await update()

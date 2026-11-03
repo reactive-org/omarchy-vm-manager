@@ -332,3 +332,42 @@ func processFailuresAndMalformedReceiptsCannotBecomeSuccess(kind: String) async 
     #expect(await task.value.outcome == .cancelled)
     #expect(!(await runner.invocations).contains { [.copyPayload, .native, .features, .repository].contains($0.purpose) })
 }
+
+@Test func privateTransportReferencesRoundTripOriginalProofsWithoutReadingIdentityBytes() throws {
+    let f = try TransportFixture()
+    chmod(f.key.path, 0o000)
+    defer { chmod(f.key.path, 0o600) }
+    let connection = try ProvisioningSSHConnection(binding: f.binding, port: f.connection.port, identity: ProvisioningIdentityFile(f.key), ed25519HostKey: f.connection.hostKey)
+    let reference = try ProvisioningTransportReference(connection: connection, tools: f.tools)
+    let data = try reference.privateData()
+    #expect(!String(decoding: data, as: UTF8.self).contains("synthetic-private-key-never-read"))
+    let restored = try ProvisioningTransportReference(privateData: data, expectedBinding: f.binding, expectedIdentityURL: f.key,
+        expectedExecutablePaths: ["ssh": f.tools.ssh.entry, "scp": f.tools.scp.entry, "sftp": f.tools.sftp.entry,
+            "ansible-playbook": f.tools.playbook.entry, "ansible-inventory": f.tools.inventory.entry])
+    try restored.connection.verify(); try restored.tools.verify()
+    #expect(restored.connection.binding == f.binding && restored.connection.port == f.connection.port)
+    #expect(String(reflecting: restored) == "ProvisioningTransportReference(redacted)")
+}
+@Test(arguments: ["key", "link", "tool", "unknown", "stamp", "version", "binding", "path", "relative", "nul"])
+func damagedOrRetargetedTransportProofsAreNeverRecaptured(kind: String) throws {
+    let f = try TransportFixture(), reference = try ProvisioningTransportReference(connection: f.connection, tools: f.tools)
+    var data = try reference.privateData()
+    var target = f.binding
+    if kind == "key" {
+        let old = f.root.appendingPathComponent("old-key"); try FileManager.default.moveItem(at: f.key, to: old)
+        try Data("synthetic-private-key-never-read".utf8).write(to: f.key); chmod(f.key.path, 0o600)
+    }
+    if kind == "link" { #expect(link(f.key.path, f.root.appendingPathComponent("linked").path) == 0) }
+    if kind == "tool" { try Data("changed".utf8).write(to: f.tools.ssh.entry) }
+    if kind == "binding" { target = try .init(vmID: UUID(), sessionID: f.binding.sessionID, owner: f.binding.owner, ownerUID: f.binding.ownerUID, hostKeyDigest: f.binding.hostKeyDigest) }
+    if ["unknown", "stamp", "version", "path", "relative", "nul"].contains(kind) {
+        var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        if kind == "unknown" { object["command"] = "never-execute" }
+        if kind == "version" { object["format"] = 2 }
+        if kind == "stamp" { var identity = object["identity"] as! [String: Any], stamp = identity["stamp"] as! [String: Any]; stamp["extra"] = 1; identity["stamp"] = stamp; object["identity"] = identity }
+        if kind == "relative" || kind == "nul" { var identity = object["identity"] as! [String: Any]; identity["path"] = kind == "relative" ? "relative-key" : f.key.path + "\u{0}suffix"; object["identity"] = identity }
+        if kind == "path" { var identity = object["identity"] as! [String: Any]; identity["path"] = f.root.appendingPathComponent("../outside").path; object["identity"] = identity }
+        data = try JSONSerialization.data(withJSONObject: object)
+    }
+    #expect(throws: Error.self) { _ = try ProvisioningTransportReference(privateData: data, expectedBinding: target) }
+}

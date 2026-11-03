@@ -179,7 +179,33 @@ diff --git a/Sources/DevVMProvisioningCore/ProvisioningProcess.swift b/Sources/D
      case identity, bootstrap, copyPayload, preparePayload, native, packages, features, repository, quiesce, remove
  }
  /// Describes an exact executable/argv/environment. It has no launch method.
-@@ -137,6 +137,8 @@
+@@ -66,13 +66,14 @@
+           !url.path.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 })
+     else { throw SequencingFailure.invalidRequest }
+ }
+-struct FileStamp: Sendable, Equatable {
++struct FileStamp: Sendable, Equatable, Codable {
+     let device: dev_t, inode: ino_t, mode: mode_t, owner: uid_t, size: off_t
+     let modifiedSeconds: Int, modifiedNanos: Int, changedSeconds: Int, changedNanos: Int
++    let links: nlink_t
+     init(_ s: stat) {
+         device = s.st_dev; inode = s.st_ino; mode = s.st_mode; owner = s.st_uid; size = s.st_size
+         modifiedSeconds = s.st_mtimespec.tv_sec; modifiedNanos = s.st_mtimespec.tv_nsec
+-        changedSeconds = s.st_ctimespec.tv_sec; changedNanos = s.st_ctimespec.tv_nsec
++        changedSeconds = s.st_ctimespec.tv_sec; changedNanos = s.st_ctimespec.tv_nsec; links = s.st_nlink
+     }
+ }
+ func fileStamp(_ url: URL) throws -> FileStamp {
+@@ -115,7 +116,7 @@
+     let url: URL, stamp: FileStamp
+     public init(_ url: URL) throws {
+         try transportPath(url); self.url = url; stamp = try fileStamp(url)
+-        guard stamp.owner == getuid(), stamp.mode & 0o077 == 0 else { throw SequencingFailure.invalidRequest }
++        guard stamp.owner == getuid(), stamp.mode & 0o077 == 0, stamp.links == 1 else { throw SequencingFailure.invalidRequest }
+     }
+     func verify() throws {
+         guard try fileStamp(url) == stamp else { throw SequencingFailure.identityMismatch }
+@@ -137,6 +138,8 @@
                digest(ed25519HostKey) == binding.hostKeyDigest else { throw SequencingFailure.identityMismatch }
          self.binding = binding; self.port = port; self.identity = identity; hostKey = ed25519HostKey
      }
@@ -188,7 +214,7 @@ diff --git a/Sources/DevVMProvisioningCore/ProvisioningProcess.swift b/Sources/D
      var alias: String { "omarchy-" + binding.vmID.uuidString.lowercased() }
  }
  public struct ProvisioningTransportTools: Sendable {
-@@ -146,7 +148,7 @@
+@@ -146,7 +149,7 @@
                  ansiblePlaybook: ProvisioningExecutablePin, ansibleInventory: ProvisioningExecutablePin) {
          self.ssh = ssh; self.scp = scp; self.sftp = sftp; playbook = ansiblePlaybook; inventory = ansibleInventory
      }
@@ -223,10 +249,201 @@ diff --git a/Sources/DevVMProvisioningCore/ProvisioningSequencer.swift b/Sources
              transition(.removingPayload)
              if await cleanupStep(.removePayload) { payloadRisk = false }
          }
+diff --git a/Sources/DevVMProvisioningCore/ProvisioningTerminal.swift b/Sources/DevVMProvisioningCore/ProvisioningTerminal.swift
+--- a/Sources/DevVMProvisioningCore/ProvisioningTerminal.swift
++++ b/Sources/DevVMProvisioningCore/ProvisioningTerminal.swift
+@@ -45,6 +45,7 @@
+     private var stored = 0
+     private var sequence: UInt64 = 0
+     private var owner: (id: UUID, scope: TerminalInputScope)?
++    private var inputEnabled = false
+     private var scope: TerminalInputScope?
+     private var active: UUID?
+     private var acceptsInput = false
+@@ -70,22 +71,44 @@
+         try grant(lease, scope: TerminalInputScope(jobID: request.jobID, target: request.target,
+                                                   dependencyDigest: request.dependencyDigest, mode: request.mode), size: size)
+     }
+-    private func grant(_ leaseID: UUID, scope: TerminalInputScope, size: ProvisioningTerminalSize) throws {
++    private func grant(_ leaseID: UUID, scope: TerminalInputScope, size: ProvisioningTerminalSize, enabled: Bool = true) throws {
+         try lock.withLock {
+             guard owner == nil, active == nil, retired.count < 4096, !retired.contains(leaseID) else { throw SequencingFailure.alreadyUsed }
+             owner = (leaseID, scope); self.size = size; inputSequence = 0
++            inputEnabled = enabled
++        }
++    }
++    /// Reserve only the reviewed scope. A later explicit live attachment must
++    /// resume it; reservation cannot deliver input, including at a hidden prompt.
++    public func reserveInput(for request: ProvisioningRequest) throws {
++        guard let lease = request.inputLeaseID else { throw SequencingFailure.authorizationRequired }
++        try grant(lease, scope: TerminalInputScope(jobID: request.jobID, target: request.target,
++            dependencyDigest: request.dependencyDigest, mode: request.mode), size: ProvisioningTerminalSize(rows: 24, columns: 80), enabled: false)
++    }
++    /// Serialize detach with PTY writes and discard queued keystrokes/resizes.
++    /// The reviewed scope survives so a new, explicit attachment can reclaim it.
++    public func suspendInput(leaseID: UUID) {
++        lock.withLock {
++            guard owner?.id == leaseID else { return }
++            inputEnabled = false; pending.removeAll(keepingCapacity: false); resizePending = false
++        }
++    }
++    public func resumeInput(leaseID: UUID, size: ProvisioningTerminalSize) throws {
++        try lock.withLock {
++            guard owner?.id == leaseID, !inputEnabled else { throw SequencingFailure.authorizationRequired }
++            inputEnabled = true; self.size = size; resizePending = true
+         }
+     }
+     public func revokeInput(leaseID: UUID) {
+         lock.withLock {
+             guard owner?.id == leaseID else { return }
+-            retired.insert(leaseID); owner = nil; pending.removeAll(keepingCapacity: false)
++            retired.insert(leaseID); owner = nil; inputEnabled = false; pending.removeAll(keepingCapacity: false)
+             // Detach/revocation does not cancel a job or close its PTY.
+         }
+     }
+     public func sendInput(leaseID: UUID, invocationID: UUID, sequence: UInt64, bytes: Data) throws {
+         try lock.withLock {
+-            guard acceptsInput, owner?.id == leaseID, active == invocationID, sequence == inputSequence + 1,
++            guard acceptsInput, inputEnabled, owner?.id == leaseID, active == invocationID, sequence == inputSequence + 1,
+                   !bytes.isEmpty, bytes.count <= 4096, pending.count + bytes.count <= 64 * 1024
+             else { throw SequencingFailure.authorizationRequired }
+             inputSequence = sequence; pending.append(bytes)
+@@ -93,7 +116,7 @@
+     }
+     public func resize(leaseID: UUID, invocationID: UUID, sequence: UInt64, size: ProvisioningTerminalSize) throws {
+         try lock.withLock {
+-            guard acceptsInput, owner?.id == leaseID, active == invocationID, sequence == inputSequence + 1 else { throw SequencingFailure.authorizationRequired }
++            guard acceptsInput, inputEnabled, owner?.id == leaseID, active == invocationID, sequence == inputSequence + 1 else { throw SequencingFailure.authorizationRequired }
+             inputSequence = sequence; self.size = size; resizePending = true
+         }
+     }
+@@ -105,9 +128,10 @@
+             }
+             return ProvisioningTerminalSnapshot(frames: Array(batch), gap: sequence < (frames.first?.sequence ?? (self.sequence + 1)) - 1,
+                                                 lastSequence: batch.last?.sequence ?? sequence,
+-                                                activeInvocationID: active, acceptsInput: acceptsInput && owner != nil)
++                                                activeInvocationID: active, acceptsInput: acceptsInput && inputEnabled && owner != nil)
+         }
+     }
++    public var tailSequence: UInt64 { lock.withLock { sequence } }
+     func begin(_ invocation: ProvisioningProcessInvocation) throws -> ProvisioningTerminalSize {
+         try lock.withLock {
+             guard active == nil else { throw SequencingFailure.alreadyUsed }
+@@ -132,7 +156,7 @@
+     }
+     func flushInput(_ id: UUID, fd: Int32) -> Bool {
+         lock.withLock {
+-            guard active == id, acceptsInput, owner != nil else { return true }
++            guard active == id, acceptsInput, inputEnabled, owner != nil else { return true }
+             if resizePending {
+                 guard devvm_resize(fd, Int32(size.rows), Int32(size.columns)) == 0 else { return false }
+                 resizePending = false
+diff --git a/Sources/DevVMProvisioningCore/ProvisioningTransportReference.swift b/Sources/DevVMProvisioningCore/ProvisioningTransportReference.swift
+new file mode 100644
+--- /dev/null
++++ b/Sources/DevVMProvisioningCore/ProvisioningTransportReference.swift
+@@ -0,0 +1,97 @@
++import Foundation
++
++/// Explicit private metadata only: executable paths/hashes/stamps, public host
++/// key and a stat-only identity reference. Never contains private-key bytes.
++/// Import compares the original proofs; it does not bless replacement files.
++public struct ProvisioningTransportReference: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
++    public static let maximumBytes = 64 * 1024
++    public let connection: ProvisioningSSHConnection
++    public let tools: ProvisioningTransportTools
++    private let bytes: Data
++    public var description: String { "ProvisioningTransportReference(redacted)" }
++    public var debugDescription: String { description }
++    public func privateData() throws -> Data { try connection.verify(); try tools.verify(); return bytes }
++
++    private struct Binding: Codable {
++        let vmID: UUID, sessionID: UUID
++        let owner: String
++        let ownerUID: UInt32
++        let hostKeyDigest: String
++        init(_ value: GuestBinding) { vmID = value.vmID; sessionID = value.sessionID; owner = value.owner; ownerUID = value.ownerUID; hostKeyDigest = value.hostKeyDigest }
++        func value() throws -> GuestBinding { try .init(vmID: vmID, sessionID: sessionID, owner: owner, ownerUID: ownerUID, hostKeyDigest: hostKeyDigest) }
++    }
++    private struct Pin: Codable {
++        let entry: String, target: String, sha256: String
++        let stamp: FileStamp
++        init(_ value: ProvisioningExecutablePin) { entry = value.entry.path; target = value.target.path; stamp = value.stamp; sha256 = value.sha256 }
++        func value() throws -> ProvisioningExecutablePin {
++            try path(entry); try path(target)
++            guard matches(sha256, "[a-f0-9]{64}") else { throw SequencingFailure.invalidRequest }
++            let current = try ProvisioningExecutablePin(URL(fileURLWithPath: entry))
++            guard current.target.path == target, current.stamp == stamp, current.sha256 == sha256 else { throw SequencingFailure.dependencyChanged }
++            return current
++        }
++    }
++    private struct Identity: Codable {
++        let path: String
++        let stamp: FileStamp
++        init(_ value: ProvisioningIdentityFile) { path = value.url.path; stamp = value.stamp }
++        func value() throws -> ProvisioningIdentityFile {
++            try ProvisioningTransportReference.path(path)
++            let current = try ProvisioningIdentityFile(URL(fileURLWithPath: path))
++            guard current.stamp == stamp else { throw SequencingFailure.identityMismatch }; return current
++        }
++    }
++    private struct Document: Codable {
++        let format: Int
++        let binding: Binding
++        let port: UInt16
++        let hostKey: Data
++        let identity: Identity
++        let tools: [String: Pin]
++    }
++    public init(connection: ProvisioningSSHConnection, tools: ProvisioningTransportTools) throws {
++        try connection.verify(); try tools.verify()
++        let doc = Document(format: 1, binding: Binding(connection.binding), port: connection.port, hostKey: connection.hostKey,
++            identity: Identity(connection.identity), tools: ["ssh": Pin(tools.ssh), "scp": Pin(tools.scp), "sftp": Pin(tools.sftp),
++                "ansible-playbook": Pin(tools.playbook), "ansible-inventory": Pin(tools.inventory)])
++        let data = try canonicalData(doc)
++        try self.init(privateData: data, expectedBinding: connection.binding)
++    }
++    public init(privateData: Data, expectedBinding: GuestBinding, expectedIdentityURL: URL? = nil, expectedExecutablePaths: [String: URL]? = nil) throws {
++        guard privateData.count <= Self.maximumBytes else { throw SequencingFailure.invalidRequest }
++        let object = try PlainDataParser.parse(privateData, format: .json)
++        let root = try fields(object, allowed: ["format", "binding", "port", "hostKey", "identity", "tools"], required: ["format", "binding", "port", "hostKey", "identity", "tools"])
++        _ = try fields(root["binding"]!, allowed: ["vmID", "sessionID", "owner", "ownerUID", "hostKeyDigest"], required: ["vmID", "sessionID", "owner", "ownerUID", "hostKeyDigest"])
++        let identity = try fields(root["identity"]!, allowed: ["path", "stamp"], required: ["path", "stamp"])
++        try Self.stamp(identity["stamp"]!)
++        let names: Set<String> = ["ssh", "scp", "sftp", "ansible-playbook", "ansible-inventory"]
++        let toolFields = try fields(root["tools"]!, allowed: names, required: names)
++        for value in toolFields.values {
++            let pin = try fields(value, allowed: ["entry", "target", "sha256", "stamp"], required: ["entry", "target", "sha256", "stamp"])
++            try Self.stamp(pin["stamp"]!)
++        }
++        let doc = try JSONDecoder().decode(Document.self, from: privateData)
++        let binding = try doc.binding.value()
++        guard doc.format == 1, binding == expectedBinding else { throw SequencingFailure.identityMismatch }
++        if let expectedIdentityURL { guard doc.identity.path == expectedIdentityURL.standardizedFileURL.path else { throw SequencingFailure.identityMismatch } }
++        if let expectedExecutablePaths {
++            guard Set(expectedExecutablePaths.keys) == names, doc.tools.allSatisfy({ expectedExecutablePaths[$0.key]?.standardizedFileURL.path == $0.value.entry }) else { throw SequencingFailure.dependencyChanged }
++        }
++        connection = try .init(binding: binding, port: doc.port, identity: doc.identity.value(), ed25519HostKey: doc.hostKey)
++        tools = try .init(ssh: doc.tools["ssh"]!.value(), scp: doc.tools["scp"]!.value(), sftp: doc.tools["sftp"]!.value(),
++            ansiblePlaybook: doc.tools["ansible-playbook"]!.value(), ansibleInventory: doc.tools["ansible-inventory"]!.value())
++        try connection.verify(); try tools.verify(); bytes = privateData
++    }
++    private static func path(_ value: String) throws {
++        guard value.hasPrefix("/"), value.utf8.count <= 4096,
++              !value.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 }) else { throw SequencingFailure.invalidRequest }
++        let url = URL(fileURLWithPath: value)
++        guard url.path == value else { throw SequencingFailure.invalidRequest }
++        try transportPath(url)
++    }
++    private static func stamp(_ value: ManifestValue) throws {
++        let keys: Set<String> = ["device", "inode", "mode", "owner", "size", "modifiedSeconds", "modifiedNanos", "changedSeconds", "changedNanos", "links"]
++        _ = try fields(value, allowed: keys, required: keys)
++    }
++}
 diff --git a/Sources/DevVMProvisioningCore/Resources/engine-identity.json b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
 --- a/Sources/DevVMProvisioningCore/Resources/engine-identity.json
 +++ b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
-@@ -14,15 +14,17 @@
+@@ -14,16 +14,19 @@
      "Sources/CDevVMYAML/vendor/reader.c": "c428a44b177391557bdf49177c1dc0216edf2a2bbe0e24ca2ef2725ef7f01e9d",
      "Sources/CDevVMYAML/vendor/scanner.c": "338ee97fc97aa97c08a74cd3349462bea4e1f7ce836e4c7b04334fa1c74031c0",
      "Sources/CDevVMYAML/vendor/yaml_private.h": "2e2f7887f27da6bff518db117d358f708c1af30ebabdeeea612e628b9ed18841",
@@ -242,22 +459,27 @@ diff --git a/Sources/DevVMProvisioningCore/Resources/engine-identity.json b/Sour
      "Sources/DevVMProvisioningCore/PlainData.swift": "71a28c2c8da37a9e44ee296c60976cbb2b98d3bc5eaa2eb3260c996ee73b5dd5",
 -    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "2e805b617c3e842d3021caa5222b30c165d49f0a36a01b13d8ab393a965fa596",
 -    "Sources/DevVMProvisioningCore/ProvisioningSequencer.swift": "a85d34416f86a12f801ee9762faa6e6abc98130329da30fd7c17613f635ec968",
-+    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "917dcd0afb8e8331b16875c7757f295e358c3f02ada61bb75e24fd3121e65169",
+-    "Sources/DevVMProvisioningCore/ProvisioningTerminal.swift": "098254567d79d5266b6dd71f2ba8f2ec77eb9c04a0d632100395e656bfbaf74d",
++    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "191d1812ee82b47e23fb18cb8059cb8ea2e6b71250477a595d25ceb20a1df37f",
 +    "Sources/DevVMProvisioningCore/ProvisioningSequencer.swift": "4ba039a9b4bac11cf8d1dfea029d2a7115e1d47212f3084912d6864db09dea81",
-     "Sources/DevVMProvisioningCore/ProvisioningTerminal.swift": "098254567d79d5266b6dd71f2ba8f2ec77eb9c04a0d632100395e656bfbaf74d",
++    "Sources/DevVMProvisioningCore/ProvisioningTerminal.swift": "3111e83669b3634db4c7e550cb953ef384101127ce390266e70d8cd583da1764",
++    "Sources/DevVMProvisioningCore/ProvisioningTransportReference.swift": "5867342ff27614b2f5310983c26b8e64e5df817f5f7f4f219074329ab290c3ee",
      "Sources/DevVMProvisioningCore/Resources/LibYAML-LICENSE.txt": "c40112449f254b9753045925248313e9270efa36d226b22d82d4cc6c43c57f29",
      "Sources/DevVMProvisioningCore/Resources/Provisioning/group_vars/all.yml": "b9e7ebfe844765f1e33910ce33d59fc77c67ae28bea621c2c7a7f30bb6bec03e",
-@@ -63,8 +65,8 @@
+     "Sources/DevVMProvisioningCore/Resources/Provisioning/inventory.json": "111311f6ddd2e29e90f52bd124d5513f025e546335746f81cc69fedabdf78241",
+@@ -63,9 +66,9 @@
      "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "3dd49155e97127dd6361a15db60b7d28f6d610c6c7e8edaee0aeaa78b2501c7e",
      "Sources/DevVMProvisioningCore/SelectionSchema.swift": "e46a8ee4a2f81c17c3f33cb2ff0e7cf9ad5f6e70d32c79fc5021976c32eca29d",
      "Sources/DevVMProvisioningCore/SetupManifest.swift": "52f0af5aa6a65cc5a61ea72cd37491e52ffaafad3e687d27ffd820d2371420a2",
 -    "Sources/DevVMProvisioningCore/SetupPlanner.swift": "8dfc1f0b2e11c77e690c50dd566812a56ad92e7a98fa86efb74162f65f7d0064",
 -    "Sources/DevVMProvisioningCore/SourceSnapshot.swift": "0a39e43e1f951b189e3dfff214f376fa9bae832ad4e1c90afd908c0ec5f38e8b",
+-    "Sources/DevVMProvisioningCore/TransportWorkspace.swift": "6d9d3cb99fdf45e4c2255a651f054e3acfec87beb832f558003b6a0e9a2ec0ef",
 +    "Sources/DevVMProvisioningCore/SetupPlanner.swift": "754b0ecb2abccb78dafca1a326d6a091157610fae1c13b4eb8677dafa2b2867e",
 +    "Sources/DevVMProvisioningCore/SourceSnapshot.swift": "95ba352a7fe6b33664ff177b2326dbf774bfd05b7f93ab5dc1b837d11314fd5e",
-     "Sources/DevVMProvisioningCore/TransportWorkspace.swift": "6d9d3cb99fdf45e4c2255a651f054e3acfec87beb832f558003b6a0e9a2ec0ef",
++    "Sources/DevVMProvisioningCore/TransportWorkspace.swift": "9b4f0f736beb3708506435236cbaf4ea9105fd78d50ed4ac6c3326136101acf8",
      "Sources/dev-vm-process-host/main.c": "f9f5f3afb88d54d466dd10d183bf3323a17712c29932ad38d5289e8a67ac02aa",
      "Sources/dev-vm/main.swift": "550c97f885f3326477fea78cca65c93d7ee25ad9d7c9ad55a2cd3692f2cda681",
+     "ThirdParty/ParserInventory.json": "3a64ef59bb137a2c4ba26f5812debabbdad9816d041f7e2b6ff52bb8fb6a8941"
 diff --git a/Sources/DevVMProvisioningCore/SetupPlanner.swift b/Sources/DevVMProvisioningCore/SetupPlanner.swift
 --- a/Sources/DevVMProvisioningCore/SetupPlanner.swift
 +++ b/Sources/DevVMProvisioningCore/SetupPlanner.swift
@@ -282,6 +504,18 @@ diff --git a/Sources/DevVMProvisioningCore/SourceSnapshot.swift b/Sources/DevVMP
      let files: [InputReceipt]
      let directories: [String: ManifestValue]
  }
+diff --git a/Sources/DevVMProvisioningCore/TransportWorkspace.swift b/Sources/DevVMProvisioningCore/TransportWorkspace.swift
+--- a/Sources/DevVMProvisioningCore/TransportWorkspace.swift
++++ b/Sources/DevVMProvisioningCore/TransportWorkspace.swift
+@@ -7,7 +7,7 @@
+     private let inode: ino_t
+     private var hashes: [String: String] = [:]
+     init() throws {
+-        root = FileManager.default.temporaryDirectory.appendingPathComponent("dev-vm-job-" + UUID().uuidString.lowercased())
++        root = FileManager.default.temporaryDirectory.appendingPathComponent("dev-vm-job-" + UUID().uuidString.lowercased()).standardizedFileURL
+         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+         fd = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+         var info = stat()
 diff --git a/tests/DevVMProvisioningCoreTests/DurableStateTests.swift b/tests/DevVMProvisioningCoreTests/DurableStateTests.swift
 new file mode 100644
 --- /dev/null
@@ -397,4 +631,100 @@ new file mode 100644
 +    #expect(result.outcome == .cleanupRequired)
 +    #expect(await guest.commands.allSatisfy { $0.context.payloadID == payload })
 +    #expect(await guest.commands.allSatisfy { $0.operation != .removePayload })
++}
+diff --git a/tests/DevVMProvisioningCoreTests/LocalProcessTests.swift b/tests/DevVMProvisioningCoreTests/LocalProcessTests.swift
+--- a/tests/DevVMProvisioningCoreTests/LocalProcessTests.swift
++++ b/tests/DevVMProvisioningCoreTests/LocalProcessTests.swift
+@@ -276,3 +276,46 @@
+     try noLiveFixtureChild(fixture)
+     termination(await fresh.run(fixture.invocation(["exit"])), status: 0)
+ }
++
++@Test func localReservedInputNeedsExplicitLiveOwnerAndSuspendDiscardsPendingBytes() throws {
++    let fixture = try LocalFixture(), terminal = try ProvisioningTerminal(), lease = UUID()
++    try Data("schema_version: 1\nid: fixture\n".utf8).write(to: fixture.root.appendingPathComponent("vm.yml"))
++    let request = try ProvisioningRequest(jobID: fixture.context.jobID, plan: SetupPlanner.plan(repository: fixture.root), repository: fixture.root,
++        target: fixture.context.target, dependencyDigest: fixture.context.dependencyDigest, inputLeaseID: lease)
++    try terminal.reserveInput(for: request)
++    let invocation = fixture.invocation(["tty"], input: .terminalLease(lease), output: .terminalStream)
++    _ = try terminal.begin(invocation)
++    defer { terminal.end(invocation.id) }
++    #expect(!terminal.snapshot().acceptsInput)
++    #expect(throws: SequencingFailure.self) { try terminal.sendInput(leaseID: lease, invocationID: invocation.id, sequence: 1, bytes: Data([10])) }
++    let size = try ProvisioningTerminalSize(rows: 35, columns: 100)
++    try terminal.resumeInput(leaseID: lease, size: size)
++    try terminal.sendInput(leaseID: lease, invocationID: invocation.id, sequence: 1, bytes: Data("stale-keystroke-canary\n".utf8))
++    try terminal.resize(leaseID: lease, invocationID: invocation.id, sequence: 2, size: ProvisioningTerminalSize(rows: 50, columns: 130))
++    terminal.suspendInput(leaseID: lease)
++    var master: Int32 = -1, slave: Int32 = -1
++    guard openpty(&master, &slave, nil, nil, nil) == 0 else { throw SequencingFailure.invalidRequest }
++    defer { close(master); close(slave) }
++    #expect(fcntl(slave, F_SETFL, O_NONBLOCK) == 0)
++    try terminal.resumeInput(leaseID: lease, size: size)
++    #expect(terminal.flushInput(invocation.id, fd: master))
++    var buffer = [UInt8](repeating: 0, count: 64)
++    #expect(read(slave, &buffer, buffer.count) == -1 && errno == EAGAIN)
++    try terminal.sendInput(leaseID: lease, invocationID: invocation.id, sequence: 3, bytes: Data("fresh".utf8))
++    #expect(terminal.flushInput(invocation.id, fd: master))
++    usleep(10_000)
++    let count = read(slave, &buffer, buffer.count)
++    #expect(count == 5 && Data(buffer.prefix(max(0, count))) == Data("fresh".utf8))
++    terminal.revokeInput(leaseID: lease)
++    #expect(throws: SequencingFailure.self) { try terminal.resumeInput(leaseID: lease, size: size) }
++}
++
++@Test func localRunnerAcceptsCanonicalAdapterWorkspaceWithoutExecutingTransports() async throws {
++    let fixture = try LocalFixture(), workspace = try TransportWorkspace(), runner = LocalProvisioningProcessRunner()
++    #expect(workspace.root.path == workspace.root.standardizedFileURL.path)
++    let invocation = ProvisioningProcessInvocation(id: UUID(), commandID: UUID(), context: fixture.context, purpose: .native,
++        executable: fixture.executable, arguments: ["exit"], environment: [:], workingDirectory: workspace.root,
++        input: .closed, output: .boundedCapture, timeoutSeconds: 2)
++    termination(await runner.run(invocation), status: 0)
++    try workspace.verify()
++}
+diff --git a/tests/DevVMProvisioningCoreTests/TransportTests.swift b/tests/DevVMProvisioningCoreTests/TransportTests.swift
+--- a/tests/DevVMProvisioningCoreTests/TransportTests.swift
++++ b/tests/DevVMProvisioningCoreTests/TransportTests.swift
+@@ -332,3 +332,42 @@
+     #expect(await task.value.outcome == .cancelled)
+     #expect(!(await runner.invocations).contains { [.copyPayload, .native, .features, .repository].contains($0.purpose) })
+ }
++
++@Test func privateTransportReferencesRoundTripOriginalProofsWithoutReadingIdentityBytes() throws {
++    let f = try TransportFixture()
++    chmod(f.key.path, 0o000)
++    defer { chmod(f.key.path, 0o600) }
++    let connection = try ProvisioningSSHConnection(binding: f.binding, port: f.connection.port, identity: ProvisioningIdentityFile(f.key), ed25519HostKey: f.connection.hostKey)
++    let reference = try ProvisioningTransportReference(connection: connection, tools: f.tools)
++    let data = try reference.privateData()
++    #expect(!String(decoding: data, as: UTF8.self).contains("synthetic-private-key-never-read"))
++    let restored = try ProvisioningTransportReference(privateData: data, expectedBinding: f.binding, expectedIdentityURL: f.key,
++        expectedExecutablePaths: ["ssh": f.tools.ssh.entry, "scp": f.tools.scp.entry, "sftp": f.tools.sftp.entry,
++            "ansible-playbook": f.tools.playbook.entry, "ansible-inventory": f.tools.inventory.entry])
++    try restored.connection.verify(); try restored.tools.verify()
++    #expect(restored.connection.binding == f.binding && restored.connection.port == f.connection.port)
++    #expect(String(reflecting: restored) == "ProvisioningTransportReference(redacted)")
++}
++@Test(arguments: ["key", "link", "tool", "unknown", "stamp", "version", "binding", "path", "relative", "nul"])
++func damagedOrRetargetedTransportProofsAreNeverRecaptured(kind: String) throws {
++    let f = try TransportFixture(), reference = try ProvisioningTransportReference(connection: f.connection, tools: f.tools)
++    var data = try reference.privateData()
++    var target = f.binding
++    if kind == "key" {
++        let old = f.root.appendingPathComponent("old-key"); try FileManager.default.moveItem(at: f.key, to: old)
++        try Data("synthetic-private-key-never-read".utf8).write(to: f.key); chmod(f.key.path, 0o600)
++    }
++    if kind == "link" { #expect(link(f.key.path, f.root.appendingPathComponent("linked").path) == 0) }
++    if kind == "tool" { try Data("changed".utf8).write(to: f.tools.ssh.entry) }
++    if kind == "binding" { target = try .init(vmID: UUID(), sessionID: f.binding.sessionID, owner: f.binding.owner, ownerUID: f.binding.ownerUID, hostKeyDigest: f.binding.hostKeyDigest) }
++    if ["unknown", "stamp", "version", "path", "relative", "nul"].contains(kind) {
++        var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
++        if kind == "unknown" { object["command"] = "never-execute" }
++        if kind == "version" { object["format"] = 2 }
++        if kind == "stamp" { var identity = object["identity"] as! [String: Any], stamp = identity["stamp"] as! [String: Any]; stamp["extra"] = 1; identity["stamp"] = stamp; object["identity"] = identity }
++        if kind == "relative" || kind == "nul" { var identity = object["identity"] as! [String: Any]; identity["path"] = kind == "relative" ? "relative-key" : f.key.path + "\u{0}suffix"; object["identity"] = identity }
++        if kind == "path" { var identity = object["identity"] as! [String: Any]; identity["path"] = f.root.appendingPathComponent("../outside").path; object["identity"] = identity }
++        data = try JSONSerialization.data(withJSONObject: object)
++    }
++    #expect(throws: Error.self) { _ = try ProvisioningTransportReference(privateData: data, expectedBinding: target) }
 +}

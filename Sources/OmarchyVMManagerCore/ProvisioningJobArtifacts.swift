@@ -92,6 +92,32 @@ final class ProvisioningJobArtifacts: @unchecked Sendable {
             } catch { throw ProvisioningJobFailure.artifactUnavailable }
         }
     }
+    func retentionReport(records: [ProvisioningJobRecord]) throws -> ProvisioningRetentionReport {
+        try mutex.withLock {
+            try checkDirectory()
+            let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            guard names.count <= 512 else { throw ProvisioningJobFailure.artifactUnavailable }
+            let referenced = Set(records.flatMap { row -> [String] in
+                var values: [String] = []
+                if row.inputArchiveSHA256 != nil { values.append(name(row.jobID, "inputs")) }
+                if row.cleanupCheckpointSHA256 != nil { values.append(name(row.jobID, "cleanup")) }
+                if row.helperDelivery != nil { values.append(name(row.jobID, "delivery")) }
+                return values
+            })
+            var bytes: Int64 = 0
+            for entry in names {
+                var info = stat()
+                guard lstat(directory.appendingPathComponent(entry).path, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+                      info.st_uid == getuid(), info.st_mode & 0o7777 == 0o600, info.st_nlink == 1,
+                      info.st_size >= 0, info.st_size <= ProvisioningFrozenDelivery.maximumBytes else { throw ProvisioningJobFailure.artifactUnavailable }
+                bytes += info.st_size
+                guard bytes <= maximumTotalBytes else { throw ProvisioningJobFailure.artifactUnavailable }
+            }
+            try checkDirectory()
+            return .init(retainedFiles: names.count, retainedBytes: bytes, orphanFiles: names.filter { !referenced.contains($0) }.count,
+                unresolvedJobs: records.filter(\.cleanupRequired).count, automaticEviction: false)
+        }
+    }
     private func name(_ id: UUID, _ suffix: String) -> String { id.uuidString + "." + suffix }
     private func read(_ id: UUID, suffix: String, expected: String?, maximum: Int) throws -> Data {
         do {
@@ -159,3 +185,5 @@ protocol ProvisioningRecoveryAuthorizing: Sendable {
 extension ProvisioningRecoveryAuthorizing {
     func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) async {}
 }
+
+struct ProvisioningRetentionReport: Codable, Equatable, Sendable { let retainedFiles: Int; let retainedBytes: Int64; let orphanFiles: Int; let unresolvedJobs: Int; let automaticEviction: Bool }

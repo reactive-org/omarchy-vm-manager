@@ -17,16 +17,20 @@ enum ProvisioningFrozenChannel {
     }
     static func receive(_ expected: ProvisioningFrozenDeliveryReceipt, over channel: ProvisioningHelperSocket) throws -> Data {
         try expected.validate()
-        var bytes = Data(); bytes.reserveCapacity(expected.byteCount)
+        return try receive(byteCount: expected.byteCount, sha256: expected.sha256, maximumBytes: ProvisioningFrozenDelivery.maximumBytes, over: channel)
+    }
+    static func receive(byteCount: Int, sha256: String, maximumBytes: Int, over channel: ProvisioningHelperSocket) throws -> Data {
+        guard byteCount > 0, byteCount <= maximumBytes, maximumBytes <= ProvisioningFrozenDelivery.maximumBytes, provisioningDigest(sha256) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        var bytes = Data(); bytes.reserveCapacity(byteCount)
         let end = ContinuousClock.now + .seconds(15)
-        while bytes.count < expected.byteCount {
+        while bytes.count < byteCount {
             guard ContinuousClock.now < end else { throw ProvisioningHelperIPCFailure.timeout }
             let packet = try channel.receive(wait: remaining(end, channel))
-            guard packet.count <= expected.byteCount - bytes.count else { throw ProvisioningJobFailure.artifactUnavailable }
+            guard packet.count <= byteCount - bytes.count else { throw ProvisioningJobFailure.artifactUnavailable }
             bytes.append(packet)
         }
         try channel.requireEOF(wait: remaining(end, channel))
-        guard KitVerifier.sha256(bytes) == expected.sha256 else { throw ProvisioningJobFailure.artifactUnavailable }
+        guard KitVerifier.sha256(bytes) == sha256 else { throw ProvisioningJobFailure.artifactUnavailable }
         return bytes
     }
     private static func remaining(_ end: ContinuousClock.Instant, _ channel: ProvisioningHelperSocket) throws -> Duration {

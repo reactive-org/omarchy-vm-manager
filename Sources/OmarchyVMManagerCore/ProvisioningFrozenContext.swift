@@ -130,7 +130,7 @@ struct ProvisioningDeliveredEngineFactory: ProvisioningHelperEnginePreparing {
             customTasksReviewed: input.approval.customTasksReviewed && result.approval.customTasksReviewed,
             persistentGrantAcknowledged: input.approval.persistentGrantAcknowledged && result.approval.persistentGrantAcknowledged,
             dockerRootAccessAcknowledged: input.approval.dockerRootAccessAcknowledged && result.approval.dockerRootAccessAcknowledged),
-            adapter: result.adapter, authority: result.authority, runner: result.runner, admitPackage: result.admitPackage, frozenContext: input)
+            adapter: result.adapter, authority: result.authority, runner: result.runner, admitPackage: result.admitPackage, frozenContext: input, transportContext: result.transportContext)
         return result
     }
 }

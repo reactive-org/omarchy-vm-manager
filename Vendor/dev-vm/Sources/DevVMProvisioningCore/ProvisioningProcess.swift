@@ -66,13 +66,14 @@ func transportPath(_ url: URL) throws {
           !url.path.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 })
     else { throw SequencingFailure.invalidRequest }
 }
-struct FileStamp: Sendable, Equatable {
+struct FileStamp: Sendable, Equatable, Codable {
     let device: dev_t, inode: ino_t, mode: mode_t, owner: uid_t, size: off_t
     let modifiedSeconds: Int, modifiedNanos: Int, changedSeconds: Int, changedNanos: Int
+    let links: nlink_t
     init(_ s: stat) {
         device = s.st_dev; inode = s.st_ino; mode = s.st_mode; owner = s.st_uid; size = s.st_size
         modifiedSeconds = s.st_mtimespec.tv_sec; modifiedNanos = s.st_mtimespec.tv_nsec
-        changedSeconds = s.st_ctimespec.tv_sec; changedNanos = s.st_ctimespec.tv_nsec
+        changedSeconds = s.st_ctimespec.tv_sec; changedNanos = s.st_ctimespec.tv_nsec; links = s.st_nlink
     }
 }
 func fileStamp(_ url: URL) throws -> FileStamp {
@@ -115,7 +116,7 @@ public struct ProvisioningIdentityFile: Sendable, CustomStringConvertible, Custo
     let url: URL, stamp: FileStamp
     public init(_ url: URL) throws {
         try transportPath(url); self.url = url; stamp = try fileStamp(url)
-        guard stamp.owner == getuid(), stamp.mode & 0o077 == 0 else { throw SequencingFailure.invalidRequest }
+        guard stamp.owner == getuid(), stamp.mode & 0o077 == 0, stamp.links == 1 else { throw SequencingFailure.invalidRequest }
     }
     func verify() throws {
         guard try fileStamp(url) == stamp else { throw SequencingFailure.identityMismatch }

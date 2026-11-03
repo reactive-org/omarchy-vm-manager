@@ -64,6 +64,7 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
     var helperActivationDigest: String?
     var helperDelivery: ProvisioningFrozenDeliveryReceipt?
     var helperSessionAuthorityVersion: Int?
+    var helperTransport: ProvisioningTransportReceipt?
     var snapshot: ProvisioningJobSnapshot {
         .init(jobID: jobID, vmID: vmID, sessionID: sessionID, sequence: sequence, state: state,
               outcome: outcome, failure: failure, engineFailure: engineFailure, cleanupFailures: cleanupFailures,
@@ -75,7 +76,7 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
         case inputArchiveSHA256, cleanupCheckpointSHA256, workerToken
         case helperIdentity, helperRegistrationDigest, helperRegistered
         case helperActivationID, helperActivationDigest
-        case helperDelivery, helperSessionAuthorityVersion
+        case helperDelivery, helperSessionAuthorityVersion, helperTransport
     }
     func validate() throws {
         let durable = inputArchiveSHA256 != nil || cleanupCheckpointSHA256 != nil || workerToken != nil
@@ -83,6 +84,9 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
         guard !helper || (helperIdentity != nil && helperRegistrationDigest.map(provisioningDigest) == true && helperRegistered != nil && durable) else { throw ProvisioningJobFailure.journalUnavailable }
         if let helperIdentity { do { try helperIdentity.validate() } catch { throw ProvisioningJobFailure.journalUnavailable } }
         guard helperSessionAuthorityVersion == nil || (helperSessionAuthorityVersion == 1 && helperDelivery != nil && helperIdentity != nil) else { throw ProvisioningJobFailure.journalUnavailable }
+        if let helperTransport {
+            guard helperSessionAuthorityVersion == 1, helperDelivery != nil, helperIdentity != nil, helperTransport.dependencyDigest == dependencyDigest else { throw ProvisioningJobFailure.journalUnavailable }; try helperTransport.validate()
+        }
         if let helperDelivery {
             guard helperIdentity != nil, helperDelivery.archiveSHA256 == inputArchiveSHA256 else { throw ProvisioningJobFailure.journalUnavailable }
             do { try helperDelivery.validate() } catch { throw ProvisioningJobFailure.journalUnavailable }
@@ -157,7 +161,7 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                 if loaded { guard fingerprint == KitVerifier.sha256(data) else { throw ProvisioningJobFailure.journalUnavailable } }
                 let value = try PlainDataParser.parse(data, format: .json)
                 guard case .object(let root) = value, Set(root.keys) == ["schemaVersion", "revision", "jobs"],
-                      [ManifestValue.integer(1), .integer(2), .integer(3), .integer(4), .integer(5), .integer(6)].contains(root["schemaVersion"] ?? .null),
+                      [ManifestValue.integer(1), .integer(2), .integer(3), .integer(4), .integer(5), .integer(6), .integer(7)].contains(root["schemaVersion"] ?? .null),
                       case .array(let jobs) = root["jobs"], jobs.count <= Self.maximumJobs
                 else { throw ProvisioningJobFailure.journalUnavailable }
                 for job in jobs {
@@ -169,14 +173,18 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                     if [.integer(1), .integer(2)].contains(root["schemaVersion"] ?? .null) {
                         guard Set(fields.keys).isDisjoint(with: ["helperIdentity", "helperRegistrationDigest", "helperRegistered"]) else { throw ProvisioningJobFailure.journalUnavailable }
                     }
-                    if ![ManifestValue.integer(4), .integer(5), .integer(6)].contains(root["schemaVersion"] ?? .null) {
+                    if ![ManifestValue.integer(4), .integer(5), .integer(6), .integer(7)].contains(root["schemaVersion"] ?? .null) {
                         guard Set(fields.keys).isDisjoint(with: ["helperActivationID", "helperActivationDigest"]) else { throw ProvisioningJobFailure.journalUnavailable }
                     }
                     if let version = fields["helperSessionAuthorityVersion"] {
-                        guard root["schemaVersion"] == .integer(6), version == .integer(1) else { throw ProvisioningJobFailure.journalUnavailable }
+                        guard [ManifestValue.integer(6), .integer(7)].contains(root["schemaVersion"] ?? .null), version == .integer(1) else { throw ProvisioningJobFailure.journalUnavailable }
+                    }
+                    if let receipt = fields["helperTransport"] {
+                        guard root["schemaVersion"] == .integer(7) else { throw ProvisioningJobFailure.journalUnavailable }
+                        try ProvisioningTransportReceipt.validateDocument(receipt)
                     }
                     if let receipt = fields["helperDelivery"] {
-                        guard [ManifestValue.integer(5), .integer(6)].contains(root["schemaVersion"] ?? .null) else { throw ProvisioningJobFailure.journalUnavailable }
+                        guard [ManifestValue.integer(5), .integer(6), .integer(7)].contains(root["schemaVersion"] ?? .null) else { throw ProvisioningJobFailure.journalUnavailable }
                         try ProvisioningFrozenDeliveryReceipt.validateDocument(receipt)
                     }
                     let activationKeys: Set<String> = ["helperActivationID", "helperActivationDigest"]
@@ -204,7 +212,7 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                 let current = try PrivateFiles.exists(file) ? KitVerifier.sha256(PrivateFiles.read(file, maximum: Self.maximumBytes)) : nil
                 guard current == fingerprint else { throw ProvisioningJobFailure.journalUnavailable }
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-                let data = try encoder.encode(Document(schemaVersion: 6, revision: revision + 1, jobs: records.sorted { $0.jobID.uuidString < $1.jobID.uuidString }))
+                let data = try encoder.encode(Document(schemaVersion: 7, revision: revision + 1, jobs: records.sorted { $0.jobID.uuidString < $1.jobID.uuidString }))
                 guard data.count <= Self.maximumBytes else { throw ProvisioningJobFailure.journalUnavailable }
                 try PrivateFiles.write(data, name: "jobs.json", in: directory)
                 guard try PrivateFiles.read(file, maximum: Self.maximumBytes) == data else { throw ProvisioningJobFailure.journalUnavailable }

@@ -13,6 +13,7 @@ import socket
 import struct
 import subprocess
 import tempfile
+import time
 import uuid
 
 import provisioning_package as package
@@ -129,7 +130,7 @@ def run_checks(binaries, launcher_binaries):
             for scenario in ("valid", "mac", "bootstrap"): ownership_fixture(scenario)
             # The Swift fixture uses the real admitted-launch factory. It is a
             # debug-only build product, never staged into the application.
-            for scenario in ("policy", "tamper", "replace", "normal", "dispatch-denied", "delivery-denied", "delivery-tamper", "backend-denied"):
+            for scenario in ("policy", "tamper", "replace", "normal", "dispatch-denied", "delivery-denied", "delivery-tamper", "backend-denied", "handoff-policy", "stream-policy"):
                 control_root = root / str(uuid.uuid4()); control_root.mkdir(mode=0o700)
                 result = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(contents), str(control_root), scenario],
                                         env=environment, cwd=root, capture_output=True, timeout=20)
@@ -139,7 +140,7 @@ def run_checks(binaries, launcher_binaries):
                     print("admitted-helper-fixture:", scenario, diagnostic.get("code"), diagnostic.get("step"))
                 package.require(result.returncode == 0 and not result.stderr, "Admitted helper launch fixture failed: " + scenario)
                 value = json.loads(result.stdout)
-                package.require(value.get("policyRejected") or value.get("changedSourceRejected") or value.get("changedDeliveryRejected") or
+                package.require(value.get("policyRejected") or value.get("changedSourceRejected") or value.get("changedDeliveryRejected") or value.get("transportRejected") or
                                 (value.get("registered") and value.get("reconciled") and value.get("exited") and value.get("executionEnabled") is False))
             # Separate, explicitly re-signed fixture app: replace only its helper
             # with the excluded debug fixture binary, which hosts a fake engine
@@ -157,7 +158,7 @@ def run_checks(binaries, launcher_binaries):
             for path in [engine_app, *engine_app.rglob("*")]:
                 path.chmod(0o555 if path.is_dir() or path.parent.name == "MacOS" else 0o444)
             try:
-                for scenario in ("dispatch", "dispatch-cancel", "delivery", "delivery-cancel", "backend", "backend-cancel"):
+                for scenario in ("dispatch", "dispatch-cancel", "delivery", "delivery-cancel", "backend", "backend-cancel", "handoff", "handoff-cancel", "handoff-stale", "stream"):
                     control_root = root / str(uuid.uuid4()); control_root.mkdir(mode=0o700)
                     result = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(engine_contents), str(control_root), scenario],
                                             env=environment, cwd=root, capture_output=True, timeout=20)
@@ -166,6 +167,21 @@ def run_checks(binaries, launcher_binaries):
                         print("engine-helper-fixture:", scenario, diagnostic.get("code"), diagnostic.get("step"))
                     package.require(result.returncode == 0 and not result.stderr, "Helper-side fixture dispatch failed")
                     package.require(json.loads(result.stdout)["exited"] is True)
+                crash_root = root / str(uuid.uuid4()); crash_root.mkdir(mode=0o700)
+                crash = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(engine_contents), str(crash_root), "handoff-crash"],
+                                       env=environment, cwd=root, capture_output=True, timeout=20)
+                package.require(crash.returncode == 0 and not crash.stderr and json.loads(crash.stdout).get("ownerExited"), "Owner crash fixture failed")
+                # Observe only the excluded fake helper's loop finishing. This
+                # diagnostic does NOT grant production ownership/recovery proof.
+                deadline = time.monotonic() + 8
+                while not list((crash_root / "control").glob("*/fixture-loop-finished")) and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                package.require(bool(list((crash_root / "control").glob("*/fixture-loop-finished"))), "Disconnected fake helper did not finish")
+                reopened = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(engine_contents), str(crash_root), "reopen"],
+                                          env=environment, cwd=root, capture_output=True, timeout=20)
+                if reopened.returncode != 0: print("reopen-fixture:", reopened.stdout.decode())
+                package.require(reopened.returncode == 0 and not reopened.stderr, "Fresh manager recovery fixture failed")
+                package.require(json.loads(reopened.stdout) == {"interrupted": True, "cleanupRequired": True, "ownershipRejected": True, "noReplay": True, "executionEnabled": False})
             finally:
                 for path in [engine_app, *engine_app.rglob("*")]:
                     path.chmod(0o755 if path.is_dir() else 0o644)

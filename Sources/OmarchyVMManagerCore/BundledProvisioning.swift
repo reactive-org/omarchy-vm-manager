@@ -52,6 +52,20 @@ public enum BundledProvisioning {
                 offlinePlanningIntegrated: true, executionEnabled: false)
         } catch { throw invalid() }
     }
+    static func engineDigest(_ layout: ProvisioningPackageLayout) throws -> String {
+        _ = try inspect(layout)
+        return KitVerifier.sha256(try helperJSON(PlainDataParser.read(resourceRoot(layout).appendingPathComponent("engine-identity.json"))))
+    }
+    static func localRuntime(for input: ProvisioningValidatedFrozenContext, layout: ProvisioningPackageLayout, terminal suppliedTerminal: ProvisioningTerminal? = nil) throws -> ProvisioningHelperLocalRuntime {
+        try input.storage.verifyRoot()
+        try input.request.plan.verify(in: input.storage.directory)
+        guard try ProvisioningCoordinator.engineIdentity(input.request.plan) == engineDigest(layout) else { throw invalid() }
+        let launcher = try ProvisioningExecutablePin(layout.binaries.appendingPathComponent("dev-vm-process-host").standardizedFileURL)
+        let terminal = try suppliedTerminal ?? ProvisioningTerminal()
+        // Input reservation/attachment is owned by the authenticated stream hub;
+        // this constructor alone never grants typing authority.
+        return .init(runner: LocalProvisioningProcessRunner(terminal: terminal, ptyLauncher: launcher), terminal: terminal)
+    }
     public static func validateManifest(_ url: URL, layout: ProvisioningPackageLayout) throws -> Data {
         _ = try inspect(layout)
         do {
@@ -129,3 +143,5 @@ public enum BundledProvisioning {
         return files
     }
 }
+
+struct ProvisioningHelperLocalRuntime: Sendable { let runner: LocalProvisioningProcessRunner; let terminal: ProvisioningTerminal }

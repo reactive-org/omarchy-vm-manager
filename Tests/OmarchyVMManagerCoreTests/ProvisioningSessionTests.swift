@@ -64,6 +64,28 @@ final class SessionFixtureProvider: ProvisioningHelperTransportProviding, @unche
         tools = try .init(ssh: pin("ssh"), scp: pin("scp"), sftp: pin("sftp"), ansiblePlaybook: pin("ansible-playbook"), ansibleInventory: pin("ansible-inventory"))
     }
     deinit { try? FileManager.default.removeItem(at: root) }
+    func makeAdmittedRunner() -> any ProvisioningProcessRunner { lock.withLock { factoryCount += 1 }; return runner }
+    func admittedReport() throws -> ProvisioningToolReport {
+        for name in ["brew", "bash"] {
+            let url = root.appendingPathComponent(name)
+            if !PrivateFiles.exists(url) { try Data("fixture-only-never-execute".utf8).write(to: url); chmod(url.path, 0o700) }
+        }
+        let bin = root.appendingPathComponent("bin"); try PrivateFiles.directory(bin, create: true)
+        for name in ["ansible-playbook", "ansible-inventory"] {
+            let url = bin.appendingPathComponent(name)
+            if !PrivateFiles.exists(url) { try FileManager.default.createSymbolicLink(at: url, withDestinationURL: root.appendingPathComponent(name)) }
+        }
+        let files = LocalProvisioningToolFiles(), installation = try #require(files.directory(root.path)).identity
+        let values = try ProvisioningTransportToolAdmission.required.map { tool -> ProvisioningToolResult in
+            let path = root.appendingPathComponent([ProvisioningTool.ansiblePlaybook, .ansibleInventory].contains(tool) ? "bin/" + tool.rawValue : tool.rawValue)
+            let executable = try #require(files.executable(path.path)).identity
+            let ansible = [ProvisioningTool.ansiblePlaybook, .ansibleInventory].contains(tool)
+            return .init(tool: tool, status: .available,
+                version: ansible ? "2.21.5" : tool == .brew ? "7.0.0" : tool == .bash ? "3.2.57" : tool == .ssh ? "10.3p1" : nil,
+                executable: executable, provider: ansible ? "homebrew" : tool == .brew ? "host" : "macOS", reason: "Synthetic local fixture", installation: ansible ? installation : nil)
+        }
+        return .init(tools: values)
+    }
     func resources(for input: ProvisioningValidatedFrozenContext, registration: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperTransportResources {
         lock.withLock { resourceCount += 1 }
         let target = input.request.target
@@ -95,22 +117,25 @@ actor SessionFixtureChecks {
 }
 /// No child process or executable is started. Both directions use actual local
 /// framed/MACed sockets, while the adapter receives only the fake process runner.
-actor LocalTransportLauncher: ProvisioningManagerSessionDispatching {
+actor LocalTransportLauncher: ProvisioningServiceLaunching {
     let provider: SessionFixtureProvider
     let checks = SessionFixtureChecks()
     let bypassGuest = EngineFixtureGuest()
     let bypassAuthority: Bool
+    let processRunner: (any ProvisioningProcessRunner)?
     private var ticket: ProvisioningHelperLaunchTicket?
     private var credentials: ProvisioningHelperCredentials?
     private var delivery: ProvisioningFrozenDeliverySource?
+    private var transportHandoff: ProvisioningTransportHandoff?
     private var client: ProvisioningHelperIPCClient?
     private var controlServer: ProvisioningHelperIPCServer?
     private var sessionServer: ProvisioningManagerSessionServer?
     private var sessionClient: ProvisioningSessionClient?
     private var controlTask: Task<Void, Never>?, sessionTask: Task<Void, Never>?
     private var parent: URL?
+    private var helperExited = false
     private(set) var activations = 0
-    init(provider: SessionFixtureProvider, bypassAuthority: Bool = false) { self.provider = provider; self.bypassAuthority = bypassAuthority }
+    init(provider: SessionFixtureProvider, bypassAuthority: Bool = false, processRunner: (any ProvisioningProcessRunner)? = nil) { self.provider = provider; self.bypassAuthority = bypassAuthority; self.processRunner = processRunner }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration) throws -> ProvisioningHelperLaunchTicket { throw ProvisioningJobFailure.invalidRequest }
     func prepare(_ original: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource) throws -> ProvisioningHelperLaunchTicket {
         guard original.sessionAuthorityVersion == 1 else { throw ProvisioningJobFailure.invalidRequest }
@@ -118,6 +143,10 @@ actor LocalTransportLauncher: ProvisioningManagerSessionDispatching {
         var registration = original; registration.scope.helperIdentity = identity
         let ticket = ProvisioningHelperLaunchTicket(id: UUID(), identity: identity, registration: registration)
         credentials = try .init(identity: identity, registration: registration); self.ticket = ticket; self.delivery = delivery; return ticket
+    }
+    func prepare(_ original: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource, transport: ProvisioningTransportHandoff) throws -> ProvisioningHelperLaunchTicket {
+        try transport.verify(original)
+        let ticket = try prepare(original, delivery: delivery); transportHandoff = transport; return ticket
     }
     func launch(_ ticket: ProvisioningHelperLaunchTicket) async throws -> ProvisioningHelperRegistrationReceipt {
         guard self.ticket == ticket, let credentials, let delivery, client == nil else { throw ProvisioningHelperIPCFailure.ownership }
@@ -128,15 +157,17 @@ actor LocalTransportLauncher: ProvisioningManagerSessionDispatching {
         let sessionClient = ProvisioningSessionClient(socket: helperSession, credentials: credentials)
         self.sessionServer = sessionServer; self.sessionClient = sessionClient
         sessionTask = Task { await sessionServer.serve() }
+        let admitted = try transportHandoff.map { try ProvisioningValidatedTransport.load($0.bytes, registration: ticket.registration, input: input, policy: .fixture(provider.root)) }
         let backend: any ProvisioningDeliveredBackendPreparing
-        if bypassAuthority { backend = EngineFixtureFactory(request: input.request, approval: input.approval, guest: bypassGuest, authority: EngineFixtureAuthority()) }
+        if let admitted { backend = ProvisioningHelperTransportBackend(provider: ProvisioningDeliveredTransportProvider(transport: admitted, makeProcessRunner: { [provider, processRunner] in processRunner ?? provider.makeAdmittedRunner() }), client: sessionClient, admitPackage: {}) }
+        else if bypassAuthority { backend = EngineFixtureFactory(request: input.request, approval: input.approval, guest: bypassGuest, authority: EngineFixtureAuthority()) }
         else { backend = ProvisioningHelperTransportBackend(provider: provider, client: sessionClient, admitPackage: {}) }
         let factory = ProvisioningDeliveredEngineFactory(input: input, backend: backend)
         let registry = try ProvisioningHelperOwnershipRegistry(identity: credentials.identity)
         let server = try ProvisioningHelperIPCServer(socket: helperControl, credentials: credentials, registry: registry,
-            engineFactory: factory, frozenInput: input, sessionConnected: { sessionClient.connected })
+            engineFactory: factory, frozenInput: input, transport: admitted, sessionConnected: { sessionClient.connected })
         client = ProvisioningHelperIPCClient(socket: managerControl, credentials: credentials); controlServer = server
-        controlTask = Task { await server.serve() }; return try await client!.awaitRegistration(ticket)
+        controlTask = Task { await server.serve(); self.recordExit() }; return try await client!.awaitRegistration(ticket)
     }
     func bindSessionAuthority(_ activation: ProvisioningHelperActivation, check: @escaping ProvisioningManagerSessionCheck) async throws {
         guard let sessionServer else { throw ProvisioningHelperIPCFailure.unavailable }
@@ -155,6 +186,13 @@ actor LocalTransportLauncher: ProvisioningManagerSessionDispatching {
     func abort(_ activation: ProvisioningHelperActivation) async { client?.disconnect(); sessionServer?.stop() }
     func abandon(_ ticket: ProvisioningHelperLaunchTicket) async { client?.disconnect(); sessionServer?.stop() }
     func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) async { client?.disconnect(); sessionServer?.stop() }
+    private func recordExit() { helperExited = true }
+    func waitForExit(jobID: UUID, identity: ProvisioningHelperIdentity, timeout: Duration) async -> Bool {
+        guard ticket?.registration.scope.jobID == jobID, ticket?.identity == identity else { return false }
+        let end = ContinuousClock.now + timeout
+        while !helperExited, ContinuousClock.now < end { try? await Task.sleep(for: .milliseconds(10)) }
+        return helperExited
+    }
     func close() async {
         client?.disconnect(); sessionServer?.stop(); await controlTask?.value; await sessionTask?.value
         if let parent { try? FileManager.default.removeItem(at: parent) }

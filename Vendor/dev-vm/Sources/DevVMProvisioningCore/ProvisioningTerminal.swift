@@ -45,6 +45,7 @@ public final class ProvisioningTerminal: @unchecked Sendable {
     private var stored = 0
     private var sequence: UInt64 = 0
     private var owner: (id: UUID, scope: TerminalInputScope)?
+    private var inputEnabled = false
     private var scope: TerminalInputScope?
     private var active: UUID?
     private var acceptsInput = false
@@ -70,22 +71,44 @@ public final class ProvisioningTerminal: @unchecked Sendable {
         try grant(lease, scope: TerminalInputScope(jobID: request.jobID, target: request.target,
                                                   dependencyDigest: request.dependencyDigest, mode: request.mode), size: size)
     }
-    private func grant(_ leaseID: UUID, scope: TerminalInputScope, size: ProvisioningTerminalSize) throws {
+    private func grant(_ leaseID: UUID, scope: TerminalInputScope, size: ProvisioningTerminalSize, enabled: Bool = true) throws {
         try lock.withLock {
             guard owner == nil, active == nil, retired.count < 4096, !retired.contains(leaseID) else { throw SequencingFailure.alreadyUsed }
             owner = (leaseID, scope); self.size = size; inputSequence = 0
+            inputEnabled = enabled
+        }
+    }
+    /// Reserve only the reviewed scope. A later explicit live attachment must
+    /// resume it; reservation cannot deliver input, including at a hidden prompt.
+    public func reserveInput(for request: ProvisioningRequest) throws {
+        guard let lease = request.inputLeaseID else { throw SequencingFailure.authorizationRequired }
+        try grant(lease, scope: TerminalInputScope(jobID: request.jobID, target: request.target,
+            dependencyDigest: request.dependencyDigest, mode: request.mode), size: ProvisioningTerminalSize(rows: 24, columns: 80), enabled: false)
+    }
+    /// Serialize detach with PTY writes and discard queued keystrokes/resizes.
+    /// The reviewed scope survives so a new, explicit attachment can reclaim it.
+    public func suspendInput(leaseID: UUID) {
+        lock.withLock {
+            guard owner?.id == leaseID else { return }
+            inputEnabled = false; pending.removeAll(keepingCapacity: false); resizePending = false
+        }
+    }
+    public func resumeInput(leaseID: UUID, size: ProvisioningTerminalSize) throws {
+        try lock.withLock {
+            guard owner?.id == leaseID, !inputEnabled else { throw SequencingFailure.authorizationRequired }
+            inputEnabled = true; self.size = size; resizePending = true
         }
     }
     public func revokeInput(leaseID: UUID) {
         lock.withLock {
             guard owner?.id == leaseID else { return }
-            retired.insert(leaseID); owner = nil; pending.removeAll(keepingCapacity: false)
+            retired.insert(leaseID); owner = nil; inputEnabled = false; pending.removeAll(keepingCapacity: false)
             // Detach/revocation does not cancel a job or close its PTY.
         }
     }
     public func sendInput(leaseID: UUID, invocationID: UUID, sequence: UInt64, bytes: Data) throws {
         try lock.withLock {
-            guard acceptsInput, owner?.id == leaseID, active == invocationID, sequence == inputSequence + 1,
+            guard acceptsInput, inputEnabled, owner?.id == leaseID, active == invocationID, sequence == inputSequence + 1,
                   !bytes.isEmpty, bytes.count <= 4096, pending.count + bytes.count <= 64 * 1024
             else { throw SequencingFailure.authorizationRequired }
             inputSequence = sequence; pending.append(bytes)
@@ -93,7 +116,7 @@ public final class ProvisioningTerminal: @unchecked Sendable {
     }
     public func resize(leaseID: UUID, invocationID: UUID, sequence: UInt64, size: ProvisioningTerminalSize) throws {
         try lock.withLock {
-            guard acceptsInput, owner?.id == leaseID, active == invocationID, sequence == inputSequence + 1 else { throw SequencingFailure.authorizationRequired }
+            guard acceptsInput, inputEnabled, owner?.id == leaseID, active == invocationID, sequence == inputSequence + 1 else { throw SequencingFailure.authorizationRequired }
             inputSequence = sequence; self.size = size; resizePending = true
         }
     }
@@ -105,9 +128,10 @@ public final class ProvisioningTerminal: @unchecked Sendable {
             }
             return ProvisioningTerminalSnapshot(frames: Array(batch), gap: sequence < (frames.first?.sequence ?? (self.sequence + 1)) - 1,
                                                 lastSequence: batch.last?.sequence ?? sequence,
-                                                activeInvocationID: active, acceptsInput: acceptsInput && owner != nil)
+                                                activeInvocationID: active, acceptsInput: acceptsInput && inputEnabled && owner != nil)
         }
     }
+    public var tailSequence: UInt64 { lock.withLock { sequence } }
     func begin(_ invocation: ProvisioningProcessInvocation) throws -> ProvisioningTerminalSize {
         try lock.withLock {
             guard active == nil else { throw SequencingFailure.alreadyUsed }
@@ -132,7 +156,7 @@ public final class ProvisioningTerminal: @unchecked Sendable {
     }
     func flushInput(_ id: UUID, fd: Int32) -> Bool {
         lock.withLock {
-            guard active == id, acceptsInput, owner != nil else { return true }
+            guard active == id, acceptsInput, inputEnabled, owner != nil else { return true }
             if resizePending {
                 guard devvm_resize(fd, Int32(size.rows), Int32(size.columns)) == 0 else { return false }
                 resizePending = false

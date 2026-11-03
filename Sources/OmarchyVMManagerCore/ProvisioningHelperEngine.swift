@@ -5,6 +5,7 @@ import Foundation
 /// owns the task; a fence is permanent even after completion or failed prepare.
 actor ProvisioningHelperEngineWorker {
     let registration: ProvisioningHelperWorkerRegistration
+    private let terminalHub: ProvisioningTerminalHub?
     private let bodyAllowed: @Sendable () -> Bool
     private var activation: ProvisioningHelperActivation?
     private var task: Task<Void, Never>?
@@ -19,8 +20,8 @@ actor ProvisioningHelperEngineWorker {
     private var failure: SequencingFailure?
     private var cleanupFailures: [SequencingFailure] = []
     private var cleanupRequired = true
-    init(registration: ProvisioningHelperWorkerRegistration, bodyAllowed: @escaping @Sendable () -> Bool) {
-        self.registration = registration; self.bodyAllowed = bodyAllowed
+    init(registration: ProvisioningHelperWorkerRegistration, terminalHub: ProvisioningTerminalHub? = nil, bodyAllowed: @escaping @Sendable () -> Bool) {
+        self.registration = registration; self.terminalHub = terminalHub; self.bodyAllowed = bodyAllowed
     }
     func activate(_ value: ProvisioningHelperActivation, factory: (any ProvisioningHelperEnginePreparing)?) throws -> ProvisioningHelperWorkerSnapshot {
         guard value.scope.sameWorker(as: registration.scope), value.registrationDigest == (try registration.digest) else { throw ProvisioningHelperDispatchDenial.ownership }
@@ -42,11 +43,13 @@ actor ProvisioningHelperEngineWorker {
     func cancel(_ expected: ProvisioningHelperActivation) async throws -> ProvisioningHelperWorkerSnapshot {
         _ = try snapshot(expected); cancelled = true
         if outcome == nil { phase = .cancelling; bump() }
+        await (terminalHub ?? context?.terminalHub)?.finish()
         await driver?.requestCancellation()
         return try snapshot(expected)
     }
     func fenceAndReconcile() async -> ProvisioningPriorWorkerState {
         fenced = true; cancelled = true; bump()
+        await (terminalHub ?? context?.terminalHub)?.finish()
         await driver?.requestCancellation()
         await task?.value // Not a viewer task, and never cancelled to skip cleanup.
         retired = true
@@ -55,7 +58,7 @@ actor ProvisioningHelperEngineWorker {
         return local
     }
     private func execute(_ factory: any ProvisioningHelperEnginePreparing) async {
-        if fenced || cancelled || !bodyAllowed() { complete(.cancelled, failure: .cancelled, cleanup: [], required: false); return }
+        if fenced || cancelled || !bodyAllowed() { await complete(.cancelled, failure: .cancelled, cleanup: [], required: false); return }
         do {
             let prepared = try await factory.prepare(registration)
             // Retain even a rejected context until its owned runner is fenced.
@@ -63,7 +66,7 @@ actor ProvisioningHelperEngineWorker {
             try await validate(prepared)
             guard !fenced, !cancelled, bodyAllowed() else {
                 let local = await prepared.runner.fenceAndReconcile()
-                complete(.cancelled, failure: .cancelled, cleanup: [], required: local != .stoppedAndFenced); return
+                await complete(.cancelled, failure: .cancelled, cleanup: [], required: local != .stoppedAndFenced); return
             }
             let sequencer = ProvisioningSequencer(); driver = sequencer; phase = .running; bump()
             let adapter = HelperEngineAdapter(owner: self, underlying: prepared.adapter)
@@ -77,17 +80,20 @@ actor ProvisioningHelperEngineWorker {
             retired = true; phase = .finalizing; bump()
             let local = await prepared.runner.fenceAndReconcile()
             let risk = result.recovery != nil || local != .stoppedAndFenced
-            complete(risk ? .cleanupRequired : result.outcome, failure: result.primaryFailure,
+            await complete(risk ? .cleanupRequired : result.outcome, failure: result.primaryFailure,
                 cleanup: Array(result.cleanupFailures.prefix(32)), required: risk)
         } catch {
             retired = true
             _ = await context?.runner.fenceAndReconcile()
             // Preparation/validation failures cannot be replayed under this ID.
-            complete(.cleanupRequired, failure: error as? SequencingFailure ?? .invalidRequest, cleanup: [], required: true)
+            await complete(.cleanupRequired, failure: error as? SequencingFailure ?? .invalidRequest, cleanup: [], required: true)
         }
     }
     private func validate(_ value: ProvisioningHelperEngineContext) async throws {
         let request = value.request, scope = registration.scope
+        if let receipt = registration.transport {
+            guard let transport = value.transportContext, transport.receipt == receipt, transport.target == request.target else { throw SequencingFailure.identityMismatch }; _ = try transport.verify()
+        }
         if registration.sessionAuthorityVersion != nil {
             guard let authority = value.authority as? ProvisioningHelperSessionAuthority,
                   await authority.matches(registration), await value.runner.matchesAuthority(authority) else { throw SequencingFailure.identityMismatch }
@@ -114,6 +120,7 @@ actor ProvisioningHelperEngineWorker {
               command.context.target == context.request.target, command.context.dependencyDigest == registration.scope.dependencyDigest,
               command.context.mode == registration.mode, command.mode == registration.mode,
               command.plan == nil || command.plan?.identity == registration.planDigest else { throw SequencingFailure.identityMismatch }
+        _ = try context.transportContext?.verify()
         let cleanup = command.plan == nil
         if !cleanup, cancelled || fenced || !bodyAllowed() { throw SequencingFailure.cancelled }
         if !cleanup { try context.admitPackage(); try context.frozenContext?.storage.verifyRoot() }
@@ -133,6 +140,14 @@ actor ProvisioningHelperEngineWorker {
         // queued launch. Preserve that local ownership proof while reporting
         // the authenticated body-stop decision as cancellation to the engine.
         if error as? SequencingFailure == .adapterFailed, command.plan != nil,
+           cancelled || fenced || !bodyAllowed() {
+            // Cancellation can beat invocation admission and produce notStarted
+            // before the manager-authority callback records its own denial. This
+            // classifies the reason only: retained runner/remote cleanup proof
+            // still determines whether the worker can release its risk hold.
+            return SequencingFailure.cancelled
+        }
+        if error as? SequencingFailure == .adapterFailed, command.plan != nil,
            let authority = context?.authority as? ProvisioningHelperSessionAuthority,
            await authority.bodyWasStopped(command.id) { return SequencingFailure.cancelled }
         return error
@@ -140,7 +155,8 @@ actor ProvisioningHelperEngineWorker {
     fileprivate func end(_ commandID: UUID) async {
         if let authority = context?.authority as? any ProvisioningCommandSessionAuthorizing { await authority.end(commandID) }
     }
-    private func complete(_ result: ProvisioningOutcome, failure: SequencingFailure?, cleanup: [SequencingFailure], required: Bool) {
+    private func complete(_ result: ProvisioningOutcome, failure: SequencingFailure?, cleanup: [SequencingFailure], required: Bool) async {
+        await (terminalHub ?? context?.terminalHub)?.finish()
         self.outcome = result; self.failure = failure; cleanupFailures = cleanup; cleanupRequired = required
         retired = true; phase = fenced ? .fenced : .completed; bump()
     }

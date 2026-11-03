@@ -26,6 +26,7 @@ public actor ProvisioningCoordinator {
     private var helperActive: HelperActive?
     private var recovering: [UUID: Recovery] = [:]
     private var helperAuthorities: [UUID: any ProvisioningRecoveryAuthorizing] = [:]
+    private var transportAdmissions: [UUID: ProvisioningTransportAdmission] = [:]
     private var admitting = false
     private var storageFailed = false
     private var closed = false
@@ -78,6 +79,19 @@ public actor ProvisioningCoordinator {
         return coordinator
     }
 
+    func managerBeginPreparation(jobID: UUID, target: GuestBinding, cancel: @escaping @Sendable () async -> Void) async throws -> ProvisioningPreparationLease {
+        guard !closed, !storageFailed, active == nil, helperActive == nil, !admitting else { throw ProvisioningJobFailure.busy }
+        return try await manager.reserveProvisioningPreparation(owner: ownerID, jobID: jobID, target: target, cancel: cancel)
+    }
+    func endPreparation(_ lease: ProvisioningPreparationLease) async { await manager.releaseProvisioningPreparation(owner: ownerID, lease: lease) }
+    func beginRestart(jobID: UUID, workflowID: UUID, target: GuestBinding, cancel: @escaping @Sendable () async -> Void) async throws -> ProvisioningRestartLease {
+        guard !closed, let row = jobs[jobID], row.state == .restartRequired, !row.cleanupRequired, !row.workerOutstanding,
+              row.bindingDigest == (try Self.bindingIdentity(target)) else { throw ProvisioningJobFailure.invalidRequest }
+        return try await manager.beginProvisioningRestart(owner: ownerID, workflowID: workflowID, target: target, cancel: cancel)
+    }
+    func continueRestart(_ lease: ProvisioningRestartLease) async throws -> UUID? { try await manager.continueProvisioningRestart(owner: ownerID, lease: lease) }
+    func authorizeRestartCheck(_ lease: ProvisioningRestartLease, jobID: UUID, sessionID: UUID) async throws { try await manager.authorizeProvisioningRestartCheck(owner: ownerID, lease: lease, jobID: jobID, sessionID: sessionID) }
+    func cancelRestart(_ lease: ProvisioningRestartLease) async { await manager.cancelProvisioningRestart(owner: ownerID, lease: lease) }
     public func status(_ jobID: UUID) -> ProvisioningJobSnapshot? { jobs[jobID]?.snapshot }
     public func statuses() -> [ProvisioningJobSnapshot] { jobs.values.map(\.snapshot).sorted { $0.jobID.uuidString < $1.jobID.uuidString } }
     /// Releases only an idle coordinator. Does not stop/rebind the VM or clear risk.
@@ -85,7 +99,7 @@ public actor ProvisioningCoordinator {
         guard !closed, active == nil, helperActive == nil, !admitting else { throw ProvisioningJobFailure.busy }
         admitting = true; defer { admitting = false }
         try await manager.uninstallProvisioningCoordinator(ownerID)
-        journal.close(); recovering.removeAll(); helperAuthorities.removeAll(); closed = true
+        journal.close(); recovering.removeAll(); helperAuthorities.removeAll(); transportAdmissions.removeAll(); closed = true
     }
     func frozenInputs(_ jobID: UUID) throws -> FrozenInputsArchive {
         guard !closed, let record = jobs[jobID], let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
@@ -155,7 +169,7 @@ public actor ProvisioningCoordinator {
     /// sequencer or delegate a body command; operational dispatch is separate.
     @discardableResult
     func registerHelperWorker(_ request: ProvisioningRequest, approval: ProvisioningApproval,
-                              launcher: any ProvisioningHelperLaunching) async throws -> ProvisioningJobSnapshot {
+                              launcher: any ProvisioningHelperLaunching, transport: ProvisioningTransportAdmission? = nil) async throws -> ProvisioningJobSnapshot {
         guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
         guard approval.reviewIdentity == request.reviewIdentity else { throw ProvisioningJobFailure.approvalRequired }
         if let existing = jobs[request.jobID] {
@@ -173,6 +187,10 @@ public actor ProvisioningCoordinator {
         guard try Self.engineIdentity(request.plan) == engineDigest else { throw ProvisioningJobFailure.invalidRequest }
         do { try await authority.revalidate(request.target, dependencyDigest: request.dependencyDigest) }
         catch { throw ProvisioningJobFailure.dependencyChanged }
+        if let transport {
+            guard launcher is any ProvisioningTransportHelperLaunching, transport.target == request.target, transport.dependencyDigest == request.dependencyDigest else { throw ProvisioningJobFailure.invalidRequest }
+            try await manager.validateProvisioningTransport(transport)
+        }
         let lease = try await reserve(request.jobID, target: request.target, generation: UUID())
         var ticket: ProvisioningHelperLaunchTicket?
         do {
@@ -194,14 +212,19 @@ public actor ProvisioningCoordinator {
             if let frozen = launcher as? any ProvisioningFrozenHelperLaunching {
                 let delivery = try artifacts.prepareDelivery(request, approval: approval, inputsSHA256: files.inputsSHA256)
                 registration.delivery = delivery.receipt
-                prepared = try await frozen.prepare(registration, delivery: delivery)
+                if let transport, let admitting = launcher as? any ProvisioningTransportHelperLaunching {
+                    let handoff = try ProvisioningTransportHandoff(admission: transport, registration: registration)
+                    registration.transport = handoff.receipt
+                    if launcher is any ProvisioningTerminalLaunching { registration.terminalVersion = 1 }
+                    prepared = try await admitting.prepare(registration, delivery: delivery, transport: handoff)
+                } else { prepared = try await frozen.prepare(registration, delivery: delivery) }
             } else { prepared = try await launcher.prepare(registration) }
             ticket = prepared
             var expected = scope; expected.helperIdentity = prepared.identity
             try prepared.identity.validate()
             guard prepared.registration.scope == expected, prepared.registration.planDigest == record.planDigest,
                   prepared.registration.inputDigest == record.inputDigest, prepared.registration.mode == record.mode,
-                  prepared.registration.delivery == registration.delivery, prepared.registration.sessionAuthorityVersion == registration.sessionAuthorityVersion,
+                  prepared.registration.delivery == registration.delivery, prepared.registration.sessionAuthorityVersion == registration.sessionAuthorityVersion, prepared.registration.transport == registration.transport, prepared.registration.terminalVersion == registration.terminalVersion,
                   prepared.identity.packageLockSHA256 == ProvisioningPackagePin.lockSHA256,
                   !jobs.values.contains(where: { $0.helperIdentity?.instanceID == prepared.identity.instanceID }) else { throw ProvisioningJobFailure.invalidRequest }
             do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
@@ -210,17 +233,20 @@ public actor ProvisioningCoordinator {
             catch { throw ProvisioningJobFailure.dependencyChanged }
             try await manager.validateProvisioning(lease, cleanup: false)
             record.helperIdentity = prepared.identity; record.helperRegistrationDigest = try prepared.registration.digest
-            record.helperRegistered = false; record.cleanupRequired = true; record.helperDelivery = registration.delivery; record.helperSessionAuthorityVersion = registration.sessionAuthorityVersion
+            record.helperRegistered = false; record.cleanupRequired = true; record.helperDelivery = registration.delivery; record.helperSessionAuthorityVersion = registration.sessionAuthorityVersion; record.helperTransport = registration.transport
+            if let transport { try await manager.validateProvisioningTransport(transport); transportAdmissions[record.jobID] = transport }
+            try await manager.validateProvisioning(lease, cleanup: false)
             try persist(record) // Original owner and pending registration precede spawn.
             helperAuthorities[record.jobID] = launcher
             let receipt = try await launcher.launch(prepared)
             guard receipt.identity == prepared.identity, receipt.registrationDigest == record.helperRegistrationDigest,
-                  receipt.state == "registered", receipt.deliveryDigest == record.helperDelivery?.sha256 else { throw ProvisioningJobFailure.ownershipUnverified }
+                  receipt.state == "registered", receipt.deliveryDigest == record.helperDelivery?.sha256, receipt.transportDigest == record.helperTransport?.sha256 else { throw ProvisioningJobFailure.ownershipUnverified }
             do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
             if record.helperDelivery != nil { try artifacts.verifyDelivery(record) }
             else { try request.plan.verify(in: request.repository) }
             try await authority.revalidate(request.target, dependencyDigest: request.dependencyDigest)
             try await manager.validateProvisioning(lease, cleanup: false)
+            if let transport { try await manager.validateProvisioningTransport(transport) }
             record.helperRegistered = true; try advance(&record); try persist(record)
             await manager.releaseProvisioning(lease, cleanupRequired: true)
             return record.snapshot
@@ -236,6 +262,28 @@ public actor ProvisioningCoordinator {
         }
     }
 
+    /// Only an authenticated never-activated original reservation can be retired
+    /// without remote cleanup. An accepted activation marker forbids this path.
+    func abandonPreparedWorker(_ jobID: UUID) async throws -> ProvisioningJobSnapshot {
+        guard !closed, !storageFailed, active == nil, helperActive == nil, !admitting,
+              var row = jobs[jobID], row.helperRegistered == true, row.helperActivationID == nil,
+              let identity = row.helperIdentity, let worker = row.workerToken, let payload = row.payloadID,
+              let checkpoint = row.cleanupCheckpointSHA256, let launcher = helperAuthorities[jobID] else { throw ProvisioningJobFailure.ownershipUnverified }
+        admitting = true; defer { admitting = false }
+        let scope = ProvisioningRecoveryExpectation(challenge: UUID(), jobID: jobID, vmID: row.vmID, sessionID: row.sessionID,
+            payloadID: payload, workerToken: worker, engineDigest: row.engineDigest, dependencyDigest: row.dependencyDigest,
+            bindingDigest: row.bindingDigest, reviewDigest: row.reviewDigest, checkpointDigest: checkpoint, helperIdentity: identity)
+        let permit = try await launcher.reconcile(scope)
+        guard permit.expectation == scope, permit.priorWorker == .stoppedAndFenced, jobs[jobID]?.helperActivationID == nil else { throw ProvisioningJobFailure.ownershipUnverified }
+        row.cleanupRequired = false; row.workerOutstanding = false; row.state = .cleanupConfirmed; row.outcome = .cleanupConfirmed
+        try advance(&row); try persist(row)
+        await launcher.releaseAfterCleanup(jobID: jobID, helperIdentity: identity)
+        helperAuthorities.removeValue(forKey: jobID)
+        if !jobs.values.contains(where: { $0.vmID == row.vmID && $0.cleanupRequired }) {
+            await manager.clearUnstartedProvisioningHold(vmID: row.vmID)
+        }
+        return row.snapshot
+    }
     @discardableResult
     func recover(_ jobID: UUID, target: GuestBinding? = nil, adapter: any ProvisioningGuestAdapter) async throws -> ProvisioningJobSnapshot {
         guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
@@ -525,6 +573,10 @@ extension ProvisioningCoordinator {
         if record.helperDelivery != nil { try artifacts.verifyDelivery(record) }
         else { try request.plan.verify(in: request.repository) }
         try artifacts.verifyInputs(record)
+        if let receipt = record.helperTransport {
+            guard let transport = transportAdmissions[record.jobID], receipt.dependencyDigest == transport.dependencyDigest else { throw ProvisioningJobFailure.recoveryUnavailable }
+            try await manager.validateProvisioningTransport(transport)
+        }
         try await authority.revalidate(request.target, dependencyDigest: record.dependencyDigest)
         let generation = UUID(), lease = try await reserve(request.jobID, target: request.target, generation: generation, recovery: true)
         do {
@@ -587,12 +639,22 @@ extension ProvisioningCoordinator {
         try request.validate()
         let running = try helperSessionOwner(request, generation: generation)
         if !request.cleanup { try admitPackage() }
+        let transport: ProvisioningTransportAdmission?
+        if jobs[running.jobID]?.helperTransport != nil {
+            guard let value = transportAdmissions[running.jobID] else { throw SequencingFailure.dependencyChanged }; transport = value
+            do { try await manager.validateProvisioningTransport(value, cleanup: request.cleanup) } catch { throw SequencingFailure.dependencyChanged }
+            _ = try helperSessionOwner(request, generation: generation)
+        } else { transport = nil }
         do { try await authority.revalidate(running.target, dependencyDigest: request.scope.dependencyDigest) }
         catch { throw SequencingFailure.dependencyChanged }
         _ = try helperSessionOwner(request, generation: generation)
         do { try await manager.validateProvisioning(running.lease, cleanup: request.cleanup) }
         catch { throw SequencingFailure.identityMismatch }
         _ = try helperSessionOwner(request, generation: generation)
+        if let transport {
+            do { try await manager.validateProvisioningTransport(transport, cleanup: request.cleanup) } catch { throw SequencingFailure.dependencyChanged }
+            _ = try helperSessionOwner(request, generation: generation)
+        }
     }
     private func helperSessionOwner(_ request: ProvisioningSessionRequest, generation: UUID) throws -> HelperActive {
         guard !closed, let running = helperActive, running.generation == generation,
