@@ -24,6 +24,9 @@ struct ProvisioningFeatureSelectionView: View {
 /// New VM only: review and save a selection without provisioning or changing
 /// the resource and factory fields owned by the parent form.
 struct NewVMSetupSelectionView: View {
+    #if DEBUG
+    @Environment(\.setupAcceptance) private var acceptance
+    #endif
     @ObservedObject var model: AppModel
     @Binding var consent: ProvisioningCreationConsent?
     @Binding var ready: Bool
@@ -51,6 +54,7 @@ struct NewVMSetupSelectionView: View {
                 }
                 ProvisioningFeatureSelectionView(selection: $features).disabled(busy)
                 Button(busy ? "Freezing selection…" : review == nil ? "Review setup selection" : "Refresh setup review") { Task { await prepare() } }
+                    .accessibilityIdentifier("new-vm.review")
                     .disabled(busy || (source == "local" && folder == nil) || model.setupService == nil)
                 if let review {
                     Text("Review: " + review.id.uuidString).font(.caption).textSelection(.enabled)
@@ -66,6 +70,22 @@ struct NewVMSetupSelectionView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let failure { Text(failure).font(.caption).foregroundStyle(.orange) }
+        }
+        .background {
+            #if DEBUG
+            if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
+                acceptance.bind("selection", action: { command in
+                    switch command {
+                    case .source(let value): source = value
+                    case .feature(let feature, let choice): features = features.setting(feature, to: choice)
+                    case .folder(let value): folder = value; invalidate()
+                    case .preview: Task { await prepare() }
+                    case .acknowledge(let value): acknowledged = value
+                    default: break
+                    }
+                }, snapshot: { ["source": source, "review": review?.id.uuidString ?? "", "acknowledged": String(acknowledged), "busy": String(busy), "ready": String(ready), "failure": String(failure != nil)] })
+            } }
+            #endif
         }
         .onChange(of: source) { _, _ in invalidate() }
         .onChange(of: features) { _, _ in invalidate() }
@@ -84,6 +104,7 @@ struct NewVMSetupSelectionView: View {
         ready = source == "none" || consent != nil
     }
     @MainActor private func prepare() async {
+        guard !busy, source != "none", source != "local" || folder != nil else { return }
         guard let service = model.setupService as? any ProvisioningCreationPlanning else { failure = "Setup coordination is unavailable."; return }
         let id = review == nil ? (requestID ?? UUID()) : UUID(), stamp = revision
         requestID = id; review = nil; acknowledged = false; failure = nil; busy = true; publish()

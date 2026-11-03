@@ -87,3 +87,13 @@ are fake/local checks preparing the separately approved guest acceptance.
 [Offscreen setup components](media/setup-components-offscreen.png) show the actual
 feature controls and terminal with labelled synthetic output. This validates
 component rendering only, with no visible window, VM registry or live guest.
+
+[Full Setup and New VM acceptance](DevVMUIAcceptance.md) records 56 isolated
+fake-service view/action checks, light/dark full-screen captures and terminal
+rendering. Physical input, focus, native dialogs and real guests remain untested.
+
+[Milestone 6 disposable-guest runbook](DevVMMilestone6Runbook.md) is prepared,
+not executed: exact scope/approval worksheet, operational candidate prerequisites,
+guest/TTY/cleanup/restart/check/failure evidence matrix and stopped-root cleanup.
+Product execution remains disabled; no host install or real transport is authorized
+by the runbook.

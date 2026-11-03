@@ -32,7 +32,7 @@ final class AppModel: ObservableObject {
     @Published var experimentalPowerReview: ExperimentalPowerReview?
     @Published var configurationError: String?
     @Published var deletionReview: DeletionReview?
-    @Published var accessibilityTrusted = AXIsProcessTrusted()
+    @Published var accessibilityTrusted = false
     @Published var storageBytes: [UUID: Int64] = [:]
     let manager: VMManager
     private let support: URL
@@ -43,9 +43,24 @@ final class AppModel: ObservableObject {
     private var setupServer: ProvisioningExternalServer?
     @Published var setupWorkflows: [ProvisioningWorkflowSnapshot] = []
     @Published var setupJobs: [UUID: ProvisioningJobSnapshot] = [:]
-    var setupService: (any ProvisioningObserving)? { provisioningService }
+    #if DEBUG
+    private var isolatedService: (any ProvisioningObserving)?
+    private var isolatedSave: (@MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile)?
+    private var isolated = false
+    init(isolatedManager: VMManager, support: URL, snapshots: [VMSnapshot], service: any ProvisioningObserving,
+         save: @escaping @MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile) {
+        manager = isolatedManager; self.support = support; self.snapshots = snapshots
+        isolatedService = service; isolatedSave = save; isolated = true; checking = false
+    }
+    #endif
+    var setupService: (any ProvisioningObserving)? {
+        #if DEBUG
+        if isolated { return isolatedService }
+        #endif
+        return provisioningService
+    }
     func cancelSetup(_ id: UUID) async {
-        do { try await provisioningService?.cancel(id) }
+        do { try await setupService?.cancel(id) }
         catch { actionError = "Setup cancellation could not be confirmed. Check its job state and cleanup requirement." }
     }
     private var lastReportID: UUID?
@@ -63,6 +78,7 @@ final class AppModel: ObservableObject {
     }
 
     init() {
+        accessibilityTrusted = AXIsProcessTrusted()
         if Self.layoutPreview {
             support = FileManager.default.temporaryDirectory.appendingPathComponent("omarchy-layout-preview")
             manager = VMManager(runtime: FakeRuntime(), profiles: [], applicationSupport: support)
@@ -88,6 +104,9 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() async {
+        #if DEBUG
+        if isolated { return }
+        #endif
         checking = true
         let result = await Task.detached { Result { try AppModel.inspect() } }.value
         switch result {
@@ -114,6 +133,9 @@ final class AppModel: ObservableObject {
     }
 
     func observe() async {
+        #if DEBUG
+        if isolated { return }
+        #endif
         await refresh()
         if !Self.layoutPreview, registryError == nil, provisioningService == nil {
             do { provisioningService = try await manager.installProvisioningService(layout: .init(contents: Bundle.main.bundleURL.appendingPathComponent("Contents"))) }
@@ -146,6 +168,16 @@ final class AppModel: ObservableObject {
         guard registryError == nil else { return nil }
         configurationError = nil
         do {
+            #if DEBUG
+            if isolated {
+                guard profile == nil, let isolatedSave else { throw ProvisioningReviewFailure.invalid }
+                let config = GuestConfigurationPatch(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
+                    clipboard: clipboard, immersive: immersive, ssh: sshEnabled, ownerDefaults: useOwnerDefaults,
+                    publicKey: publicKey, factory: factory, inheritDefaultPublicKey: false, share: share, sharePath: sharePath)
+                let saved = try await isolatedSave(config, setupConsent)
+                if !snapshots.contains(where: { $0.id == saved.id }) { snapshots.append(.init(profile: saved, state: .stopped)) }; return saved.id
+            }
+            #endif
             let id: UUID
             if var profile {
                 guard setupConsent == nil else { throw ProvisioningReviewFailure.invalid }
@@ -268,6 +300,9 @@ final class AppModel: ObservableObject {
     }
 
     private func update() async {
+        #if DEBUG
+        if isolated { return }
+        #endif
         let observation = await manager.observation()
         if observedFactoryRevision != observation.factoryRevision {
             observedFactoryRevision = observation.factoryRevision

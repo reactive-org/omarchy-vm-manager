@@ -12,6 +12,12 @@ struct ManagerView: View {
     @State private var importingFactory = false
     @State private var page: GuestPage = .home
     @State private var detailPresentation = UUID()
+    init(model: AppModel) { self.model = model }
+    #if DEBUG
+    init(model: AppModel, acceptanceGuestID: UUID) {
+        self.model = model; _destination = State(initialValue: .guest(acceptanceGuestID)); _page = State(initialValue: .setup)
+    }
+    #endif
     private var active: [VMSnapshot] { model.snapshots.filter { $0.sessionID != nil } }
 
     var body: some View {
@@ -390,7 +396,10 @@ private struct SettingsRow<Action: View>: View {
     }
 }
 private struct EditorSelection: Identifiable { let id = UUID(); let profile: VMProfile? }
-private struct VMEditor: View {
+struct VMEditor: View {
+    #if DEBUG
+    @Environment(\.setupAcceptance) private var acceptance
+    #endif
     @ObservedObject var model: AppModel
     let profile: VMProfile?
     let saved: (UUID) -> Void
@@ -426,6 +435,7 @@ private struct VMEditor: View {
         _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true ? model.ownerDefaults?.sshPublicKey : nil)
         _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
     }
+    private var canSave: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !saving && (profile != nil || setupReady) }
     private var maximumMemory: Int { max(4, Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) * 3 / 4) }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -491,16 +501,34 @@ private struct VMEditor: View {
             HStack {
                 Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(profile == nil ? "Create VM" : "Save Changes") {
-                    saving = true
-                    Task {
-                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, setupConsent: setupConsent) { saved(id) }
-                        saving = false
-                    }
-                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving || (profile == nil && !setupReady))
+                    save()
+                }.accessibilityIdentifier("new-vm.create").buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!canSave)
             }
         }.padding(26).frame(width: 600, height: 760).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }.task { await model.loadFactories() }
         .sheet(isPresented: $importingFactory) {
             FactoryImportView(model: model) { identity in factory = identity.selector }
+        }
+        .background {
+            #if DEBUG
+            if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
+                acceptance.bind("editor", action: { command in
+                    switch command {
+                    case .name(let value): name = value
+                    case .resources(let ram, let cores, let size): memory = ram; cpus = cores; disk = size
+                    case .save: save()
+                    default: break
+                    }
+                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "ready": String(setupReady), "consent": String(setupConsent != nil), "saving": String(saving)] })
+            } }
+            #endif
+        }
+    }
+    private func save() {
+        guard canSave else { return }
+        saving = true
+        Task {
+            if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, setupConsent: setupConsent) { saved(id) }
+            saving = false
         }
     }
     private func choosePublicKey() {

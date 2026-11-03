@@ -2243,3 +2243,32 @@ remains the visual target for milestone 5.
   was enabled, real transport/VM operation performed, host tools installed,
   factory downloaded, personal credential accessed or user desktop taken over.
   Shared package sources/resources/export and engine pins remain unchanged.
+
+## Full Setup/New VM fake acceptance and disposable-guest runbook — 3 November 2026
+
+- **VERIFIED:** 56 isolated checks exercise actual New VM/selection/manager Setup
+  views and shared actions: review/acknowledgment, edits/races/refusal, explicit
+  resource/factory precedence, frozen handoff/duplicate creation, complete task
+  inspection, independent apply consent, terminal search/expand and cancellation.
+  Eight full-screen light/dark/scrolled PNGs were inspected. The DEBUG harness
+  runs before normal model/registry construction with in-memory fake services and
+  a never-started FakeRuntime. Nonactivating backing windows lie outside every
+  display; no OS input or desktop capture is used. The temporary support root
+  remains absent. [Evidence and limits](docs/DevVMUIAcceptance.md) are recorded.
+- **VERIFIED:** `make test` passes 428 Swift functions in 56 suites, 52 script tests,
+  relocated/read-only/ad-hoc-signed helper fixtures and the 56 screen checks.
+  The final screen target and package/export verification pass. Release compilation
+  passes without signing credentials; fixture entry point/markers are absent from
+  the release binary. This is compile evidence, not signed-distribution acceptance.
+- **DESIGN DECISION:** button/action guards are shared, including required-task
+  inspection. Loaded frozen input is explained independently of the source picker.
+  Fixture state is injected locally in DEBUG, never selected through a real
+  execution override. Product execution and shared package/resource/export/engine
+  pins remain unchanged.
+- **TO PROVE:** physical input, focus/VoiceOver, native file/task/confirmation
+  dialogs and real guest/SSH/Ansible/TTY/cleanup/restart/check/crash/sleep/wake.
+  The [milestone-6 runbook](docs/DevVMMilestone6Runbook.md) is prepared, not run.
+  It requires a scoped, separately reviewed operational candidate and explicit
+  disposable-guest consent before execution. No real transport, host installation,
+  VM launch/change, factory download, personal credential or desktop takeover
+  occurred. Milestone 6 real acceptance and milestone 7 distribution remain open.

@@ -7,6 +7,9 @@ import UniformTypeIdentifiers
 /// Offline selection and review never creates a VM or authorizes tasks. The
 /// running-job pane consumes the same service used by the separate CLI socket.
 struct DeveloperSetupView: View {
+    #if DEBUG
+    @Environment(\.setupAcceptance) private var acceptance
+    #endif
     @ObservedObject var model: AppModel
     let snapshot: VMSnapshot
     @StateObject private var screen = ProvisioningTerminalScreen()
@@ -68,7 +71,7 @@ struct DeveloperSetupView: View {
                         }.frame(maxWidth: 340).disabled(planning || preparingApply || submitting || applyReview != nil)
                         if source == "local" { Button("Choose folder…") { choosingFolder = true }.disabled(planning || preparingApply || submitting || applyReview != nil) }
                         Spacer()
-                        Button(frozen == nil ? "Preview plan" : "Refresh preview") { Task { await plan() } }.disabled(source == "none" || planning || preparingApply || submitting || applyReview != nil || (source == "local" && folder == nil))
+                        Button(frozen == nil ? "Preview plan" : "Refresh preview") { Task { await plan() } }.accessibilityIdentifier("setup.preview").disabled(source == "none" || planning || preparingApply || submitting || applyReview != nil || (source == "local" && folder == nil))
                         if planning { ProgressView().controlSize(.small) }
                     }
                     if source != "none" { ProvisioningFeatureSelectionView(selection: $features).disabled(planning || preparingApply || submitting || applyReview != nil) }
@@ -77,7 +80,10 @@ struct DeveloperSetupView: View {
                     Text("Setup execution is disabled pending guest acceptance. A preview does not change this VM or its resource settings.").font(.callout).foregroundStyle(.secondary)
                     HStack {
                         TextField("Frozen preview UUID from CLI", text: $previewLookup).textFieldStyle(.roundedBorder)
-                        Button("Open preview") { Task { await loadPreview() } }.disabled(UUID(uuidString: previewLookup) == nil || planning || preparingApply || submitting || applyReview != nil)
+                        Button("Open preview") { Task { await loadPreview() } }.accessibilityIdentifier("setup.lookup").disabled(UUID(uuidString: previewLookup) == nil || planning || preparingApply || submitting || applyReview != nil)
+                    }
+                    if frozen != nil, source == "none" {
+                        Text("A saved frozen selection is loaded below. Choose a source only to create a new preview.").font(.caption).foregroundStyle(.secondary)
                     }
                     if let frozen { reviewActions(frozen) }
                 }.padding(20)
@@ -130,7 +136,7 @@ struct DeveloperSetupView: View {
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { invalidatePreview(); folder = url }
         }
-        .sheet(isPresented: $showingTask) {
+        .sheet(isPresented: taskPresentation) {
             VStack(alignment: .leading) {
                 Text("Frozen task source").font(.title2.bold())
                 ScrollView([.horizontal, .vertical]) { Text(taskText ?? "Source unavailable").font(.system(.body, design: .monospaced)).textSelection(.enabled).padding(12) }
@@ -138,8 +144,8 @@ struct DeveloperSetupView: View {
             }.padding(20).frame(width: 760, height: 560)
         }
         .sheet(isPresented: $tools) { ScrollView { ProvisioningToolsView().padding(24) }.frame(width: 680, height: 640) }
-        .confirmationDialog("Cancel setup and perform its cleanup?", isPresented: $confirmCancel) {
-            Button("Cancel Setup", role: .destructive) { if let workflow { Task { await model.cancelSetup(workflow.id) } } }
+        .confirmationDialog("Cancel setup and perform its cleanup?", isPresented: cancelPresentation) {
+            Button("Cancel Setup", role: .destructive) { cancelConfirmed() }
         } message: { Text("Cleanup may still need verification. Closing this page only detaches the terminal.") }
         .task(id: workflow?.id) {
             if let workflow, let service = model.setupService { await screen.attach(service: service, workflowID: workflow.id) }
@@ -148,7 +154,45 @@ struct DeveloperSetupView: View {
             guard let receipt = snapshot.profile.developerSetup, frozen == nil, source == "none" else { return }
             previewLookup = receipt.reviewID.uuidString; await loadPreview()
         }
+        .background {
+            #if DEBUG
+            if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
+                acceptance.terminalScreen = screen
+                acceptance.bind("setup", action: { command in
+                    switch command {
+                    case .source(let value): source = value
+                    case .feature(let feature, let choice): features = features.setting(feature, to: choice)
+                    case .folder(let value): folder = value; invalidatePreview()
+                    case .preview: Task { await plan() }
+                    case .lookup(let id): previewLookup = id.uuidString; Task { await loadPreview() }
+                    case .inspect: if let frozen, let task = frozen.tasks.first { Task { await inspectTask(frozen, task: task) } }
+                    case .prepareApply: if let frozen { Task { await prepareReview(frozen) } }
+                    case .grant(let sudo, let docker, let tasks): grantConsent = sudo; dockerConsent = docker; taskConsent = tasks
+                    case .submit: if let frozen, let applyReview { Task { await submit(frozen, review: applyReview) } }
+                    case .expand(let value): expanded = value
+                    case .search(let value): search = value; matches = screen.search(value)
+                    case .requestCancel: if workflow?.canCancel == true { confirmCancel = true }
+                    case .confirmCancel: if confirmCancel { confirmCancel = false; cancelConfirmed() }
+                    default: break
+                    }
+                }, snapshot: { ["source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "expanded": String(expanded), "cancelPending": String(confirmCancel)] })
+            } }
+            #endif
+        }
         .onDisappear { Task { await screen.detach() } }
+    }
+    private func cancelConfirmed() { if let workflow, workflow.canCancel { Task { await model.cancelSetup(workflow.id) } } }
+    private var cancelPresentation: Binding<Bool> {
+        #if DEBUG
+        if acceptance != nil { return .constant(false) }
+        #endif
+        return $confirmCancel
+    }
+    private var taskPresentation: Binding<Bool> {
+        #if DEBUG
+        if acceptance != nil { return .constant(false) } // Inspect state without ordering a native sheet.
+        #endif
+        return $showingTask
     }
     private var actingService: (any ProvisioningWorkflowActing)? { model.setupService as? any ProvisioningWorkflowActing }
     @ViewBuilder private func workflowActions(_ workflow: ProvisioningWorkflowSnapshot) -> some View {
@@ -265,7 +309,7 @@ struct DeveloperSetupView: View {
                     Text(task.name).bold()
                     Text(String(task.sha256.prefix(12))).font(.system(.caption, design: .monospaced))
                     Spacer()
-                    Button(inspectedTasks.contains(task.name) ? "Inspect again…" : "Inspect frozen task…") { Task { await inspectTask(value, task: task) } }.disabled(inspectingTask || submitting)
+                    Button(inspectedTasks.contains(task.name) ? "Inspect again…" : "Inspect frozen task…") { Task { await inspectTask(value, task: task) } }.accessibilityIdentifier("setup.inspect").disabled(inspectingTask || submitting)
                 }
             }
             if let review = applyReview {
@@ -279,9 +323,11 @@ struct DeveloperSetupView: View {
                         .disabled(!value.tasks.allSatisfy { inspectedTasks.contains($0.name) })
                 }
                 Button("Apply reviewed setup") { Task { await submit(value, review: review) } }
-                    .disabled(!executionEnabled || submitting || submissionAttempted || !grantConsent || (review.dockerRootAccessRequired && !dockerConsent) || (review.taskTrustIdentity != nil && !taskConsent))
+                    .accessibilityIdentifier("setup.apply")
+                    .disabled(!canSubmit(value, review: review))
             } else {
                 Button(preparingApply ? "Preparing target review…" : "Review apply…") { Task { await prepareReview(value) } }
+                    .accessibilityIdentifier("setup.prepare-apply")
                     .disabled(!executionEnabled || preparingApply || submitting)
             }
             if submissionAttempted { Text("Submission was attempted. Inspect the workflow state before taking another action; this view will not repeat it automatically.").font(.caption).foregroundStyle(.secondary) }
@@ -323,6 +369,7 @@ struct DeveloperSetupView: View {
         } catch { failure = "The complete frozen task could not be displayed. Native review is limited to 64 KiB per task; larger files need explicit CLI inspection." }
     }
     @MainActor private func prepareReview(_ value: ProvisioningPlanPreview) async {
+        guard executionEnabled, !preparingApply, !submitting else { return }
         guard let service = reviewingService else { return }
         preparingApply = true; failure = nil; defer { preparingApply = false }
         do {
@@ -331,8 +378,13 @@ struct DeveloperSetupView: View {
             grantConsent = false; dockerConsent = false; taskConsent = false
         } catch { failure = "Apply review is unavailable. Execution must be enabled and the exact guest session, SSH identity and dependencies must be admitted. Inspect any preparation workflow before retrying." }
     }
+    private func canSubmit(_ value: ProvisioningPlanPreview, review: ProvisioningApplyReview) -> Bool {
+        executionEnabled && !submitting && !submissionAttempted && grantConsent &&
+            (!review.dockerRootAccessRequired || dockerConsent) &&
+            (review.taskTrustIdentity == nil || (taskConsent && value.tasks.allSatisfy { inspectedTasks.contains($0.name) }))
+    }
     @MainActor private func submit(_ value: ProvisioningPlanPreview, review: ProvisioningApplyReview) async {
-        guard let service = reviewingService, !submissionAttempted else { return }
+        guard let service = reviewingService, canSubmit(value, review: review) else { return }
         submissionAttempted = true; submitting = true; failure = nil; defer { submitting = false }
         do {
             _ = try await service.apply(value.id, consent: .init(reviewIdentity: review.reviewIdentity,

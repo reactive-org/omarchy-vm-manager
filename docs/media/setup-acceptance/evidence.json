@@ -1,0 +1,35 @@
+{
+  "baseCommit": "e92dcf7",
+  "checks": {
+    "managerSwiftFunctions": 428,
+    "managerSwiftSuites": 56,
+    "releaseBuild": "passed; no signing credentials; fixture entry point and markers absent",
+    "relocatedAdHocHelperFixtures": "passed",
+    "screenActions": 56,
+    "scriptTests": 52
+  },
+  "date": "2026-11-03",
+  "environment": {
+    "capture": "Nonactivating own-process backing surfaces outside all displays; 1200x960 Setup and 640x820 New VM host points",
+    "platform": "macOS"
+  },
+  "limitations": [
+    "No physical pointer/keyboard, native sheets/file importers, focus, accessibility or VoiceOver acceptance",
+    "Terminal output is injected synthetic data with no connection or input authority",
+    "No real guest, SSH/SCP/SFTP/Ansible, host installs or factory downloads"
+  ],
+  "scope": "Actual full-screen view hierarchy and shared actions with isolated fake services; no physical input or real guest",
+  "sha256": {
+    "new-vm-resources-dark.png": "9876483d28956827811933cdca2c9cd3a191333dfc2687e89d232bd44ac6a120",
+    "new-vm-resources-light.png": "137500d1be45f710be16acae6cff64ba03a37fe66a9d9437e848fe6df3b2987c",
+    "new-vm-review-dark.png": "49e2febba35bf36dc54a89d9acfdbef71b857ac4f20380607b43a886bf04f803",
+    "new-vm-review-light.png": "07fd3c7476e7a02b6e02919864ec561d6f5b263d8fc38bc91f437173d9b41e02",
+    "report.json": "81bd7a59cff62b2d05e8d7427717bcbeabdb4b31e33bb69bb5e8e9a3ec4fa98c",
+    "setup-fake-consent-dark.png": "04c7e4dd8970c1e166ca3ca66bcc3b6399e9fc1e55197287ec80f7f8a2601239",
+    "setup-handoff-dark.png": "0259ab06c3e177e5e7679a2238ade957262fc2f7b3318cc8487775b6c3474162",
+    "setup-handoff-light.png": "8631b292583a8a79e8c021e86b781966a92bf7e0ee5a0b38df5d886d5968c92f",
+    "setup-terminal-dark.png": "deffd630782309b8f3ce9e2e47c5531871d04d2163f03681f33085e2dc2f482e"
+  },
+  "visualReview": "All eight PNGs inspected; readable labels, intact header/footer and scrolled controls; correctly oriented Unicode/ANSI terminal; no viewport overflow from terminal drawing",
+  "workingTreeChanges": "Sources and harness in the accompanying change; no product gate or package/resource pin change"
+}

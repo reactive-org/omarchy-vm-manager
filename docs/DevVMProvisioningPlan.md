@@ -2318,3 +2318,49 @@ snapshot. No host tool install, factory download, VM launch/change, personal
 credentials or user desktop takeover occurred. Shared package sources/resources,
 immutable export base/patch and engine pins remain unchanged. This prepares
 milestone 6; it does not record a real-guest pass or enable production execution.
+
+## Full Setup/New VM acceptance and milestone 6 runbook — 3 November 2026
+
+**VERIFIED — isolated fake/local:** the actual `VMEditor`, native selection view,
+manager sidebar/settings and Setup screen now have a debug-only acceptance harness.
+It runs before normal AppModel/instance-lock/registry/service construction with
+an injected in-memory service, FakeRuntime and absent temporary support root.
+A scoped environment object drives real bindings/shared actions; no global bus,
+OS input injector, environment override or product gate bypass is added. App
+activation is prohibited; backing windows cannot become key/main, ignore input
+and are checked to lie outside every display. No desktop window is controlled.
+
+`make test-provisioning-screens` passed 56 checks: None/empty-name creation,
+independent frozen review acknowledgment, feature/source invalidation, delayed/
+failed replies, manager resource/factory precedence, duplicate same-UUID creation,
+exact Setup handoff, complete chunked UTF-8 task inspection, cross-guest/lost preview
+refusal, disabled product preparation, independent sudo/Docker/task/inspection
+consent, single fake submission, terminal search/expand and explicit cancel.
+Synthetic terminal bytes grant no connection/input authority; disappearance only
+detaches. See the [acceptance matrix, eight inspected images and reports](DevVMUIAcceptance.md).
+The new target is part of `make test`. Full validation passed 428 manager Swift
+functions in 56 suites, 52 script tests and relocated/read-only/ad-hoc-signed helper
+fixtures, plus the screen checks. The final focused screen run passes. Release
+compilation (`make build-signed`, without signing credentials) passes; binary
+inspection confirms the debug fixture entry point and markers are omitted.
+Package/export verification and diff checks pass.
+
+**DESIGN DECISION:** Save/Apply handlers share their button enablement guards,
+including complete required-task inspection, so actions cannot bypass that state.
+A loaded frozen selection now explains why it remains available when the source
+picker is None. DEBUG seams are available only through explicit local injection.
+No installed app, personal registry, permission, credential, host installation,
+real transport or guest operation is involved. Shared sources/resources/export
+base/patch, engine pins and the fixed-false product execution gate are unchanged.
+
+**TO PROVE:** this establishes whole-screen layout and view/action behavior with
+fakes; it does not establish physical clicks/keyboard, focus, VoiceOver, native
+file/task/confirmation dialogs, real terminal input/echo or a real guest pass.
+The [milestone-6 disposable-guest runbook](DevVMMilestone6Runbook.md) is prepared,
+not executed. It records a concrete approval worksheet, scoped operational-build
+prerequisites, real identity/apply/TTY/cleanup/reapply/restart/check/failure matrix,
+abort rules and matching-exit/owned-process/Trash cleanup. A separately reviewed,
+fake-tested candidate restricted to approved disposable UUID roots is required
+before real execution; a blanket gate change is not acceptance admission. No real
+run, tool install or image download is authorized by this documentation. Signed
+distribution remains milestone 7; a release compile is not distribution acceptance.
