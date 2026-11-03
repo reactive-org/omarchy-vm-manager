@@ -26,11 +26,11 @@ struct ProvisioningServiceEnvironment: Sendable {
     let launcher: any ProvisioningServiceLaunching
     let transportPolicy: ProvisioningTransportPolicy
     let admitPackage: @Sendable () throws -> Void
-    // Trusted fixture injection until manager-owned guest UID/key evidence is
-    // admitted. Product construction supplies nil and remains disabled.
+    // Trusted composition only. Product resolves ephemeral authenticated SSH
+    // evidence; fixtures may supply synthetic bindings. Execution stays gated.
     var resolveTarget: (@Sendable (UUID, UUID) async throws -> GuestBinding)? = nil
     // Inert constructor only, first used behind authenticated cleanup admission.
-    // Product composition supplies nil; fixture injection is internal.
+    // Product supplies the scoped constructor behind the disabled execution gate.
     var makeRecoveryAdapter: (@Sendable (ProvisioningTransportAdmission) throws -> any ProvisioningGuestAdapter)? = nil
 }
 actor ProvisioningAdmittedSessionAuthority: ProvisioningSessionAuthority {
@@ -74,6 +74,7 @@ public actor ProvisioningService {
     private var busyID: UUID?
     var drafts: [UUID: ProvisioningDraft] = [:]
     var draftCaptures = Set<UUID>()
+    var creations: [UUID: ProvisioningCreationDraft] = [:]
     var applyPreparations: [UUID: Task<ProvisioningApplyReview, Error>] = [:]
     var applyReviews: [UUID: ProvisioningApplyReview] = [:]
     var applySubmissions: [UUID: (ProvisioningApplyConsent, Task<ProvisioningWorkflowSnapshot, Error>)] = [:]
@@ -405,7 +406,7 @@ public actor ProvisioningService {
         for lease in pendingPreparations.values { await coordinator.endPreparation(lease) }
         let pendingRestarts = restarts; restarts.removeAll()
         for lease in pendingRestarts.values { await coordinator.cancelRestart(lease) }
-        try await coordinator.closeForReopen(); workflows.close(); closed = true; actionPreparations.removeAll(); actionContexts.removeAll(); actionSubmissions.removeAll(); drafts.removeAll(); applyPreparations.removeAll(); applyReviews.removeAll(); applySubmissions.removeAll(); previews.removeAll(); original.removeAll(); sources.removeAll(); tasks.removeAll()
+        try await coordinator.closeForReopen(); workflows.close(); closed = true; actionPreparations.removeAll(); actionContexts.removeAll(); actionSubmissions.removeAll(); drafts.removeAll(); creations.removeAll(); applyPreparations.removeAll(); applyReviews.removeAll(); applySubmissions.removeAll(); previews.removeAll(); original.removeAll(); sources.removeAll(); tasks.removeAll()
     }
     /// Explicit recovery requires live original resource admission and an injected
     /// adapter. A fresh process with an empty launcher still cannot prove the

@@ -148,7 +148,12 @@ final class ProvisioningHelperIPCServer: Sendable {
 /// No provisioning runner, VM, Keychain, journal or operational factory is made.
 public enum ProvisioningHelperControl {
     public static func serveInheritedOwnershipChannel(descriptor: Int32, layout: ProvisioningPackageLayout) async throws {
-        try await serveInherited(descriptor: descriptor, layout: layout, engineFactory: nil)
+        if ProvisioningProductExecution.enabled {
+            try await serveInherited(descriptor: descriptor, layout: layout, engineFactory: nil,
+                streamRunnerFactory: { input, terminal in try ProvisioningOperationalBackends.worker(input: input, terminal: terminal, layout: layout) })
+        } else {
+            try await serveInherited(descriptor: descriptor, layout: layout, engineFactory: nil)
+        }
     }
     static func serveInherited(descriptor: Int32, layout: ProvisioningPackageLayout, engineFactory: (any ProvisioningHelperEnginePreparing)?, deliveredBackend: (any ProvisioningDeliveredBackendPreparing)? = nil, transportProvider: (any ProvisioningHelperTransportProviding)? = nil, transportPolicy: ProvisioningTransportPolicy = .host, processRunnerFactory: (@Sendable (ProvisioningValidatedFrozenContext) throws -> any ProvisioningProcessRunner)? = nil, streamRunnerFactory: (@Sendable (ProvisioningValidatedFrozenContext, ProvisioningTerminal) throws -> any ProvisioningProcessRunner)? = nil) async throws {
         guard (3...1024).contains(descriptor) else { throw ProvisioningHelperIPCFailure.authentication }

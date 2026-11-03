@@ -142,12 +142,13 @@ final class AppModel: ObservableObject {
     func stopCommandServer() { commandServer?.stop(); commandServer = nil; setupServer?.stop(); setupServer = nil }
 
     func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, diskGiB: Int,
-              clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath) async -> UUID? {
+              clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath, setupConsent: ProvisioningCreationConsent? = nil) async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
         do {
             let id: UUID
             if var profile {
+                guard setupConsent == nil else { throw ProvisioningReviewFailure.invalid }
                 profile.name = name; profile.memoryMiB = memoryGiB * 1024; profile.cpus = cpus; profile.diskGiB = diskGiB
                 profile.clipboardEnabled = clipboard; profile.immersiveMode = immersive
                 if share || profile.sharedFolder != nil { profile.sharedFolder = try SharedFolderPolicy.mapping(path: sharePath, enabled: share) }
@@ -156,7 +157,7 @@ final class AppModel: ObservableObject {
                 id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
                                               clipboardEnabled: clipboard, immersiveMode: immersive, sshEnabled: sshEnabled,
                                               publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false, factory: factory,
-                                              sharedFolder: share ? try SharedFolderPolicy.mapping(path: sharePath) : nil)
+                                              sharedFolder: share ? try SharedFolderPolicy.mapping(path: sharePath) : nil, setupConsent: setupConsent)
             }
             storageRefreshed = .distantPast
             await update(); return id

@@ -71,6 +71,15 @@ final class ProvisioningPrivateInputTree: @unchecked Sendable {
               lstat(directory.path, &r) == 0, r.st_ino == rootInode, r.st_dev == device,
               fstat(rootFD, &held) == 0, held.st_ino == rootInode, held.st_dev == device else { throw ProvisioningJobFailure.artifactUnavailable }
     }
+    func writeSelectionManifest(_ data: Data, name: String) throws {
+        guard name == ProvisioningService.selectionManifest, data.count <= PlainDataParser.maximumBytes else { throw ProvisioningJobFailure.artifactUnavailable }
+        try verifyRoot()
+        let fd = openat(rootFD, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw ProvisioningJobFailure.artifactUnavailable }; defer { Darwin.close(fd) }
+        try FileHandle(fileDescriptor: fd, closeOnDealloc: false).write(contentsOf: data)
+        guard fsync(fd) == 0, fsync(rootFD) == 0 else { throw ProvisioningJobFailure.artifactUnavailable }
+        try verifyRoot()
+    }
     private func openDirectory(_ parts: [String]) throws -> Int32 {
         var current = fcntl(rootFD, F_DUPFD_CLOEXEC, 0)
         guard current >= 0 else { throw ProvisioningJobFailure.artifactUnavailable }

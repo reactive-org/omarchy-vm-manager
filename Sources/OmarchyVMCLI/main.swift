@@ -46,6 +46,12 @@ do {
         switch setup {
         case .attach(let id, let interactive):
             try await ProvisioningCLITerminal.attach(client: client, workflowID: id, interactive: interactive); exit(0)
+        case .prepareCreation(let id, let source):
+            let reply = try await client.request(.prepareCreation, previewID: id, source: source)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
+        case .creation(let id):
+            let reply = try await client.request(.creation, previewID: id)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
         case .createPreview(let vm, let id, let source):
             let reply = try await client.request(.previewCreate, previewID: id, vmID: vm, source: source)
             printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)

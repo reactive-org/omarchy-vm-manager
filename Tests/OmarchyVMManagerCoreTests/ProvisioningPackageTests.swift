@@ -122,7 +122,8 @@ private final class ProvisioningPackageFixture {
             bindingDigest: try ProvisioningCoordinator.bindingIdentity(target), reviewDigest: request.reviewIdentity, checkpointDigest: String(repeating: "c", count: 64))
         let registration = ProvisioningHelperWorkerRegistration(scope: scope, planDigest: plan.identity, inputDigest: plan.snapshot.identity, mode: .check, delivery: delivery.receipt)
         let input = try ProvisioningValidatedFrozenContext.load(delivery.bytes, registration: registration, parent: inputs)
-        let local = try BundledProvisioning.localRuntime(for: input, layout: f.layout)
+        let terminal = try ProvisioningTerminal()
+        let runner = try ProvisioningOperationalBackends.worker(input: input, terminal: terminal, layout: f.layout)
         let script = source.appendingPathComponent("fixture.sh")
         try Data("#!/bin/sh\nprintf 'local fixture output\\n'\n".utf8).write(to: script); chmod(script.path, 0o700)
         let context = GuestJobContext(jobID: request.jobID, payloadID: UUID(), target: target, dependencyDigest: request.dependencyDigest, mode: .check)
@@ -130,11 +131,13 @@ private final class ProvisioningPackageFixture {
             .init(id: UUID(), commandID: UUID(), context: context, purpose: .identity, executable: script, arguments: [], environment: [:],
                 workingDirectory: source, input: input, output: .terminalStream, timeoutSeconds: 2)
         }
-        let result = await local.runner.run(invocation(.closed))
+        let result = await runner.run(invocation(.closed))
         if case .exited(status: 0, reason: .normal) = result.termination {} else { Issue.record("Local fixture failed") }
-        #expect(String(decoding: local.terminal.snapshot().frames.flatMap { $0.bytes }, as: UTF8.self).contains("local fixture output"))
-        #expect(!local.terminal.snapshot().acceptsInput)
-        if case .notStarted = await local.runner.run(invocation(.terminalLease(UUID()))).termination {} else { Issue.record("Unowned input was accepted") }
+        #expect(String(decoding: terminal.snapshot().frames.flatMap { $0.bytes }, as: UTF8.self).contains("local fixture output"))
+        #expect(!terminal.snapshot().acceptsInput)
+        if case .notStarted = await runner.run(invocation(.terminalLease(UUID()))).termination {} else { Issue.record("Unowned input was accepted") }
+        try Data("changed".utf8).write(to: f.resources.appendingPathComponent("catalogue.json"))
+        #expect(throws: Error.self) { _ = try ProvisioningOperationalBackends.worker(input: input, terminal: terminal, layout: f.layout) }
     }
 
 }

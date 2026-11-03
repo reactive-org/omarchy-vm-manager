@@ -2175,3 +2175,71 @@ remains the visual target for milestone 5.
   fake adapters and disposable private UUID fixtures. No real transport, host
   install, factory download, VM or user UI operation occurred. Shared sources,
   resources and pins are unchanged.
+
+
+## Native feature choices and New VM setup selection — 3 November 2026
+
+- **DESIGN DECISION:** Setup and New VM expose typed Use source/Enable/Disable
+  choices for common built-ins; advanced settings remain source-owned and shared
+  planning resolves dependencies/conflicts. Native edits derive a private generated
+  manifest from frozen bytes, preserve the original manifest/mode and bind all
+  selected bytes into new hashes. No selected source file is overwritten.
+- **DESIGN DECISION:** New VM saves a separately acknowledged frozen selection,
+  while resource/factory/SSH/owner/sharing fields come from manager creation
+  arguments. Saving is metadata only and grants no Apply, task trust or sudo
+  authority. Duplicate consent plus identical creation arguments returns the
+  original UUID without mutation/launch; uncertain saves retain their reservation.
+- **PRIVATE COUPLING:** strict setup-socket creation prepare/lookup and guest
+  creation consent share the native service. Registry schema 6 stores a validated,
+  immutable non-secret receipt. Preview binding requires its matching saved VM;
+  reopening retains metadata lookup only and cannot recreate execution consent.
+  Older registry versions still load; older builds reject schema 6.
+- **VERIFIED:** `make test` passed 419 manager Swift functions in 55 suites, 52
+  script tests and relocated/read-only/ad-hoc-signed helper fixtures. Focused
+  local selection tests pass 16 functions in one suite,
+  including frozen bytes/modes, typed protocol refusal, shared dependency resolution,
+  resource/factory precedence, duplicate and uncertain saves, port admission and
+  inert reopen. Full-suite evidence is recorded in the
+  [milestone-5 handoff record](docs/DevVMProvisioningPlan.md#milestone-5-native-features-and-new-vm-handoff--3-november-2026).
+- **TO PROVE:** full native visual/interaction acceptance, operational guest
+  owner/UID/key evidence and runner factories, real guest/SSH/echo/cleanup/restart/
+  check/crash/sleep/wake and signed distribution. Execution/resolver/recovery
+  construction remain disabled. No host install, real transport, factory download,
+  VM or user UI operation occurred. Shared sources/resources/pins are unchanged.
+
+## Authenticated provisioning identity and dormant runtime composition — 3 November 2026
+
+- **DESIGN DECISION:** retain the UID/owner from the existing authenticated managed
+  SSH probe, bound to its exact VM/session, UUID-root inode/device, port, host key,
+  public metadata hashes and stat-pinned client identity. A strict bounded parser
+  refuses malformed replies. Readiness-only state, guest status, manifests and
+  saved receipts cannot supply provisioning identity. Evidence is memory-only,
+  redacted and fresh for at most 45 monotonic seconds.
+- **PRIVATE COUPLING:** the pinned guest `managed-ssh-identity` command supplies
+  exactly VM/session/user/UID, as confirmed by source inspection. Successful
+  30-second refreshes preserve readiness; failures and identity changes invalidate
+  authority. Retry/pause/shutdown/exit clear evidence and fence late callbacks.
+  Host transport admission/revalidation require current authenticated evidence.
+- **DESIGN DECISION:** product composition now supplies inert identity/recovery
+  constructors. A single fixed-false build-time gate keeps manager execution and
+  helper runner selection disabled. Dormant worker construction reuses package/
+  engine/resource/launcher admission and original session/invocation fencing.
+  Recovery construction remains behind original-helper proof and cleanup-only
+  scope; it rechecks transport and manager authority. A new runner proves no prior
+  worker exit and grants no task, sudo or user-input authority.
+- **VERIFIED:** `make test` passes 428 manager Swift functions in 56 suites, 52
+  script tests and relocated/read-only/ad-hoc-signed helper fixtures. Focused
+  fake/local identity/backend validation passes 43 functions
+  across nine suites, including the normal monitor with fake SSH execution and
+  fixture sleeps. Source inspection confirms the four-field guest identity format.
+  The [implementation/evidence record](docs/DevVMProvisioningPlan.md#milestone-6-preparation-authenticated-identity-and-dormant-backends--3-november-2026)
+  records final full-suite and offscreen component checks. Actual controls and
+  correctly oriented Unicode/ANSI terminal rendering were inspected in a labelled
+  synthetic PNG, without AppModel/registry access or a visible window. This does
+  not establish whole-screen interaction or real prompt/echo acceptance.
+- **TO PROVE:** real owner/UID/key authenticity, guest/nested SSH/TTY behavior,
+  remote cleanup, end-to-end setup/reapplication/restart/check, crash/sleep/wake,
+  whole-screen interactive acceptance and signed distribution. No product execution
+  was enabled, real transport/VM operation performed, host tools installed,
+  factory downloaded, personal credential accessed or user desktop taken over.
+  Shared package sources/resources/export and engine pins remain unchanged.

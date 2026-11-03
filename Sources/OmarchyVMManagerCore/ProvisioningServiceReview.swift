@@ -6,41 +6,22 @@ extension ProvisioningService: ProvisioningReviewing {
         try reviewAvailable(); try source.validate()
         if let draft = drafts[id] {
             guard draft.preview.vmID == vmID, draft.selection == source else { throw ProvisioningJobFailure.jobConflict }
-            return try preview(id) // Lookup, never recapture after a lost reply.
+            return try await preview(id) // Lookup, never recapture after a lost reply.
         }
-        guard drafts.count + draftCaptures.count < 16, !draftCaptures.contains(id), status(id) == nil else { throw ProvisioningReviewFailure.quota }
+        guard reviewCount < 16, creations[id] == nil, !draftCaptures.contains(id), status(id) == nil else { throw ProvisioningReviewFailure.quota }
         draftCaptures.insert(id); defer { draftCaptures.remove(id) }
         let snapshots = await manager.snapshots()
         try reviewAvailable()
         guard let target = snapshots.first(where: { $0.id == vmID }) else { throw ProvisioningReviewFailure.invalid }
-        try environment.admitPackage()
-        let directory: URL, manifest: String
-        if let preset = source.preset {
-            let url = try BundledProvisioning.presetSource(preset); directory = url.deletingLastPathComponent(); manifest = url.lastPathComponent
-        } else { directory = URL(fileURLWithPath: source.directory!); manifest = "vm.yml" }
-        let proposed = try SetupPlanner.plan(repository: directory, manifest: manifest)
-        guard try ProvisioningCoordinator.engineIdentity(proposed) == environment.engineDigest else { throw ProvisioningReviewFailure.changed }
-        let archive = try FrozenInputsArchive(privateArchive: proposed.snapshot.privateArchive(), expectedIdentity: proposed.snapshot.identity)
-        try ProvisioningSourceRetention.admit(archive, into: sourceDirectory)
-        let storage = try ProvisioningPrivateInputTree(archive: archive, parent: sourceDirectory)
-        let plan = try SetupPlanner.plan(repository: storage.directory, manifest: manifest)
-        guard plan.identity == proposed.identity, plan.snapshot.identity == archive.identity,
-              case .object(let document) = plan.document, case .array(let taskFields) = document["tasks"],
-              case .object(let requirements) = document["requirements"] else { throw ProvisioningReviewFailure.changed }
-        let tasks = try taskFields.map { value -> ProvisioningTaskReview in
-            guard case .object(let fields) = value, case .string(let name) = fields["name"], case .string(let file) = fields["file"],
-                  let receipt = plan.snapshot.receipts.first(where: { $0.path == file }) else { throw ProvisioningReviewFailure.invalid }
-            return .init(name: name, file: file, sha256: receipt.sha256)
-        }
-        let result = ProvisioningPlanPreview(id: id, vmID: vmID, sessionID: target.sessionID, planDigest: plan.identity, inputDigest: plan.snapshot.identity,
-            engineDigest: environment.engineDigest, proposal: try helperJSON(plan), tasks: tasks,
-            restartRequired: requirements["desktop_restart_required"] == .bool(true))
-        try result.validate(); try environment.admitPackage()
-        drafts[id] = .init(selection: source, preview: result, storage: storage, plan: plan)
+        let value = try freezeSelection(source)
+        let result = try value.preview(id: id, vmID: vmID, sessionID: target.sessionID, engine: environment.engineDigest)
+        drafts[id] = .init(selection: source, preview: result, storage: value.storage, plan: value.plan)
         return result
     }
-    public func preview(_ id: UUID) throws -> ProvisioningPlanPreview {
-        try reviewAvailable(); guard let draft = drafts[id] else { throw ProvisioningReviewFailure.unavailable }
+    public func preview(_ id: UUID) async throws -> ProvisioningPlanPreview {
+        try reviewAvailable()
+        if drafts[id] == nil { try await bindCreation(id) }
+        guard let draft = drafts[id] else { throw ProvisioningReviewFailure.unavailable }
         try verify(draft); return draft.preview
     }
     public func taskSource(_ id: UUID, name: String, offset: Int) throws -> ProvisioningTaskSource {
@@ -57,6 +38,7 @@ extension ProvisioningService: ProvisioningReviewing {
     public func prepareApply(_ id: UUID) async throws -> ProvisioningApplyReview {
         try enabled()
         if let review = applyReviews[id] { return review }
+        if drafts[id] == nil { _ = try await preview(id) }
         if let task = applyPreparations[id] { return try await task.value }
         guard let draft = drafts[id], !reviewOperations.contains(id) else { throw ProvisioningReviewFailure.unavailable }
         reviewOperations.insert(id)

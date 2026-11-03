@@ -17,6 +17,9 @@ public struct GuestCLIInvocation: Sendable {
       setup plan --from /folder    Preview local vm.yml without a VM
       setup preview VM_UUID --from /folder|--preset NAME --preview-id UUID
                                    Freeze a manager-owned preview; retain its UUID
+      setup prepare-create UUID --from /folder|--preset NAME [--enable FEATURE] [--disable FEATURE]
+                                   Freeze a selection before creating a VM
+      setup creation UUID          Read a frozen New VM selection
       setup preview UUID           Read an existing frozen preview
       setup task-source UUID NAME [--offset N]
                                    Explicitly inspect a frozen task (4096-byte chunk)
@@ -49,6 +52,8 @@ public struct GuestCLIInvocation: Sendable {
             --share on|off, --share-path PATH (default ~/Shared → /mnt/mac, read-write)
     Creation only: --factory official|MANIFEST_SHA256, --ssh on|off, --owner-defaults on|off, --public-key FILE.pub
             --inherit-default-public-key on|off (default on)
+            --setup-review-id UUID --setup-review SHA256 --ack-setup-selection
+            (save a frozen selection; use a separate start command)
     Use --inherit-default-public-key off to omit the saved personal SSH key;
     managed SSH stays enabled. An explicitly supplied --public-key still applies.
     Owner overrides (create): --username USER, --full-name NAME, --email EMAIL,
@@ -68,13 +73,13 @@ public struct GuestCLIInvocation: Sendable {
         guard let command = GuestCommand(rawValue: aliases[arguments[0]] ?? arguments[0]) else { throw commandFailure("usage", "Unknown command. Run omarchy-vm --help.") }
         var config = GuestConfigurationPatch(), selector: String?, positional: String?
         var values: [String: String] = [:], flags: Set<String> = [], index = 1
-        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--clipboard", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard", "--share", "--share-path"]
+        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--clipboard", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard", "--share", "--share-path", "--setup-review-id", "--setup-review"]
         while index < arguments.count {
             let key = arguments[index]; index += 1
             if key == "--wait" {
                 guard flags.insert(key).inserted else { throw commandFailure("usage", "Duplicate option.") }
                 if index < arguments.count, GuestWaitCondition(rawValue: arguments[index]) != nil { values[key] = arguments[index]; index += 1 }
-            } else if ["--start", "--force"].contains(key) {
+            } else if ["--start", "--force", "--ack-setup-selection"].contains(key) {
                 guard flags.insert(key).inserted else { throw commandFailure("usage", "Duplicate option.") }
             } else if options.contains(key) {
                 guard index < arguments.count, !arguments[index].hasPrefix("--"), values[key] == nil else { throw commandFailure("usage", "An option is duplicated or missing its value.") }
@@ -122,6 +127,11 @@ public struct GuestCLIInvocation: Sendable {
         let configOptions = Set(values.keys).subtracting(["--timeout", "--for", "--wait"])
         guard configOptions.isEmpty || command == .create || command == .update else { throw commandFailure("usage", "Configuration options apply only to create or update.") }
         var request = GuestCommandRequest(command: command, selector: selector, config: command == .create || command == .update ? config : nil)
+        if values["--setup-review-id"] != nil || values["--setup-review"] != nil || flags.contains("--ack-setup-selection") {
+            guard let token = values["--setup-review-id"], let id = UUID(uuidString: token), let identity = values["--setup-review"],
+                  flags.contains("--ack-setup-selection") else { throw commandFailure("usage", "Supply --setup-review-id UUID --setup-review SHA256 --ack-setup-selection together.") }
+            request.setupConsent = .init(reviewID: id, reviewIdentity: identity, acknowledged: true)
+        }
         request.start = flags.contains("--start"); request.force = flags.contains("--force")
         request.details = command == .get
         if let timeout = values["--timeout"] { request.timeoutSeconds = try positiveInteger(timeout) }

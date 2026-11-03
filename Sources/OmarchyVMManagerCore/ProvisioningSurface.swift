@@ -40,6 +40,7 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
     case capabilities, list, status(UUID), cancel(UUID), attach(UUID, interactive: Bool), events(UUID)
     case plan(URL), preset(String), presets
     case createPreview(UUID, UUID, ProvisioningSetupSource), preview(UUID), taskSource(UUID, String, Int)
+    case prepareCreation(UUID, ProvisioningSetupSource), creation(UUID)
     case prepareApply(UUID), apply(UUID, ProvisioningApplyConsent)
     case prepareAction(UUID, ProvisioningWorkflowAction, UUID), performAction(UUID, ProvisioningWorkflowActionConsent)
     public static func parse(_ args: [String]) throws -> Self? {
@@ -61,8 +62,9 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
             }
             throw commandFailure("usage", "Use prepare-restart|prepare-check|prepare-recover UUID --review-id UUID, then restart|check|recover UUID --review-id UUID --review SHA256 --ack.")
         }
-        if ["preview", "prepare-apply", "apply", "task-source"].contains(args[1]) {
+        if ["prepare-create", "creation", "preview", "prepare-apply", "apply", "task-source"].contains(args[1]) {
             guard args.count >= 3, let id = UUID(uuidString: args[2]) else { throw commandFailure("usage", "Use an exact UUID for setup review commands.") }
+            if args.count == 3, args[1] == "creation" { return .creation(id) }
             if args.count == 3, args[1] == "preview" { return .preview(id) }
             if args.count == 3, args[1] == "prepare-apply" { return .prepareApply(id) }
             if args[1] == "task-source", args.count == 4 || args.count == 6 {
@@ -73,18 +75,25 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
                 return .taskSource(id, args[3], offset)
             }
             var values: [String: String] = [:], flags = Set<String>(), index = 3
-            let options: Set<String> = args[1] == "preview" ? ["--from", "--preset", "--preview-id"] : ["--review", "--trust-tasks"]
+            let isSource = ["preview", "prepare-create"].contains(args[1])
+            var features = ProvisioningFeatureSelection()
+            let options: Set<String> = isSource ? ["--from", "--preset", "--preview-id"] : ["--review", "--trust-tasks"]
             while index < args.count {
                 let option = args[index]; index += 1
+                if isSource, ["--enable", "--disable"].contains(option) {
+                    guard index < args.count, let feature = ProvisioningCommonFeature(rawValue: args[index]), features.choice(feature) == .inherit else { throw commandFailure("usage", "Choose each supported feature at most once.") }
+                    features = features.setting(feature, to: option == "--enable" ? .enable : .disable); index += 1; continue
+                }
                 if args[1] == "apply", ["--ack-sudo", "--ack-docker-root"].contains(option), flags.insert(option).inserted { continue }
                 guard options.contains(option), values[option] == nil, index < args.count, !args[index].hasPrefix("--") else { throw commandFailure("usage", "Unknown, duplicate or incomplete review option.") }
                 values[option] = args[index]; index += 1
             }
-            if args[1] == "preview", let token = values["--preview-id"], let previewID = UUID(uuidString: token),
-               (values["--from"] == nil) != (values["--preset"] == nil) {
-                let source = values["--from"].map { ProvisioningSetupSource(directory: $0) } ?? .init(preset: values["--preset"]!)
+            if isSource, (values["--from"] == nil) != (values["--preset"] == nil) {
+                let selection: ProvisioningFeatureSelection? = features.isEmpty ? nil : features
+                let source = values["--from"].map { ProvisioningSetupSource(directory: $0, features: selection) } ?? .init(preset: values["--preset"]!, features: selection)
                 do { try source.validate() } catch { throw commandFailure("usage", "Choose a bundled preset or an absolute setup folder.") }
-                return .createPreview(id, previewID, source)
+                if args[1] == "prepare-create", values["--preview-id"] == nil { return .prepareCreation(id, source) }
+                if args[1] == "preview", let token = values["--preview-id"], let previewID = UUID(uuidString: token) { return .createPreview(id, previewID, source) }
             }
             if args[1] == "apply", let review = values["--review"], provisioningDigest(review), values["--trust-tasks"].map(provisioningDigest) ?? true {
                 return .apply(id, .init(reviewIdentity: review, taskTrustIdentity: values["--trust-tasks"], persistentGrantAcknowledged: flags.contains("--ack-sudo"), dockerRootAccessAcknowledged: flags.contains("--ack-docker-root")))

@@ -89,7 +89,11 @@ struct ManagerView: View {
         }
         .sheet(isPresented: $importingFactory) { FactoryImportView(model: model) }
         .sheet(item: $editor) { selection in
-            VMEditor(model: model, profile: selection.profile) { id in focusGuest(id); editor = nil }
+            VMEditor(model: model, profile: selection.profile) { id in
+                focusGuest(id)
+                if selection.profile == nil, model.snapshots.first(where: { $0.id == id })?.profile.developerSetup != nil { page = .setup }
+                editor = nil
+            }
         }
         .sheet(isPresented: $model.shuttingDown) { ProgressView("Shutting down VMs…").padding(40).interactiveDismissDisabled() }
         .alert("Power off this VM?", isPresented: Binding(get: { model.forceStopID != nil }, set: { if !$0 { model.forceStopID = nil } })) {
@@ -406,6 +410,8 @@ private struct VMEditor: View {
     @State private var factory = "official"
     @State private var importingFactory = false
     @State private var useOwnerDefaults: Bool
+    @State private var setupConsent: ProvisioningCreationConsent?
+    @State private var setupReady = true
     init(model: AppModel, profile: VMProfile?, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = saved
         _name = State(initialValue: profile?.name ?? "")
@@ -435,10 +441,7 @@ private struct VMEditor: View {
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    LabeledContent("Developer setup") {
-                        Text("None · available from the Setup tab after creation").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text("Setup can be previewed without launching a guest. Automatic setup is disabled pending guest acceptance.").font(.caption).foregroundStyle(.secondary)
+                    NewVMSetupSelectionView(model: model, consent: $setupConsent, ready: $setupReady).disabled(saving)
                     Button("Import Factory…") { importingFactory = true }
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
                 } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
@@ -490,12 +493,12 @@ private struct VMEditor: View {
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     saving = true
                     Task {
-                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath) { saved(id) }
+                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, setupConsent: setupConsent) { saved(id) }
                         saving = false
                     }
-                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving || (profile == nil && !setupReady))
             }
-        }.padding(26).frame(width: 520).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }.task { await model.loadFactories() }
+        }.padding(26).frame(width: 600, height: 760).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }.task { await model.loadFactories() }
         .sheet(isPresented: $importingFactory) {
             FactoryImportView(model: model) { identity in factory = identity.selector }
         }

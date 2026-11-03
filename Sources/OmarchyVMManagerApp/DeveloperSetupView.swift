@@ -11,6 +11,7 @@ struct DeveloperSetupView: View {
     let snapshot: VMSnapshot
     @StateObject private var screen = ProvisioningTerminalScreen()
     @State private var source = "none"
+    @State private var features = ProvisioningFeatureSelection()
     @State private var selectedWorkflow: UUID?
     @State private var folder: URL?
     @State private var choosingFolder = false
@@ -70,6 +71,7 @@ struct DeveloperSetupView: View {
                         Button(frozen == nil ? "Preview plan" : "Refresh preview") { Task { await plan() } }.disabled(source == "none" || planning || preparingApply || submitting || applyReview != nil || (source == "local" && folder == nil))
                         if planning { ProgressView().controlSize(.small) }
                     }
+                    if source != "none" { ProvisioningFeatureSelectionView(selection: $features).disabled(planning || preparingApply || submitting || applyReview != nil) }
                     if let folder, source == "local" { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
                     Text("Preview software, removals, update policy, dotfiles and restart requirements before applying. Custom tasks require separate trust tied to the frozen inputs.").font(.callout).foregroundStyle(.secondary)
                     Text("Setup execution is disabled pending guest acceptance. A preview does not change this VM or its resource settings.").font(.callout).foregroundStyle(.secondary)
@@ -124,6 +126,7 @@ struct DeveloperSetupView: View {
             workflowActionReview = nil; actionRequestID = nil; actionRequested = nil; actionAcknowledged = false; actionAttempted = false
         }
         .onChange(of: source) { _, _ in invalidatePreview() }
+        .onChange(of: features) { _, _ in invalidatePreview() }
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { invalidatePreview(); folder = url }
         }
@@ -140,6 +143,10 @@ struct DeveloperSetupView: View {
         } message: { Text("Cleanup may still need verification. Closing this page only detaches the terminal.") }
         .task(id: workflow?.id) {
             if let workflow, let service = model.setupService { await screen.attach(service: service, workflowID: workflow.id) }
+        }
+        .task(id: snapshot.id.uuidString + String(model.setupService != nil)) {
+            guard let receipt = snapshot.profile.developerSetup, frozen == nil, source == "none" else { return }
+            previewLookup = receipt.reviewID.uuidString; await loadPreview()
         }
         .onDisappear { Task { await screen.detach() } }
     }
@@ -286,8 +293,8 @@ struct DeveloperSetupView: View {
         let revision = UUID(); planRevision = revision
         let id = frozen == nil ? (captureID ?? UUID()) : UUID(); captureID = id; frozen = nil
         let selection: ProvisioningSetupSource
-        if source == "local", let folder { selection = .init(directory: folder.standardizedFileURL.path) }
-        else { selection = .init(preset: source) }
+        if source == "local", let folder { selection = .init(directory: folder.path, features: features.isEmpty ? nil : features) }
+        else { selection = .init(preset: source, features: features.isEmpty ? nil : features) }
         defer { planning = false }
         do {
             let value = try await service.preview(id: id, vmID: snapshot.id, source: selection)
@@ -296,8 +303,8 @@ struct DeveloperSetupView: View {
     }
     @MainActor private func loadPreview() async {
         guard let service = reviewingService, let id = UUID(uuidString: previewLookup) else { return }
-        planning = true; failure = nil; defer { planning = false }
-        do { try display(try await service.preview(id)) }
+        planning = true; failure = nil; let revision = planRevision; defer { planning = false }
+        do { let value = try await service.preview(id); guard revision == planRevision else { return }; try display(value) }
         catch { failure = "This frozen preview is unavailable or belongs to another guest. It cannot be restored from a saved identifier after manager restart." }
     }
     @MainActor private func inspectTask(_ value: ProvisioningPlanPreview, task: ProvisioningTaskReview) async {

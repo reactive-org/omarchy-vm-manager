@@ -3,7 +3,7 @@ import Foundation
 
 public enum ProvisioningExternalOperation: String, Codable, Sendable {
     case capabilities, list, status, cancel, attach, read, reset, claim, release, input, resize, detach, heartbeat
-    case previewCreate, preview, taskSource, prepareApply, apply, prepareAction, performAction
+    case prepareCreation, creation, previewCreate, preview, taskSource, prepareApply, apply, prepareAction, performAction
 }
 /// External protocol 1, exclusively on setup-v1.sock. A connection owns at most
 /// one attachment. Helper capabilities and credentials never leave the manager.
@@ -35,11 +35,12 @@ public struct ProvisioningExternalRequest: Codable, Sendable, CustomStringConver
         guard data.count <= 9 * 1024, case .object(let fields) = try PlainDataParser.parse(data, format: .json) else { throw ProvisioningTerminalDenial.bounds }
         let v = try JSONDecoder().decode(Self.self, from: data)
         var keys: Set<String> = ["version", "requestID", "sequence", "operation"]
-        let reviewOperations: Set<ProvisioningExternalOperation> = [.previewCreate, .preview, .taskSource, .prepareApply, .apply]
+        let reviewOperations: Set<ProvisioningExternalOperation> = [.prepareCreation, .creation, .previewCreate, .preview, .taskSource, .prepareApply, .apply]
         if reviewOperations.contains(v.operation) { keys.insert("previewID") }
         else if ![.capabilities, .list].contains(v.operation) { keys.insert("workflowID") }
         if v.operation == .prepareAction { keys.formUnion(["action", "actionReviewID"]) }
         if v.operation == .performAction { keys.insert("actionConsent") }
+        if v.operation == .prepareCreation { keys.insert("source") }
         if v.operation == .previewCreate { keys.formUnion(["vmID", "source"]) }
         if v.operation == .apply { keys.insert("consent") }
         if v.operation == .taskSource { keys.formUnion(["taskName", "offset"]) }
@@ -51,6 +52,7 @@ public struct ProvisioningExternalRequest: Codable, Sendable, CustomStringConver
               ![.input, .resize].contains(v.operation) || v.invocationID != nil else { throw ProvisioningTerminalDenial.bounds }
         if v.operation == .prepareAction { guard v.action != nil, v.actionReviewID != nil else { throw ProvisioningTerminalDenial.bounds } }
         if v.operation == .performAction { guard let consent = v.actionConsent else { throw ProvisioningTerminalDenial.bounds }; try consent.validate() }
+        if v.operation == .prepareCreation { guard let source = v.source else { throw ProvisioningTerminalDenial.bounds }; try source.validate() }
         if v.operation == .previewCreate { guard v.vmID != nil, let source = v.source else { throw ProvisioningTerminalDenial.bounds }; try source.validate() }
         if v.operation == .apply { guard let consent = v.consent else { throw ProvisioningTerminalDenial.bounds }; try consent.validate() }
         if v.operation == .taskSource {
@@ -72,6 +74,7 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
     public let operation: ProvisioningExternalOperation
     public var workflowActionReview: ProvisioningWorkflowActionReview?
     public var previewPlan: ProvisioningPlanPreview?
+    public var creationReview: ProvisioningCreationReview?
     public var applyReview: ProvisioningApplyReview?
     public var taskSource: ProvisioningTaskSource?
     public var executionEnabled: Bool?
@@ -90,6 +93,7 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
         else {
             switch request.operation {
             case .capabilities: keys.insert("executionEnabled")
+            case .prepareCreation, .creation: keys.insert("creationReview")
             case .previewCreate, .preview: keys.insert("previewPlan")
             case .prepareApply: keys.insert("applyReview")
             case .prepareAction: keys.insert("workflowActionReview")
@@ -112,6 +116,9 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
             try review.validate()
             guard review.id == request.actionReviewID, review.workflowID == request.workflowID, review.action == request.action else { throw ProvisioningTerminalDenial.bounds }
         }
+        if let review = v.creationReview {
+            try review.validate(); guard review.id == request.previewID else { throw ProvisioningTerminalDenial.bounds }
+        }
         if let preview = v.previewPlan {
             try preview.validate(); guard preview.id == request.previewID, request.operation != .previewCreate || preview.vmID == request.vmID else { throw ProvisioningTerminalDenial.bounds }
         }
@@ -121,7 +128,8 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
                   provisioningDigest(source.sha256), source.bytes.count <= 4096, source.total >= 0, source.total <= SourceSnapshot.maximumBytes,
                   source.offset >= 0, source.offset <= source.total, source.bytes.count == min(4096, source.total - source.offset) else { throw ProvisioningTerminalDenial.bounds }
         }
-        guard v.failure != nil || (![.previewCreate, .preview].contains(request.operation) || v.previewPlan != nil),
+        guard v.failure != nil || (![.prepareCreation, .creation].contains(request.operation) || v.creationReview != nil),
+              v.failure != nil || (![.previewCreate, .preview].contains(request.operation) || v.previewPlan != nil),
               v.failure != nil || (request.operation != .prepareApply || v.applyReview != nil),
               v.failure != nil || (request.operation != .taskSource || v.taskSource != nil),
               v.failure != nil || (request.operation != .prepareAction || v.workflowActionReview != nil) else { throw ProvisioningTerminalDenial.bounds }
@@ -158,6 +166,9 @@ actor ProvisioningExternalSession {
                 guard let service = service as? any ProvisioningWorkflowActing else { reply.failure = "unavailable"; return reply }
                 if r.operation == .prepareAction { reply.workflowActionReview = try await service.prepareAction(r.workflowID!, action: r.action!, reviewID: r.actionReviewID!) }
                 else { reply.workflows = [try await service.performAction(r.workflowID!, consent: r.actionConsent!)] }
+            case .prepareCreation, .creation:
+                guard let service = service as? any ProvisioningCreationPlanning else { reply.failure = "unavailable"; return reply }
+                reply.creationReview = r.operation == .prepareCreation ? try await service.prepareCreation(id: r.previewID!, source: r.source!) : try await service.creation(r.previewID!)
             case .previewCreate, .preview, .taskSource, .prepareApply, .apply:
                 guard let service = service as? any ProvisioningReviewing else { reply.failure = "unavailable"; return reply }
                 switch r.operation {

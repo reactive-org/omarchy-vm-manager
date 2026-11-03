@@ -217,7 +217,7 @@ connection; mutations are never automatically replayed. The endpoint admits
 only same-user peers, at most eight connections and one viewer per connection,
 with a 15-second activity lease. Inactive clients must poll or heartbeat.
 
-The frozen review/consent contract is described below. Product prepare/apply returns `failure: "disabled"` even when tools are ready; workflow restart/check/recover use the separately reviewed, execution-gated contract below. Automatic New VM setup remains follow-up work. No product job is submitted. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
+The frozen review/consent contract is described below. Product prepare/apply returns `failure: "disabled"` even when tools are ready; workflow restart/check/recover use the separately reviewed, execution-gated contract below. New VM can now save a frozen selection without authorizing execution, as described below. No product job is submitted. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
 for validation and the remaining acceptance boundary.
 
 ### Frozen preview and separate task trust
@@ -312,3 +312,60 @@ Both preparation and submission remain disabled in the product (`failure:
 "disabled"`) before target/dependency/adapter work. Tests exercise the native
 service API and actual CLI socket with fake runtimes/adapters only. See the
 [action validation record](DevVMProvisioningPlan.md#milestone-5-reviewed-restart-check-and-cleanup-recovery--3-november-2026).
+
+### Native features and saving a New VM setup selection
+
+The uninstalled worktree now accepts common built-ins through repeated distinct
+`--enable FEATURE` / `--disable FEATURE` flags on manager-owned preview capture
+and `prepare-create`. Supported names are `workstation`, `cli`, `vcs`, `editors`,
+`docker`, `build`, `toolchain`, `languages`, `browsers`, `databases`, `api`, `quality`.
+Omitting a choice preserves the source; disabling does not uninstall packages.
+Advanced profiles/catalogues/options remain in the source manifest. Resolution is
+still performed by the pinned shared planner, which may reject dependencies or
+conflicts. The manager writes a private generated manifest and preserves the
+original source bytes. New file references must already be selected or declared
+as assets in the original source.
+
+```sh
+omarchy-vm setup prepare-create REVIEW_UUID --preset developer --disable docker
+omarchy-vm setup creation REVIEW_UUID
+omarchy-vm create work --memory 8GiB --cpus 4 --disk 128GiB --factory official \
+  --setup-review-id REVIEW_UUID --setup-review REVIEW_DIGEST --ack-setup-selection
+omarchy-vm setup preview REVIEW_UUID
+omarchy-vm setup preview VM_UUID --from /absolute/folder --preview-id NEW_UUID \
+  --enable cli --disable docker
+```
+
+Choose/retain `REVIEW_UUID` before capture. Preparation returns `creationReview`
+with its UUID, exact proposal, plan/input/engine hashes and `reviewIdentity`;
+use that identity for `REVIEW_DIGEST`. It starts no VM/helper, probes no host tools
+and requires the running manager. Creation uses its explicit manager resource and
+factory settings, saves a non-secret `developerSetup` receipt and leaves the guest
+stopped. `--ack-setup-selection` saves the selection only. It never acknowledges
+custom tasks, sudo or Apply. All three creation flags are required together;
+`--start`, `--wait` and connection-detail probes are refused with a setup selection.
+
+An exact repeat of the same creation consent and settings looks up the saved VM
+UUID; changed creation settings are refused. A consumed reservation with uncertain
+registry outcome is not retried with another UUID. Inspect `list`/`get` and registry
+state before a fresh explicit review. After manager restart, saved receipts provide
+metadata lookup only: frozen preview/apply handles are not reconstructed, and a
+fresh review is required. Registry schema 6 protects receipts from older-build
+writes. Product execution remains disabled independently of Homebrew readiness.
+See [the handoff implementation and evidence](DevVMProvisioningPlan.md#milestone-5-native-features-and-new-vm-handoff--3-november-2026).
+
+### Authenticated identity preparation
+
+Provisioning targets now resolve from ephemeral evidence retained by the manager's
+normal authenticated SSH monitor, including the UID, exact VM/session, port and
+host/client-key references. A username shown as Ready, a saved creation receipt
+or a manifest cannot supply that identity. Evidence expires after 45 monotonic
+seconds and is cleared by retry, pause, shutdown or exit; late callbacks are fenced.
+Strict parsing and before/after pin checks refuse changed or malformed replies.
+No UID override, password automation or product-execution flag was added.
+
+Identity and lazy worker/recovery constructors are wired behind a fixed-false
+build-time acceptance gate. Prepare/apply/workflow actions remain disabled before
+tools or factories run; Homebrew readiness cannot enable them. Fake/local evidence
+and the remaining guest acceptance are recorded in
+[the milestone-6 preparation record](DevVMProvisioningPlan.md#milestone-6-preparation-authenticated-identity-and-dormant-backends--3-november-2026).

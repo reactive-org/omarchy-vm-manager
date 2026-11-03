@@ -89,7 +89,7 @@ struct ProvisioningManagedEndpoint: Codable, Equatable, Sendable {
     let rootDevice: Int64, rootInode: UInt64
     let port: UInt16
     let manifestSHA256: String, bootstrapSHA256: String, knownHostsSHA256: String
-    static func load(root: URL, port: UInt16, target: GuestBinding) throws -> Self {
+    static func observe(root: URL, port: UInt16, vmID: UUID, sessionID: UUID) throws -> (endpoint: Self, hostKey: Data) {
         guard root.isFileURL, root.path.hasPrefix("/"), root.path.utf8.count <= 4096,
               !root.path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               !root.path.split(separator: "/").contains("..") else { throw ProvisioningJobFailure.invalidRequest }
@@ -101,8 +101,8 @@ struct ProvisioningManagedEndpoint: Codable, Equatable, Sendable {
         let bootstrap = try PrivateFiles.read(storage.bootstrap.appendingPathComponent("manifest.json"))
         func document(_ data: Data, bootstrap: Bool) throws {
             let fields = try transportFields(PlainDataParser.parse(data, format: .json), required: bootstrap ? ["schemaVersion", "vmID", "sessionToken", "publicKeys"] : ["schemaVersion", "vmID", "sessionToken", "hostPort"])
-            guard fields["schemaVersion"] == .integer(1), fields["vmID"] == .string(target.vmID.uuidString),
-                  fields["sessionToken"] == .string(target.sessionID.uuidString) else { throw ProvisioningJobFailure.targetChanged }
+            guard fields["schemaVersion"] == .integer(1), fields["vmID"] == .string(vmID.uuidString),
+                  fields["sessionToken"] == .string(sessionID.uuidString) else { throw ProvisioningJobFailure.targetChanged }
             if bootstrap {
                 guard case .array(let keys) = fields["publicKeys"], !keys.isEmpty, keys.count <= 16 else { throw ProvisioningJobFailure.targetChanged }
                 for key in keys { guard case .string(let text) = key else { throw ProvisioningJobFailure.targetChanged }; _ = try SSHPublicKey.canonical(text) }
@@ -112,12 +112,19 @@ struct ProvisioningManagedEndpoint: Codable, Equatable, Sendable {
         let known = try PrivateFiles.read(storage.knownHosts)
         guard let text = String(data: known, encoding: .utf8) else { throw ProvisioningJobFailure.targetChanged }
         let fields = text.split(whereSeparator: \.isWhitespace)
-        guard fields.count == 3, fields[0] == Substring(storage.alias(target.vmID)), fields[1] == "ssh-ed25519",
-              let blob = Data(base64Encoded: String(fields[2])), KitVerifier.sha256(blob) == target.hostKeyDigest,
-              text == storage.alias(target.vmID) + " ssh-ed25519 " + blob.base64EncodedString() + "\n" else { throw ProvisioningJobFailure.targetChanged }
-        _ = try ProvisioningSSHConnection(binding: target, port: port, identity: ProvisioningIdentityFile(storage.clientKey.standardizedFileURL), ed25519HostKey: blob)
-        return .init(root: root.standardizedFileURL.path, rootDevice: Int64(info.st_dev), rootInode: UInt64(info.st_ino), port: port,
-            manifestSHA256: KitVerifier.sha256(manifest), bootstrapSHA256: KitVerifier.sha256(bootstrap), knownHostsSHA256: KitVerifier.sha256(known))
+        guard fields.count == 3, fields[0] == Substring(storage.alias(vmID)), fields[1] == "ssh-ed25519",
+              let blob = Data(base64Encoded: String(fields[2])), blob.count == 51,
+              text == storage.alias(vmID) + " ssh-ed25519 " + blob.base64EncodedString() + "\n" else { throw ProvisioningJobFailure.targetChanged }
+        _ = try SSHPublicKey.canonical("ssh-ed25519 " + blob.base64EncodedString())
+        _ = try ProvisioningIdentityFile(storage.clientKey.standardizedFileURL)
+        return (.init(root: root.standardizedFileURL.path, rootDevice: Int64(info.st_dev), rootInode: UInt64(info.st_ino), port: port,
+            manifestSHA256: KitVerifier.sha256(manifest), bootstrapSHA256: KitVerifier.sha256(bootstrap), knownHostsSHA256: KitVerifier.sha256(known)), blob)
+    }
+    static func load(root: URL, port: UInt16, target: GuestBinding) throws -> Self {
+        let observed = try observe(root: root, port: port, vmID: target.vmID, sessionID: target.sessionID)
+        let storage = ManagedSSHStorage(root: root)
+        _ = try ProvisioningSSHConnection(binding: target, port: port, identity: ProvisioningIdentityFile(storage.clientKey.standardizedFileURL), ed25519HostKey: observed.hostKey)
+        return observed.endpoint
     }
     func verify(target: GuestBinding) throws {
         guard self == (try Self.load(root: URL(fileURLWithPath: root), port: port, target: target)) else { throw ProvisioningJobFailure.targetChanged }

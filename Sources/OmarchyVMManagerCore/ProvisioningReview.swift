@@ -6,11 +6,13 @@ import Foundation
 public struct ProvisioningSetupSource: Codable, Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
     public let preset: String?
     public let directory: String?
-    public init(preset: String) { self.preset = preset; directory = nil }
-    public init(directory: String) { preset = nil; self.directory = directory }
+    public let features: ProvisioningFeatureSelection?
+    public init(preset: String, features: ProvisioningFeatureSelection? = nil) { self.preset = preset; directory = nil; self.features = features }
+    public init(directory: String, features: ProvisioningFeatureSelection? = nil) { preset = nil; self.directory = directory; self.features = features }
     public var description: String { "ProvisioningSetupSource(redacted)" }
     public var debugDescription: String { description }
     func validate() throws {
+        try features?.validate()
         guard (preset == nil) != (directory == nil) else { throw ProvisioningReviewFailure.invalid }
         if let preset { guard BundledProvisioning.presets.contains(preset) else { throw ProvisioningReviewFailure.invalid } }
         if let directory {

@@ -62,14 +62,28 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 [Milestone 5 Setup terminal and CLI](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
 records the uninstalled native terminal, offline presets/folder preview, separate
 same-user streaming endpoint, explicit input ownership and local fixture evidence (376 manager Swift tests, 52 script tests and signed-helper fixtures).
-Execution/submission, New VM coupling and reviewed recovery actions remain gated.
+Later sections record frozen submission, reviewed workflow actions and the New VM selection handoff; product execution remains gated.
 
 [Frozen previews, apply review and task trust](DevVMProvisioningPlan.md#milestone-5-frozen-preview-apply-submission-and-task-trust--3-november-2026)
 adds the shared UI/CLI review contract, immutable private inputs, independent
 hash-bound custom-task consent, final dependency checks and fake-only submissions.
-Product execution and New VM/restart/check/recovery integration remain gated.
+Later slices add New VM selection and reviewed restart/check/recovery contracts; product execution remains gated.
 
 [Reviewed restart/check/cleanup recovery](DevVMProvisioningPlan.md#milestone-5-reviewed-restart-check-and-cleanup-recovery--3-november-2026)
 records separate action consent, matching-exit restart, fresh-session check and
 original-capability cleanup recovery through the shared native/CLI service.
-Product execution remains disabled; New VM setup and native feature editing remain.
+Product execution remains disabled; the next record adds native feature choices and New VM metadata handoff.
+
+[Native features and New VM handoff](DevVMProvisioningPlan.md#milestone-5-native-features-and-new-vm-handoff--3-november-2026)
+adds Use source/Enable/Disable controls, private generated manifests, exact frozen
+selection review and metadata-only creation receipts with duplicate protection.
+Manager resource/factory choices remain authoritative; execution remains disabled.
+
+[Authenticated identity and dormant backends](DevVMProvisioningPlan.md#milestone-6-preparation-authenticated-identity-and-dormant-backends--3-november-2026)
+records strict authenticated UID/session/key evidence, freshness and probe fencing,
+plus lazy worker/cleanup construction. Product execution remains disabled; these
+are fake/local checks preparing the separately approved guest acceptance.
+
+[Offscreen setup components](media/setup-components-offscreen.png) show the actual
+feature controls and terminal with labelled synthetic output. This validates
+component rendering only, with no visible window, VM registry or live guest.
