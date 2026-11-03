@@ -42,6 +42,25 @@ Do not execute this plan in the source implementation session. Obtain explicit a
 5. With separately authorized copied disposable guest storage, test a cloned guest ID under a different manager UUID: existing pairing must not succeed until explicitly re-paired. Confirm disabling one guest leaves the other’s enrollment intact. Test re-pairing after fingerprint changes only with separate approval for that macOS setting change.
 6. Shut down every test guest. Confirm matching `.exited` and no remaining helper/QEMU processes using captured exact identities. Offer to move the verified stopped UUID roots to Trash under the compatible lock. Never recursively erase VM storage or remove personal Try Omarchy keys.
 
+## Focus-preserving pause/resume check
+
+**VERIFIED — source inspection:** the bundled CLI sends pause/resume through the manager's existing command socket without activating its window; if the manager is unavailable, its fallback opens the app in the background. The upstream `try-omarchy-touch-id-test` clears sudo's timestamp and uses a failing askpass helper, disabling Linux-password fallback for that test. These source checks do not prove native lifecycle cancellation.
+
+**Manual procedure / TO PROVE:** use only an explicitly selected test guest, with its manager already running. Clicking the manager during a prompt can trigger the already-tested focus cancellation before pause; use a background command to isolate the lifecycle transition. In a Mac terminal, replace `TEST_VM` with the exact test guest name or UUID:
+
+```sh
+test_cli='/Applications/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm'
+test_guest='TEST_VM'
+(
+  sleep 15
+  "$test_cli" pause "$test_guest" >/dev/null || exit 1
+  sleep 5
+  "$test_cli" resume "$test_guest" >/dev/null
+) &
+```
+
+Immediately focus that guest and run `try-omarchy-touch-id-test`. Leave the native prompt untouched. The timer pauses after 15 seconds and resumes five seconds after a successful pause acknowledgement. The pending prompt must cancel; after resume, the old guest test must fail without a late Touch ID success. A new `try-omarchy-touch-id-test` request should then pass when the user approves it. If either CLI action fails, do not claim a lifecycle result; inspect the state and stop that test. This snippet does not stop/start/delete a VM, sleep the Mac or run two guests, and has not been executed by the agent.
+
 ## Optional 1Password follow-up
 
 The upstream package already ships its narrowly scoped polkit agent, password dialog and disabled service unit. This sudo milestone refuses `onepassword-unlock` in manager-scoped helpers. A follow-up must deliberately enable that operation and validate its existing signed context/cancellation boundary before native testing.
