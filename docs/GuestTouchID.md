@@ -2,6 +2,16 @@
 
 This is separate from the manager’s Touch ID approval for reading a saved setup password. The manager never uses that password to pair a guest or approve sudo.
 
+## Integration status
+
+**DESIGN DECISION — 3 November 2026:** integrate the current sudo milestone after the signed build 26 validation run. Guest Touch ID remains off by default, pairing remains explicit, guest pairing status remains unknown to the manager, and managed 1Password unlock remains disabled. The remaining native cases below are follow-ups; they are not represented as completed tests.
+
+**VERIFIED — automated/distribution evidence:** 231 manager tests, 66 script tests, both optimized policy modes, all 562 upstream Swift tests and isolated SSH checks pass. The signed/notarized `v0.11.0-dev.2` app and exact runtime were independently checked against published digests, original Apple-accepted archives, signatures/profile/entitlements, stapling and Gatekeeper.
+
+**VERIFIED — user-reported native cases:** enrollment and password-free sudo, cancellation to Linux-password fallback, focus loss/fresh-request recovery, manual pause/resume, Mac sleep/wake, shutdown/restart without re-enrollment, independent A/B enrollment, delayed background rejection followed by focused success, and B disable leaving A functional. Read-only helper reports corroborate the recorded execution transitions. Both disposable test guests exited with status 0; their processes are gone and their roots were moved recoverably to Trash with approval.
+
+**TO PROVE — retained native follow-ups:** cloned identical guest-ID isolation under a new manager UUID; the actual `lease-busy` branch (ordinary background rejection exercises focus gating); forced-stop/helper/manager crash paths; unavailable-biometry fallback; host opt-out/re-pairing; exact prompt counts and rapid focus transitions. Synthetic clone, process-lease, cancellation and admission fixtures remain separate evidence. The chronological records below preserve the scope and limits of each observation.
+
 ## Use
 
 Shut down the guest, edit it and select **Allow Touch ID inside this VM**. Save and start it on the next authorized run. The setting defaults off, including profiles saved by older versions. A running, paused, stopping, failed-but-active or suspended guest cannot be edited. Disabling the host setting stops the bridge at the next start; it does not silently remove guest enrollment or PAM rules.
