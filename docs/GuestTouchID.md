@@ -4,6 +4,8 @@ This is separate from the manager’s Touch ID approval for reading a saved setu
 
 ## Integration status
 
+Latest integrated signed release: [v0.11.0-dev.3, manager 0.11.0 (27)](https://github.com/reactive-org/omarchy-vm-manager/releases/tag/v0.11.0-dev.3). It reuses the accepted dev.2 runtime and preserves build 26 application logic; native observations below remain scoped to that tested build.
+
 **DESIGN DECISION — 3 November 2026:** integrate the current sudo milestone after the signed build 26 validation run. Guest Touch ID remains off by default, pairing remains explicit, guest pairing status remains unknown to the manager, and managed 1Password unlock remains disabled. The remaining native cases below are follow-ups; they are not represented as completed tests.
 
 **VERIFIED — automated/distribution evidence:** 231 manager tests, 66 script tests, both optimized policy modes, all 562 upstream Swift tests and isolated SSH checks pass. The signed/notarized `v0.11.0-dev.2` app and exact runtime were independently checked against published digests, original Apple-accepted archives, signatures/profile/entitlements, stapling and Gatekeeper.
