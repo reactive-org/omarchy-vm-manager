@@ -3039,3 +3039,29 @@ freezing and review; no previous request is rewritten or silently promoted. The
 companion worktree is unchanged. No credentials, signing, Apple request, real
 SSH/Ansible, install, normal UI, image or VM operation occurs. See the
 [integration boundary](DevVMMilestone6Runbook.md#after-merging-main--4-november-2026).
+
+## Integrated source inputs and signing gate — 4 November 2026
+
+**PREPARED:** exact `7e46241` source archive, reviewed six-file private overlay,
+current package/runtime/profile pins, original scope/receipt lineage and a matching
+existing signed runtime are frozen into a new ignored private input packet. The
+retained dev.3 artifact reuses the exact runtime declared dev.2; its source origin,
+capabilities, immutable payload and ZIP/extracted inventories match. No signature
+bytes are changed and no app is built or signed. Ordinary product approval stays nil.
+
+**DESIGN DECISION / PRIVATE COUPLING:** preserve original scope JSON, including its
+historical `sourceCommit`, all identity/hash pins and complete scope-definition
+source verbatim. Bind `7e46241` independently. The prior app-based handoff cannot
+express that separation without changing a frozen pin, so this is an explicitly
+distinct source-only record, refused by the existing signer. No fake app receipt,
+legacy request or executable authorization is created. A reviewed source-only
+admission/caller update remains necessary; no loader/policy change is included here.
+
+**VERIFIED — offline/fake:** 22 actual-packet integrity/refusal checks and all 12
+fake signer process-runner tests pass. Reapplying the overlay to a second fresh
+archive reproduces the scoped source inventory. The original private artifacts,
+scope pins and requests remain unchanged; the gate keeps every approval ungranted.
+No profile bytes, credentials, signing, Apple/network, SSH/Ansible, installs, image,
+UI or guest operation occurs. Actual app compilation, material selection/admission,
+cryptographic/loaded-child and real guest evidence remain TO PROVE/NOT_RUN. See the
+[input gate](DevVMMilestone6Runbook.md#integrated-candidate-inputs-for-7e46241--4-november-2026).

@@ -191,3 +191,10 @@ skipped), and 100 offscreen UI checks pass, including scoped local-socket retrie
 Private artifacts and frozen pins are unchanged. They still represent pre-merge
 source; an integrated candidate needs fresh source/runtime review. Product
 provisioning remains disabled and no signing, credential or guest action occurs.
+
+[Integrated candidate inputs](DevVMMilestone6Runbook.md#integrated-candidate-inputs-for-7e46241--4-november-2026)
+freeze `7e46241` and a matching local signed runtime in a new private source-only
+packet. Original scope/source pins and prior artifacts stay unchanged. Twenty-two
+input checks and 12 fake signer tests pass; no app/signing or credential operation
+occurs. The gate records source-only signer admission and profile/keychain
+validation as pending, with every execution/signing/guest approval ungranted.

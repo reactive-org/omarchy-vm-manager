@@ -2895,3 +2895,27 @@ remains the visual target for milestone 5.
   signing, credentials, Apple requests, SSH/Ansible, installs, normal UI, image or
   VM operation is authorized or performed by this integration. Real provisioning
   and signing/loaded-child acceptance remain unproven.
+
+## Integrated candidate input preparation — 4 November 2026
+
+- **USER AUTHORIZATION / DESIGN DECISION:** prepare private source/runtime inputs
+  and a signing review gate for `7e46241` using offline/fake checks. Freeze the new
+  source independently while preserving original scope JSON, historical source
+  commit, UUID/root/device/inode/marker pins, receipt and scope-definition source
+  verbatim. No old artifact or request is rewritten and no root is recaptured.
+- **VERIFIED — local data:** dev.3's retained signed runtime declares dev.2 and
+  matches the integrated development origin/capabilities/immutable payload. Both
+  archives and extracted/staged bundle inventories match. The six-file overlay
+  reconstructs exactly against a second source archive. Twenty-two input/refusal
+  checks and all twelve fake signer tests pass without external process/network
+  calls in the input checks. Exact paths/pins and all new artifacts remain private.
+- **PRIVATE COUPLING:** the older app-based handoff requires source commit equality
+  with the historical scope commit. This source-only record binds those separately
+  and is refused by that signer before authorization/material IO. It supplies no
+  fabricated app inventory, legacy request or executable authority. A reviewed
+  versioned source-only admission/caller update is still required.
+- **TO PROVE:** actual app compilation, named profile/keychain validation, genuine
+  signatures/notarization/loaded-child and all guest rows. No app, profile bytes,
+  credentials, signing, Apple/network, SSH/Ansible, installs, image, UI or guest
+  operation; product approval remains nil and all later approvals NOT_GRANTED.
+  See the [input gate](docs/DevVMMilestone6Runbook.md#integrated-candidate-inputs-for-7e46241--4-november-2026).

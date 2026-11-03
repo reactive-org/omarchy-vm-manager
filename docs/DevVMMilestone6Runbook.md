@@ -511,6 +511,59 @@ Any new candidate or signing/material/guest operation retains its separate scope
 and approval requirements. No signing, credential access, Apple requests,
 SSH/Ansible, installs, normal UI, image operation or VM launch occurs in this merge.
 
+## Integrated candidate inputs for 7e46241 — 4 November 2026
+
+**PREPARED INPUTS ONLY:** a fresh private packet freezes the exact Git archive of
+`7e46241`, its runtime/package/profile requirements and a reviewed six-file scoped
+overlay. The overlay preserves the existing inspection hooks, offline package
+flags and private composition while keeping main's integrated code and metadata.
+Applying it to a second fresh archive produces the exact same source inventory.
+No application is built, assembled, signed, installed or run for this preparation.
+The ordinary repository's provisioning approval remains nil.
+
+**Pins preserved:** original scope JSON, historical scope `sourceCommit`, UUID/root/
+device/inode/marker pins, receipt and the complete scope-definition Swift source
+are copied byte-for-byte. New source identity is independently bound to `7e46241`.
+Do not rewrite the old scope hash to make its historical source commit equal this
+new source. The prior candidate, request, signing gate, discovery and staged runtime
+remain unchanged; no target root/registry is observed or recaptured. Exact hashes,
+selectors, source paths and the new packet remain ignored/private.
+
+**Matching local runtime:** the retained `v0.11.0-dev.3` release directory contains
+the exact reused runtime whose lock still declares `v0.11.0-dev.2`. Its original
+source-lock bytes, source-kit digest, patched revision, capabilities and immutable
+payload match this integrated source. The development archive/bundle, signed ZIP
+digest/inventory and extracted signed bundle are checked locally. Exact signed
+bundle/ZIP/lock copies are staged in the adapter's expected runtime layout, without
+relabelling the lock or changing any signature bytes. These are file/provenance
+checks; fresh SDK signature/notarization/network-pin admission is not performed.
+
+The gate is a **source-only review record**, with no fabricated app inventory,
+legacy `request.json` or execution authorization. The older app-based preparation
+API requires its source commit to equal the historical scope commit, which would
+change a preserved pin here. Therefore the packet uses an explicit distinct input
+kind and binds the two identities separately. The existing signer refuses it
+before runner authorization or material IO. A reviewed source-only admission/
+caller update is needed before real consumption; this preparation changes no
+executable admission policy. Missing app/profile/keychain/loaded-child evidence is
+recorded rather than simulated into a real receipt.
+
+**VERIFIED — offline/fake:** 22 input consistency and mutation-refusal checks pass,
+including wrong source/scope/archive/runtime hashes, authorization flags, legacy
+mis-admission and preservation of the original request. Process and network hooks
+are forbidden in those checks. All 12 existing fake process-runner signer tests
+also pass. Original private artifact entries retain exact bytes, modes and links;
+new packet permissions are private. No shared or product code changes are made.
+
+**NEXT / TO PROVE:** explicit source-only input admission binding the new source to
+the unchanged historical scope; named profile/isolated-keychain selection and
+separately approved validation; actual compilation and signed app/profile/loaded-
+child evidence. A compatible signed runtime is now available locally, so new
+runtime signing is unnecessary if it passes later admission. All signing/key-use/
+timestamp and later guest approvals remain NOT_GRANTED. No credential/profile
+bytes, signing, Apple/network request, SSH/Ansible, install, image, UI or VM operation
+occurs, and every real guest acceptance row stays NOT_RUN.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without
