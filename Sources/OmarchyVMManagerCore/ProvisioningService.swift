@@ -29,6 +29,9 @@ struct ProvisioningServiceEnvironment: Sendable {
     // Trusted fixture injection until manager-owned guest UID/key evidence is
     // admitted. Product construction supplies nil and remains disabled.
     var resolveTarget: (@Sendable (UUID, UUID) async throws -> GuestBinding)? = nil
+    // Inert constructor only, first used behind authenticated cleanup admission.
+    // Product composition supplies nil; fixture injection is internal.
+    var makeRecoveryAdapter: (@Sendable (ProvisioningTransportAdmission) throws -> any ProvisioningGuestAdapter)? = nil
 }
 actor ProvisioningAdmittedSessionAuthority: ProvisioningSessionAuthority {
     let manager: VMManager
@@ -52,15 +55,15 @@ public actor ProvisioningService {
     let manager: VMManager
     let coordinator: ProvisioningCoordinator
     private let workflows: ProvisioningWorkflowJournal
-    private let jobs: ProvisioningJobJournal
+    let jobs: ProvisioningJobJournal
     private let artifacts: ProvisioningJobArtifacts
     let sourceDirectory: URL
     let environment: ProvisioningServiceEnvironment
     private let authority: ProvisioningAdmittedSessionAuthority
-    private var rows: [UUID: ProvisioningWorkflowRecord]
+    var rows: [UUID: ProvisioningWorkflowRecord]
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private var previews: [UUID: ProvisioningPreparedJob] = [:]
-    private var original: [UUID: ProvisioningPreparedJob] = [:]
+    var original: [UUID: ProvisioningPreparedJob] = [:]
     private var preparations: [UUID: ProvisioningPreparationLease] = [:]
     private var restarts: [UUID: ProvisioningRestartLease] = [:]
     private var sources: [UUID: ProvisioningPrivateInputTree] = [:]
@@ -75,6 +78,10 @@ public actor ProvisioningService {
     var applyReviews: [UUID: ProvisioningApplyReview] = [:]
     var applySubmissions: [UUID: (ProvisioningApplyConsent, Task<ProvisioningWorkflowSnapshot, Error>)] = [:]
     var reviewOperations = Set<UUID>()
+    var actionPreparations: [UUID: ProvisioningActionPreparation] = [:]
+    var actionContexts: [UUID: ProvisioningActionContext] = [:]
+    var actionSubmissions: [UUID: (ProvisioningWorkflowActionConsent, Task<ProvisioningWorkflowSnapshot, Error>)] = [:]
+    var actionWorkflowsInFlight = Set<UUID>()
     private var closed = false, failed = false
 
     private init(manager: VMManager, coordinator: ProvisioningCoordinator, jobs: ProvisioningJobJournal, workflows: ProvisioningWorkflowJournal,
@@ -393,12 +400,12 @@ public actor ProvisioningService {
         if busyID == id { busyID = nil }
     }
     func closeForReopen() async throws {
-        guard reviewOperations.isEmpty, draftCaptures.isEmpty, rebindInFlight.isEmpty, tasks.keys.allSatisfy({ id in ![.running, .checking, .waitingForSSH, .waitingForExit].contains(rows[id]?.stage) }) else { throw ProvisioningServiceFailure.busy }
+        guard actionWorkflowsInFlight.isEmpty, reviewOperations.isEmpty, draftCaptures.isEmpty, rebindInFlight.isEmpty, tasks.keys.allSatisfy({ id in ![.running, .checking, .waitingForSSH, .waitingForExit].contains(rows[id]?.stage) }) else { throw ProvisioningServiceFailure.busy }
         let pendingPreparations = preparations; preparations.removeAll()
         for lease in pendingPreparations.values { await coordinator.endPreparation(lease) }
         let pendingRestarts = restarts; restarts.removeAll()
         for lease in pendingRestarts.values { await coordinator.cancelRestart(lease) }
-        try await coordinator.closeForReopen(); workflows.close(); closed = true; drafts.removeAll(); applyPreparations.removeAll(); applyReviews.removeAll(); applySubmissions.removeAll(); previews.removeAll(); original.removeAll(); sources.removeAll(); tasks.removeAll()
+        try await coordinator.closeForReopen(); workflows.close(); closed = true; actionPreparations.removeAll(); actionContexts.removeAll(); actionSubmissions.removeAll(); drafts.removeAll(); applyPreparations.removeAll(); applyReviews.removeAll(); applySubmissions.removeAll(); previews.removeAll(); original.removeAll(); sources.removeAll(); tasks.removeAll()
     }
     /// Explicit recovery requires live original resource admission and an injected
     /// adapter. A fresh process with an empty launcher still cannot prove the

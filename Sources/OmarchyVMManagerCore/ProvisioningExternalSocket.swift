@@ -109,10 +109,12 @@ public actor ProvisioningExternalClient {
     public func request(_ operation: ProvisioningExternalOperation, workflowID: UUID? = nil, invocationID: UUID? = nil,
                         bytes: Data? = nil, rows: Int? = nil, columns: Int? = nil,
                         previewID: UUID? = nil, vmID: UUID? = nil, source: ProvisioningSetupSource? = nil,
-                        consent: ProvisioningApplyConsent? = nil, taskName: String? = nil, offset: Int? = nil) async throws -> ProvisioningExternalReply {
+                        consent: ProvisioningApplyConsent? = nil, taskName: String? = nil, offset: Int? = nil,
+                        action: ProvisioningWorkflowAction? = nil, actionReviewID: UUID? = nil, actionConsent: ProvisioningWorkflowActionConsent? = nil) async throws -> ProvisioningExternalReply {
         guard !inFlight, !closed, sequence < UInt64(Int64.max) - 1 else { throw ProvisioningTerminalDenial.busy }
         inFlight = true; defer { inFlight = false }
         var request = ProvisioningExternalRequest(sequence: sequence + 1, operation: operation, workflowID: workflowID)
+        request.action = action; request.actionReviewID = actionReviewID; request.actionConsent = actionConsent
         request.previewID = previewID; request.vmID = vmID; request.source = source; request.consent = consent; request.taskName = taskName; request.offset = offset
         request.invocationID = invocationID; request.bytes = bytes; request.rows = rows; request.columns = columns
         let payload = try helperJSON(request)

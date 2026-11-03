@@ -1778,7 +1778,7 @@ product execution remains disabled. Earlier TO PROVE labels remain unchanged.
 
 **DESIGN DECISION:** this slice supplies offline selection/review and live observation
 surfaces while preserving the product execution gate. Milestones 3/4 were committed
-first in manager `6a71b06` and dev-vm `3d616f0`; that terminal/UI/CLI slice is now committed in manager `18feed5` and companion docs `f5d495c`. The following review/submission slice remains uncommitted.
+first in manager `6a71b06` and dev-vm `3d616f0`; that terminal/UI/CLI slice is now committed in manager `18feed5` and companion docs `f5d495c`. The following frozen review/submission slice is committed in manager `d6d9c64` and companion docs `09a099c`; the workflow-action slice below is uncommitted.
 The native Setup tab and separate CLI socket consume `ProvisioningObserving`, backed
 by the same manager-owned service, workflow status, child status, cancellation and
 original helper attachment. Closing a view or CLI releases its viewer, not its job.
@@ -1990,3 +1990,120 @@ execution is still disabled. No actual SSH/SCP/SFTP/Ansible, host installs, fact
 image downloads, VM launches/changes, real credentials or user UI takeover occurred.
 Only fake runtimes, original fake process adapters and disposable private fixtures
 were exercised. Shared package sources/resources/pins are unchanged.
+
+## Milestone 5 reviewed restart, check and cleanup recovery — 3 November 2026
+
+**DESIGN DECISION:** native Setup and CLI expose one `ProvisioningWorkflowActing`
+service for existing workflow actions. This delegates to milestone 3’s restart,
+rebind/check and cleanup coordinator rather than adding a second lifecycle owner.
+Each action has a caller-retained review UUID, exact workflow/VM/session/job IDs,
+workflow sequence, plan/input/dependency hashes and a domain-separated review
+digest. Consent carries that review UUID, action, digest and an explicit
+acknowledgement; general Apply, task trust or a prior action does not imply it.
+Action reviews/consent are memory-only and cannot be restored from a journal or
+PID. Existing strict journals record the underlying admitted workflow operations.
+
+Preparation and submission are separate. Exact duplicates share one owned task
+and retrieve its original acceptance. A review UUID cannot change workflow/action.
+At most 128 review preparations are retained per service; operations for one
+workflow serialize. Failed preparation/submission is cached, never automatically
+replayed; a deliberate fresh review needs a new UUID. State/hash/session/resource
+changes invalidate an unused review. Closing a viewer does not cancel the owned
+operation. Service reopen is refused while action admission/execution is in flight;
+a reopened service cannot use an old action consent. The existing process-loss
+and cleanup-hold rules remain unchanged.
+
+**Restart:** offered only for a clean `restartRequired` workflow with its original
+live service context and verified old transport. Review does not stop a VM.
+Submission revalidates the package, old session/resources and workflow sequence,
+then calls the existing reviewed graceful-restart path. One matching VM `.exited`
+is required before a replacement session starts; `.error` remains diagnostic and
+does not release the client or authorize another launch. Duplicate consent cannot
+cause another shutdown/restart. A replacement session stops at `waitingForRebind`;
+no check or setup reapplication is automatic.
+
+**Post-restart check:** this is a check of the workflow’s frozen setup after its
+reviewed restart, not an arbitrary existing-guest check command. Preparation
+resolves the manager-recorded replacement session through trusted evidence,
+requires the same owner/UID/host key, admits fresh dependencies, and uses the
+existing immutable archive reconstruction/rebind path. Its review identifies the
+new check job/session. It excludes declared custom tasks and grants no interactive
+authorization lease. Submission performs a final dependency/resource/state check
+before the existing check activation. Ansible receives `--check`; this is not a
+promise that arbitrary trusted controller code is a sandbox. A previous Apply or
+restart digest cannot approve the new check. A failed/stale check action cannot
+launch another helper when repeated.
+
+**Cleanup recovery:** offered only after an unfinished cleanup risk becomes a
+terminal/uncertain workflow state, never merely because an active apply/check has
+its provisional cleanup-risk flag set. Preparation is metadata/admission work;
+it does not fence a worker, create an adapter, touch the guest or read setup
+sources. It binds the selected original child/checkpoint record, including its
+sequence/attempt state, to the exact original session/owner/UID/host key and
+dependency pins. Submission checks the record and fresh dependencies again, then
+calls the existing coordinator recovery. The coordinator must obtain the original
+authenticated `stoppedAndFenced` proof and matching checkpoint before admitting
+any cleanup command.
+
+The new recovery adapter factory is lazy: construction happens only when that
+admitted cleanup path reaches its first command. Its wrapper permits only exact
+job/target/dependency-bound identity, quiescence, revocation/cache-clear, inactive
+verification and payload removal commands, with no plan or input lease. It cannot
+stage/reapply setup, execute custom tasks, request a grant or restart a guest.
+No factory is called when original ownership is missing. Even valid saved metadata
+and a new same-user process cannot manufacture a surviving capability. Failed
+revocation keeps cleanup required and the VM hold; it does not produce success or
+clear risk. A later explicit review binds the changed checkpoint/attempt state;
+previously prepared stale cleanup reviews are refused. Source removal does not
+prevent the source-free cleanup path. Matching helper exit remains required before
+a clean workflow result clears its hold.
+
+**PRIVATE COUPLING:** additive `prepareAction` / `performAction` operations use the
+same strict separate setup socket. Preparation requires `workflowID`, action and
+`actionReviewID`; submission requires the workflow and a strict typed action consent.
+Unknown/duplicate/null fields, cross-preview scopes, unsupported actions, bad
+digests and secret/force overrides are refused. Replies correlate request/sequence,
+review UUID, workflow and action. `ownership-unverified` is a fixed failure code;
+no private error string, credential, worker token, helper PID, source or terminal
+byte enters action review/status. Old guest commands and their JSON protocol are
+unchanged. Product prepare/perform operations return `failure: "disabled"` before
+any target/tool/adapter work, including when a review UUID is unknown.
+
+The Setup tab offers stage-appropriate review buttons, action explanations,
+explicit acknowledgement and a submit control. Restart describes shutdown/exit/
+replacement semantics; check explains its frozen inputs and excluded tasks; recovery
+explains original ownership and cleanup-only scope. State changes are validated by
+the service. A submission attempt is never silently repeated. Native buttons stay
+disabled in product composition, and the complete screen has not been opened for
+visual acceptance in this slice.
+
+CLI follows the same two-step contract (retain the review UUID):
+
+```sh
+omarchy-vm setup prepare-restart WORKFLOW_UUID --review-id REVIEW_UUID
+omarchy-vm setup restart WORKFLOW_UUID --review-id REVIEW_UUID --review REVIEW_DIGEST --ack
+# After matching exit, replacement session and managed SSH admission:
+omarchy-vm setup prepare-check WORKFLOW_UUID --review-id NEW_REVIEW_UUID
+omarchy-vm setup check WORKFLOW_UUID --review-id NEW_REVIEW_UUID --review CHECK_DIGEST --ack
+# Only for an unresolved original cleanup obligation:
+omarchy-vm setup prepare-recover WORKFLOW_UUID --review-id RECOVERY_REVIEW_UUID
+omarchy-vm setup recover WORKFLOW_UUID --review-id RECOVERY_REVIEW_UUID --review RECOVERY_DIGEST --ack
+```
+
+Missing `--ack` is never inferred. There is no force, password, source/VM replacement
+or task-trust override for workflow actions. Commands require the existing manager;
+they do not auto-open it. Acceptance and current workflow status are distinct;
+inspect `setup status` after a lost reply rather than inferring an outcome or
+silently starting another action. A new review UUID is required for a deliberate
+new attempt after failure.
+
+**VERIFIED — fake/local acceptance:** `make test` passed 403 manager Swift test functions in 54 suites, 52 script tests and the relocated/read-only/ad-hoc-signed helper fixtures, including original-owner loss/reopen and terminal streaming. `make test-provisioning-actions` passed 13 functions in two suites (including ten malformed-wire variants and three final-check admission/cancellation variants). Fake fixtures cover explicit consent, shared CLI/native action lookup, duplicate restart/check, diagnostic-vs-exit boundaries, fresh-session frozen checks with custom tasks excluded and no authorization input, active-risk recovery refusal, lazy factory ordering, missing original capability after reopen, source-free cleanup, failed revocation/retained holds, stale sibling recovery reviews, failed-operation non-replay and lost in-memory consent. Product endpoint tests prove disabled refusal before probes/factories. UI controls compile; complete interactive/visual acceptance was not performed. Package/export checks and both diff checks pass. Shared package sources/resources/pins are unchanged.
+
+**TO PROVE / NEXT:** native common-feature editing and New VM setup handoff remain
+milestone-5 work. Real owner/UID/key evidence, operational runner/recovery factories,
+whole-screen interaction/visual acceptance, actual nested SSH/guest echo and cleanup,
+crash/sleep/wake and signed distribution retain their separate gates. Product
+execution, target resolution and recovery adapter construction stay disabled.
+No real SSH/SCP/SFTP/Ansible, host installs, factory downloads, VM launches/changes,
+real credentials or user UI takeover occurred. Fake runtimes use only disposable
+manager-owned UUID roots. No shared package source/resource/pin change was needed.

@@ -58,7 +58,8 @@ final class WorkflowFixture: Sendable {
     let manager: VMManager, runtime: FakeRuntime, profile: VMProfile, target: GuestBinding
     let provider: SessionFixtureProvider, dependencies: WorkflowFixtureDependencies, launcher: WorkflowFixtureLauncher
     let plan: SetupPlan, service: ProvisioningService
-    init(docker: Bool = false, ready: Bool = true, enabled: Bool = true, task: String? = nil) async throws {
+    init(docker: Bool = false, ready: Bool = true, enabled: Bool = true, task: String? = nil, allowRebind: Bool = false,
+         recovery: (@Sendable (ProvisioningTransportAdmission) throws -> any ProvisioningGuestAdapter)? = nil) async throws {
         root = URL(fileURLWithPath: "/private/tmp/provisioning-workflow-" + UUID().uuidString)
         source = root.appendingPathComponent("source"); state = root.appendingPathComponent("state")
         try PrivateFiles.directory(root, create: true); try PrivateFiles.directory(source, create: true)
@@ -81,9 +82,9 @@ final class WorkflowFixture: Sendable {
         let fixtureTarget = target
         service = try await ProvisioningService.open(manager: manager, directory: state, environment: .init(executionEnabled: enabled,
             engineDigest: ProvisioningCoordinator.engineIdentity(plan), dependencies: dependencies, launcher: launcher, transportPolicy: .fixture(provider.root), admitPackage: {}, resolveTarget: { vm, session in
-                guard vm == fixtureTarget.vmID, session == fixtureTarget.sessionID else { throw ProvisioningReviewFailure.changed }
-                return fixtureTarget
-            }))
+                guard vm == fixtureTarget.vmID, allowRebind || session == fixtureTarget.sessionID else { throw ProvisioningReviewFailure.changed }
+                return try GuestBinding(vmID: vm, sessionID: session, owner: fixtureTarget.owner, ownerUID: fixtureTarget.ownerUID, hostKeyDigest: fixtureTarget.hostKeyDigest)
+            }, makeRecoveryAdapter: recovery))
     }
     deinit { for handle in runtime.startedHandles where handle.isRunning { handle.emit(.exited(status: 0)) }; try? FileManager.default.removeItem(at: root) }
     func preview(_ id: UUID = UUID()) async throws -> ProvisioningPreparedJob {

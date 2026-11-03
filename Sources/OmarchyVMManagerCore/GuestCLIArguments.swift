@@ -23,6 +23,10 @@ public struct GuestCLIInvocation: Sendable {
       setup prepare-apply UUID     Review target/dependencies (execution gate applies)
       setup apply UUID --review SHA256 --ack-sudo [--trust-tasks SHA256] [--ack-docker-root]
                                    Submit exact reviewed inputs, with separate task trust
+      setup prepare-restart|prepare-check|prepare-recover UUID --review-id UUID
+                                   Review an existing workflow action (execution gated)
+      setup restart|check|recover UUID --review-id UUID --review SHA256 --ack
+                                   Perform only the exact acknowledged workflow action
       setup capabilities|list      Discover setup protocol / list workflows
       setup status UUID [--events] Read status / structured NDJSON (no terminal)
       setup attach UUID [--input]  View original live terminal; opt in to input

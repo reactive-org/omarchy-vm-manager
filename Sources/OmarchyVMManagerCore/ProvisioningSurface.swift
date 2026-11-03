@@ -41,10 +41,25 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
     case plan(URL), preset(String), presets
     case createPreview(UUID, UUID, ProvisioningSetupSource), preview(UUID), taskSource(UUID, String, Int)
     case prepareApply(UUID), apply(UUID, ProvisioningApplyConsent)
+    case prepareAction(UUID, ProvisioningWorkflowAction, UUID), performAction(UUID, ProvisioningWorkflowActionConsent)
     public static func parse(_ args: [String]) throws -> Self? {
         guard args.first == "setup", args.count >= 2, args[1] != "tools" else { return nil }
-        if ["check", "recover"].contains(args[1]) {
-            throw commandFailure("setup-execution-disabled", "Setup execution is disabled pending guest acceptance. Use setup plan, status or attach for an existing admitted job.")
+        let actionCommands: [String: ProvisioningWorkflowAction] = ["restart": .restart, "check": .check, "recover": .recover, "prepare-restart": .restart, "prepare-check": .check, "prepare-recover": .recover]
+        if let action = actionCommands[args[1]] {
+            guard args.count >= 3, let id = UUID(uuidString: args[2]) else { throw commandFailure("usage", "Use an exact workflow UUID for setup actions.") }
+            var values: [String: String] = [:], acknowledged = false, index = 3
+            while index < args.count {
+                let option = args[index]; index += 1
+                if option == "--ack", !acknowledged { acknowledged = true; continue }
+                guard ["--review-id", "--review"].contains(option), values[option] == nil, index < args.count, !args[index].hasPrefix("--") else { throw commandFailure("usage", "Unknown, duplicate or incomplete workflow review option.") }
+                values[option] = args[index]; index += 1
+            }
+            guard let token = values["--review-id"], let reviewID = UUID(uuidString: token) else { throw commandFailure("usage", "Choose and retain --review-id UUID for this action review.") }
+            if args[1].hasPrefix("prepare-"), values["--review"] == nil, !acknowledged { return .prepareAction(id, action, reviewID) }
+            if !args[1].hasPrefix("prepare-"), let digest = values["--review"], provisioningDigest(digest) {
+                return .performAction(id, .init(reviewID: reviewID, action: action, reviewIdentity: digest, acknowledged: acknowledged))
+            }
+            throw commandFailure("usage", "Use prepare-restart|prepare-check|prepare-recover UUID --review-id UUID, then restart|check|recover UUID --review-id UUID --review SHA256 --ack.")
         }
         if ["preview", "prepare-apply", "apply", "task-source"].contains(args[1]) {
             guard args.count >= 3, let id = UUID(uuidString: args[2]) else { throw commandFailure("usage", "Use an exact UUID for setup review commands.") }

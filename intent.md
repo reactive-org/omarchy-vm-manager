@@ -2152,3 +2152,26 @@ remains the visual target for milestone 5.
   signed distribution acceptance, all real guest/SSH/echo/cleanup/crash/sleep/wake
   behavior. No actual transport, host install, factory download, VM or user UI
   operation occurred. The shared package source/resources/pin are unchanged.
+
+### 3 November 2026 — milestone 5 reviewed workflow actions
+
+- **DESIGN DECISION:** Setup and CLI share preparation/consent for existing workflow
+  restart, post-restart check and cleanup recovery. Action UUID/digest binds exact
+  workflow/VM/session/job, sequence and input/dependency scope. No acknowledgement
+  is inferred from Apply/task trust. Duplicates share one owned operation; failed
+  operations require a deliberate fresh review, and action authority is not restored
+  from disk. Restart waits for matching `.exited`, check requires the admitted new
+  session and excludes custom tasks, and recovery is restricted to original cleanup.
+- **PRIVATE COUPLING:** additive strict setup-socket action schemas delegate to the
+  existing M3 restart/rebind/recovery paths. Recovery’s lazy adapter constructor
+  cannot run before original authenticated worker/checkpoint admission. A new
+  process, journal or PID cannot manufacture ownership. Active provisional cleanup
+  risk is not a recovery action. Product execution/resolver/recovery factory remain
+  disabled; no operational runner is installed.
+- **VERIFIED:** `make test` passed 403 manager Swift test functions in 54 suites, 52 script tests and the relocated/read-only/ad-hoc-signed helper fixtures, including original-owner loss/reopen and terminal streaming. `make test-provisioning-actions` passed 13 functions in two suites (including ten malformed-wire variants and three final-check admission/cancellation variants). Fake fixtures cover explicit consent, shared CLI/native action lookup, duplicate restart/check, diagnostic-vs-exit boundaries, fresh-session frozen checks with custom tasks excluded and no authorization input, active-risk recovery refusal, lazy factory ordering, missing original capability after reopen, source-free cleanup, failed revocation/retained holds, stale sibling recovery reviews, failed-operation non-replay and lost in-memory consent. Product endpoint tests prove disabled refusal before probes/factories. UI controls compile; complete interactive/visual acceptance was not performed. Package/export checks and both diff checks pass. Shared package sources/resources/pins are unchanged.
+- **TO PROVE:** native feature editing/New VM handoff, operational identity/factories,
+  complete visual interaction, actual guest/SSH/echo/revocation/restart/check,
+  crash/sleep/wake and signed distribution. This slice uses only fake runtimes,
+  fake adapters and disposable private UUID fixtures. No real transport, host
+  install, factory download, VM or user UI operation occurred. Shared sources,
+  resources and pins are unchanged.

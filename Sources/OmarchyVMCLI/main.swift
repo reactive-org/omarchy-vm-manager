@@ -61,6 +61,12 @@ do {
         case .apply(let id, let consent):
             let reply = try await client.request(.apply, previewID: id, consent: consent)
             printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
+        case .prepareAction(let id, let action, let reviewID):
+            let reply = try await client.request(.prepareAction, workflowID: id, action: action, actionReviewID: reviewID)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
+        case .performAction(let id, let consent):
+            let reply = try await client.request(.performAction, workflowID: id, actionConsent: consent)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
         case .events(let id):
             var prior: UInt64?
             while !Task.isCancelled {

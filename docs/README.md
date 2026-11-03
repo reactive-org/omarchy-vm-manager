@@ -68,3 +68,8 @@ Execution/submission, New VM coupling and reviewed recovery actions remain gated
 adds the shared UI/CLI review contract, immutable private inputs, independent
 hash-bound custom-task consent, final dependency checks and fake-only submissions.
 Product execution and New VM/restart/check/recovery integration remain gated.
+
+[Reviewed restart/check/cleanup recovery](DevVMProvisioningPlan.md#milestone-5-reviewed-restart-check-and-cleanup-recovery--3-november-2026)
+records separate action consent, matching-exit restart, fresh-session check and
+original-capability cleanup recovery through the shared native/CLI service.
+Product execution remains disabled; New VM setup and native feature editing remain.

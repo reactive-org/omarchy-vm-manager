@@ -217,7 +217,7 @@ connection; mutations are never automatically replayed. The endpoint admits
 only same-user peers, at most eight connections and one viewer per connection,
 with a 15-second activity lease. Inactive clients must poll or heartbeat.
 
-The frozen review/consent contract is described below. Product prepare/apply returns `failure: "disabled"` even when tools are ready; check/recover still return `setup-execution-disabled`. Automatic New VM setup and reviewed restart/check/recovery actions remain follow-up work. No product job is submitted. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
+The frozen review/consent contract is described below. Product prepare/apply returns `failure: "disabled"` even when tools are ready; workflow restart/check/recover use the separately reviewed, execution-gated contract below. Automatic New VM setup remains follow-up work. No product job is submitted. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
 for validation and the remaining acceptance boundary.
 
 ### Frozen preview and separate task trust
@@ -267,3 +267,48 @@ admission path. A disconnected CLI leaves manager-owned work intact. The product
 returns `failure: "disabled"` before target/dependency probes for prepare/apply;
 it does not infer a guest UID or install a runner. See the
 [frozen review validation record](DevVMProvisioningPlan.md#milestone-5-frozen-preview-apply-submission-and-task-trust--3-november-2026).
+
+### Reviewed restart, post-restart check and cleanup recovery
+
+The uninstalled worktree adds these two-step workflow actions:
+
+```sh
+omarchy-vm setup prepare-restart WORKFLOW_UUID --review-id REVIEW_UUID
+omarchy-vm setup restart WORKFLOW_UUID --review-id REVIEW_UUID --review REVIEW_DIGEST --ack
+omarchy-vm setup prepare-check WORKFLOW_UUID --review-id CHECK_REVIEW_UUID
+omarchy-vm setup check WORKFLOW_UUID --review-id CHECK_REVIEW_UUID --review CHECK_DIGEST --ack
+omarchy-vm setup prepare-recover WORKFLOW_UUID --review-id RECOVERY_REVIEW_UUID
+omarchy-vm setup recover WORKFLOW_UUID --review-id RECOVERY_REVIEW_UUID --review RECOVERY_DIGEST --ack
+```
+
+Choose and retain each review UUID. Preparation returns a correlated
+`workflowActionReview` containing the action, workflow/VM/session/job IDs,
+sequence and input/dependency/review hashes. Submission requires that exact digest
+and explicit `--ack`; Apply/task trust and another action’s consent are insufficient.
+Reusing an ID for a different workflow/action is refused. Exact duplicates retrieve
+the original operation/acceptance, while failures are cached and not replayed.
+A deliberate new attempt after failure needs a fresh review UUID. Reviews are
+memory-only; reopening cannot restore consent or create helper ownership from a PID.
+
+Restart is available only for a clean restart-required setup. It gracefully stops
+that exact guest and waits for matching `.exited` before a new session starts.
+An `.error` diagnostic is not exit proof. No check is automatic. `prepare-check`
+requires the recorded replacement session, the original owner/UID/host key and
+fresh dependency admission; `check` uses frozen inputs, excludes custom tasks,
+passes Ansible check mode and grants no interactive authorization input. It is
+not a general standalone check of any guest or a sandbox guarantee.
+
+Recovery is only for a finished/uncertain workflow with unresolved original
+cleanup, not an active apply’s provisional cleanup flag. It must verify and fence
+the original authenticated worker before any adapter is constructed or command
+is sent. Saved metadata alone is insufficient after capability loss. The approved
+scope is identity verification, quiescence, revocation/cache clear/inactive proof
+and payload removal; it cannot reapply setup, grant authorization, execute tasks
+or restart a guest. Failed revocation retains Cleanup required and the VM hold.
+A changed checkpoint/attempt invalidates another prepared recovery review.
+`ownership-unverified` is a fixed failure code; no raw diagnostics are returned.
+
+Both preparation and submission remain disabled in the product (`failure:
+"disabled"`) before target/dependency/adapter work. Tests exercise the native
+service API and actual CLI socket with fake runtimes/adapters only. See the
+[action validation record](DevVMProvisioningPlan.md#milestone-5-reviewed-restart-check-and-cleanup-recovery--3-november-2026).

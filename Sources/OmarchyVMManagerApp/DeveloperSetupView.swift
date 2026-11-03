@@ -29,6 +29,12 @@ struct DeveloperSetupView: View {
     @State private var showingTask = false
     @State private var inspectingTask = false
     @State private var previewLookup = ""
+    @State private var workflowActionReview: ProvisioningWorkflowActionReview?
+    @State private var actionRequestID: UUID?
+    @State private var actionRequested: ProvisioningWorkflowAction?
+    @State private var actionBusy = false
+    @State private var actionAcknowledged = false
+    @State private var actionAttempted = false
     @State private var planning = false
     @State private var planRevision = UUID()
     @State private var failure: String?
@@ -93,6 +99,7 @@ struct DeveloperSetupView: View {
                     }
                 }.accessibilityLabel("Setup stages. Current workflow: " + workflow.title)
                 if workflow.cleanupRequired { Label("Cleanup has not been confirmed. Recovery must verify the original guest and authorization state.", systemImage: "exclamationmark.shield").foregroundStyle(.orange) }
+                workflowActions(workflow)
                 terminal(height: expanded ? 640 : 360)
                 HStack {
                     Text("You can leave this page. Setup will continue.").font(.callout).foregroundStyle(.secondary)
@@ -113,6 +120,9 @@ struct DeveloperSetupView: View {
                 Text("No setup job for this guest. Live output will appear here when an admitted job is available.").foregroundStyle(.secondary).font(.callout)
             }
         }
+        .onChange(of: workflow?.id) { _, _ in
+            workflowActionReview = nil; actionRequestID = nil; actionRequested = nil; actionAcknowledged = false; actionAttempted = false
+        }
         .onChange(of: source) { _, _ in invalidatePreview() }
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { invalidatePreview(); folder = url }
@@ -132,6 +142,58 @@ struct DeveloperSetupView: View {
             if let workflow, let service = model.setupService { await screen.attach(service: service, workflowID: workflow.id) }
         }
         .onDisappear { Task { await screen.detach() } }
+    }
+    private var actingService: (any ProvisioningWorkflowActing)? { model.setupService as? any ProvisioningWorkflowActing }
+    @ViewBuilder private func workflowActions(_ workflow: ProvisioningWorkflowSnapshot) -> some View {
+        if !workflow.availableActions.isEmpty || workflowActionReview?.workflowID == workflow.id {
+            GroupedPanel {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Reviewed workflow actions").font(.headline)
+                    ForEach(workflow.availableActions, id: \.self) { action in
+                        HStack {
+                            Text(action.explanation).font(.callout).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Review " + action.title.lowercased() + "…") { Task { await prepareWorkflowAction(workflow, action: action) } }
+                                .disabled(actingService?.executionEnabled != true || actionBusy)
+                        }
+                    }
+                    if let review = workflowActionReview, review.workflowID == workflow.id {
+                        Text(review.action.title).bold()
+                        Text(review.action.explanation).font(.callout)
+                        Text("Session: " + review.sessionID.uuidString).font(.caption).textSelection(.enabled)
+                        Text("Inputs: " + review.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                        Text("Review: " + review.reviewIdentity).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                        Toggle("I approve this exact " + review.action.title.lowercased() + " action for this guest and session.", isOn: $actionAcknowledged)
+                            .disabled(actionBusy || actionAttempted)
+                        Button(review.action.title) { Task { await performWorkflowAction(workflow, review: review) } }
+                            .disabled(actingService?.executionEnabled != true || !actionAcknowledged || actionBusy || actionAttempted)
+                    }
+                    if actionAttempted { Text("Action submission was attempted. Inspect the workflow state. A new attempt needs a fresh explicit review.").font(.caption).foregroundStyle(.secondary) }
+                    if actingService?.executionEnabled != true { Text("Workflow execution is disabled pending guest acceptance.").font(.caption).foregroundStyle(.secondary) }
+                }.padding(20)
+            }
+        }
+    }
+    @MainActor private func prepareWorkflowAction(_ workflow: ProvisioningWorkflowSnapshot, action: ProvisioningWorkflowAction) async {
+        guard let service = actingService, !actionBusy else { return }
+        if actionRequested != action || actionAttempted || workflowActionReview != nil { actionRequestID = nil }
+        let id = actionRequestID ?? UUID(); actionRequestID = id; actionRequested = action
+        actionBusy = true; actionAcknowledged = false; workflowActionReview = nil; failure = nil
+        defer { actionBusy = false }
+        do {
+            let review = try await service.prepareAction(workflow.id, action: action, reviewID: id)
+            guard self.workflow?.id == workflow.id else { return }
+            workflowActionReview = review; actionAttempted = false
+        } catch { actionRequestID = nil; failure = "This workflow action could not be reviewed. Verify its current state, exact guest session and original helper ownership. No action was automatically submitted." }
+    }
+    @MainActor private func performWorkflowAction(_ workflow: ProvisioningWorkflowSnapshot, review: ProvisioningWorkflowActionReview) async {
+        guard let service = actingService, !actionBusy, !actionAttempted, actionAcknowledged else { return }
+        actionAttempted = true; actionBusy = true; failure = nil
+        defer { actionBusy = false }
+        do {
+            _ = try await service.performAction(workflow.id, consent: .init(reviewID: review.id, action: review.action, reviewIdentity: review.reviewIdentity, acknowledged: true))
+            workflowActionReview = nil; actionAcknowledged = false
+        } catch { failure = "The action was not confirmed. Inspect the workflow state and cleanup requirement before preparing a fresh review. No automatic retry was made." }
     }
     private func currentPhase(_ workflow: ProvisioningWorkflowSnapshot) -> ProvisioningSetupPhase? {
         if workflow.stage == .waitingForSSH { return .connect }
