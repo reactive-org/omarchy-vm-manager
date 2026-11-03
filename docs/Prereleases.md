@@ -190,3 +190,6 @@ The host fix and reported no-prompt failure are detailed in [Guest Touch ID](Gue
 
 
 **VERIFIED — subsequent user result:** the user supplied successful guest enrollment and password-free sudo-test output in the build 26 verification sequence; read-only installed metadata confirms 0.11.0 (26), `v0.11.0-dev.2`. Personal/key identifiers are excluded from the record. See [the precise evidence and remaining limits](GuestTouchID.md#user-reported-guest-enrollment-and-sudo-success--3-november-2026). This is a user-reported happy-path result, not independent observation of native prompts or validation of focus/cancellation/fallback/multi-VM behavior.
+
+
+**VERIFIED — further user confirmation:** the user confirmed the three proposed single-guest checks: Linux-password fallback after cancelling Touch ID, focus-loss cancellation preventing late approval, and fresh-request recovery after returning to the guest. See [the scoped evidence](GuestTouchID.md#user-confirmed-fallback-focus-cancellation-and-recovery--3-november-2026). Lifecycle cancellation, unavailable-biometry fallback and two-VM isolation remain **TO PROVE**. No agent-driven native test or VM change occurred.
