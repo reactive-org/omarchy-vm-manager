@@ -146,12 +146,17 @@ class SignedProvenanceTests(unittest.TestCase):
                 responses = [SimpleNamespace(stdout=json.dumps({"id": identifier})),
                              SimpleNamespace(stdout=json.dumps({"id": identifier, "status": "In Progress"})),
                              SimpleNamespace(stdout=json.dumps({"id": identifier, "status": outcome})), SimpleNamespace(stdout="")]
-                with patch.object(signed_prerelease, "ROOT", Path(temp)), patch.object(signed_prerelease, "run", side_effect=responses), patch.object(signed_prerelease.time, "sleep"):
+                with patch.object(signed_prerelease, "ROOT", Path(temp)), patch.object(signed_prerelease, "run", side_effect=responses), patch.object(signed_prerelease.time, "sleep"), patch.object(signed_prerelease, "accepted_submission", return_value={"id": identifier, "status": "Accepted"}) as acceptance:
                     if outcome == "Accepted":
                         self.assertEqual(signed_prerelease.notarize(archive, [], "app")["status"], "Accepted")
                     else:
                         with self.assertRaisesRegex(RuntimeError, "not accepted"):
                             signed_prerelease.notarize(archive, [], "app")
+                if outcome == "Accepted":
+                    acceptance.assert_called_once_with(archive, [], "app", identifier)
+                else:
+                    acceptance.assert_not_called()
+                self.assertEqual((Path(temp) / ".build/signed-release/notary-app.zip").read_bytes(), archive.read_bytes())
                 saved = json.loads((Path(temp) / ".build/notarization/app-submission.json").read_text())
                 self.assertEqual(saved["status"], outcome)
 

@@ -212,6 +212,11 @@ def credentials():
 def notarize(archive, profile, label):
     folder = ROOT / ".build/notarization"
     folder.mkdir(parents=True, exist_ok=True)
+    candidate = ROOT / ".build/signed-release" / ("notary-" + label + ".zip")
+    candidate.parent.mkdir(parents=True, exist_ok=True)
+    if candidate.resolve() != archive.resolve():
+        assert not candidate.exists(), "existing submitted candidate was preserved"
+        shutil.copy2(archive, candidate)
     submission = json.loads(run("Submit " + label + " to Apple", "xcrun", "notarytool", "submit", archive,
                                 *profile, "--output-format", "json").stdout)
     identifier = submission["id"]
@@ -232,7 +237,7 @@ def notarize(archive, profile, label):
             print(f"::notice title=Apple notarization::{label}: {status.get('status')} (submission {identifier})", flush=True)
             previous_status = status.get("status")
         if status.get("status") == "Accepted":
-            return status
+            return accepted_submission(archive, profile, label, identifier)
         if status.get("status") not in {"In Progress", "InProgress"}:
             run("Retrieve Apple rejection details", "xcrun", "notarytool", "log", identifier,
                 *profile, folder / (label + "-log.json"))
@@ -361,6 +366,15 @@ def release(retained=None):
     source = json.loads(source_bytes)
     work = ROOT / ".build/signed-release"
     work.mkdir(parents=True, exist_ok=True)
+    (work / "SourceRuntime.lock.json").write_bytes(source_bytes)
+    (work / "ReleaseSource.json").write_text(json.dumps({
+        "releaseTag": tag,
+        "applicationSourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "sourceLockSHA256": hashlib.sha256(source_bytes).hexdigest(),
+        "sourceKitSHA256": source["kitSHA256"],
+        "workflowRunID": os.environ.get("GITHUB_RUN_ID"),
+        "workflowRunAttempt": os.environ.get("GITHUB_RUN_ATTEMPT")
+    }, indent=2, sort_keys=True) + "\n")
     with provisioning_profile() as keychain_profile, credentials() as (profile, team, identity):
         lock, lock_path, folder = prepare_runtime(source, source_bytes, profile, team, identity, tag, work, retained)
         pin = ROOT / "Sources/OmarchyVMManagerCore/RuntimePin.swift"
@@ -383,7 +397,6 @@ def release(retained=None):
             submission_archive = work / "notary-app.zip"
             run("Archive app for Apple submission", "ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, submission_archive)
             status = notarize(submission_archive, profile, "app")
-            status = accepted_submission(submission_archive, profile, "app", status["id"])
             run("Staple app ticket", "xcrun", "stapler", "staple", app)
             run("Verify notarized app and Gatekeeper acceptance", "python3", ROOT / "Scripts/verify_signed_app.py", app)
             run("Package and verify the final notarized ZIP", "python3", ROOT / "Scripts/package_prerelease.py", "--signed", "--runtime-lock", lock_path)
@@ -393,12 +406,14 @@ def release(retained=None):
             archive.with_suffix(".zip.sha256").write_text(digest(archive) + "  " + archive.name + "\n")
             shutil.copy2(lock_path, output / lock_path.name)
             (output / "SourceRuntime.lock.json").write_bytes(source_bytes)
+            shutil.copy2(work / "ReleaseSource.json", output / "ReleaseSource.json")
+            for label in ("runtime", "app"):
+                log = ROOT / ".build/notarization" / (label + "-log.json")
+                if log.exists():
+                    shutil.copy2(log, output / (label.capitalize() + "NotarizationLog.json"))
             if retained is not None:
                 for name in ("CandidateReceipt.json", "SourceRun.json", "SourceArtifact.json", "SourceJobs.json"):
                     shutil.copy2(retained / name, output / name)
-                for label in ("runtime", "app"):
-                    shutil.copy2(ROOT / ".build/notarization" / (label + "-log.json"),
-                                 output / (label.capitalize() + "NotarizationLog.json"))
                 (output / "Continuation.json").write_text(json.dumps({
                     "applicationSourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                     "toolingCommit": os.environ["CONTINUATION_TOOLING_COMMIT"],
