@@ -91,6 +91,7 @@ struct ProvisioningHelperEngineContext: Sendable, CustomStringConvertible, Custo
     let authority: any ProvisioningSessionAuthority
     let runner: ProvisioningFencedProcessRunner
     var admitPackage: @Sendable () throws -> Void = {}
+    var frozenContext: ProvisioningValidatedFrozenContext? = nil
     var description: String { "ProvisioningHelperEngineContext(redacted)" }
     var debugDescription: String { description }
 }

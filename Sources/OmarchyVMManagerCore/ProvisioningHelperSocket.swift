@@ -40,23 +40,42 @@ final class ProvisioningHelperSocket: @unchecked Sendable {
         let count = Darwin.recv(fd, &byte, 1, MSG_PEEK | MSG_DONTWAIT)
         return count == 0 || (count < 0 && errno != EAGAIN && errno != EINTR)
     }
-    func receive(idle: Bool = false) throws -> Data {
+    func receive(idle: Bool = false, wait: Duration? = nil) throws -> Data {
         // Idle waiting is interruptible by shutdown; a partially sent frame has
         // an absolute deadline and cannot extend it by trickling more bytes.
-        let transactionEnd = ContinuousClock.now + timeout
+        let allowed = wait ?? timeout
+        guard allowed > .zero, allowed <= .seconds(30) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        let transactionEnd = ContinuousClock.now + allowed
         let first = try Self.readExact(fd, count: 1, deadline: idle ? nil : transactionEnd)
-        let end = idle ? ContinuousClock.now + timeout : transactionEnd
+        let end = idle ? ContinuousClock.now + allowed : transactionEnd
         let prefix = first + (try Self.readExact(fd, count: 3, deadline: end))
         let count = prefix.reduce(0) { ($0 << 8) | Int($1) }
         guard count > 0, count <= ProvisioningHelperFrameCodec.maximumFrameBytes else { throw ProvisioningHelperIPCFailure.protocolViolation }
         return try Self.readExact(fd, count: count, deadline: end)
     }
-    func send(_ data: Data) throws {
+    func finishSending() { _ = Darwin.shutdown(fd, SHUT_WR) }
+    func requireEOF(wait: Duration? = nil) throws {
+        let allowed = wait ?? timeout
+        guard allowed > .zero, allowed <= .seconds(5) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        let end = ContinuousClock.now + allowed
+        while ContinuousClock.now < end {
+            var event = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            if poll(&event, 1, 20) < 0 { if errno == EINTR { continue }; throw ProvisioningHelperIPCFailure.unavailable }
+            var byte: UInt8 = 0
+            let count = Darwin.recv(fd, &byte, 1, MSG_PEEK | MSG_DONTWAIT)
+            if count == 0 { return }
+            guard count < 0, errno == EAGAIN || errno == EINTR else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        }
+        throw ProvisioningHelperIPCFailure.timeout
+    }
+    func send(_ data: Data, wait: Duration? = nil) throws {
         guard !data.isEmpty, data.count <= ProvisioningHelperFrameCodec.maximumFrameBytes else { throw ProvisioningHelperIPCFailure.protocolViolation }
         let size = UInt32(data.count)
         var packet = Data([UInt8(size >> 24), UInt8((size >> 16) & 255), UInt8((size >> 8) & 255), UInt8(size & 255)])
         packet.append(data)
-        let end = ContinuousClock.now + timeout
+        let allowed = wait ?? timeout
+        guard allowed > .zero, allowed <= .seconds(5) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        let end = ContinuousClock.now + allowed
         try packet.withUnsafeBytes { bytes in
             var offset = 0
             while offset < bytes.count {

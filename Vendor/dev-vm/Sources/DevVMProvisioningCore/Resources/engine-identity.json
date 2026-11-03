@@ -65,7 +65,7 @@
     "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "3dd49155e97127dd6361a15db60b7d28f6d610c6c7e8edaee0aeaa78b2501c7e",
     "Sources/DevVMProvisioningCore/SelectionSchema.swift": "e46a8ee4a2f81c17c3f33cb2ff0e7cf9ad5f6e70d32c79fc5021976c32eca29d",
     "Sources/DevVMProvisioningCore/SetupManifest.swift": "52f0af5aa6a65cc5a61ea72cd37491e52ffaafad3e687d27ffd820d2371420a2",
-    "Sources/DevVMProvisioningCore/SetupPlanner.swift": "8dfc1f0b2e11c77e690c50dd566812a56ad92e7a98fa86efb74162f65f7d0064",
+    "Sources/DevVMProvisioningCore/SetupPlanner.swift": "754b0ecb2abccb78dafca1a326d6a091157610fae1c13b4eb8677dafa2b2867e",
     "Sources/DevVMProvisioningCore/SourceSnapshot.swift": "95ba352a7fe6b33664ff177b2326dbf774bfd05b7f93ab5dc1b837d11314fd5e",
     "Sources/DevVMProvisioningCore/TransportWorkspace.swift": "6d9d3cb99fdf45e4c2255a651f054e3acfec87beb832f558003b6a0e9a2ec0ef",
     "Sources/dev-vm-process-host/main.c": "f9f5f3afb88d54d466dd10d183bf3323a17712c29932ad38d5289e8a67ac02aa",

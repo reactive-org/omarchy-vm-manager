@@ -2,9 +2,17 @@
 
 Milestone 1A implements the Homebrew Ansible CLI dependency contract from the [shared Swift provisioning plan](DevVMProvisioningPlan.md). The native **Provisioning tools** page and local **setup tools** command report schema 2. The CLI does not open the app, access the registry or connect to a guest.
 
-The shared Swift package, parsers, dev-vm controller port, setup execution, provisioning jobs and interactive terminal are not integrated yet. Every feature reports `implemented: false` and `enabled: false`, even when `toolsReady` is true. Normal VM management does not depend on these checks.
+The pinned Swift package now provides offline parsing/planning and an internal
+coordinator/helper foundation with private frozen-input delivery and independent
+helper-side context validation. Product setup execution, job UI/CLI attachment
+and the live terminal remain unavailable. Every dependency-report feature still
+reports `implemented: false` and `enabled: false`, even when `toolsReady` is true.
+Normal VM management does not depend on these checks.
 
-The [milestone-2 foundation](DevVMProvisioningPlan.md#milestone-2-foundation-handoff--2-november-2026) now supplies a validation-only Swift package/parser in the companion dev-vm worktree. It does not change manager dependencies, reports or feature gates. The continuation now adds offline feature/profile resolution, source snapshots and proposals in dev-vm. The subsequent slice adds adapter-only transport/auth sequencing tested with in-memory fakes. The immutable package integration and real transport are still pending; manager gates stay disabled.
+See the [current milestone-3 handoff](DevVMProvisioningPlan.md#milestone-3-frozen-input-delivery-and-helper-context-validation--3-november-2026).
+The helper validates frozen reviewed inputs before acknowledgement, but the product
+supplies no transport backend and rejects activation. These dependency reports
+and their schema-2 readiness semantics are unchanged.
 
 ## Native and CLI reports
 
@@ -65,7 +73,7 @@ Each feature records `blockers`, `toolsReady`, `implemented`, `enabled` and a re
 
 | Capability | External prerequisites |
 | --- | --- |
-| JSON and YAML planning | None; shared Swift package/parsers remain unimplemented |
+| JSON and YAML planning | None; offline core exists, product planning gate remains disabled |
 | Basic native provisioning | Fixed macOS Bash, SSH, SCP and SFTP |
 | Developer features and external setups | Basic transport set, verified Homebrew and both Ansible commands passing local checks |
 | GitHub-star theme selection | Relevant system transports and GitHub CLI; authentication remains unverified |

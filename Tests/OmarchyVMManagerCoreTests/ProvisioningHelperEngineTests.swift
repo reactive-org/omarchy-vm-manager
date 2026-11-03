@@ -48,7 +48,7 @@ actor EngineFixtureGuest: ProvisioningGuestAdapter {
     }
     func interrupt(commandID: UUID, context: GuestJobContext) async { interrupted.insert(commandID); await gate?.release() }
 }
-actor EngineFixtureFactory: ProvisioningHelperEnginePreparing {
+actor EngineFixtureFactory: ProvisioningHelperEnginePreparing, ProvisioningDeliveredBackendPreparing {
     let request: ProvisioningRequest
     let approval: ProvisioningApproval
     let guest: EngineFixtureGuest
@@ -60,6 +60,13 @@ actor EngineFixtureFactory: ProvisioningHelperEnginePreparing {
          backend: IPCRecordingRunner = IPCRecordingRunner(), prepareGate: IPCWorkerGate? = nil) {
         self.request = request; self.approval = approval; self.guest = guest; self.authority = authority; self.backend = backend; self.prepareGate = prepareGate
     }
+    func prepare(_ input: ProvisioningValidatedFrozenContext, registration: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperEngineContext {
+        prepares += 1; await prepareGate?.wait()
+        let request = input.request
+        let runner = try ProvisioningFencedProcessRunner(backend: backend, scope: registration.scope, target: request.target, mode: request.mode)
+        await guest.install(runner)
+        return .init(request: request, approval: approval, adapter: guest, authority: authority, runner: runner)
+    }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperEngineContext {
         prepares += 1; await prepareGate?.wait()
         let runner = try ProvisioningFencedProcessRunner(backend: backend, scope: registration.scope, target: request.target, mode: request.mode)
@@ -70,7 +77,7 @@ actor EngineFixtureFactory: ProvisioningHelperEnginePreparing {
 /// Local IPC counterpart for manager tests; every backend is fake and no child
 /// executable is launched. Preparation precedes the journal; serving begins only
 /// at the manager's launch call, and activation has a distinct observe hook.
-actor LocalEngineLauncher: ProvisioningHelperDispatching {
+actor LocalEngineLauncher: ProvisioningHelperDispatching, ProvisioningFrozenHelperLaunching {
     let factory: EngineFixtureFactory
     private let observe: (@Sendable (ProvisioningHelperActivation) throws -> Void)?
     private var ticket: ProvisioningHelperLaunchTicket?
@@ -79,6 +86,8 @@ actor LocalEngineLauncher: ProvisioningHelperDispatching {
     private var serving: Task<Void, Never>?
     private var credentials: ProvisioningHelperCredentials?
     private var registry: ProvisioningHelperOwnershipRegistry?
+    private var delivery: ProvisioningFrozenDeliverySource?
+    private var inputParent: URL?
     private(set) var activations = 0
     var loseActivationReply = false
     var corruptStatus = false
@@ -94,11 +103,23 @@ actor LocalEngineLauncher: ProvisioningHelperDispatching {
         registry = try ProvisioningHelperOwnershipRegistry(identity: identity)
         return value
     }
+    func prepare(_ original: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource) throws -> ProvisioningHelperLaunchTicket {
+        guard original.delivery == delivery.receipt else { throw ProvisioningHelperIPCFailure.authentication }
+        let ticket = try prepare(original); self.delivery = delivery; return ticket
+    }
     func launch(_ ticket: ProvisioningHelperLaunchTicket) async throws -> ProvisioningHelperRegistrationReceipt {
         guard self.ticket == ticket, let credentials, let registry, client == nil else { throw ProvisioningHelperIPCFailure.ownership }
         var fds = [Int32](repeating: -1, count: 2); guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { throw ProvisioningHelperIPCFailure.unavailable }
         let clientSocket = try ProvisioningHelperSocket(taking: fds[0]), serverSocket = try ProvisioningHelperSocket(taking: fds[1])
-        let server = try ProvisioningHelperIPCServer(socket: serverSocket, credentials: credentials, registry: registry, engineFactory: factory)
+        var input: ProvisioningValidatedFrozenContext?
+        var engineFactory: any ProvisioningHelperEnginePreparing = factory
+        if let delivery {
+            let parent = URL(fileURLWithPath: "/private/tmp/frozen-helper-test-" + UUID().uuidString)
+            try PrivateFiles.directory(parent, create: true); inputParent = parent
+            let validated = try ProvisioningValidatedFrozenContext.load(delivery.read(), registration: ticket.registration, parent: parent)
+            input = validated; engineFactory = ProvisioningDeliveredEngineFactory(input: validated, backend: factory)
+        }
+        let server = try ProvisioningHelperIPCServer(socket: serverSocket, credentials: credentials, registry: registry, engineFactory: engineFactory, frozenInput: input)
         let client = ProvisioningHelperIPCClient(socket: clientSocket, credentials: credentials)
         self.server = server; self.client = client; serving = Task { await server.serve() }
         return try await client.awaitRegistration(ticket)
@@ -121,7 +142,10 @@ actor LocalEngineLauncher: ProvisioningHelperDispatching {
     func abort(_ activation: ProvisioningHelperActivation) async { client?.disconnect() }
     func abandon(_ ticket: ProvisioningHelperLaunchTicket) async { client?.disconnect() }
     func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) async { client?.disconnect() }
-    func close() async { client?.disconnect(); server?.stop(); await serving?.value }
+    func close() async {
+        client?.disconnect(); server?.stop(); await serving?.value
+        if let inputParent { try? FileManager.default.removeItem(at: inputParent) }
+    }
 }
 private final class EngineFixture: Sendable {
     let root: URL, request: ProvisioningRequest

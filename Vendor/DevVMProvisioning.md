@@ -11,7 +11,8 @@ The base has 79 files: `Package.swift`, `Package.resolved`, `README.md`, `AGENTS
 `Sources/**`, `ThirdParty/**`, `tests/DevVMProvisioningCoreTests/**` and
 `tests/ProcessFixture/**`. The durable-state extension adds two core source files
 and one fixture test (82 resulting files). It changes snapshot/checkpoint APIs,
-preallocated payload identity, cleanup helper retention and the engine inventory.
+preallocated payload identity, cleanup helper retention, public read-only reviewed
+manifest path and the engine inventory.
 Baseline README/AGENTS/license bytes are retained; current consumer behavior is
 recorded here and in the manager plan. Guest resources, parser code and C launcher
 are unchanged.
@@ -51,10 +52,12 @@ pin; it does not bless changed sources by rewriting their hashes. Run
 The library is linked into manager core and its offline-planning/ownership-only
 provisioning helper. Its inherited control mode reserves a worker from an admitted private bootstrap.
 Manager core can dispatch the pinned sequencer through an injected helper-local
-context factory, but the product helper provides none and rejects activation.
+context factory. The product helper independently validates private delivered
+inputs and rebuilds the reviewed context, but provides no backend and rejects
+activation. Delivery/context policy remains manager-owned.
 The separate debug fixture contains synthetic backends; none are staged into the
 product helper. Manager launch/activation policy is outside the shared source pin;
-see the milestone-3 dispatch handoff in the plan.
+see the milestone-3 frozen-input handoff in the plan.
 The pinned C PTY launcher is built unchanged in a generated standalone SwiftPM
 package because an executable product of a dependency is not a manager root
 product. Only its exact entry-point source and generated manifest are admitted.

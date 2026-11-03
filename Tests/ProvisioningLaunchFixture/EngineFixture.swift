@@ -1,4 +1,5 @@
 #if DEBUG
+import Darwin
 import Foundation
 import DevVMProvisioningCore
 @testable import OmarchyVMManagerCore
@@ -6,14 +7,21 @@ import DevVMProvisioningCore
 // This code is only in the excluded debug fixture product. The shipped helper
 // never contains a synthetic guest backend or a fixture-selection parameter.
 enum DispatchFixtureBlueprint {
-    static func request(root: URL, scope: ProvisioningRecoveryExpectation, mode: ProvisioningMode) throws -> ProvisioningRequest {
+    static func request(root: URL, scope: ProvisioningRecoveryExpectation, mode: ProvisioningMode, delivered: Bool = false) throws -> ProvisioningRequest {
         try PrivateFiles.directory(root, create: true)
-        let manifest = root.appendingPathComponent("vm.yml")
-        let bytes = Data("schema_version: 1\nid: dispatch-fixture\nsetup: {features: {enable: [cli]}}\nvars: {synthetic: local-fixture-only}\n".utf8)
+        let path = delivered ? "config/dev-vm.yml" : "vm.yml"
+        if delivered {
+            try FileManager.default.createDirectory(at: root.appendingPathComponent("config"), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: root.appendingPathComponent("assets/empty"), withIntermediateDirectories: true)
+            try Data(repeating: 0xFF, count: 96 * 1024).write(to: root.appendingPathComponent("assets/binary"))
+            chmod(root.appendingPathComponent("assets/binary").path, 0o640)
+        }
+        let manifest = root.appendingPathComponent(path)
+        let bytes = Data(((delivered ? "assets: [assets]\n" : "") + "schema_version: 1\nid: dispatch-fixture\nsetup: {features: {enable: [cli]}}\nvars: {synthetic: local-fixture-only}\n").utf8)
         if !FileManager.default.fileExists(atPath: manifest.path) {
             try bytes.write(to: manifest); try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: manifest.path)
         }
-        let plan = try SetupPlanner.plan(repository: root)
+        let plan = try SetupPlanner.plan(repository: root, manifest: path)
         let target = try GuestBinding(vmID: scope.vmID, sessionID: scope.sessionID, owner: "fixture", ownerUID: 1000, hostKeyDigest: String(repeating: "a", count: 64))
         return try .init(jobID: scope.jobID, plan: plan, repository: root, target: target, dependencyDigest: scope.dependencyDigest,
             mode: mode, inputLeaseID: mode == .apply ? scope.workerToken : nil)
@@ -60,4 +68,18 @@ struct DispatchFixtureEngineFactory: ProvisioningHelperEnginePreparing {
             admitPackage: { _ = try BundledProvisioning.inspect(layout) })
     }
 }
+struct DispatchFixtureDeliveredBackend: ProvisioningDeliveredBackendPreparing {
+    let layout: ProvisioningPackageLayout
+    func prepare(_ input: ProvisioningValidatedFrozenContext, registration: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperEngineContext {
+        let request = input.request
+        // No original checkout path or fixed helper-side blueprint is consulted.
+        guard request.plan.manifestPath == "config/dev-vm.yml",
+              request.plan.snapshot.data(for: "assets/binary")?.count == 96 * 1024 else { throw ProvisioningJobFailure.invalidRequest }
+        let runner = try ProvisioningFencedProcessRunner(backend: DispatchFixtureProcessBackend(), scope: registration.scope, target: request.target, mode: request.mode)
+        return .init(request: request, approval: .init(reviewIdentity: request.reviewIdentity, persistentGrantAcknowledged: true),
+            adapter: DispatchFixtureGuest(), authority: DispatchFixtureAuthority(target: request.target, dependencies: request.dependencyDigest), runner: runner,
+            admitPackage: { _ = try BundledProvisioning.inspect(layout) })
+    }
+}
+
 #endif

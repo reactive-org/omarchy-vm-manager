@@ -58,6 +58,25 @@ final class ProvisioningJobArtifacts: @unchecked Sendable {
     func verifyInputs(_ record: ProvisioningJobRecord) throws {
         try mutex.withLock { _ = try read(record.jobID, suffix: "inputs", expected: record.inputArchiveSHA256, maximum: FrozenInputsArchive.maximumArchiveBytes) }
     }
+    func prepareDelivery(_ request: ProvisioningRequest, approval: ProvisioningApproval, inputsSHA256: String) throws -> ProvisioningFrozenDeliverySource {
+        try mutex.withLock {
+            do {
+                let archive = try read(request.jobID, suffix: "inputs", expected: inputsSHA256, maximum: FrozenInputsArchive.maximumArchiveBytes)
+                let delivery = try ProvisioningFrozenDelivery(request: request, approval: approval, archive: archive)
+                try quota(adding: delivery.bytes.count, files: 1)
+                try writeImmutable(delivery.bytes, name: name(request.jobID, "delivery")); try checkDirectory()
+                return try ProvisioningFrozenDeliverySource(url: directory.appendingPathComponent(name(request.jobID, "delivery")), receipt: delivery.receipt)
+            } catch { throw ProvisioningJobFailure.artifactUnavailable }
+        }
+    }
+    func verifyDelivery(_ record: ProvisioningJobRecord) throws {
+        try mutex.withLock {
+            try checkDirectory()
+            guard let receipt = record.helperDelivery, receipt.archiveSHA256 == record.inputArchiveSHA256 else { throw ProvisioningJobFailure.artifactUnavailable }
+            _ = try ProvisioningFrozenDeliverySource(url: directory.appendingPathComponent(name(record.jobID, "delivery")), receipt: receipt)
+            try checkDirectory()
+        }
+    }
     func cleanupTicket(_ record: ProvisioningJobRecord, target: GuestBinding) throws -> CleanupTicket {
         try mutex.withLock {
             do {
@@ -87,24 +106,24 @@ final class ProvisioningJobArtifacts: @unchecked Sendable {
     private func writeImmutable(_ data: Data, name: String) throws {
         let url = directory.appendingPathComponent(name)
         if PrivateFiles.exists(url) {
-            guard try PrivateFiles.read(url, maximum: FrozenInputsArchive.maximumArchiveBytes) == data else { throw ProvisioningJobFailure.artifactUnavailable }
+            guard try PrivateFiles.read(url, maximum: ProvisioningFrozenDelivery.maximumBytes) == data else { throw ProvisioningJobFailure.artifactUnavailable }
         } else { try PrivateFiles.write(data, name: name, in: directory, exclusively: true) }
-        guard try PrivateFiles.read(url, maximum: FrozenInputsArchive.maximumArchiveBytes) == data else { throw ProvisioningJobFailure.artifactUnavailable }
+        guard try PrivateFiles.read(url, maximum: ProvisioningFrozenDelivery.maximumBytes) == data else { throw ProvisioningJobFailure.artifactUnavailable }
     }
     private func checkDirectory() throws {
         try PrivateFiles.directory(directory)
         var info = stat()
         guard lstat(directory.path, &info) == 0, info.st_ino == inode, info.st_dev == device else { throw ProvisioningJobFailure.artifactUnavailable }
     }
-    private func quota(adding count: Int) throws {
+    private func quota(adding count: Int, files: Int = 2) throws {
         let entries = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-        guard entries.count <= 510 else { throw ProvisioningJobFailure.artifactUnavailable }
+        guard entries.count <= 512 - files else { throw ProvisioningJobFailure.artifactUnavailable }
         var total = count
         for entry in entries {
             var info = stat()
             guard lstat(directory.appendingPathComponent(entry).path, &info) == 0,
                   info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(), info.st_nlink == 1,
-                  info.st_mode & 0o7777 == 0o600, info.st_size >= 0, info.st_size <= FrozenInputsArchive.maximumArchiveBytes
+                  info.st_mode & 0o7777 == 0o600, info.st_size >= 0, info.st_size <= ProvisioningFrozenDelivery.maximumBytes
             else { throw ProvisioningJobFailure.artifactUnavailable }
             total += Int(info.st_size)
             guard total <= maximumTotalBytes else { throw ProvisioningJobFailure.artifactUnavailable }

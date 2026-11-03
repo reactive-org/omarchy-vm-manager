@@ -1816,3 +1816,71 @@ reviewed rebinding, release signer acceptance, real guest/auth/echo/quiescence/
 crash/kernel behavior, terminal/PTY/input/UI/CLI. The screenshot remains a reference;
 no user UI or installed app is changed. Earlier real-guest evidence labels remain.
 See the [helper dispatch handoff](docs/DevVMProvisioningPlan.md#milestone-3-helper-side-engine-dispatch-and-activation--3-november-2026).
+
+## Frozen-input delivery and helper context validation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes
+and disposable local fixtures only; no real SSH/Ansible, installs or VM launches.
+This supersedes the pending frozen-context handoff in the preceding record.
+
+**DESIGN DECISION / IMPLEMENTED:** persist a private immutable `DVMCNTX1` delivery
+blob containing the existing selected archive and strict reviewed-request metadata.
+Bind exact total/metadata/archive hashes and byte count into the authenticated
+registration and schema-5 journal, before spawn. A retained read-only descriptor
+checks private ownership, mode, single link, file/path identity and digest. Spawn
+inherits an empty separate socket at fd 4; only after verifying package and owned
+live-child code send bootstrap 3 and bounded chunks. No source path or content
+enters arguments, environment, control/status/terminal frames or diagnostics.
+Capabilities still exist only in memory/private pipes, never in these artifacts.
+
+**DESIGN DECISION / IMPLEMENTED:** validate hashes, strict fields and original
+job/guest/session/dependency/review bindings before materializing only into a fresh
+private helper-owned UUID tree. Descriptor-relative no-follow/exclusive traversal,
+file/directory/depth/byte bounds and fsync preserve selected binary bytes, modes
+and empty directories. Independently replan inside that tree using the original
+relative manifest; compare plan/input/engine and reconstructed review identities
+before acknowledging registration. The archive remains inert data, never an
+imported executable plan, cleanup proof or automatic apply/resume authority.
+An injected backend receives the validated context; delivered, backend and explicit
+activation consent combine by AND. Retain/recheck its private storage through work;
+cleanup still uses the independently bound original checkpoint without source or
+input availability. Product helper backend construction and execution gates stay
+disabled. Only the excluded Debug fixture uses synthetic guest adapters.
+
+**DESIGN DECISION:** original source verification remains required before job
+publication/handoff. After a frozen registration is accepted, the selected private
+copy defines the reviewed job; mutable checkout changes/removal cannot replace or
+invalidate that copy. Manager activation checks persisted delivery/inputs and the
+helper checks its rebuilt private context. Legacy non-delivery registrations keep
+source preflight. No replay, guest rebinding, input grant or restart adoption is
+added. Schemas 1–4 preserve risk and ownership without invented delivery receipts.
+No artifact is automatically imported or removed; partial private trees are retained.
+
+**PRIVATE COUPLING:** shared `SetupPlan.manifestPath` is now public read-only.
+Update its engine inventory and manager's exact base-plus-integration-patch lock
+and compiled pin together (82 resulting files). The base remains `bb3fae2`; the
+patched result has a new engine/source identity. Guest resources, parser dependencies
+and C launcher are unchanged. No mutable external checkout dependency is used.
+
+**VERIFIED — fake/local checks:** `make test` passes 308 manager Swift functions/
+44 suites, 49 script tests and expanded relocated/read-only signed-helper fixtures.
+Coverage includes independent replan, custom manifest/catalogue/tasks, binary/mode/
+empty-directory preservation, changed metadata/identities/framing/hashes, private
+file/root/link substitution, implicit-directory bounds, strict receipt/bootstrap/
+journal migration, consent constraints and frozen activation after source removal.
+Actual admitted product helper validates delivery but denies activation. The
+separately sealed/ad-hoc-signed Debug helper validates a multi-frame payload and
+uses only fake adapters for completion/cancellation after parent source deletion.
+Changed delivery is refused; matching child exits are reaped. No fake backend is
+installed into the product app. Shared build/tests and development oracle checks
+pass 68 Swift functions, 18 parser fixtures and 66 complete planning/error fixtures.
+Only disposable local socket/mock-auth/PTY sandbox exceptions and ad-hoc fixture
+signing are used; no real signing credentials, auth UI, transport, installs or
+VM operation occurs. Existing real-guest evidence labels remain unchanged.
+
+**TO PROVE:** trusted manager-aware session/dependency authority and exclusive real
+backend construction, product coordinator wiring, full restart/reconnect/rebinding,
+real release-signature acceptance, power-loss durability/retention UX, live terminal/
+PTY/input/UI/CLI integration and real guest/auth/echo/quiescence/crash/kernel behavior.
+The supplied screenshot remains a visual reference; no UI or installed app changes.
+See the [frozen-input handoff](docs/DevVMProvisioningPlan.md#milestone-3-frozen-input-delivery-and-helper-context-validation--3-november-2026).

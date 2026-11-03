@@ -4,7 +4,7 @@ import Foundation
 public struct SetupPlan: Sendable, Encodable {
     public let document: ManifestValue
     public let snapshot: SourceSnapshot
-    let manifestPath: String
+    public let manifestPath: String
     public var identity: String { document.object!["plan_digest"]!.string! }
     public func encode(to encoder: any Encoder) throws { try document.encode(to: encoder) }
     public func verify(in repository: URL) throws {

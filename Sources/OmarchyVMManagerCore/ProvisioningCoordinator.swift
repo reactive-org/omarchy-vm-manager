@@ -188,12 +188,19 @@ public actor ProvisioningCoordinator {
             let scope = ProvisioningRecoveryExpectation(challenge: UUID(), jobID: record.jobID, vmID: record.vmID, sessionID: record.sessionID,
                 payloadID: payload, workerToken: worker, engineDigest: record.engineDigest, dependencyDigest: record.dependencyDigest,
                 bindingDigest: record.bindingDigest, reviewDigest: record.reviewDigest, checkpointDigest: files.cleanupSHA256)
-            let prepared = try await launcher.prepare(.init(scope: scope, planDigest: record.planDigest, inputDigest: record.inputDigest, mode: record.mode))
+            var registration = ProvisioningHelperWorkerRegistration(scope: scope, planDigest: record.planDigest, inputDigest: record.inputDigest, mode: record.mode)
+            let prepared: ProvisioningHelperLaunchTicket
+            if let frozen = launcher as? any ProvisioningFrozenHelperLaunching {
+                let delivery = try artifacts.prepareDelivery(request, approval: approval, inputsSHA256: files.inputsSHA256)
+                registration.delivery = delivery.receipt
+                prepared = try await frozen.prepare(registration, delivery: delivery)
+            } else { prepared = try await launcher.prepare(registration) }
             ticket = prepared
             var expected = scope; expected.helperIdentity = prepared.identity
             try prepared.identity.validate()
             guard prepared.registration.scope == expected, prepared.registration.planDigest == record.planDigest,
                   prepared.registration.inputDigest == record.inputDigest, prepared.registration.mode == record.mode,
+                  prepared.registration.delivery == registration.delivery,
                   prepared.identity.packageLockSHA256 == ProvisioningPackagePin.lockSHA256,
                   !jobs.values.contains(where: { $0.helperIdentity?.instanceID == prepared.identity.instanceID }) else { throw ProvisioningJobFailure.invalidRequest }
             do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
@@ -202,14 +209,15 @@ public actor ProvisioningCoordinator {
             catch { throw ProvisioningJobFailure.dependencyChanged }
             try await manager.validateProvisioning(lease, cleanup: false)
             record.helperIdentity = prepared.identity; record.helperRegistrationDigest = try prepared.registration.digest
-            record.helperRegistered = false; record.cleanupRequired = true
+            record.helperRegistered = false; record.cleanupRequired = true; record.helperDelivery = registration.delivery
             try persist(record) // Original owner and pending registration precede spawn.
             helperAuthorities[record.jobID] = launcher
             let receipt = try await launcher.launch(prepared)
             guard receipt.identity == prepared.identity, receipt.registrationDigest == record.helperRegistrationDigest,
-                  receipt.state == "registered" else { throw ProvisioningJobFailure.ownershipUnverified }
+                  receipt.state == "registered", receipt.deliveryDigest == record.helperDelivery?.sha256 else { throw ProvisioningJobFailure.ownershipUnverified }
             do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
-            try request.plan.verify(in: request.repository)
+            if record.helperDelivery != nil { try artifacts.verifyDelivery(record) }
+            else { try request.plan.verify(in: request.repository) }
             try await authority.revalidate(request.target, dependencyDigest: request.dependencyDigest)
             try await manager.validateProvisioning(lease, cleanup: false)
             record.helperRegistered = true; try advance(&record); try persist(record)
@@ -510,8 +518,11 @@ extension ProvisioningCoordinator {
               request.selectedTasks.isEmpty || approval.customTasksReviewed,
               request.mode == .check || approval.persistentGrantAcknowledged else { throw ProvisioningJobFailure.invalidRequest }
         admitting = true; defer { admitting = false }
-        try admitPackage(); try request.plan.verify(in: request.repository)
-        guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }; try artifacts.verifyInputs(record)
+        try admitPackage()
+        guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
+        if record.helperDelivery != nil { try artifacts.verifyDelivery(record) }
+        else { try request.plan.verify(in: request.repository) }
+        try artifacts.verifyInputs(record)
         try await authority.revalidate(request.target, dependencyDigest: record.dependencyDigest)
         let generation = UUID(), lease = try await reserve(request.jobID, target: request.target, generation: generation, recovery: true)
         do {

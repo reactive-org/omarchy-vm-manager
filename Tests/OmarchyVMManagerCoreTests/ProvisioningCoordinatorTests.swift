@@ -839,14 +839,33 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(await dispatcher.activations == 1)
         await dispatcher.close()
     }
-    @Test func staleHelperActivationIsRejectedBeforeAnyRPC() async throws {
+    @Test func damagedFrozenDeliveryIsRejectedBeforeAnyActivationRPC() async throws {
         let f = try await JobFixture(), request = try f.request(), guest = EngineFixtureGuest()
         let dispatcher = LocalEngineLauncher(factory: EngineFixtureFactory(request: request, approval: f.approve(request), guest: guest, authority: f.authority))
         try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: dispatcher)
-        try Data("changed".utf8).write(to: f.source.appendingPathComponent("vm.yml"))
+        try Data("changed".utf8).write(to: f.artifacts.directory.appendingPathComponent(request.jobID.uuidString + ".delivery"))
         await #expect(throws: Error.self) { try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher) }
         #expect(await dispatcher.activations == 0)
         #expect(try f.journal.load().first?.helperActivationID == nil)
+        try FileManager.default.removeItem(at: f.source)
+        try FileManager.default.removeItem(at: f.artifacts.directory.appendingPathComponent(request.jobID.uuidString + ".inputs"))
+        try await f.coordinator.recover(request.jobID, target: f.target, adapter: JobGuest())
+        #expect(try await f.coordinator.wait(request.jobID).state == .cleanupConfirmed)
+        #expect(await dispatcher.activations == 0)
+        await dispatcher.close()
+    }
+
+    @Test func acceptedFrozenHelperCanActivateAfterOriginalCheckoutIsRemoved() async throws {
+        let f = try await JobFixture(), request = try f.request(), guest = EngineFixtureGuest()
+        let dispatcher = LocalEngineLauncher(factory: EngineFixtureFactory(request: request, approval: f.approve(request), guest: guest, authority: f.authority))
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: dispatcher)
+        let row = try #require(f.journal.load().first)
+        #expect(row.helperDelivery != nil && row.helperDelivery?.archiveSHA256 == row.inputArchiveSHA256)
+        try FileManager.default.removeItem(at: f.source)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
+        #expect(try await f.coordinator.wait(request.jobID).state == .succeeded)
+        #expect(await dispatcher.activations == 1)
+        #expect(await !guest.commands.isEmpty)
         await dispatcher.close()
     }
 

@@ -88,6 +88,11 @@ actor ProvisioningHelperEngineWorker {
     }
     private func validate(_ value: ProvisioningHelperEngineContext) async throws {
         let request = value.request, scope = registration.scope
+        if let delivery = registration.delivery {
+            guard let frozen = value.frozenContext, frozen.receipt == delivery, request.repository == frozen.storage.directory,
+                  request.reviewIdentity == frozen.request.reviewIdentity else { throw SequencingFailure.identityMismatch }
+            try frozen.storage.verifyRoot()
+        }
         guard request.jobID == scope.jobID, request.target.vmID == scope.vmID, request.target.sessionID == scope.sessionID,
               request.dependencyDigest == scope.dependencyDigest, request.reviewIdentity == scope.reviewDigest,
               value.approval.reviewIdentity == scope.reviewDigest, request.mode == registration.mode,
@@ -107,7 +112,7 @@ actor ProvisioningHelperEngineWorker {
               command.plan == nil || command.plan?.identity == registration.planDigest else { throw SequencingFailure.identityMismatch }
         let cleanup = command.plan == nil
         if !cleanup, cancelled || fenced || !bodyAllowed() { throw SequencingFailure.cancelled }
-        if !cleanup { try context.admitPackage() }
+        if !cleanup { try context.admitPackage(); try context.frozenContext?.storage.verifyRoot() }
         if cleanup, command.inputLeaseID != nil { throw SequencingFailure.protocolViolation }
         try await context.authority.revalidate(context.request.target, dependencyDigest: registration.scope.dependencyDigest)
         if !cleanup, cancelled || fenced || !bodyAllowed() { throw SequencingFailure.cancelled }

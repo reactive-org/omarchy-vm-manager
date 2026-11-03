@@ -2,11 +2,12 @@ import Foundation
 
 /// Explicit internal factory only. App/CLI execution gates do not construct it.
 /// One admitted helper reservation at a time; no automatic restart or adoption.
-actor ProvisioningHelperLauncher: ProvisioningHelperDispatching {
+actor ProvisioningHelperLauncher: ProvisioningHelperDispatching, ProvisioningFrozenHelperLaunching {
     enum Phase: Sendable { case prepared, launching, registered, abandoned, exited, unconfirmed }
     private struct Pending: Sendable {
         let admission: ProvisioningHelperLaunchAdmission
         let credentials: ProvisioningHelperCredentials
+        let delivery: ProvisioningFrozenDeliverySource?
     }
     private struct Entry {
         let ticket: ProvisioningHelperLaunchTicket
@@ -26,6 +27,15 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching {
         try PrivateFiles.directory(directory, create: true)
     }
     func prepare(_ original: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperLaunchTicket {
+        guard original.delivery == nil else { throw ProvisioningJobFailure.artifactUnavailable }
+        return try await prepare(original, source: nil)
+    }
+    func prepare(_ original: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource) async throws -> ProvisioningHelperLaunchTicket {
+        guard original.delivery == delivery.receipt else { throw ProvisioningJobFailure.artifactUnavailable }
+        _ = try delivery.read()
+        return try await prepare(original, source: delivery)
+    }
+    private func prepare(_ original: ProvisioningHelperWorkerRegistration, source: ProvisioningFrozenDeliverySource?) async throws -> ProvisioningHelperLaunchTicket {
         try original.validate()
         guard original.scope.helperIdentity == nil, !preparing, entries.count < 128,
               !entries.values.contains(where: { $0.ticket.registration.scope.jobID == original.scope.jobID || $0.phase != .exited }) else { throw ProvisioningHelperIPCFailure.ownership }
@@ -38,7 +48,7 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching {
         let ticket = ProvisioningHelperLaunchTicket(id: UUID(), identity: identity, registration: registration)
         let root = directory.appendingPathComponent(identity.instanceID.uuidString)
         try PrivateFiles.directory(directory); try PrivateFiles.directory(root, create: true)
-        entries[ticket.id] = Entry(ticket: ticket, pending: Pending(admission: admitted, credentials: credentials), directory: root)
+        entries[ticket.id] = Entry(ticket: ticket, pending: Pending(admission: admitted, credentials: credentials, delivery: source), directory: root)
         return ticket
     }
     func launch(_ ticket: ProvisioningHelperLaunchTicket) async throws -> ProvisioningHelperRegistrationReceipt {
@@ -46,7 +56,7 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching {
         entry.phase = .launching; entries[ticket.id] = entry
         do {
             let root = entry.directory
-            let child = try await helperBlocking { try ProvisioningHelperChild.spawn(admission: pending.admission, directory: root) }
+            let child = try await helperBlocking { try ProvisioningHelperChild.spawn(admission: pending.admission, directory: root, hasDelivery: pending.delivery != nil) }
             entries[ticket.id]?.child = child
             Task { [self] in let exit = await child.waitForExit(); observedExit(ticket.id, child: child.identity, exit: exit) }
             guard entries[ticket.id]?.phase == .launching else { child.disconnect(); throw ProvisioningHelperIPCFailure.unavailable }
@@ -56,7 +66,9 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching {
             // code before giving that child the anonymous capability bytes.
             try await helperBlocking {
                 try pending.admission.revalidate(); try pending.admission.verifyOwnedChild(child.pid)
+                let bytes = try pending.delivery?.read()
                 try child.bootstrap(pending.credentials.privateBootstrap())
+                if let bytes { try child.deliver(bytes) }
             }
             let receipt = try await client.awaitRegistration(ticket)
             guard entries[ticket.id]?.phase == .launching else { throw ProvisioningHelperIPCFailure.unavailable }

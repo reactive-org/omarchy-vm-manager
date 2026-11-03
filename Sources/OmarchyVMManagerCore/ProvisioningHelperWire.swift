@@ -38,12 +38,12 @@ struct ProvisioningHelperCredentials: Sendable, CustomStringConvertible, CustomD
     }
     /// Anonymous bootstrap pipe only; never argv, environment, disk or diagnostics.
     func privateBootstrap() throws -> Data {
-        try helperJSON(Bootstrap(version: registration == nil ? 1 : 2, identity: identity, channelID: channelID, secret: secret, registration: registration))
+        try helperJSON(Bootstrap(version: registration?.delivery != nil ? 3 : registration == nil ? 1 : 2, identity: identity, channelID: channelID, secret: secret, registration: registration))
     }
     init(privateBootstrap data: Data) throws {
-        guard case .object(let fields) = try PlainDataParser.parse(data, format: .json), data.count <= 4096 else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard data.count <= 4096, case .object(let fields) = try PlainDataParser.parse(data, format: .json) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         let base: Set<String> = ["version", "identity", "channelID", "secret"]
-        guard (fields["version"] == .integer(1) && Set(fields.keys) == base) || (fields["version"] == .integer(2) && Set(fields.keys) == base.union(["registration"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard (fields["version"] == .integer(1) && Set(fields.keys) == base) || ([ManifestValue.integer(2), .integer(3)].contains(fields["version"] ?? .null) && Set(fields.keys) == base.union(["registration"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         guard let identity = fields["identity"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
         try Self.validateIdentity(identity)
         if let registration = fields["registration"] { try ProvisioningHelperWorkerRegistration.validateDocument(registration) }
@@ -52,6 +52,7 @@ struct ProvisioningHelperCredentials: Sendable, CustomStringConvertible, CustomD
         guard value.secret.count == 32 else { throw ProvisioningHelperIPCFailure.authentication }
         self.identity = value.identity; channelID = value.channelID; secret = value.secret
         registration = value.registration
+        guard (fields["version"] == .integer(3)) == (registration?.delivery != nil) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         if let registration { try registration.validate(); guard registration.scope.helperIdentity == value.identity else { throw ProvisioningHelperIPCFailure.ownership } }
     }
     static func validateIdentity(_ value: ManifestValue) throws {

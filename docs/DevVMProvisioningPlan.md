@@ -245,7 +245,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
 | 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; offline manager/helper package/resource/launcher integration now implemented; operational CLI, job/session adapters and full release acceptance remain pending | 227 manager Swift tests / 48 script tests plus relocated package fixtures and prior 64 package tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity and full runtime-app/release acceptance remain pending |
-| 3. Job coordination — helper dispatch foundation implemented, production integration pending | Private activation journal, admitted helper registration, one-shot helper-side shared sequencer, authenticated status/cancel and permanent original-worker fencing; product backend factory disabled | Fake runtimes/adapters and separately signed local fixture helpers cover activation ordering/idempotence, cancellation/cleanup, physical uncertainty, runtime invalidation and no replay after reopen. Production frozen-context/transport authority wiring, full manager restart and terminal integration remain pending |
+| 3. Job coordination — validated frozen delivery implemented, production integration pending | Private frozen delivery and schema-5 journal, admitted helper registration/replan, one-shot shared sequencer, authenticated status/cancel and original-worker fencing; product backend factory disabled | Fake runtimes/adapters and signed local helper fixtures cover delivery/context/consent checks, immutable reviewed inputs, activation, cleanup, uncertainty and no replay. Real transport/session authority, product wiring, full restart and terminal integration remain pending |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
 | 6. Guest acceptance | Explicitly approved manager-owned disposable guest only | End-to-end setup, reapplication, authenticated restart, check and sudo revocation observed; failure scenarios recorded |
@@ -1158,3 +1158,125 @@ rebinding, real release-signature acceptance and all real guest/auth/echo/remote
 quiescence/crash/kernel behavior. Existing disposable signed-helper evidence does
 not establish guest correctness. The Setup-tab screenshot remains a visual target,
 and this slice changes no UI or installed app.
+
+## Milestone 3 frozen-input delivery and helper context validation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 with frozen-input
+delivery and helper-side validation using fake runtimes and local fixtures only.
+No real SSH/SCP/SFTP/Ansible, installs or VM launches. This supersedes the pending
+frozen-context handoff above. The normal helper now validates delivered inputs,
+but still supplies **no transport backend** and rejects activation with
+`executionUnavailable`. App/CLI execution gates remain disabled; no UI is changed.
+
+**IMPLEMENTED — private delivery:** after preparing the selected `.inputs` archive
+and independent cleanup checkpoint, the coordinator writes/fsyncs an immutable
+0600 `.delivery` file under its explicit 0700 artifact root. `DVMCNTX1` contains
+strict version-1 JSON request metadata (at most 256 KiB) and the existing private
+`DVMSNAP1` archive. Metadata records the relative manifest path, original job and
+VM/session/non-root owner/UID/host-key binding, dependency digest, mode, selected
+tasks/check policy, conflict policy, input lease UUID and review acknowledgements.
+It contains no fetched credentials, passwords, private keys or terminal input.
+Selected configuration may itself be sensitive: the entire blob stays private.
+
+The registration binds version, exact byte count and SHA-256 of the whole blob,
+metadata and archive. Its existing authenticated registration digest therefore
+binds delivery to the original owner/worker/payload/review. Schema 5 persists this
+receipt alongside the original archive hash before spawn; schemas 1–4 preserve
+risk/ownership without inventing a receipt. Unknown/null/legacy receipt fields,
+missing owner and a different original archive hash fail closed. Counts include
+orphans in the existing 256 MiB/512-file artifact quota. No automatic artifact
+import, replay, deletion or retention sweep is introduced.
+
+The launch service retains a read-only, no-follow descriptor and checks owned
+0600 regular-file/single-link status, inode/device, size, mode, timestamps, path
+identity and exact digest before delivery. Source paths do not reach the helper.
+Spawn inherits an **empty** second private AF_UNIX socket at fd 4, in addition to
+the control socket at fd 3 and anonymous bootstrap pipe at stdin. Only after
+package/file and owned-live-child code admission does the manager send bootstrap
+3 and the frozen bytes. This avoids exposing a readable source descriptor to a
+child before its loaded image is verified. Bootstrap 1/2 remain supported without
+delivery; a version downgrade cannot silently discard a delivery receipt.
+
+Data uses a separate one-shot length-framed channel with 16 KiB sending chunks,
+the existing 24 KiB frame ceiling, exact total length, SHA-256 and EOF. A 15-second
+transfer deadline bounds the whole stream, including EOF; each packet also has
+the existing three-second limit. The registration receipt can wait at most 30
+seconds for validation. Oversize, truncation, extra bytes, hash damage, missing
+EOF and missing/wrong inherited sockets fail closed. No source bytes travel in
+control/status/terminal frames, command arguments, environment or diagnostics.
+The whole-blob digest is bound through the private authenticated bootstrap;
+individual data chunks are not a new general-purpose authenticated RPC protocol.
+
+**IMPLEMENTED — helper validation:** the helper verifies framing/hashes, strict
+metadata and archive identity before materialization. It checks original job,
+VM/session/target binding, mode, dependencies and reviewed approval identity.
+It creates only a new `inputs-UUID` tree inside its owned private launch directory.
+Descriptor-relative `mkdirat`/`openat`, `O_NOFOLLOW` and exclusive file creation
+reject links, existing paths and file/directory aliases. Safe relative paths have
+depth at most 64; 4096 files and 4096 directories include implicit ancestors.
+Files, modes, binary bytes and empty directories are preserved and fsynced;
+partial/failed trees remain private and retained. The root and parent identities
+are retained and rechecked. No user checkout or VM storage is an extraction target.
+
+Inside that tree, the pinned shared planner independently reparses the original
+manifest and extension catalogues, resolves features/profiles and captures the
+selected files again. Compare plan, input and engine identities; reconstruct the
+request including task/check/conflict/input-lease policy and compare its exact
+review identity. Only then can the helper register the inert worker and return an
+authenticated receipt containing the validated delivery digest. The archive reader
+still returns inert data, never a deserialized executable plan or apply permit.
+
+An injected backend receives only this validated context. Its returned request
+must match the reviewed context/tree; the engine repeats scope/target/runner/
+plan/package/session checks before work. Delivered consent is ANDed with backend
+consent and then with explicit activation consent. A permissive backend cannot
+invent a missing acknowledgement. The owned tree stays retained through the
+worker; root/source validation precedes body work, while original-target cleanup
+remains independent of source/package/delivery availability. The product helper
+provides no backend. Only the excluded Debug fixture constructs synthetic adapters.
+
+**DESIGN DECISION — frozen review ownership:** source/package/session/dependency
+checks still precede publication and handoff. Once a frozen registration is
+accepted, its private selected bytes define that reviewed job. Later changes or
+removal of the original checkout cannot replace those inputs or prevent activation
+of that accepted copy. Manager activation verifies the persisted delivery and
+`.inputs`; helper activation verifies its independently rebuilt private tree.
+Legacy registrations without delivery keep the earlier original-source check.
+This does not resume apply after restart, grant an input lease, adopt a new guest
+session or permit replay. Existing one-shot activation and cleanup holds remain.
+
+**PRIVATE COUPLING:** shared `SetupPlan.manifestPath` becomes public read-only so
+the manager records the actual reviewed relative manifest path. The source/engine
+inventory and exact base-plus-integration patch pins are updated together; the
+82-file export remains based on `bb3fae22be45b38035fac52aefa0eb270a9d0fea` plus
+`Patches/dev-vm-durable-state.patch`. This is not an unchanged engine claim.
+Guest resources, parser dependencies and C launcher bytes remain unchanged.
+
+**VERIFIED — fake/local checks:** `make test` passes 308 manager Swift functions
+in 44 suites, 49 script tests and expanded relocated/read-only signed-helper
+fixtures. New parameterized cases cover independent replan after source removal,
+custom manifest/catalogue/tasks, binary/mode/empty-directory preservation,
+metadata/registration/hash/framing damage, changed private descriptors and links,
+root substitution, implicit-directory bounds, strict bootstrap/receipt/schema
+handling, refusal of consent expansion, frozen activation and damaged delivery.
+The excluded fixture helper receives a payload larger than a control frame,
+validates it in its actual child process, then applies/cancels through fake adapters
+after the parent checkout is deleted. The actual product helper validates delivery
+but refuses execution. Changed delivery is refused and the owned child is reaped.
+
+Shared checks:
+`make build-provisioning test-provisioning test-provisioning-oracle test-provisioning-planning-oracle ORACLE_PYTHON=/opt/homebrew/opt/ansible/libexec/bin/python`
+pass 68 Swift test functions, 18 parser oracle fixtures and 66 complete planning/
+error fixtures. This uses an existing Python runtime solely for development-time
+oracle comparisons, never Ansible execution or a product Python fallback.
+Local IPC/mock-auth/PTY and ad-hoc signed fixture checks use existing sandbox
+exceptions. No real signing credentials, auth UI, host installs, actual guest
+transport, VM operation or installed-app change occurs.
+
+**TO PROVE / REMAINING:** exclusive real backend/adapter construction, trusted
+manager-aware session/dependency authority across the helper boundary, product
+coordinator wiring, stream/PTY/input leases and live terminal UI/CLI, full manager/
+helper restart/reconnect and reviewed rebinding, real release-signature acceptance,
+power-loss durability and artifact-retention UX. Real guest authorization, echo,
+remote cleanup/quiescence, crashes and kernel stalls remain unproved. The Setup-tab
+screenshot remains a visual target; this slice does not complete milestone 3.
