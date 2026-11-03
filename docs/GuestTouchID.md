@@ -97,6 +97,28 @@ Within 15 seconds, focus the guest and run `try-omarchy-touch-id-test`. Leave To
 
 After confirmed terminal exit, the user may launch that same test guest again through the manager. Once booted and focused, run `try-omarchy-touch-id-test` and approve Touch ID. It should pass without re-enrollment; no old-run prompt should reappear. Record observed cancellation, exit and fresh-run result separately. The agent has not executed this procedure, stopped/started a VM, read keys or controlled authentication UI.
 
+## Two-VM manual setup and observation scope
+
+**VERIFIED — read-only preflight:** the host reports 128 GiB RAM, 18 logical CPUs and macOS 27.0.1, with approximately 698 GiB free on the data volume. The current manager report has one active 4 GiB/4 CPU guest; adding two 4 GiB/4 CPU profiles fits the current aggregate limits. The proposed test names are unused. Existing CLI creation assigns fresh UUIDs, NAT and individual managed SSH endpoints; it rejects a conflicting name. These observations do not authorize agent-driven guest/storage/UI actions.
+
+**Manual setup / TO PROVE:** create two fresh disposable manager-owned profiles, using enabled saved Guest Defaults for setup but omitting personal SSH-key inheritance and host folder/clipboard sharing. The user handles any protected setup-password approval locally. This command creates stopped profile metadata only; it does not include `--start`:
+
+```sh
+test_cli='/Applications/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm'
+for test_guest in 'Touch ID POC A' 'Touch ID POC B'; do
+  "$test_cli" create "$test_guest" \
+    --factory official --memory 4GiB --cpus 4 --disk 64GiB \
+    --guest-touch-id on --clipboard off --share off \
+    --owner-defaults on --inherit-default-public-key off || break
+done
+```
+
+Check each reply for `ok: true`. Do not repeat a successful creation or overwrite another guest if a command fails. Launch A through the manager and wait for its first boot/setup to finish before launching B; startup may download the official factory image if the verified cache is unavailable. Keep existing guests untouched. Pair sudo Touch ID inside A with `try-omarchy-touch-id` and verify `try-omarchy-touch-id-test` passes. Leave B unpaired initially and report when both are running.
+
+The next observations must distinguish background focus rejection from actual lease contention: current `ManagedAuthenticationEnvironment.begin` checks target focus before acquiring the nonblocking global lease. A background denial therefore does not demonstrate the `lease-busy` path. Independent enroll/disable/re-test exercises per-guest independence, but two fresh guest IDs do not prove isolation of a cloned identical guest ID under another manager UUID. The existing process/clone-identity fixtures remain separate synthetic evidence; a native copied-disposable-disk case needs a separately scoped copy procedure. Do not claim these stronger results from ordinary focus switching.
+
+After the user-driven test run, shut down both disposable guests, confirm matching exits and absence of their captured helper/QEMU processes, then offer to move their verified stopped UUID roots to Trash under the compatible lock. No deletion or existing-guest changes are included in setup. No profile, factory, guest, pairing or permission action has been executed by the agent.
+
 ## Optional 1Password follow-up
 
 The upstream package already ships its narrowly scoped polkit agent, password dialog and disabled service unit. This sudo milestone refuses `onepassword-unlock` in manager-scoped helpers. A follow-up must deliberately enable that operation and validate its existing signed context/cancellation boundary before native testing.
