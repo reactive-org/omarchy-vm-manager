@@ -2984,3 +2984,28 @@ validation, optional notarization and later real guest acceptance. No approval i
 requested or granted by preparing the record. A trusted one-shot caller and real
 material binding must be reviewed after selection; there is no signing CLI. All
 real compiler/signature/profile/notary/guest outcomes remain TO PROVE/NOT_RUN.
+
+## Milestone 6 matching local signed runtime found — 4 November 2026
+
+**VERIFIED — local artifact data:** the primary checkout retains a published
+`v0.9.4-dev.1` runtime whose source-lock/kit/patch and payload match this candidate's
+frozen origin. ZIP digest/inventory and three extracted bundle copies match its
+signed lock. Newer local candidate directories have a different origin and are
+ineligible. Exact bundle/ZIP/lock copies are privately staged in the adapter's
+required layout, with validation repeated and originals unchanged. Paths, hashes,
+identity/team selectors and rejection details stay in an ignored discovery addendum.
+
+**PRIVATE COUPLING / LIMIT:** the identity comes from the existing helper's public
+CMS certificate, parsed locally without a Keychain/signing/trust operation. It does
+not establish private-key availability or fresh signature admission. Profile paths
+are located/stat-ed only, without opening their bytes; a matching public source
+pin does not validate those files. The isolated-keychain selector remains absent.
+Prior gate/request/scope and every approval remain unchanged/NOT_GRANTED.
+
+**NEXT / TO PROVE:** select the isolated keychain privately and separately approve
+bounded named runtime/profile validation plus private profile staging. If admitted,
+the existing runtime avoids a new upstream runtime-signing job. App signing/key
+use/timestamps and later gates remain separate approvals. No credential access,
+signing/SDK execution, Apple/network, SSH/Ansible, install, UI, image or VM operation
+occurs; product approval stays nil. See the
+[discovery record](DevVMMilestone6Runbook.md#local-signed-runtime-discovery--4-november-2026).

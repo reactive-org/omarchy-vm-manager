@@ -2558,3 +2558,22 @@ remains the visual target for milestone 5.
   inspected. Real material binding/trusted caller, compiler/SDK/profile/signature,
   notarization/original-Mac/loaded-child and all guest rows remain unproven. See the
   [gate](docs/DevVMMilestone6Runbook.md#real-signed-candidate-gate-preparation--4-november-2026).
+
+## Matching local signed-runtime discovery — 4 November 2026
+
+- **VERIFIED — local data:** existing published `v0.9.4-dev.1` runtime in the primary
+  checkout matches the frozen origin/payload, ZIP digest/inventory and three
+  extracted bundle inventories. Newer candidate origins differ. Matching nonsecret
+  bundle/ZIP/lock files are copied privately into the adapter layout and checked
+  again; original artifacts/gate/request/scope and product source stay unchanged.
+- **PRIVATE COUPLING:** identity/team derive from an existing helper's public CMS
+  certificate, locally parsed without Keychain/signing/trust access. Profile paths
+  are observed by metadata only; matching public source pins do not validate their
+  unopened bytes. Exact selectors, paths and hashes remain in an ignored addendum.
+- **DESIGN DECISION / TO PROVE:** no keychain is selected or queried, no key
+  availability established, and all approvals remain NOT_GRANTED. Named material
+  validation/private profile staging need separate approval; real app signing/
+  timestamps and later gates remain separate. No credentials, SDK/signing tools,
+  Apple/network, SSH/Ansible, installs, UI, image or VM operation. Product approval
+  remains nil and guest rows NOT_RUN. See the
+  [discovery](docs/DevVMMilestone6Runbook.md#local-signed-runtime-discovery--4-november-2026).

@@ -141,6 +141,13 @@ are re-admitted without SDK or credential access. The real runtime, team/identit
 isolated keychain and profile path remain unselected; signing is not ready or
 authorized. Pins stay out of Git and no execution gate changes.
 
+[Local signed-runtime discovery](DevVMMilestone6Runbook.md#local-signed-runtime-discovery--4-november-2026)
+finds and privately stages an existing `v0.9.4-dev.1` artifact matching the frozen
+origin and ZIP/bundle inventories. Public certificate selectors and unopened
+profile-file candidates are recorded privately. Isolated keychain selection and
+fresh bounded material validation remain pending; no credentials, signing/Apple
+requests or guest operations occur and all approvals remain ungranted.
+
 [Milestone 6 disposable admission](DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
 adds independent manager/helper approval checks for exact disposable UUID/root
 identity pins, including restart, cleanup and terminal input. Twelve fake/local

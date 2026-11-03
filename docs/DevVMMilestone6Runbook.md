@@ -428,6 +428,55 @@ nil. Actual compiler/profile/cryptographic/notarization/original-Mac/loaded-chil
 behavior remains TO PROVE. Documentation changes are separate from executable
 policy; the committed adapter and its existing 91-test evidence are unchanged.
 
+## Local signed-runtime discovery — 4 November 2026
+
+**VERIFIED — local files/public metadata:** extending the search to the primary
+checkout finds the existing published `v0.9.4-dev.1` signed runtime. Its lock matches
+the frozen source-lock bytes, source-kit digest, patch/capability and immutable
+payload requirements. Its ZIP digest/inventory pass the existing pure archive
+validator, and three existing extracted bundle copies match the signed inventory.
+The inspected pre-stapling extraction differs and is not selected. Both local
+`v0.10.0` candidate directories carry a different origin and are refused for this
+frozen candidate; changing the ordinary Config pin would not make them eligible.
+
+The matching bundle, exact lock and ZIP are copied into a new ignored mode-0700
+runtime directory, with the archive named `TryOmarchyKit.zip` as the adapter expects.
+The staged archive/inventory are checked again. No original artifact, VM root,
+registry, frozen gate/request or compiled product source is modified. Actual
+paths/digests and per-candidate dispositions remain in the private discovery
+addendum; this does not mint an execution authorization or material binding.
+
+The helper's existing embedded CMS public certificate supplies the nonsecret
+Developer ID Application identity and matching team. Local OpenSSL only parses
+supplied public certificates; no signing, identity/keychain query, private-key
+operation, trust/network check or Apple request is made. The published verification
+receipt also refers to the same archive digest. These are public metadata and
+historical evidence, not fresh SDK signature/notarization admission or proof that
+the signing private key exists on this Mac.
+
+Two embedded provisioning-profile file candidates are located in existing signed
+app extractions. Only names and file metadata are observed; contents, digest,
+expiry, authorized certificates and entitlements remain uninspected. The primary
+source's public profile pin matches the frozen pin, which does not prove that a
+located profile's bytes match it. Those source paths are not directly suitable
+for the adapter's private material directory: bounded validation and private
+staging still need authorization. No isolated keychain is selected, searched or
+queried, and neither local key availability nor unlocked state is established.
+Do not substitute login/system keychains or infer key access from a public cert.
+
+**NEXT / TO PROVE:** choose an explicit isolated-keychain path privately, then
+review bounded validation of the named runtime/profile material and private
+profile staging. Runtime signature/team/hardened/timestamp/network-pin checks and
+profile pin/expiry/certificate admission remain unrun. No new runtime signing is
+needed if this existing artifact passes that admission. App build/key use/secure
+timestamps, original-Mac/loaded-child validation, optional notarization and guest
+acceptance retain their separate approvals. The original gate remains unchanged
+with all approvals NOT_GRANTED; the addendum records discovery only. Downloads
+listing is OS-denied and skipped without permission grants or escalation. No
+credentials, signing/SDK tools, Apple/network requests, SSH/Ansible, installs,
+normal UI, VM launch or disk-image operation occurs. Product approval stays nil
+and real guest acceptance stays NOT_RUN.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without
