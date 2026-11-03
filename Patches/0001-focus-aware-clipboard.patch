@@ -3797,10 +3797,10 @@ index f199020..961c03a 100644
          exit(0)
 diff --git a/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 new file mode 100644
-index 0000000..88e9c08
+index 0000000..b22e5fb
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,178 @@
 +import CryptoKit
 +import Darwin
 +import Foundation
@@ -3849,7 +3849,7 @@ index 0000000..88e9c08
 +    private static func dataDigest(_ data: Data) -> String {
 +        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 +    }
-+    public func verified(runtimeBundle: URL) throws -> VMFactoryManifest {
++    public func verified(runtimeBundle: URL, reviewedIntegrationContract: VMGuestIntegrationContract = .current) throws -> VMFactoryManifest {
 +        try validate()
 +        let root = URL(fileURLWithPath: bundlePath)
 +        var info = stat()
@@ -3858,16 +3858,18 @@ index 0000000..88e9c08
 +        let manifestURL = root.appendingPathComponent("reviewed-factory.json")
 +        let manifestData = try Self.readMetadata(manifestURL)
 +        guard Self.dataDigest(manifestData) == manifestSHA256 else { throw VMRunProtocolError.invalidConfiguration }
-+        let manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: manifestData)
++        let manifest: VMFactoryManifest
++        do { manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: manifestData) }
++        catch { throw VMFactoryCompatibilityError("Malformed factory manifest or guest integration evidence. Prepare a separate bundle with complete supported evidence.") }
 +        try manifest.validate()
 +        guard Set(try FileManager.default.contentsOfDirectory(atPath: root.path)) == Set(manifest.files.keys).union(["reviewed-factory.json"]) else { throw VMRunProtocolError.invalidConfiguration }
 +        for (name, hash) in manifest.files {
-+            guard try Self.digest(root.appendingPathComponent(name)) == hash else { throw VMRunProtocolError.invalidConfiguration }
++            guard try Self.digest(root.appendingPathComponent(name)) == hash else { throw VMFactoryCompatibilityError("Factory payload checksum mismatch: \(name). Preserve this bundle and restore verified evidence in a separate bundle.") }
 +        }
-+        for (name, hash) in manifest.runtimeFiles {
++        for (name, hash) in manifest.format == 1 ? manifest.runtimeFiles : [:] {
 +            let file = runtimeBundle.appendingPathComponent(name)
 +            guard file.standardizedFileURL.path == file.resolvingSymlinksInPath().path,
-+                  try Self.digest(file) == hash else { throw VMRunProtocolError.invalidConfiguration }
++                  try Self.digest(file) == hash else { throw VMFactoryCompatibilityError("Legacy factory runtime checksum mismatch: \(name). Prepare a separate bundle with reviewed guest integration evidence.") }
 +        }
 +        let factoryData = try Self.readMetadata(root.appendingPathComponent("factory.json"))
 +        guard Self.dataDigest(factoryData) == manifest.files["factory.json"] else { throw VMRunProtocolError.invalidConfiguration }
@@ -3877,6 +3879,12 @@ index 0000000..88e9c08
 +              Self.isDigest(factory.disk.sha256), Self.isDigest(factory.compressed.sha256),
 +              factory.compressed.path.hasSuffix(".img.zst"), manifest.files[factory.compressed.path] == factory.compressed.sha256,
 +              VMFactoryManifest.safeName(factory.disk.path), factory.disk.path.hasSuffix(".img") else { throw VMRunProtocolError.invalidConfiguration }
++        if manifest.format == 2 {
++            guard let evidence = manifest.guestIntegration else {
++                throw VMFactoryCompatibilityError("Missing guest integration evidence. Prepare a separate bundle including the reviewed package archive.")
++            }
++            try reviewedIntegrationContract.verify(evidence, manifest: manifest, root: root, runtimeBundle: runtimeBundle)
++        }
 +        if manifest.ownerSetupContractSHA256 == VMOwnerSetupContract.lean {
 +            struct Compatibility: Decodable { let owner_programs: [String: String]; let packages: [String: String] }
 +            struct Build: Decodable { let try_commit: String }
@@ -3886,17 +3894,24 @@ index 0000000..88e9c08
 +            let build = try JSONDecoder().decode(Build.self, from: buildData)
 +            guard Self.dataDigest(evidence) == manifest.provisioning[manifest.ownerSetupEvidence!],
 +                  Self.dataDigest(buildData) == manifest.provisioning[manifest.imageBuildEvidence!],
-+                  compatibility.owner_programs == VMOwnerSetupContract.leanPrograms,
-+                  compatibility.packages["try-omarchy"] == VMOwnerSetupContract.leanIntegrationVersion,
-+                  build.try_commit == manifest.imageIntegrationSourceCommit else { throw VMRunProtocolError.invalidConfiguration }
++                  build.try_commit == manifest.imageIntegrationSourceCommit else {
++                throw VMFactoryCompatibilityError("Image build source provenance does not match its manifest. Prepare a separate bundle with intact image-build evidence.")
++            }
++            guard compatibility.owner_programs == VMOwnerSetupContract.leanPrograms else {
++                throw VMFactoryCompatibilityError("Lean owner provisioning program hashes differ from the reviewed contract.")
++            }
++            guard compatibility.packages["try-omarchy"] == reviewedIntegrationContract.leanPackageVersion else {
++                throw VMFactoryCompatibilityError("Lean guest integration package version differs from the reviewed contract.")
++            }
 +
 +            struct Provenance: Decodable { let version: Int; let reportVersion: Int; let sourceCommit: String; let contracts: [String: String] }
 +            let data = try Self.readMetadata(runtimeBundle.appendingPathComponent(VMOwnerSetupContract.provenancePath))
 +            let provenance = try JSONDecoder().decode(Provenance.self, from: data)
-+            guard Self.dataDigest(data) == manifest.runtimeFiles[VMOwnerSetupContract.provenancePath],
-+                  provenance.version == VMOwnerSetupContract.capabilityVersion, provenance.reportVersion == VMOwnerSetupContract.reportVersion,
-+                  provenance.sourceCommit == manifest.imageIntegrationSourceCommit,
-+                  provenance.contracts == ["official": VMOwnerSetupContract.official, "lean-e4fffc6": VMOwnerSetupContract.lean] else { throw VMRunProtocolError.invalidConfiguration }
++            guard provenance.version == VMOwnerSetupContract.capabilityVersion, provenance.reportVersion == VMOwnerSetupContract.reportVersion,
++                  provenance.sourceCommit.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil,
++                  provenance.contracts == ["official": VMOwnerSetupContract.official, "lean-e4fffc6": VMOwnerSetupContract.lean] else {
++                throw VMFactoryCompatibilityError("The runtime owner-contract provenance is malformed or unsupported. Use a complete verified runtime kit with the reviewed contracts.")
++            }
 +        }
 +        return manifest
 +    }
@@ -3917,6 +3932,7 @@ index 0000000..88e9c08
 +    public var imageBuildEvidence: String? = nil
 +    public var imageIntegrationVersion: String? = nil
 +    public var imageIntegrationSourceCommit: String? = nil
++    public var guestIntegration: VMGuestIntegrationEvidence? = nil
 +    public let files: [String: String]
 +    public let provisioning: [String: String]
 +    public let runtimeFiles: [String: String]
@@ -3930,8 +3946,26 @@ index 0000000..88e9c08
 +        !name.isEmpty && name != "." && name != ".." && name.utf8.count <= 255 && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "._-".contains($0)) }
 +    }
 +    public func validate() throws {
++        guard format != 1 || ownerSetupContractSHA256 != VMOwnerSetupContract.lean else {
++            throw VMFactoryCompatibilityError("Legacy lean manifests lack verified guest package evidence. Prepare a separate format-2 bundle including the reviewed package archive, then explicitly import it. Reuse the disk if its original package is supported.")
++        }
++        guard [1, 2].contains(format) else {
++            throw VMFactoryCompatibilityError("Unsupported factory manifest format. Prepare a separate bundle with supported evidence.")
++        }
++        guard ownerSetupContractSHA256 != VMOwnerSetupContract.lean || imageIntegrationSourceCommit?.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil else {
++            throw VMFactoryCompatibilityError("Missing or malformed image integration source provenance. Include a valid image-build.json in a separate bundle.")
++        }
++        guard format != 2 || (ownerSetupContractSHA256 == VMOwnerSetupContract.lean && guestIntegration != nil) else {
++            throw VMFactoryCompatibilityError("Missing or unsupported guest integration evidence. Prepare a separate lean bundle with the reviewed package archive.")
++        }
++        guard VMOwnerSetupContract.isSupported(ownerSetupContractSHA256) else {
++            throw VMFactoryCompatibilityError("Unknown owner provisioning contract. Use a supported reviewed program set.")
++        }
++        guard ownerSetupContractSHA256 != VMOwnerSetupContract.lean || imageIntegrationVersion == VMOwnerSetupContract.leanIntegrationVersion else {
++            throw VMFactoryCompatibilityError("Lean guest integration package version differs from the reviewed contract.")
++        }
 +        let required: Set<String> = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy", "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", VMFactorySelection.packagePath]
-+        guard format == 1, architecture == "aarch64", boot == "uefi-limine", customFactoryVersion == 1,
++        guard [1, 2].contains(format), architecture == "aarch64", boot == "uefi-limine", customFactoryVersion == 1,
 +              managedSSHVersion == 1, managedSetupVersion == 1, ownerSetupReportVersion == VMOwnerSetupContract.reportVersion,
 +              !name.isEmpty, name.utf8.count <= 128, !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
 +              (2...32).contains(files.count), files["factory.json"] != nil, files["reviewed-factory.json"] == nil,
@@ -3944,6 +3978,81 @@ index 0000000..88e9c08
 +              ownerSetupContractSHA256 != VMOwnerSetupContract.lean || (ownerSetupEvidence.map({ Self.safeName($0) && provisioning[$0] != nil }) == true && imageBuildEvidence.map({ Self.safeName($0) && provisioning[$0] != nil }) == true && imageIntegrationVersion == VMOwnerSetupContract.leanIntegrationVersion && imageIntegrationSourceCommit?.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil),
 +              runtimeFiles[VMFactorySelection.packagePath] == integrationPackageSHA256 else { throw VMRunProtocolError.invalidConfiguration }
 +    }
++}
+diff --git a/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
+new file mode 100644
+index 0000000..018da8a
+--- /dev/null
++++ b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
+@@ -0,0 +1,69 @@
++import Foundation
++
++public struct VMFactoryCompatibilityError: LocalizedError, Sendable {
++    public let errorDescription: String?
++    public init(_ message: String) { errorDescription = message }
++}
++
++public struct VMGuestIntegrationEvidence: Codable, Equatable, Sendable {
++    public let contractVersion: Int
++    public let capabilities: [String: Int]
++    public let packageFile: String
++    public let packageSHA256: String
++}
++
++public struct VMGuestIntegrationContract: Codable, Equatable, Sendable {
++    public let schemaVersion: Int
++    public let contractVersion: Int
++    public let capabilities: [String: Int]
++    public let runtimePackageSHA256: String
++    public let leanPackageVersion: String
++    public let leanPackageSHA256: String
++    public let ownerSetupContractSHA256: String
++
++    public static var current: Self { try! JSONDecoder().decode(Self.self, from: Data(reviewedJSON.utf8)) }
++
++    public func verify(_ evidence: VMGuestIntegrationEvidence, manifest: VMFactoryManifest, root: URL, runtimeBundle: URL) throws {
++        guard evidence.contractVersion == contractVersion else {
++            throw VMFactoryCompatibilityError("Unsupported guest integration contract version. Prepare a separate bundle with a supported reviewed contract.")
++        }
++        guard evidence.capabilities == capabilities else {
++            throw VMFactoryCompatibilityError("Unsupported guest integration protocol or capability versions. Use the reviewed guest package and prepare a separate bundle.")
++        }
++        guard manifest.ownerSetupContractSHA256 == ownerSetupContractSHA256 else {
++            throw VMFactoryCompatibilityError("The guest integration contract does not support this owner provisioning contract.")
++        }
++        guard evidence.packageSHA256 == leanPackageSHA256 else {
++            throw VMFactoryCompatibilityError("The lean guest integration package has an unreviewed SHA-256. Supply the reviewed archive or review and support the changed package before preparing a separate bundle.")
++        }
++        guard VMFactoryManifest.safeName(evidence.packageFile), evidence.packageFile.hasSuffix(".pkg.tar.zst"),
++              manifest.files[evidence.packageFile] == evidence.packageSHA256,
++              manifest.provisioning[evidence.packageFile] == evidence.packageSHA256 else {
++            throw VMFactoryCompatibilityError("Missing guest integration package evidence. Include the complete reviewed package archive as a provisioning payload in a separate bundle.")
++        }
++        guard try VMFactorySelection.digest(root.appendingPathComponent(evidence.packageFile)) == leanPackageSHA256 else {
++            throw VMFactoryCompatibilityError("The guest integration package archive checksum differs from the reviewed contract.")
++        }
++        guard try VMFactorySelection.digest(runtimeBundle.appendingPathComponent(VMFactorySelection.packagePath)) == runtimePackageSHA256 else {
++            throw VMFactoryCompatibilityError("This runtime guest package is not supported by the reviewed factory compatibility contract.")
++        }
++    }
++
++    public static let reviewedJSON = #"""
++{
++  "schemaVersion": 1,
++  "contractVersion": 1,
++  "capabilities": {
++    "guestStatus": 1,
++    "managedSSH": 1,
++    "managedSetup": 1,
++    "ownerSetupContracts": 1,
++    "ownerSetupReport": 1
++  },
++  "runtimePackageSHA256": "ddef5befc16d2fe7a7ef7bc1e56c3ce5c8e89df83d3b244525ebe6d32fc75c5b",
++  "leanPackageVersion": "0.1.0-43.1",
++  "leanPackageSHA256": "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211",
++  "ownerSetupContractSHA256": "1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310"
++}
++"""# + "\n"
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
 new file mode 100644
