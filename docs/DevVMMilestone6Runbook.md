@@ -255,6 +255,78 @@ actual CLI checks, SSH/owner/input configuration and all real guest rows remain
 pending. Guest acceptance remains NOT_RUN. Keep the real credential/signing step
 and all guest operations behind their existing separate authorization.
 
+## Private signer adapter — fake process runners, 4 November 2026
+
+The developer-only [adapter](../Scripts/private_provisioning_signer.py) connects
+the frozen request to the signed-prerelease build and SDK signing commands. This
+section extends the earlier synthetic packaging path; it does not authorize its
+execution with real tools or credentials. There is no signing CLI, publishing
+method, workflow upload, credential importer, keychain unlock or identity search.
+The default system runner refuses before reading signing material or creating a
+job. An explicitly authorized trusted caller must bind the exact request, original
+scope and material selection in memory and admit each effect. Neither a request
+file nor environment variable can provide that authorization. Signing includes
+secure timestamp requests and therefore needs separate approval before real use.
+
+Required future local inputs are the pinned provisioning profile, a named identity
+in an already prepared isolated keychain, a signed runtime bundle/archive/lock with
+the reviewed development-kit origin, and clean local client/parser checkouts at
+their recorded commits. No runtime download or QEMU rebuild is introduced. Runtime
+signing stays with the upstream kit pipeline. The adapter checks its signed origin,
+payload inventory and archive digest, then requests upstream signature-only
+verification; it never requests notarization. Private keychain bytes are not read
+by the adapter, and it never changes the user's keychain search list.
+
+The adapter reconstructs the source archive and exact six-file overlay in a fresh
+private job. Its only source projections are the signed runtime/team/origin pins
+and an inspection branch for the signed build. The original scope-definition
+prefix and operational composition stay byte-for-byte intact; invalid scope keeps
+its fail-closed behavior. Existing tracked source plus newly added source files
+are checked for drift. Private local clones, pinned SwiftPM workspace state and
+`--disable-automatic-resolution` supply build inputs. The existing
+`make build-signed` recipe runs with only its global `prepare-source` prerequisite
+skipped; the pinned provisioning source is prepared locally first. Source and local
+dependency revision/cleanliness checks surround the build. No remote clone/fetch
+command is generated. Actual compiler/SwiftPM offline behavior remains TO PROVE.
+
+Fresh app assembly copies checked resources, the signed kit, profile and built
+components. Child signatures precede the provisioning distribution seal; outer
+signing follows it. Verification requires deep/strict signatures, matching team,
+Developer ID leaf authority, hardened runtime, secure timestamps, exact profile
+and entitlement scope, the profile-authorized public leaf certificate, retained
+scope markers and the app's bundle-only diagnostic contract. Verification may not
+change the app or source. ZIP extraction must retain the full inventory and code
+identities, and verification runs again. The adapter never starts a helper worker
+or invokes the original-Mac scope inspector on a remote signing host.
+
+Run the safe fixture suite with:
+
+```sh
+make test-private-provisioning-signer
+```
+
+**VERIFIED — fake processes/local fixtures:** twelve new test functions include
+33 SDK/build/sign/verification failure variants, four runtime origin/payload cases,
+authorization and effect refusal, source/dependency drift, immutable handoff checks,
+private failures and archive roundtrip. SDK metadata includes the actual
+`CodeDirectory ... flags=...` form and multiple Authority chain lines. Mocked system
+dispatch verifies explicit environment, separate process group and timeout kill/
+wait behavior; no real child or process group is used. All **91 script tests** pass.
+Fixture bytes have a Mach-O header solely to exercise classification and are not
+executable programs or genuine signatures. Results say `FAKE_RUNNER_ONLY`,
+`productionCryptographyObserved: false`, original-Mac validation pending, loaded
+child NOT_RUN, guest authority false and publication forbidden. Private fixture
+artifacts do not replace the actual frozen candidate or its pins.
+
+**TO PROVE / NEXT GATE:** approved real signing material and a local signed runtime,
+actual SDK/compiler/profile validation, notarization, unchanged original-Mac root
+and scope observation, and loaded-child admission. The system adapter has not been
+run on the actual handoff. No real signing, credentials, Apple-service request,
+host install, SSH/Ansible, normal UI, VM launch or disk operation occurred. Product
+approval remains nil; factory access, fresh tool readiness, SSH/owner setup and
+every real guest row remain pending. Actual signing and guest execution require
+their separate explicit approvals.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

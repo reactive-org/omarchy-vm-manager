@@ -126,6 +126,14 @@ ordering, tamper refusal and private failures. Eighteen focused tests and all 79
 script tests pass. The real request cannot enter the simulation path. A real signer
 is not connected, ordinary execution stays disabled, and guest acceptance is NOT_RUN.
 
+The [private signer adapter](DevVMMilestone6Runbook.md#private-signer-adapter--fake-process-runners-4-november-2026)
+now connects the frozen handoff to signed-prerelease build, SDK signing and private
+archive verification commands. Twelve new fake-process tests and all 91 script
+tests pass. The system runner denies execution by default; no real signing,
+credentials, Apple requests or guest operation has occurred. The original scope
+stays pinned; real compiler/signature, notarization and original-Mac/loaded-child
+checks remain TO PROVE. This supersedes the earlier unconnected-signer boundary.
+
 [Milestone 6 disposable admission](DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
 adds independent manager/helper approval checks for exact disposable UUID/root
 identity pins, including restart, cleanup and terminal input. Twelve fake/local

@@ -8,7 +8,7 @@ SWIFT_FLAGS := --disable-sandbox --skip-update --cache-path "$(CURDIR)/.build/sw
 
 .PHONY: prepare-source help build build-signed icon test test-build-policies test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-provisioning-tools | test-provisioning-terminal | test-provisioning-ui-cli | test-provisioning-review | test-provisioning-actions | test-provisioning-selection | test-provisioning-appearance | test-provisioning-identity | test-provisioning-admission | provisioning-preflight | test-provisioning-preflight | test-private-provisioning-package | private-provisioning-handoff | test-provisioning-screens | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-provisioning-tools | test-provisioning-terminal | test-provisioning-ui-cli | test-provisioning-review | test-provisioning-actions | test-provisioning-selection | test-provisioning-appearance | test-provisioning-identity | test-provisioning-admission | provisioning-preflight | test-provisioning-preflight | test-private-provisioning-package | test-private-provisioning-signer | private-provisioning-handoff | test-provisioning-screens | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -52,6 +52,12 @@ private-provisioning-handoff:
 
 test-private-provisioning-package:
 	python3 -m unittest discover -s Tests/ScriptTests -p 'test_private_provisioning_package.py' -v
+
+# Actual adapter logic with injected fake command runners. No build/signing or
+# installed-tool prerequisites; no signing CLI or credentials are exposed here.
+.PHONY: test-private-provisioning-signer
+test-private-provisioning-signer:
+	python3 -m unittest discover -s Tests/ScriptTests -p 'test_private_provisioning_signer.py' -v
 
 .PHONY: test-provisioning-package test-provisioning-bundle
 test-provisioning-package: build

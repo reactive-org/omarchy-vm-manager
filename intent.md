@@ -2510,3 +2510,27 @@ remains the visual target for milestone 5.
   validation and original-Mac scope evidence; prior factory/tool/account and all
   guest gates remain pending. No real signing, installs, SSH/Ansible, workflow,
   credential, UI or VM operation occurs. Guest acceptance remains NOT_RUN.
+
+## Private signer adapter — fake processes, 4 November 2026
+
+- **DESIGN DECISION:** a developer-only adapter connects the frozen private request
+  to existing signed-prerelease build/SDK commands. The system runner refuses by
+  default before material IO; trusted in-memory authorization binds request, scope,
+  material and allowed effects. No signing CLI, credential import/unlock/search,
+  runtime download, notary submission or publication path is added. Secure
+  timestamps require signing approval. Product approval remains nil.
+- **PRIVATE COUPLING:** reconstruct the exact archive/overlay, preserve original
+  scope/operational composition, project signed pins and inspector branch, use
+  clean pinned local dependencies, and retain child-sign/seal/outer-sign order.
+  Existing origin/payload/profile/seal policies plus SDK team/authority/hardened/
+  timestamp/certificate checks and read-only archive roundtrip gate success.
+- **VERIFIED — fake/local:** twelve new test functions, 33 command/signature failure
+  cases and four runtime variants; all 91 script tests pass. Injected fake processes
+  and mocked system dispatch exercise command/timeout contracts without a real
+  child, tool, credential, Apple request, install, UI, disk or guest operation.
+  Fixture results explicitly establish no production cryptography or launch
+  readiness. Actual handoff/candidate/pins remain private and unchanged. See the
+  [runbook](docs/DevVMMilestone6Runbook.md#private-signer-adapter--fake-process-runners-4-november-2026).
+- **TO PROVE:** authorized local runtime/materials and actual compiler/SwiftPM,
+  SDK/profile/signature behavior, notarization, final original-Mac scope and loaded
+  child admission. Factory/tool/SSH/owner and all guest rows remain pending/NOT_RUN.

@@ -2910,3 +2910,42 @@ authorizations. Factory bytes still lack access, installed tools remain unprobed
 SSH/owner/frozen setup configuration is pending and all real rows remain NOT_RUN.
 See the [runbook](DevVMMilestone6Runbook.md#private-signing-and-packaging-handoff--fakelocal-path)
 for command inputs, privacy guards and current limitations.
+
+## Milestone 6 private signer adapter — fake processes, 4 November 2026
+
+**IMPLEMENTED:** a developer-only adapter consumes the frozen private handoff and
+explicit local signing material. It reconstructs the recorded archive/overlay,
+retains the original scope-definition/operational composition, projects signed
+runtime/team/origin pins and the signed inspection branch, prepares pinned local
+dependencies, and calls the existing signed-prerelease build. It assembles fresh
+private components, signs children, seals their final hashes, signs the app, checks
+signature/profile/bundle contracts and verifies the private archive after extraction.
+Runtime signing remains upstream; a local signed kit with the exact original
+development-kit origin is required. No runtime fetch, virtualization fork or shipped
+Python runtime is added. Source and dependency drift fail closed.
+
+**DESIGN DECISION:** no signing CLI, workflow/publisher, credential importer,
+keychain unlock/search change or notary submission. The system runner denies by
+default before material IO and requires separate trusted in-memory authorization
+for exact request/scope/material bindings and build/inspect/sign-with-timestamp
+effects. File/environment contents confer no signing or guest consent. The source
+inspector projection can check same-team signatures in signed builds, while final
+scope/loaded-child validation remains on the original Mac. Main approval stays nil;
+real candidate/pins remain private and unchanged.
+
+**VERIFIED — fake processes/local:** twelve new tests, 33 command/sign/verification
+failure variants and four runtime origin/payload variants; all **91 script tests**
+pass. Fake SDK output exercises Developer ID chain parsing, team/hardened-runtime/
+timestamp requirements, profile/certificate/entitlement checks, post-sign seals and
+exact roundtrip. Mocked system dispatch checks explicit environment and timeout
+group cleanup without spawning a process. Private outputs clearly record test
+doubles and no production cryptography, loaded child, original-Mac validation or
+guest execution. No actual signing, credentials, Apple request, installed tool,
+transport, VM launch, disk operation or UI takeover occurs.
+
+**TO PROVE:** actual local signed-runtime availability and authorized SDK/build/
+signing behavior, SwiftPM offline reconstruction, cryptographic/profile admission,
+notarization, final original-Mac scope and loaded-child checks. Prior factory/tool/
+SSH/owner gates and all real guest rows remain pending. This implements the adapter
+only; the [runbook](DevVMMilestone6Runbook.md#private-signer-adapter--fake-process-runners-4-november-2026)
+records the exact authorization boundary before any real operation.
