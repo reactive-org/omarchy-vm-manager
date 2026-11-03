@@ -54,6 +54,9 @@ jobs:
           test "$(git rev-parse HEAD)" = 01631ee6ba261e85a22dd3f7959b60d678ababf8
           cp ../tooling/Scripts/signed_prerelease.py Scripts/signed_prerelease.py
           cp ../tooling/Scripts/retained_candidate.py Scripts/retained_candidate.py
+          cp ../tooling/Scripts/ticket_network.py Scripts/ticket_network.py
+          cp ../tooling/Scripts/assemble_app.py Scripts/assemble_app.py
+          cp ../tooling/Scripts/verify_signed_app.py Scripts/verify_signed_app.py
           git diff --exit-code -- App Sources Config Package.swift Patches Vendor
           make fetch-runtime-kit prepare-source icon
       - name: Staple retained runtime, build tagged app, sign, notarize and verify

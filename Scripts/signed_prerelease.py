@@ -21,6 +21,7 @@ from kit_artifacts import ROOT, digest
 from build_patched_kit import inventory
 from fetch_runtime_kit import archive_manifest, verify, MAX_ARCHIVE_BYTES
 from package_prerelease import validate_tag
+from ticket_network import retry_ticket_call
 from upstream_source import prepare
 from keychain_profile import decode_profile, profile_entitlements, verify_profile_bytes
 
@@ -67,16 +68,7 @@ def run(label, *arguments):
 
 
 def retry_ticket_network(label, *arguments):
-    for attempt in range(3):
-        try:
-            return run(label, *arguments)
-        except RuntimeError as error:
-            transient = any(marker in str(error) for marker in (
-                "NSURLErrorDomain Code=-1005", "NSURLErrorDomain Code=-1001", "NSURLErrorDomain Code=-1009"))
-            if not transient or attempt == 2:
-                raise
-            print(f"{label}: transient Apple ticket connection failure; retrying the same bytes", flush=True)
-            time.sleep(5 * (attempt + 1))
+    return retry_ticket_call(lambda: run(label, *arguments), label)
 
 
 def check_submission(identifier, archive=None):
@@ -369,7 +361,7 @@ def prepare_runtime(source, source_bytes, profile, team, identity, tag, work, re
                     composition=source["composition"] + "; Developer ID signed/notarized variant through upstream kit pipeline")
         validate_signed_lock(lock, source, source_sha, team)
         archive_manifest(folder / "TryOmarchyKit.zip", lock)
-    run("Verify every runtime signature, entitlement, network pin and notarization", "python3", signature,
+    retry_ticket_network("Verify every runtime signature, entitlement, network pin and notarization", "python3", signature,
         "verify", "--team", team, "--require-notarization", folder / "TryOmarchyKit.bundle")
     lock_path = work / "TryOmarchySignedRuntime.lock.json"
     lock_path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
