@@ -78,6 +78,25 @@ Within 15 seconds, focus the guest and run `try-omarchy-touch-id-test`. Leave th
 
 If the command reports an error or the Mac only turns off its display, do not claim a host-sleep result or add privileged commands automatically. Record the actual old/fresh guest test outcomes and distinguish user observations from helper state reports. This procedure does not change power settings, schedule an automatic wake, start/stop a guest, use experimental disk suspension or require a custom guest kernel. It has not been executed by the agent.
 
+## Focus-preserving graceful-shutdown check
+
+**VERIFIED — source inspection:** the existing CLI `stop --wait` requests shutdown and waits for the manager's retained session to reach matching terminal exit. The helper revokes authentication before requesting QMP `system_powerdown`; shutdown cannot re-enable its epoch. Ordinary runtime shutdown retains its existing timeout/cleanup policy; this test adds no `--force` or new force-stop action. These source checks do not establish native cancellation.
+
+**Manual procedure / TO PROVE:** use the same explicitly selected test guest, initially running, and replace `TEST_VM` with its exact name or UUID. In a Mac terminal:
+
+```sh
+test_cli='/Applications/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm'
+test_guest='TEST_VM'
+(
+  sleep 15
+  "$test_cli" stop "$test_guest" --wait --timeout 120
+) &
+```
+
+Within 15 seconds, focus the guest and run `try-omarchy-touch-id-test`. Leave Touch ID untouched. At shutdown, the pending prompt must cancel, with no late approval or resurfacing prompt. The old test may print authentication failure, but shutdown can end the guest terminal first; a missing final line is not proof of either success or failure. Require the Mac CLI reply to report `ok: true`, `active: false`, normally `state: stopped`, and inspect any error/failure. A timeout does not authorize a manual force-stop or a passing result. Distinguish normal shutdown from the runtime's existing timeout fallback if that occurs.
+
+After confirmed terminal exit, the user may launch that same test guest again through the manager. Once booted and focused, run `try-omarchy-touch-id-test` and approve Touch ID. It should pass without re-enrollment; no old-run prompt should reappear. Record observed cancellation, exit and fresh-run result separately. The agent has not executed this procedure, stopped/started a VM, read keys or controlled authentication UI.
+
 ## Optional 1Password follow-up
 
 The upstream package already ships its narrowly scoped polkit agent, password dialog and disabled service unit. This sudo milestone refuses `onepassword-unlock` in manager-scoped helpers. A follow-up must deliberately enable that operation and validate its existing signed context/cancellation boundary before native testing.
