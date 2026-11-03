@@ -31,6 +31,45 @@ do {
         FileHandle.standardOutput.write(try encoder.encode(report) + Data([10]))
         exit(0)
     }
+    if !arguments.contains("--help"), !arguments.contains("-h"), let setup = try ProvisioningSetupCLI.parse(arguments) {
+        let layout = ProvisioningPackageLayout(contents: try managerApp().appendingPathComponent("Contents"))
+        func printSetup(_ data: Data) { FileHandle.standardOutput.write(data + Data([10])) }
+        switch setup {
+        case .presets:
+            printSetup(try JSONSerialization.data(withJSONObject: ["version": 1, "presets": BundledProvisioning.presets, "executionEnabled": false], options: [.sortedKeys])); exit(0)
+        case .plan(let repository): printSetup(try BundledProvisioning.plan(repository: repository, layout: layout)); exit(0)
+        case .preset(let name): printSetup(try BundledProvisioning.plan(preset: name, layout: layout)); exit(0)
+        default: break
+        }
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
+        let client = ProvisioningExternalClient(endpoint: ManagerCommandEndpoint(applicationSupport: support))
+        switch setup {
+        case .attach(let id, let interactive):
+            try await ProvisioningCLITerminal.attach(client: client, workflowID: id, interactive: interactive); exit(0)
+        case .events(let id):
+            var prior: UInt64?
+            while !Task.isCancelled {
+                let reply = try await client.request(.status, workflowID: id)
+                guard reply.failure == nil, let row = reply.workflows?.first else { throw VMFailure(code: "setup-unavailable", message: "The workflow is unavailable. No setup was submitted.") }
+                if prior != row.sequence { printSetup(try JSONEncoder().encode(reply)); prior = row.sequence }
+                if !row.canCancel { await client.close(); exit(0) }
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            await client.close(); exit(0)
+        default:
+            let operation: ProvisioningExternalOperation
+            let id: UUID?
+            switch setup {
+            case .capabilities: operation = .capabilities; id = nil
+            case .list: operation = .list; id = nil
+            case .status(let value): operation = .status; id = value
+            case .cancel(let value): operation = .cancel; id = value
+            default: throw VMFailure(code: "usage", message: "Unsupported setup command.")
+            }
+            let reply = try await client.request(operation, workflowID: id)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
+        }
+    }
     let parsed = try GuestCLIInvocation.parse(Array(CommandLine.arguments.dropFirst()))
     if parsed.help { FileHandle.standardOutput.write(Data((GuestCLIInvocation.usage + "\n").utf8)); exit(0) }
     let request = parsed.request!; requestID = request.requestID

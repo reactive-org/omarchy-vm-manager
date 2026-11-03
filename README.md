@@ -18,7 +18,7 @@ The native SwiftUI app requires macOS 15 or later. The current private debug bui
 
 ## Build and check
 
-Use Swift 6 and Python 3.10+ on Apple Silicon. Run `make prepare-source` before opening `Package.swift` in Xcode so the client SDK resolves to the reviewed runtime source:
+Use Swift 6.2+ (the pinned native terminal requires Swift tools 6.2) and Python 3.10+ on Apple Silicon. Run `make prepare-source` before opening `Package.swift` in Xcode so the client SDK resolves to the reviewed runtime source:
 
 ```sh
 git submodule update --init

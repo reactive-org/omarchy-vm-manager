@@ -2107,3 +2107,23 @@ resize, remote cleanup/restart/check, sleep/wake/crash and real signatures retai
 their separate acceptance gates. No positive recovery after full process loss or
 TTY restoration after hard process termination is claimed. The Setup screenshot
 remains the visual target for milestone 5.
+
+### 3 November 2026 — provisioning milestone 5 terminal/observation slice
+
+- **DESIGN DECISION:** Setup and the separate setup CLI share one manager-owned
+  observation/cancellation/attachment service. Offline preset/folder previews use
+  the pinned planner. Attachments start view-only; deliberate input ownership,
+  typed invocation metadata, bounded transient input and gap/reset handling apply.
+  Existing VM command JSON contracts and production execution gates remain intact.
+- **PRIVATE COUPLING:** library-only SwiftTerm 1.99.0 at
+  `2dad6a1e516f755bed77cf9bbd09455062f54758` requires Swift 6.2+ (tested with 6.4),
+  with one reviewed grapheme-length guard, two integration files and inventory.
+  The scoped display filter blocks host-action escapes before native/CLI rendering;
+  protocol-1 `setup-v1.sock` uses private same-user Unix-socket admission and never
+  exports helper capabilities. Terminal content/input is never journaled/logged.
+- **VERIFIED:** `make test` passed 376 manager Swift test functions in 50 suites, 52 script tests, and the relocated/read-only/ad-hoc-signed helper fixtures (including original owner-loss/reopen and terminal streaming). The focused UI/CLI coverage contains 13 functions plus the four-case bundled-preset test: split Unicode/ANSI, cursor/colour/CR rendering, blocked host actions, oversized/malformed streams, storage bounds across cursor/style changes, native viewer ownership/search/reset, strict correlated protocol refusal, cross-view input ownership, EOF/gap/reclaim, distinct cancellation and disposable PTY termios/signal/open-file-flag restoration on detach, connection loss and task cancellation. Vendor inventory, the reviewed two-line source patch, exact upstream export comparison, unchanged shared-package export checks and `git diff --check` passed. No user window was opened or real transport executed.
+- **TO PROVE:** full milestone-5 creation/selection, frozen preview/apply and explicit
+  hash-bound task trust, restart/check/recovery execution actions, complete visual
+  acceptance, nested guest/SSH authentication and cleanup, hard-kill TTY recovery,
+  and distribution. This is an uninstalled worktree build. No real transports,
+  host installs, factory downloads, VM operations or user UI takeover occurred.

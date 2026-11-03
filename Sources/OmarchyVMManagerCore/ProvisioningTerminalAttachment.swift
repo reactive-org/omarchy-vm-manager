@@ -3,8 +3,8 @@ import Foundation
 
 /// UI/CLI-neutral attachment. Construction is view-only; claiming input is a
 /// separate deliberate action. No raw output/input is persisted or described.
-actor ProvisioningTerminalAttachment {
-    let id: UUID
+public actor ProvisioningTerminalAttachment {
+    public let id: UUID
     private let client: ProvisioningTerminalClient
     private var ownership: UUID?
     private var sequence: UInt64 = 0
@@ -35,19 +35,19 @@ actor ProvisioningTerminalAttachment {
         guard !detached else { throw ProvisioningTerminalDenial.attachment }
         return reply
     }
-    func poll() async throws -> ProvisioningTerminalPage {
+    public func poll() async throws -> ProvisioningTerminalPage {
         guard let page = try await perform(packet(.read)).page else { throw ProvisioningTerminalDenial.unavailable }
         if !page.ownsInput { ownership = nil; sequence = 0 }
         return page
     }
     /// Caller first resets its emulator/decoder and displays the discontinuity.
     /// This explicit acknowledgement discards backlog and resumes at the tail.
-    func acknowledgeReset() async throws -> ProvisioningTerminalPage {
+    public func acknowledgeReset() async throws -> ProvisioningTerminalPage {
         guard let page = try await perform(packet(.reset)).page else { throw ProvisioningTerminalDenial.unavailable }
         ownership = nil; sequence = 0
         return page
     }
-    func heartbeat() async throws { _ = try await perform(packet(.heartbeat)) }
+    public func heartbeat() async throws { _ = try await perform(packet(.heartbeat)) }
     func claimInput(size: ProvisioningTerminalSize) async throws {
         guard ownership == nil else { throw ProvisioningTerminalDenial.ownership }
         var request = try packet(.claim); request.rows = size.rows; request.columns = size.columns
@@ -55,12 +55,12 @@ actor ProvisioningTerminalAttachment {
         guard let token = response.ownershipID else { throw ProvisioningTerminalDenial.ownership }
         ownership = token; sequence = 0
     }
-    func releaseInput() async throws {
+    public func releaseInput() async throws {
         guard let ownership else { throw ProvisioningTerminalDenial.ownership }
         var request = try packet(.release); request.ownershipID = ownership
         _ = try await perform(request); self.ownership = nil; sequence = 0
     }
-    func send(_ bytes: Data, invocationID: UUID) async throws {
+    public func send(_ bytes: Data, invocationID: UUID) async throws {
         var request = try inputPacket(.input, invocationID: invocationID); request.bytes = bytes
         _ = try await perform(request); sequence += 1
     }
@@ -68,12 +68,18 @@ actor ProvisioningTerminalAttachment {
         var request = try inputPacket(.resize, invocationID: invocationID); request.rows = size.rows; request.columns = size.columns
         _ = try await perform(request); sequence += 1
     }
+    public func claimInput(rows: Int, columns: Int) async throws {
+        try await claimInput(size: .init(rows: rows, columns: columns))
+    }
+    public func resize(rows: Int, columns: Int, invocationID: UUID) async throws {
+        try await resize(.init(rows: rows, columns: columns), invocationID: invocationID)
+    }
     private func inputPacket(_ operation: ProvisioningTerminalOperation, invocationID: UUID) throws -> ProvisioningTerminalPacket {
         guard let ownership, sequence < UInt64(Int64.max) - 1 else { throw ProvisioningTerminalDenial.ownership }
         var request = try packet(operation); request.ownershipID = ownership; request.invocationID = invocationID; request.sequence = sequence + 1
         return request
     }
-    func detach() async {
+    public func detach() async {
         guard !detached else { return }
         let request = try? packet(.detach)
         detached = true; ownership = nil; sequence = 0

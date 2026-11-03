@@ -40,6 +40,14 @@ final class AppModel: ObservableObject {
     private var factoryImportID: UUID?
     private var commandServer: ManagerCommandServer?
     private var provisioningService: ProvisioningService?
+    private var setupServer: ProvisioningExternalServer?
+    @Published var setupWorkflows: [ProvisioningWorkflowSnapshot] = []
+    @Published var setupJobs: [UUID: ProvisioningJobSnapshot] = [:]
+    var setupService: (any ProvisioningObserving)? { provisioningService }
+    func cancelSetup(_ id: UUID) async {
+        do { try await provisioningService?.cancel(id) }
+        catch { actionError = "Setup cancellation could not be confirmed. Check its job state and cleanup requirement." }
+    }
     private var lastReportID: UUID?
     private var lastAccessibilityTrusted: Bool?
     private var lastOwnerStates: [UUID: OwnerSetupReadiness] = [:]
@@ -112,6 +120,10 @@ final class AppModel: ObservableObject {
             catch { actionError = "Setup coordination is unavailable. Recovery metadata was preserved." }
         }
         startCommandServer()
+        if let provisioningService, setupServer == nil {
+            do { setupServer = try ProvisioningExternalServer(endpoint: ManagerCommandEndpoint(applicationSupport: support), service: provisioningService) }
+            catch { actionError = "Setup CLI endpoint unavailable. Existing job metadata was preserved." }
+        }
         while !Task.isCancelled {
             await update()
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
@@ -127,7 +139,7 @@ final class AppModel: ObservableObject {
             }
         } catch { actionError = "CLI command server unavailable: " + error.localizedDescription }
     }
-    func stopCommandServer() { commandServer?.stop(); commandServer = nil }
+    func stopCommandServer() { commandServer?.stop(); commandServer = nil; setupServer?.stop(); setupServer = nil }
 
     func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, diskGiB: Int,
               clipboard: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath) async -> UUID? {
@@ -261,6 +273,12 @@ final class AppModel: ObservableObject {
             Task { await loadFactories() }
         }
         snapshots = observation.snapshots; records = observation.records
+        if let provisioningService {
+            setupWorkflows = await provisioningService.statuses()
+            var jobs: [UUID: ProvisioningJobSnapshot] = [:]
+            for workflow in setupWorkflows { jobs[workflow.id] = await provisioningService.jobStatus(workflow.id) }
+            setupJobs = jobs
+        }
         accessibilityTrusted = AXIsProcessTrusted()
         if Date().timeIntervalSince(storageRefreshed) > 10 {
             storageRefreshed = Date()

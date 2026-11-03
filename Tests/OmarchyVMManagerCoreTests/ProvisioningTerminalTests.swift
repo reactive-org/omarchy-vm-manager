@@ -4,7 +4,7 @@ import Foundation
 import Testing
 @testable import OmarchyVMManagerCore
 
-private final class TerminalFixture: @unchecked Sendable {
+final class TerminalFixture: @unchecked Sendable {
     let root = URL(fileURLWithPath: "/private/tmp/terminal-" + UUID().uuidString).standardizedFileURL
     let request: ProvisioningRequest
     let terminal: ProvisioningTerminal
@@ -58,7 +58,7 @@ private final class TerminalClock: @unchecked Sendable {
     func now() -> ContinuousClock.Instant { lock.withLock { instant } }
     func advance() { lock.withLock { instant += .seconds(2) } }
 }
-private func terminalCredentials() throws -> ProvisioningHelperCredentials {
+func terminalCredentials() throws -> ProvisioningHelperCredentials {
     try .init(identity: .init(instanceID: UUID(), executableSHA256: String(repeating: "a", count: 64), packageLockSHA256: String(repeating: "b", count: 64)))
 }
 

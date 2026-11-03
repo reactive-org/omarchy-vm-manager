@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 foundation includes durable inputs, admitted helper launch and helper-side sequencer activation/status/cancellation tested with fake adapters and signed local fixtures; subsequent milestone-3 service/backend coordination and milestone-4 terminal/input transport are now complete for fake/local acceptance (see the completion records below). Product execution remains disabled; native rendering and UI/CLI integration are milestone 5.
+Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 foundation includes durable inputs, admitted helper launch and helper-side sequencer activation/status/cancellation tested with fake adapters and signed local fixtures; subsequent milestone-3 service/backend coordination and milestone-4 terminal/input transport are now complete for fake/local acceptance (see the completion records below). Milestones 3/4 are committed in manager `6a71b06` and dev-vm `3d616f0`. Milestone 5 has started with the native Setup terminal, offline preset/folder previews and a separate observation/attachment CLI endpoint (see the milestone-5 record below). Product execution remains disabled.
 
 Date: 3 November 2026 (Australia/Melbourne).
 
@@ -176,7 +176,7 @@ Milestone 4 implements the helper/manager transport and attachment contract belo
 
 The user-provided Setup-tab reference is the visual target: reviewed source/profile/features, readiness checks, stage strip, a large dark terminal with Follow output/expand, cancellation and job details. Its concept/sample output is illustration, not evidence of a configured guest. Keep actual terminal bytes separate from structured control messages; the authenticated ownership slice below adds no UI or stream rendering.
 
-Use a native terminal emulator in a SwiftUI wrapper. SwiftTerm is a candidate; select a pinned release compatible with the chosen Swift 6 toolchain and macOS 15. Its current main branch requires Swift tools 6.2, so do not adopt main without a compatibility check. See [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm).
+Use a native terminal emulator in a SwiftUI wrapper. The milestone-5 renderer pins SwiftTerm 1.99.0 at `2dad6a1e516f755bed77cf9bbd09455062f54758` as a library-only source export. It requires Swift tools 6.2 or newer; this slice is built with Swift 6.4 for macOS 15. The source export has one reviewed two-line grapheme bound; the reviewed local manifest and deterministic build-identity/display-configuration overlay replace upstream plugins and exclude process frontends and external dependencies. See [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm).
 
 The manager-owned Swift provisioning helper links the shared package and controls the PTY, child process session and cleanup channel. It invokes reviewed Homebrew Ansible and system SSH/native-command transports with explicit arguments, working directory and environment. No Python host-controller subprocess is required. The UI renders bytes and sends input/resize messages; closing or recreating the view does not own or terminate the process.
 
@@ -212,7 +212,7 @@ Require explicit trust for custom Ansible tasks tied to frozen input hashes. Gen
 
 ## CLI and streaming transport
 
-`setup tools` now implements schema 2 under milestone 1A. All other commands below remain proposed:
+`setup tools` implements schema 2 under milestone 1A. The milestone-5 record and CLI reference identify the implemented offline/observation/attachment commands; the broader creation/apply/check/recovery commands in this original proposal remain gated:
 
 ```sh
 omarchy-vm setup tools
@@ -1773,3 +1773,101 @@ heartbeat, explicit transfer, detach and scoped raw-terminal restoration. Milest
 restart/check, remote cleanup and crash/sleep/wake acceptance. Milestone 7 covers
 release distribution/signatures. Full-process worker adoption remains unproven;
 product execution remains disabled. Earlier TO PROVE labels remain unchanged.
+
+## Milestone 5 UI/CLI terminal slice — 3 November 2026
+
+**DESIGN DECISION:** this slice supplies offline selection/review and live observation
+surfaces while preserving the product execution gate. Milestones 3/4 were committed
+first in manager `6a71b06` and dev-vm `3d616f0`; new milestone-5 changes are uncommitted.
+The native Setup tab and separate CLI socket consume `ProvisioningObserving`, backed
+by the same manager-owned service, workflow status, child status, cancellation and
+original helper attachment. Closing a view or CLI releases its viewer, not its job.
+No saved PID or journal is converted into a new terminal capability.
+
+The Setup tab follows the supplied screenshot's layout: source/preset selection,
+offline proposal, stage strip, large dark terminal, Follow output, expand, font
+size, literal search, jump to latest, explicit Take/Release input, reconnect,
+cancellation confirmation and job details. Four bundled manifests select the
+upstream developer, web, python and project-managed profiles; local folders use
+`vm.yml`. Both paths use the admitted pinned planner without a VM connection.
+Preview source/resource settings do not overwrite the manager's VM configuration.
+There is no simulated output, prompt-text detection, fabricated percentage or
+inferred completed-stage checkmark. Current phase comes from workflow/child state;
+input availability comes from typed terminal metadata. Multiple workflows are
+selected explicitly, without treating sequence numbers as timestamps. The Home
+page links a concise setup state to the Setup tab.
+
+**PRIVATE COUPLING — renderer:** SwiftTerm 1.99.0, revision
+`2dad6a1e516f755bed77cf9bbd09455062f54758`, is vendored under `Vendor/SwiftTerm`.
+Its sources/license are covered by an exact SHA-256 inventory; `Patches/swiftterm-bounded-graphemes.patch` adds one early-return guard limiting stored clusters to 16 scalars, including extensions across cursor/SGR sequences. All other upstream source/license bytes are unchanged.
+Two manager integration files provide the library-only manifest and deterministic
+build identity/empty query table plus a scoped display configuration method. No
+upstream plugin, process frontend, new external package or host executable is built.
+Swift 6.2+ is required; this Mac uses Swift 6.4. The earlier 1.5.1 candidate was
+rejected during source review because its global character cache weakens isolation
+and memory bounds. Version 1.99.0 uses bounded per-terminal cell storage instead.
+
+The shared incremental display policy validates UTF-8 across chunks, caps a
+combining cluster at 16 scalars, caps CSI storage at 64 bytes/16 parameters and
+admits only presentation/cursor/erase/selected mode sequences. OSC (including
+clipboard, titles, links and file transfers), DCS/sixel, APC/Kitty graphics, PM,
+SOS, queries, window commands and C1 controls are discarded. Oversized strings
+are discarded without retaining their contents. Links do not open automatically;
+all link delegates are inert. Native manual selection/copy remains available.
+Scrollback is 500 lines; renderer-owned bounded cell/intern tables are additional
+to the helper's existing ring. Renderer diagnostics are silenced, no text mirror
+is persisted, and literal search reads the bounded in-memory screen only. These
+controls do not redact secrets deliberately printed by a trusted task.
+
+A reported gap clears decoder/emulator state, visibly announces the discontinuity,
+acknowledges the live-tail reset and releases input. It does not reconstruct the
+prior screen. Input needs a new deliberate claim. Native input is queued only
+transiently (16 KiB total, at most 4096 bytes per delivery), bound to the current
+invocation/generation, removed before a single delivery attempt, and discarded on
+scope change, release, gap or detach. Resize is coalesced and serialized with input;
+a lost acknowledgement is never replayed.
+
+**PRIVATE COUPLING — external protocol 1:** `setup-v1.sock` is separate from the
+unchanged single-response `control.sock`. It uses the same private mode-0700
+parent/mode-0600 Unix-socket and peer-UID admission model. Requests/replies are
+length framed, versioned, strictly decoded, correlated by request UUID and
+monotonically increasing per-connection sequence. A connection owns at most one
+attachment; helper credentials/tokens stay in the manager. Eight connections,
+9-KiB requests, 128-KiB replies, one byte frame per read and a 15-second activity
+lease bound resources. EOF/malformed traffic/idle expiry detaches only that viewer.
+The client poisons a connection after a lost reply and never reconnects/replays a
+mutation automatically. Input/resize still require the original invocation and
+helper-owned lease. Status/cancel travel independently of the helper byte stream.
+
+CLI commands now include `setup presets`, `setup plan --preset NAME`,
+`setup plan --from /folder`, `setup capabilities`, `setup list`,
+`setup status UUID [--events]`, `setup attach UUID [--input]` and `setup cancel UUID`.
+Offline planning starts no manager/helper/VM. Setup observation requires the
+running manager; it does not auto-open it. Default attachment is view-only;
+`--input` deliberately claims the prompt. Ctrl-] detaches (Return is also needed
+in unchanged canonical view-only mode). Input mode duplicates and restores the
+original TTY, handles cooperative cancellation and scoped INT/TERM/HUP, restores
+complete signal dispositions (including nil/default handlers, masks and flags),
+restores open-file flags through a duplicate with bounded nonblocking writes,
+and leaves the alternate screen. Darwin’s kernel-only written-status bit is
+excluded from the file-flag equality check; see [XNU fcntl.h](https://github.com/apple/darwin-xnu/blob/main/bsd/sys/fcntl.h). SIGKILL, a crashed process or a broken terminal device cannot promise
+restoration. `--events` emits structured changed workflow status only, never raw
+terminal bytes; `setup status` includes typed child status when available. Existing
+VM commands and JSON replies are unchanged. No password flag or stdin-secret
+automation contract exists.
+
+**VERIFIED — local fixtures:** `make test` passed 376 manager Swift test functions in 50 suites, 52 script tests, and the relocated/read-only/ad-hoc-signed helper fixtures (including original owner-loss/reopen and terminal streaming). The focused UI/CLI coverage contains 13 functions plus the four-case bundled-preset test: split Unicode/ANSI, cursor/colour/CR rendering, blocked host actions, oversized/malformed streams, storage bounds across cursor/style changes, native viewer ownership/search/reset, strict correlated protocol refusal, cross-view input ownership, EOF/gap/reclaim, distinct cancellation and disposable PTY termios/signal/open-file-flag restoration on detach, connection loss and task cancellation. Vendor inventory, the reviewed two-line source patch, exact upstream export comparison, unchanged shared-package export checks and `git diff --check` passed. No user window was opened or real transport executed.
+
+**TO PROVE / REMAINING:** this delivers the milestone-5 terminal/observation slice,
+not the complete setup workflow acceptance. New VM currently records None for
+developer setup and points to offline preview after creation; automatic selection
+and creation/apply coupling remain gated. Native common-feature editing, frozen
+preview-to-apply submission, explicit hash-bound custom-task trust, reviewed
+restart/check/recovery actions and their execution CLI contracts still need a
+follow-up slice. The UI Apply button is disabled and execution commands return
+`setup-execution-disabled`; Homebrew readiness cannot enable them. No operational
+runner factory is installed. Real guest/native echo/nested SSH, crash/sleep/wake,
+visual acceptance of the complete screen and signed distribution remain separate
+acceptance. No real SSH/SCP/SFTP/Ansible, host installs, downloads of factory images,
+VM operations, personal credentials, installed-app updates or user UI takeover
+occurred. SwiftTerm source retrieval was source-only dependency work.

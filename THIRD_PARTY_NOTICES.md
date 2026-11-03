@@ -30,3 +30,31 @@ Yams, LibYAML and TOMLDecoder license files in the provisioning resource bundle
 Exact parser revisions/hashes and license sources remain in the pinned package's
 `ThirdParty/ParserInventory.json`. TOMLDecoder remains an exactly resolved SwiftPM
 source dependency, not an installed host program.
+
+## SwiftTerm 1.99.0
+
+Native provisioning terminal: https://github.com/migueldeicaza/SwiftTerm, revision `2dad6a1e516f755bed77cf9bbd09455062f54758`. Library-only export in Vendor/SwiftTerm; one reviewed grapheme-length guard is recorded in Patches/swiftterm-bounded-graphemes.patch; other source and license bytes are unchanged. The manager supplies a deterministic build-identity/terminfo and display-configuration overlay and a local package manifest. Process frontends, build plugins and external dependencies are excluded.
+
+Copyright (c) 2019-2026 Miguel de Icaza (https://github.com/migueldeicaza)
+Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)
+Copyright (c) 2014-2016, SourceLair Private Company (https://www.sourcelair.com)
+Copyright (c) 2012-2013, Christopher Jeffrey (https://github.com/chjj/)
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

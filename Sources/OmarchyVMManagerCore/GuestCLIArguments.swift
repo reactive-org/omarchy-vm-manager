@@ -12,6 +12,13 @@ public struct GuestCLIInvocation: Sendable {
       factory-delete SHA256        Move an unused imported factory to Trash
       setup tools [--tool TOOL=/absolute/path]
                                    Check host provisioning dependencies locally
+      setup presets                List bundled offline setup presets
+      setup plan --preset NAME     Preview a bundled setup without a VM
+      setup plan --from /folder    Preview local vm.yml without a VM
+      setup capabilities|list      Discover setup protocol / list workflows
+      setup status UUID [--events] Read status / structured NDJSON (no terminal)
+      setup attach UUID [--input]  View original live terminal; opt in to input
+      setup cancel UUID            Cancel job with cleanup (detach does not cancel)
       list                         List guests
       get ID                       Show config, state and SSH/network details
       create NAME [options]        Create a guest with saved owner defaults

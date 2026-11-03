@@ -108,11 +108,15 @@ public actor ProvisioningService {
             sourceDirectory: sourceDirectory, environment: environment, authority: authority, rows: records)
     }
     public func status(_ id: UUID) -> ProvisioningWorkflowSnapshot? { rows[id]?.snapshot }
-    func attachTerminal(_ id: UUID) async throws -> ProvisioningTerminalAttachment {
+    public func attachTerminal(_ id: UUID) async throws -> ProvisioningTerminalAttachment {
         guard !closed, let row = rows[id], let launcher = environment.launcher as? any ProvisioningTerminalLaunching else { throw ProvisioningTerminalDenial.unavailable }
         let jobID = row.checkJobID ?? row.applyJobID
         guard let jobID else { throw ProvisioningTerminalDenial.unavailable }
         return try await ProvisioningTerminalAttachment.attach(client: try await launcher.terminalClient(jobID: jobID))
+    }
+    public func jobStatus(_ id: UUID) async -> ProvisioningJobSnapshot? {
+        guard let row = rows[id], let job = row.checkJobID ?? row.applyJobID else { return nil }
+        return await coordinator.status(job)
     }
     public func statuses() -> [ProvisioningWorkflowSnapshot] { rows.values.map(\.snapshot).sorted { $0.id.uuidString < $1.id.uuidString } }
     public func wait(_ id: UUID) async throws -> ProvisioningWorkflowSnapshot {

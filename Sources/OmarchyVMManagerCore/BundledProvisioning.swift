@@ -92,6 +92,11 @@ public enum BundledProvisioning {
         } catch let error as VMFailure { throw error }
         catch { throw manifestFailure(error) }
     }
+    public static let presets = ["developer", "web", "python", "project-managed"]
+    public static func plan(preset: String, layout: ProvisioningPackageLayout) throws -> Data {
+        guard presets.contains(preset), let source = Bundle.module.url(forResource: "SetupPreset-" + preset, withExtension: "json") else { throw invalid() }
+        return try plan(repository: source.deletingLastPathComponent(), manifest: source.lastPathComponent, layout: layout)
+    }
     private static func manifestFailure(_ error: any Error) -> VMFailure {
         VMFailure(code: (error as? ManifestError)?.description ?? "manifest.file", message: "The offline setup input was refused.")
     }

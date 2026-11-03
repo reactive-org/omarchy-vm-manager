@@ -14,7 +14,7 @@ struct ProvisioningToolsView: View {
                 if checking { ProgressView().controlSize(.small) }
                 Button("Check again") { Task { await refresh() } }.disabled(checking)
             }
-            Text("Check the host tools needed for developer setup. Setup execution and the live terminal are planned for later milestones.")
+            Text("Check the host tools needed for developer setup. Offline previews and the Setup terminal are available in the Setup tab. Execution remains disabled pending guest acceptance.")
                 .foregroundStyle(.secondary)
             if failed { Label("Tool checks could not finish. Try again.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
             if let report {

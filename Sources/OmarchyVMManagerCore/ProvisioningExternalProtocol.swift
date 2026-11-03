@@ -1,0 +1,138 @@
+import DevVMProvisioningCore
+import Foundation
+
+public enum ProvisioningExternalOperation: String, Codable, Sendable {
+    case capabilities, list, status, cancel, attach, read, reset, claim, release, input, resize, detach, heartbeat
+}
+/// External protocol 1, exclusively on setup-v1.sock. A connection owns at most
+/// one attachment. Helper capabilities and credentials never leave the manager.
+public struct ProvisioningExternalRequest: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    public let version: Int
+    public let requestID: UUID
+    public let sequence: UInt64
+    public let operation: ProvisioningExternalOperation
+    public var workflowID: UUID?
+    public var invocationID: UUID?
+    public var bytes: Data?
+    public var rows: Int?
+    public var columns: Int?
+    public init(sequence: UInt64, operation: ProvisioningExternalOperation, workflowID: UUID? = nil) {
+        version = 1; requestID = UUID(); self.sequence = sequence; self.operation = operation; self.workflowID = workflowID
+    }
+    public var description: String { "ProvisioningExternalRequest(redacted)" }
+    public var debugDescription: String { description }
+    static func decode(_ data: Data) throws -> Self {
+        guard data.count <= 9 * 1024, case .object(let fields) = try PlainDataParser.parse(data, format: .json) else { throw ProvisioningTerminalDenial.bounds }
+        let v = try JSONDecoder().decode(Self.self, from: data)
+        var keys: Set<String> = ["version", "requestID", "sequence", "operation"]
+        if ![.capabilities, .list].contains(v.operation) { keys.insert("workflowID") }
+        if [.input, .resize].contains(v.operation) { keys.insert("invocationID") }
+        if v.operation == .input { keys.insert("bytes") }
+        if [.claim, .resize].contains(v.operation) { keys.formUnion(["rows", "columns"]) }
+        guard v.version == 1, v.sequence > 0, v.sequence < UInt64(Int64.max), Set(fields.keys) == keys,
+              [.capabilities, .list].contains(v.operation) || v.workflowID != nil,
+              ![.input, .resize].contains(v.operation) || v.invocationID != nil else { throw ProvisioningTerminalDenial.bounds }
+        if v.operation == .input { guard let bytes = v.bytes, !bytes.isEmpty, bytes.count <= 4096 else { throw ProvisioningTerminalDenial.bounds } }
+        if [.claim, .resize].contains(v.operation) {
+            guard let rows = v.rows, let columns = v.columns else { throw ProvisioningTerminalDenial.bounds }
+            _ = try ProvisioningTerminalSize(rows: rows, columns: columns)
+        }
+        return v
+    }
+}
+public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    public let version: Int
+    public let requestID: UUID
+    public let sequence: UInt64
+    public let operation: ProvisioningExternalOperation
+    public var executionEnabled: Bool?
+    public var workflows: [ProvisioningWorkflowSnapshot]?
+    public var job: ProvisioningJobSnapshot?
+    public var page: ProvisioningTerminalPage?
+    public var failure: String?
+    public var description: String { "ProvisioningExternalReply(redacted)" }
+    public var debugDescription: String { description }
+    init(_ r: ProvisioningExternalRequest) { version = 1; requestID = r.requestID; sequence = r.sequence; operation = r.operation }
+    static func decode(_ data: Data, request: ProvisioningExternalRequest) throws -> Self {
+        guard data.count <= 128 * 1024, case .object(let fields) = try PlainDataParser.parse(data, format: .json) else { throw ProvisioningTerminalDenial.bounds }
+        let v = try JSONDecoder().decode(Self.self, from: data)
+        var keys: Set<String> = ["version", "requestID", "sequence", "operation"]
+        if v.failure != nil { keys.insert("failure") }
+        else {
+            switch request.operation {
+            case .capabilities: keys.insert("executionEnabled")
+            case .list, .status, .cancel: keys.insert("workflows"); if v.job != nil && request.operation != .list { keys.insert("job") }
+            case .read, .reset: keys.insert("page")
+            default: break
+            }
+        }
+        guard v.version == 1, v.requestID == request.requestID, v.sequence == request.sequence, v.operation == request.operation,
+              Set(fields.keys) == keys,
+              v.failure == nil || ["unavailable", "busy", "unknown-workflow", "denied", "disabled"].contains(v.failure!),
+              v.failure != nil || (request.operation != .capabilities || v.executionEnabled != nil),
+              v.failure != nil || (![.list, .status, .cancel].contains(request.operation) || v.workflows != nil),
+              v.failure != nil || (![.read, .reset].contains(request.operation) || v.page != nil) else { throw ProvisioningTerminalDenial.bounds }
+        let encoded = try PlainDataParser.parse(helperJSON(v), format: .json)
+        guard encoded == (try PlainDataParser.parse(data, format: .json)), (v.workflows?.count ?? 0) <= 128 else { throw ProvisioningTerminalDenial.bounds }
+        if [.status, .cancel].contains(request.operation), let rows = v.workflows {
+            guard rows.count == 1, rows[0].id == request.workflowID else { throw ProvisioningTerminalDenial.bounds }
+            if let job = v.job { guard job.vmID == rows[0].vmID, [rows[0].checkJobID, rows[0].applyJobID].contains(job.jobID) else { throw ProvisioningTerminalDenial.bounds } }
+        }
+        if let page = v.page {
+            // Reuse the strict helper page grammar, without exposing its tokens.
+            let packet = ProvisioningTerminalPacket(version: 1, jobID: request.workflowID!, requestID: request.requestID, operation: request.operation == .read ? .read : .reset, attachmentID: request.requestID)
+            var reply = ProvisioningTerminalReply(version: 1, jobID: packet.jobID, requestID: packet.requestID, operation: packet.operation, attachmentID: packet.attachmentID)
+            reply.page = page; _ = try ProvisioningTerminalReply.decode(helperJSON(reply), request: packet)
+        }
+        return v
+    }
+}
+
+actor ProvisioningExternalSession {
+    let service: any ProvisioningObserving
+    private var attachment: ProvisioningTerminalAttachment?
+    private var workflowID: UUID?
+    private var sequence: UInt64 = 0
+    private var closed = false
+    init(service: any ProvisioningObserving) { self.service = service }
+    func handle(_ r: ProvisioningExternalRequest) async throws -> ProvisioningExternalReply {
+        guard !closed, r.sequence == sequence + 1 else { throw ProvisioningTerminalDenial.attachment }
+        _ = try ProvisioningExternalRequest.decode(helperJSON(r))
+        sequence = r.sequence
+        var reply = ProvisioningExternalReply(r)
+        do {
+            switch r.operation {
+            case .capabilities: reply.executionEnabled = service.executionEnabled
+            case .list: reply.workflows = await service.statuses()
+            case .status, .cancel:
+                guard let row = await service.status(r.workflowID!) else { reply.failure = "unknown-workflow"; return reply }
+                if r.operation == .cancel { try await service.cancel(row.id) }
+                reply.workflows = [await service.status(row.id) ?? row]
+                reply.job = await service.jobStatus(row.id)
+            case .attach:
+                guard attachment == nil else { throw ProvisioningTerminalDenial.attachment }
+                let value = try await service.attachTerminal(r.workflowID!)
+                guard !closed else { await value.detach(); throw ProvisioningTerminalDenial.attachment }
+                attachment = value; workflowID = r.workflowID
+            default:
+                guard let attachment, workflowID == r.workflowID else { throw ProvisioningTerminalDenial.attachment }
+                switch r.operation {
+                case .read: reply.page = try await attachment.poll()
+                case .reset: reply.page = try await attachment.acknowledgeReset()
+                case .claim: try await attachment.claimInput(rows: r.rows!, columns: r.columns!)
+                case .release: try await attachment.releaseInput()
+                case .input: try await attachment.send(r.bytes!, invocationID: r.invocationID!)
+                case .resize: try await attachment.resize(rows: r.rows!, columns: r.columns!, invocationID: r.invocationID!)
+                case .heartbeat: try await attachment.heartbeat()
+                case .detach: await attachment.detach(); self.attachment = nil; workflowID = nil
+                default: throw ProvisioningTerminalDenial.attachment
+                }
+            }
+            guard !closed else { throw ProvisioningTerminalDenial.attachment }
+        } catch ProvisioningTerminalDenial.busy { reply.failure = "busy" }
+        catch ProvisioningServiceFailure.disabled { reply.failure = "disabled" }
+        catch { reply.failure = "denied" }
+        return reply
+    }
+    func close() async { closed = true; let value = attachment; attachment = nil; await value?.detach() }
+}

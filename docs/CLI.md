@@ -177,3 +177,48 @@ Prepared bundles may explicitly select the reviewed `lean-e4fffc6` owner contrac
 `factory-delete MANIFEST_SHA256` moves an unused verified imported bundle and its receipt together to Trash and returns its identity in `deletedFactory`. Use the exact lowercase manifest digest from `factories`. The official factory is protected (`factory-protected`); any reference from an existing profile or pending creation blocks removal (`factory-in-use`), including stopped and metadata-only guests. There is no force override or guest reassignment. No guest disk, profile, original prepared source or official download cache is changed.
 
 Import and deletion serialize (`factory-busy`), and new creation cannot select a factory being deleted. Damaged, unregistered or runtime-incompatible factories are preserved for manual review. The command waits for the recoverable Trash operation, remains manager-owned after CLI disconnect, and is not retried automatically. See [factory deletion and recovery](CustomFactories.md#delete-an-unused-factory) for failure codes and recovery folders. The app refreshes its picker after CLI factory changes.
+
+## Developer setup (uninstalled milestone-5 worktree)
+
+`setup tools` retains its local Homebrew report. New offline commands are
+`setup presets`, `setup plan --preset developer|web|python|project-managed` and
+`setup plan --from /absolute/folder` (reads `vm.yml`). Plans invoke the pinned
+Swift planner, need the admitted app resources, and start no VM or helper.
+The proposal is not permission to execute or overwrite manager resource settings.
+
+With the manager already running:
+
+```sh
+omarchy-vm setup capabilities
+omarchy-vm setup list
+omarchy-vm setup status WORKFLOW_UUID
+omarchy-vm setup status WORKFLOW_UUID --events
+omarchy-vm setup attach WORKFLOW_UUID
+omarchy-vm setup attach WORKFLOW_UUID --input
+omarchy-vm setup cancel WORKFLOW_UUID
+```
+
+These use a separate protocol-1 `setup-v1.sock`, never the existing control
+socket. Ordinary setup commands emit one JSON reply and exit 0/1. `--events`
+emits changed workflow status as NDJSON until a non-active result; it contains
+no terminal bytes. `attach` requires a TTY, renders filtered ANSI/UTF-8 output
+on an alternate screen and is view-only by default. `--input` deliberately
+requests the single input lease. Another viewer must release its lease before
+a new owner can claim it. Ctrl-] detaches (follow with Return in view-only
+canonical mode); detaching does not cancel setup. Use the separate cancel
+command for cleanup-aware cancellation. No password flag is accepted.
+
+The CLI restores its duplicated original TTY and scoped signal handlers on
+detach, cooperative cancellation and connection failure; a hard kill/crash is
+outside that guarantee. A displayed output gap resets to the future live tail,
+releases input and does not reconstruct the prior screen. Detach and use
+`--input` again for a deliberate reclaim. Losing an acknowledgement closes the
+connection; mutations are never automatically replayed. The endpoint admits
+only same-user peers, at most eight connections and one viewer per connection,
+with a 15-second activity lease. Inactive clients must poll or heartbeat.
+
+Apply/check/recover, automatic New VM setup, reviewed custom-task trust and
+restart/check/recovery actions remain gated follow-up work. Execution commands
+return `setup-execution-disabled` even when Homebrew dependencies are ready.
+No job is submitted by these commands. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
+for validation and the remaining acceptance boundary.

@@ -63,6 +63,15 @@ private final class ProvisioningPackageFixture {
         try FileManager.default.removeItem(at: fixture.contents.appendingPathComponent("Resources/" + ProvisioningPackagePin.resourceBundle))
         #expect(throws: VMFailure.self) { _ = try BundledProvisioning.inspect(fixture.layout) }
     }
+    @Test(arguments: BundledProvisioning.presets)
+    func bundledPresetsPlanOfflineWithoutATarget(preset: String) throws {
+        let f = try ProvisioningPackageFixture()
+        let data = try BundledProvisioning.plan(preset: preset, layout: f.layout)
+        let document = try PlainDataParser.parse(data, format: .json)
+        #expect(document.object?["features"]?.object?["profiles"] == .array([.string(preset)]))
+        #expect(document.object?["plan_digest"]?.string?.count == 64)
+        #expect(document.object?["tasks"] == .array([]))
+    }
     @Test func productCompositionIsSharedAndExecutionRemainsDisabled() async throws {
         let f = try ProvisioningPackageFixture()
         let support = f.root.appendingPathComponent("manager-state")

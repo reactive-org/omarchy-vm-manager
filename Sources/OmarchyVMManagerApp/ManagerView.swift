@@ -3,7 +3,7 @@ import OmarchyVMManagerCore
 import SwiftUI
 
 private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults, provisioningTools }
-private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces" }
+private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces", setup = "Setup" }
 
 struct ManagerView: View {
     @ObservedObject var model: AppModel
@@ -166,6 +166,7 @@ struct ManagerView: View {
             case .startup: startup(snapshot)
             case .ssh: ssh(snapshot)
             case .spaces: spaces(snapshot)
+            case .setup: DeveloperSetupView(model: model, snapshot: snapshot)
             }
             Group {
                 if let notice = snapshot.notice { Label(notice, systemImage: "info.circle").font(.callout).lineLimit(2).help(notice) }
@@ -197,6 +198,9 @@ struct ManagerView: View {
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 22) {
             GuestHomeHero(snapshot: snapshot)
+            if let job = model.setupWorkflows.last(where: { $0.vmID == snapshot.id }) {
+                Button { page = .setup } label: { Label(job.title, systemImage: job.cleanupRequired ? "exclamationmark.shield" : "terminal") }.buttonStyle(.plain)
+            }
             GuestHibernationPanel(snapshot: snapshot, review: { action in model.experimentalPowerReview = .init(id: snapshot.id, action: action) }, recheck: { Task { await model.recheckExperimentalRecovery(snapshot.id) } })
             OmarchyAttribution()
             Text("Quick Settings").font(.title2.bold())
@@ -431,6 +435,10 @@ private struct VMEditor: View {
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    LabeledContent("Developer setup") {
+                        Text("None · available from the Setup tab after creation").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Setup can be previewed without launching a guest. Automatic setup is disabled pending guest acceptance.").font(.caption).foregroundStyle(.secondary)
                     Button("Import Factory…") { importingFactory = true }
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
                 } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }

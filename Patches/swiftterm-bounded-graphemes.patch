@@ -1,0 +1,11 @@
+--- a/Sources/SwiftTerm/CellStorage.swift
++++ b/Sources/SwiftTerm/CellStorage.swift
+@@ -607,6 +607,8 @@
+     }
+ 
+     func intern(grapheme scalars: [UInt32]) -> UInt32? {
++        // Manager display bound, including clusters extended after cursor/SGR commands.
++        guard scalars.count <= 16 else { return nil }
+         if let identifier = graphemeIdentifiers[scalars] {
+             return identifier
+         }

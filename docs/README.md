@@ -58,3 +58,8 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 
 - [Shared Swift dev-vm provisioning](DevVMProvisioningPlan.md): Homebrew Ansible, shared Swift planning/transport and the UI/CLI/live terminal plan. Milestones 1A and the offline package foundation are implemented. [Milestone 3](DevVMProvisioningPlan.md#milestone-3-completion--3-november-2026) is complete for fake/local acceptance: manager service, private workflow/child journals, admitted helper IPC, SSH wait/review, matching-exit restart, explicit rebind/check, authenticated recovery and retention. Full-process capability loss retains cleanup holds and refuses replay/adoption. Product execution stays disabled. [Milestone 4](DevVMProvisioningPlan.md#milestone-4-completion--3-november-2026) now completes the separate authenticated terminal stream, explicit input ownership, resize/detach/expiry, gap/reset contract and local TTY restoration for fake/local acceptance. Native rendering and UI/CLI integration are milestone 5; approved guests are 6 and distribution is 7.
 - [Provisioning tools](ProvisioningTools.md): schema 2 reports, Homebrew pair checks, feature gates and validation limits. Readiness does not enable execution.
+
+[Milestone 5 Setup terminal and CLI](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
+records the uninstalled native terminal, offline presets/folder preview, separate
+same-user streaming endpoint, explicit input ownership and local fixture evidence (376 manager Swift tests, 52 script tests and signed-helper fixtures).
+Execution/submission, New VM coupling and reviewed recovery actions remain gated.

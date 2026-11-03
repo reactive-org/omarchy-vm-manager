@@ -6,7 +6,7 @@ import Foundation
 enum ProvisioningTerminalOperation: String, Codable, Sendable {
     case attach, read, reset, claim, release, input, resize, detach, heartbeat
 }
-enum ProvisioningTerminalDenial: String, Codable, Error, Sendable {
+public enum ProvisioningTerminalDenial: String, Codable, Error, Sendable {
     case unavailable, busy, attachment, ownership, bounds, resetRequired
 }
 struct ProvisioningTerminalPacket: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
@@ -43,26 +43,26 @@ struct ProvisioningTerminalPacket: Codable, Sendable, CustomStringConvertible, C
         return value
     }
 }
-struct ProvisioningTerminalBytes: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
-    let sequence: UInt64
-    let invocationID: UUID
-    let channel: String
-    let bytes: Data
-    var description: String { "ProvisioningTerminalBytes(redacted)" }
-    var debugDescription: String { description }
+public struct ProvisioningTerminalBytes: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    public let sequence: UInt64
+    public let invocationID: UUID
+    public let channel: String
+    public let bytes: Data
+    public var description: String { "ProvisioningTerminalBytes(redacted)" }
+    public var debugDescription: String { description }
 }
-struct ProvisioningTerminalPage: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
-    let frames: [ProvisioningTerminalBytes]
-    let sequence: UInt64
+public struct ProvisioningTerminalPage: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    public let frames: [ProvisioningTerminalBytes]
+    public let sequence: UInt64
     /// Explicitly reset the emulator and UTF-8/escape decoder, display a visible
     /// discontinuity, then request reset. Never feed an incomplete replay as a
     /// reconstruction of the old screen. Reset jumps to the live tail.
-    let resetRequired: Bool
-    let activeInvocationID: UUID?
-    let acceptsInput: Bool
-    let ownsInput: Bool
-    var description: String { "ProvisioningTerminalPage(redacted)" }
-    var debugDescription: String { description }
+    public let resetRequired: Bool
+    public let activeInvocationID: UUID?
+    public let acceptsInput: Bool
+    public let ownsInput: Bool
+    public var description: String { "ProvisioningTerminalPage(redacted)" }
+    public var debugDescription: String { description }
 }
 struct ProvisioningTerminalReply: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
     let version: Int
