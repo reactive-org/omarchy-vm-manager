@@ -1488,3 +1488,10 @@ All nine published asset sizes/digests and both ZIP checksums match. Downloaded 
 
 
 **DESIGN DECISION — native test refinement, 3 November 2026:** isolate pause cancellation from focus-loss cancellation using the existing background CLI command socket and upstream password-fallback-disabled `try-omarchy-touch-id-test`. The reviewed manual procedure is in [Guest Touch ID](docs/GuestTouchID.md#focus-preserving-pauseresume-check). The CLI/prompt behavior is verified from source and the shell snippet passes syntax checking; the lifecycle test itself remains **TO PROVE**. No agent-driven pause/resume, sleep, shutdown, guest launch, UI control or credential/key access was performed.
+
+
+## Helper-reported manual pause/resume — 3 November 2026
+
+**VERIFIED — read-only runtime report:** after the user ran the timed native procedure and questioned whether pause/resume worked, the manager's existing status report contains `Execution: paused (pause)` at `2026-11-03T04:35:48Z` followed by `Execution: running (resume)` at `2026-11-03T04:35:53Z`. Both records match the same currently active guest and launch session. Record only these state/timing tokens, without guest names, UUIDs, paths, process IDs or key identifiers. The helper reported the expected five-second pause/resume cycle; this is not an independent observation of a frozen guest display or of authentication cancellation. The agent read metadata only and sent no lifecycle command.
+
+**DESIGN DECISION / TO PROVE:** in-memory Pause/Resume retains RAM and is separate from experimental suspend-to-disk/hibernation; it does not need a hibernation-enabled guest kernel. A paused guest display may retain its last frame. The manual snippet suppressed CLI replies, obscuring success as well as errors; show those replies in future runs and require `ok: true`, `state: paused` followed by `state: running`. Pending Touch ID cancellation, old-test failure and fresh-request recovery in this lifecycle cycle await explicit user confirmation. Other lifecycle/multi-VM tests remain **TO PROVE**.

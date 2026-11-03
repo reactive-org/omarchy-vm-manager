@@ -53,13 +53,13 @@ test_cli='/Applications/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm'
 test_guest='TEST_VM'
 (
   sleep 15
-  "$test_cli" pause "$test_guest" >/dev/null || exit 1
+  "$test_cli" pause "$test_guest" || exit 1
   sleep 5
-  "$test_cli" resume "$test_guest" >/dev/null
+  "$test_cli" resume "$test_guest"
 ) &
 ```
 
-Immediately focus that guest and run `try-omarchy-touch-id-test`. Leave the native prompt untouched. The timer pauses after 15 seconds and resumes five seconds after a successful pause acknowledgement. The pending prompt must cancel; after resume, the old guest test must fail without a late Touch ID success. A new `try-omarchy-touch-id-test` request should then pass when the user approves it. If either CLI action fails, do not claim a lifecycle result; inspect the state and stop that test. This snippet does not stop/start/delete a VM, sleep the Mac or run two guests, and has not been executed by the agent.
+The Mac terminal replies must show `ok: true` and states `paused`, then `running`; inspect the reply if either action fails. Immediately focus that guest and run `try-omarchy-touch-id-test`. Leave the native prompt untouched. The timer pauses after 15 seconds and resumes five seconds after a successful pause acknowledgement. The pending prompt must cancel; after resume, the old guest test must fail without a late Touch ID success. A new `try-omarchy-touch-id-test` request should then pass when the user approves it. If either CLI action fails, do not claim a lifecycle result; inspect the state and stop that test. This snippet does not stop/start/delete a VM, sleep the Mac or run two guests, and has not been executed by the agent.
 
 ## Optional 1Password follow-up
 
@@ -126,3 +126,10 @@ After sudo validation and separate authorization: install/sign in to 1Password i
 **VERIFIED — user report:** after being given three single-guest checks in the build 26 verification sequence, the user confirmed them: (1) a fresh sudo request with Touch ID cancelled permits the Linux guest password fallback; (2) switching to another app during a pending request prevents that old Touch ID request from succeeding later; (3) returning to the guest and making a fresh request permits Touch ID authentication again. Scope this confirmation to those three described checks on the current test guest. The agent did not independently observe authentication UI, perform the tests, inspect secrets or change any VM. No personal/key identifiers are recorded.
 
 **TO PROVE:** pause/resume, Mac sleep/wake, shutdown/forced-stop/crash cancellation, rapid focus transitions and exact prompt counts, unavailable-biometry fallback, re-pairing and two-VM contention/key isolation remain pending native observation. This report supersedes the earlier pending cancel-to-password fallback, ordinary focus-loss cancellation and fresh-request recovery claims only for the user-confirmed manual cases. It does not establish lifecycle or multi-VM behavior or authorize agent-driven native interaction.
+
+
+## Helper-reported manual pause/resume — 3 November 2026
+
+**VERIFIED — read-only runtime report:** after the user ran the timed native procedure and questioned whether pause/resume worked, the manager's existing status report contains `Execution: paused (pause)` at `2026-11-03T04:35:48Z` followed by `Execution: running (resume)` at `2026-11-03T04:35:53Z`. Both records match the same currently active guest and launch session. Record only these state/timing tokens, without guest names, UUIDs, paths, process IDs or key identifiers. The helper reported the expected five-second pause/resume cycle; this is not an independent observation of a frozen guest display or of authentication cancellation. The agent read metadata only and sent no lifecycle command.
+
+**DESIGN DECISION / TO PROVE:** in-memory Pause/Resume retains RAM and is separate from experimental suspend-to-disk/hibernation; it does not need a hibernation-enabled guest kernel. A paused guest display may retain its last frame. The manual snippet suppressed CLI replies, obscuring success as well as errors; show those replies in future runs and require `ok: true`, `state: paused` followed by `state: running`. Pending Touch ID cancellation, old-test failure and fresh-request recovery in this lifecycle cycle await explicit user confirmation. Other lifecycle/multi-VM tests remain **TO PROVE**.
