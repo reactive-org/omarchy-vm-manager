@@ -1,0 +1,63 @@
+# Guest Touch ID for sudo
+
+This is separate from the manager’s Touch ID approval for reading a saved setup password. The manager never uses that password to pair a guest or approve sudo.
+
+## Use
+
+Shut down the guest, edit it and select **Allow Touch ID inside this VM**. Save and start it on the next authorized run. The setting defaults off, including profiles saved by older versions. A running, paused, stopping, failed-but-active or suspended guest cannot be edited. Disabling the host setting stops the bridge at the next start; it does not silently remove guest enrollment or PAM rules.
+
+Inside the focused guest, choose **Setup → Security → Touch ID for sudo**, or run `try-omarchy-touch-id`. Upstream asks for the guest password and explicit Touch ID enrollment before adding its sudo rule. Use its test/re-pair/disable actions there. Pairing state is unknown to the manager. Moving/cloning a disk under another manager UUID, moving Macs/accounts or changing enrolled fingerprints requires explicit re-pairing. A cloned guest ID cannot select another UUID’s host key or a personal Try Omarchy key.
+
+Touch ID denial, cancellation, prompt contention or unavailable authentication falls back to the **Linux guest password**. The manager’s setup-password flow has a different Mac-login-password fallback. No fingerprints cross into the guest. Approval binds sudo’s user/service/TTY context, not the exact command, and is not a login, screen-unlock or general authentication grant.
+
+CLI examples (configuration only):
+
+```sh
+omarchy-vm create Work --guest-touch-id on
+omarchy-vm update UUID --guest-touch-id off
+```
+
+JSON configuration uses `"guestTouchID": true`. Status contains `guestTouchID.enabled`, `hostBridge` (`disabled`, `next-start`, `requested`, `unavailable`) and `guestPairing: "unknown"`. Requested means the host bridge was included for the run; it is not a bridge-health handshake, enrollment report or successful authentication claim.
+
+## Host policy and provenance
+
+**DESIGN DECISION / PRIVATE COUPLING:** the reviewed host configuration carries manager-selected VM/run UUIDs. Keys live under `Application Support/Omarchy VM Manager/Native Authentication Keys/<VM UUID>/<validated guest ID>.key`. Guest data never selects a directory. Private directory, file ownership and symlink checks fail closed. Personal Try Omarchy keeps its upstream key namespace and behavior.
+
+A shared nonblocking `flock` lease serializes manager guest prompts. Contention returns immediately; it does not queue another prompt. Ownership retains the VM/run identity and checks exact captured QEMU/controller executable and PID birth identities. Kernel closure releases the lease after a crash; no stale lock file is stolen or unlinked. Upstream protocol 3, Secure Enclave signer, guest broker, nonce/context signing and 15-second approvals remain in use.
+
+Pause, sleep, shutdown and exit revoke a per-run epoch before changing execution. Resume creates a new epoch only for a running, non-stopping guest. An independent 50 ms monitor cancels a pending context on revocation, process loss, stop or loss of focus. Cancellation is latched for that request. The Apple-signed LocalAuthentication UI agent at its system framework path may receive focus during a prompt. The existing strict QEMU focus/process check still runs after signing. Native focus transitions faster than the polling interval and OS-specific prompt presentation need observation; these checks do not establish native success.
+
+The host admission requires `managedAuthenticationVersion: 1` from exact hash/inventory-verified provenance and the explicitly reviewed authentication package identity. Protocol 1 and owner setup compatibility alone confer no authentication capability. Existing signed locks describe historical bytes and fail source compatibility after this helper change. Signing/notarization/publication require a separate request.
+
+**VERIFIED — package inspection:** the official archive SHA-256 is `ddef5befc16d2fe7a7ef7bc1e56c3ce5c8e89df83d3b244525ebe6d32fc75c5b`; lean is `9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211`. Nine authentication-named tools/rules/units match the pinned upstream source byte for byte in both archives. Both declare Python, OpenSSL, GTK 3, polkit and Python GObject dependencies. Existing full-package compatibility checks remain required. The host extension does not change the guest tree, package or authentication wire protocol. Package evidence does not measure an installed disk: sudo/PAM modules, completed package installation and runtime dependencies remain TO PROVE.
+
+## Native test plan — separate approval required
+
+Do not execute this plan in the source implementation session. Obtain explicit approval for two new manager-owned disposable UUID roots, factory download/guest boot if needed, guest pairing/PAM changes and native interaction. Record app source/build, runtime source/lock/archive identities, macOS version and anonymized test labels; exclude clipboard, passwords and guest secrets from logs.
+
+1. Create two fresh UUID profiles A and B with NAT and explicit bridge lists. Confirm default-off prevents a guest Touch ID prompt and preserves Linux password sudo. Stop both before enabling the setting.
+2. Enable A, start and pair manually inside A. Test `sudo -k; sudo true` for Touch ID success, cancel and unavailable-biometry fallback. Enter the Linux password in the guest. Check prompt count, product/guest name and no setup-password approval reuse. Test guest disable and re-pair explicitly.
+3. Enable and pair B independently. Make overlapping requests from A and B. Verify only the focused eligible guest prompts, the lease loser immediately gets password fallback and no delayed prompt appears after A completes. Switch focus between A, B, another app and the native authentication dialog. Test rapid switches and return-to-guest behavior before/after approval.
+4. During a pending prompt, exercise manual pause/resume, shutdown, forced stop, Mac sleep/wake and approved manager/helper/QEMU crash scenarios separately. Verify cancellation, no late signed success, no prompt resurrection on resume and a fresh request works only with a new valid run. Confirm exact `.exited` events before releasing manager client/resource reservations. Test stale epoch/run and PID birth rejection through fixtures; never kill an unrelated process to force PID reuse.
+5. With separately authorized copied disposable guest storage, test a cloned guest ID under a different manager UUID: existing pairing must not succeed until explicitly re-paired. Confirm disabling one guest leaves the other’s enrollment intact. Test re-pairing after fingerprint changes only with separate approval for that macOS setting change.
+6. Shut down every test guest. Confirm matching `.exited` and no remaining helper/QEMU processes using captured exact identities. Offer to move the verified stopped UUID roots to Trash under the compatible lock. Never recursively erase VM storage or remove personal Try Omarchy keys.
+
+## Optional 1Password follow-up
+
+The upstream package already ships its narrowly scoped polkit agent, password dialog and disabled service unit. This sudo milestone refuses `onepassword-unlock` in manager-scoped helpers. A follow-up must deliberately enable that operation and validate its existing signed context/cancellation boundary before native testing.
+
+After sudo validation and separate authorization: install/sign in to 1Password in a disposable guest, turn on its **Unlock using system authentication**, then use **Setup → Security → Touch ID for 1Password** or `try-omarchy-onepassword-touch-id enable`. Validate the fingerprint action, account-password-after-restart policy, guest Linux-password fallback and guest PAM lockout behavior. Do not grant blanket polkit authorization or replace the session-wide agent. See the pinned upstream [sudo guide](../Vendor/try-omarchy/manual/touch-id.md) and [1Password architecture](../Vendor/try-omarchy/docs/onepassword-touch-id.md).
+
+## No-VM check evidence
+
+**VERIFIED — 3 November 2026:**
+
+- `make prepare-source`: reconstructs clean source `8d5015ec740aad5417b601e05d451b28ed45d573` from stock v1.3.0 plus patch SHA-256 `d27bd42e8af1a66ef106001c7f1ca3e516532e2ed08d45771c5200c67498f647`. The guest tree is identical to `033d2460dc44796afeb6d08b6a32aaf51febf8be` (tree `aa461dab54d5d6625537ef506259d4e5155c83ba`).
+- `make patched-kit REUSE_GUEST_PACKAGE_KIT=...`: verifies the complete previous kit, unchanged guest sources/package, source-built release helper and all 22 ad-hoc Mach-O signatures through upstream kit verification. Final archive SHA-256 `ec002c2b241454d7430729ebf850cb6f58612db2b96b8a6c8c30f2f6d64e3ded`; source-lock SHA-256 `91223707e872d9113a5b54ddf83a2d09fc9ebb65f9e23e3a377d657bc3c0f0e6`. The unchanged package was copied from the previously verified local kit; no image/package download or guest launch occurred.
+- `make test test-build-policies app verify-bundle`, followed by `make test` after adding four guest-verifier fixtures: **229 manager Swift tests in 38 suites**, **59 script tests**, two admission/credential-policy checks in each optimized mode, Swift app/CLI/storage-helper builds, ad-hoc app assembly and uninstalled bundle verification pass. The final UI copy was included in the debug app build. Bundle verification reports exact locked inventory, NAT-only, no bundled factory image, no host preflight and `vmLaunchEnabled: false`.
+- `make test-upstream`: **561 Swift tests in 110 suites**, guest/package, signing-payload contracts, script and shell run-mode fixtures, compatibility and relocation checks pass. These are synthetic/local fixtures, including the fixture image-download tests. An earlier sandboxed upstream Swift run could not exercise local sockets and host framework properties; the final complete run with the needed local access passes.
+- New tests cover profile default/round-trip/persistence, strict CLI/config input, end-to-end command creation/status, capability/package refusal, explicit scoped bridge configuration and edit refusal until matching exit. Upstream additions cover cloned guest IDs, unsafe paths/symlinks, cross-process prompt contention and lease release, stale PID birth identities, epoch revocation, focus/stop/process/pause cancellation, latched late-result rejection, monitored cancellation while a signer is blocked, scope parsing and missing-controller fail-closed behavior. Existing upstream signature/context and prompt-timeout tests remain in the complete suite. Four manager script tests also exercise the unchanged guest broker with disposable software P-256 keys, proving signed context tampering, expired/future approval, request replay, unsigned boolean and wrong-enrollment-key refusal. These fixtures neither access Secure Enclave keys nor enroll anything.
+- The existing factory compatibility suite passes with the unchanged guest contract. Format-2 reviewed lean factories keep independent package compatibility; legacy manifests retain exact-runtime binding and may require a separately prepared compatible bundle. No existing receipt/factory/profile/disk is migrated or rewritten.
+- `git diff --check` passes. Original checkout and historical signed locks are unchanged. No real signing/notarization identity, credential read, permission grant, installed app change, UI control, real enrollment, guest PAM change or VM launch was performed.
+
+**TO PROVE:** all native multi-VM authentication, actual Mac dialog focus, success/fallback/cancellation, installed guest dependency availability, lifecycle/crash behavior and UI layout. The app bundle remains local and uninstalled. 1Password unlock is deliberately deferred. Native testing and release publication are separate approval steps.

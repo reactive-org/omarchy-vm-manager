@@ -178,7 +178,7 @@ public actor VMManager {
     }
 
     public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
-                       clipboardEnabled: Bool, immersiveMode: Bool, sshEnabled: Bool = true,
+                       clipboardEnabled: Bool, guestTouchIDEnabled: Bool = false, immersiveMode: Bool, sshEnabled: Bool = true,
                        publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true, factory: String = "official",
                        ownerOverrides: GuestOwnerOverrides? = nil, sharedFolder: SharedFolderMapping? = nil) async throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
@@ -198,6 +198,7 @@ public actor VMManager {
         }
         var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus, diskGiB: diskGiB,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
+        profile.guestTouchIDEnabled = guestTouchIDEnabled
         try sharedFolder?.validate()
         if let sharedFolder, sharedFolder.enabled {
             guard sshEnabled else { throw SharedFolderPolicy.failure("Native sharing requires managed SSH to verify the mount.") }
@@ -262,6 +263,7 @@ public actor VMManager {
         if let value = configuration.memoryMiB { profile.memoryMiB = value }
         if let value = configuration.cpus { profile.cpus = value }
         if let value = configuration.diskGiB { profile.diskGiB = value }
+        if let value = configuration.guestTouchID { profile.guestTouchIDEnabled = value }
         if let value = configuration.clipboard { profile.clipboardEnabled = value }
         if let value = configuration.immersive { profile.immersiveMode = value }
         profile.sharedFolder = try configuration.sharing(replacing: profile.sharedFolder)

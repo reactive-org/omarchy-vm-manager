@@ -2673,6 +2673,197 @@ index 40d02e3..828a0db 100644
      }
  
      /// Checks one part against its digest and feeds it to the whole-image hash.
+diff --git a/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift b/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift
+new file mode 100644
+index 0000000..d5c2de9
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift
+@@ -0,0 +1,185 @@
++import AppKit
++import Darwin
++import Foundation
++import Security
++import TryOmarchyKitClient
++
++struct ManagedAuthenticationEnvironment {
++    static let key = "OMARCHY_MANAGED_AUTHENTICATION"
++    let scope: VMRunAuthenticationScope
++    let controller: KernelProcessIdentity
++
++    static func launchValue(_ scope: VMRunAuthenticationScope, controller: KernelProcessIdentity?) -> String {
++        guard let controller else { return "controller-unavailable" }
++        return encode(scope, controller: controller)
++    }
++
++    static func encode(_ scope: VMRunAuthenticationScope, controller: KernelProcessIdentity) -> String {
++        [scope.vmID.uuidString, scope.runID.uuidString, String(controller.processIdentifier),
++         String(controller.startSeconds), String(controller.startMicroseconds)].joined(separator: ":")
++    }
++
++    static func current(_ environment: [String: String] = ProcessInfo.processInfo.environment) throws -> Self? {
++        guard let value = environment[key] else { return nil }
++        let fields = value.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
++        guard fields.count == 5, let vm = UUID(uuidString: fields[0]), let run = UUID(uuidString: fields[1]),
++              let pid = Int32(fields[2]), let seconds = UInt64(fields[3]), let micros = UInt64(fields[4]),
++              let identity = KernelProcessIdentity.capture(processIdentifier: pid),
++              identity.startSeconds == seconds, identity.startMicroseconds == micros else {
++            throw HelperError.io("invalid managed authentication run identity")
++        }
++        return Self(scope: VMRunAuthenticationScope(vmID: vm, runID: run), controller: identity)
++    }
++
++    static func gateURL(_ socket: String) -> URL {
++        URL(fileURLWithPath: socket).deletingLastPathComponent().appendingPathComponent(".native-authentication-epoch")
++    }
++
++    func begin(socketPath: String, processAlive: @escaping () -> Bool, focused: @escaping () -> Bool,
++               promptFocused: @escaping () -> Bool, cancelled: @escaping () -> Bool,
++               cancel: @escaping () -> Void, leaseDirectory: URL? = nil, monitor: Bool = true) throws -> ManagedAuthenticationAttempt? {
++        guard controller.isStillRunning, processAlive(), focused(), !cancelled(),
++              let epoch = ManagedAuthenticationAttempt.epoch(at: Self.gateURL(socketPath)) else { return nil }
++        let directory = try leaseDirectory ?? ManagedAuthenticationFiles.root()
++        return try ManagedAuthenticationAttempt.acquire(directory: directory, scope: scope,
++            valid: { self.controller.isStillRunning && processAlive() && !cancelled()
++                && ManagedAuthenticationAttempt.epoch(at: Self.gateURL(socketPath)) == epoch && promptFocused() }, cancel: cancel, monitor: monitor)
++    }
++}
++
++enum ManagedAuthenticationFiles {
++    static func root(base: URL? = nil) throws -> URL {
++        let support = base ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
++        let root = support.appendingPathComponent("Omarchy VM Manager", isDirectory: true)
++            .appendingPathComponent("Native Authentication Keys", isDirectory: true)
++        try ensurePrivateDirectory(root)
++        return root
++    }
++
++    static func keyURL(vmID: UUID, guestID: String, base: URL? = nil) throws -> URL {
++        guard guestID.count == 64, guestID.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { throw HelperError.io("invalid managed authentication key identity") }
++        let directory = try root(base: base).appendingPathComponent(vmID.uuidString, isDirectory: true)
++        try ensurePrivateDirectory(directory)
++        return directory.appendingPathComponent(guestID + ".key")
++    }
++
++    private static func ensurePrivateDirectory(_ url: URL) throws {
++        var descriptor = Darwin.open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
++        guard descriptor >= 0 else { throw HelperError.io("cannot inspect authentication directories") }
++        defer { Darwin.close(descriptor) }
++        let components = url.pathComponents.dropFirst()
++        var privateTree = false
++        for component in components {
++            if mkdirat(descriptor, component, 0o700) != 0 && errno != EEXIST { throw HelperError.io("cannot create authentication directory") }
++            let next = openat(descriptor, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
++            guard next >= 0 else { throw HelperError.io("unsafe authentication directory") }
++            Darwin.close(descriptor); descriptor = next
++            privateTree = privateTree || component == "Omarchy VM Manager"
++            if privateTree {
++                var info = stat()
++                guard fstat(descriptor, &info) == 0, info.st_uid == getuid(), info.st_mode & 0o077 == 0 else {
++                    throw HelperError.io("unsafe manager authentication directory")
++                }
++            }
++        }
++        var info = stat()
++        guard fstat(descriptor, &info) == 0, info.st_uid == getuid(), info.st_mode & 0o077 == 0 else {
++            throw HelperError.io("authentication directory must be private and owned by this user")
++        }
++    }
++}
++
++final class ManagedAuthenticationAttempt: @unchecked Sendable {
++    let scope: VMRunAuthenticationScope
++    private let lock = NSRecursiveLock()
++    private var descriptor: Int32
++    private var rejected = false
++    private var finished = false
++    private let valid: () -> Bool
++    private let cancel: () -> Void
++    private var timer: DispatchSourceTimer?
++
++    private init(descriptor: Int32, scope: VMRunAuthenticationScope, valid: @escaping () -> Bool, cancel: @escaping () -> Void) {
++        self.descriptor = descriptor; self.scope = scope; self.valid = valid; self.cancel = cancel
++    }
++
++    static func epoch(at url: URL) -> Data? {
++        let fd = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
++        guard fd >= 0 else { return nil }; defer { Darwin.close(fd) }
++        var info = stat()
++        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
++              info.st_uid == getuid(), info.st_mode & 0o077 == 0, info.st_size == 36 else { return nil }
++        var bytes = [UInt8](repeating: 0, count: 36)
++        guard Darwin.read(fd, &bytes, bytes.count) == bytes.count,
++              UUID(uuidString: String(decoding: bytes, as: UTF8.self)) != nil else { return nil }
++        return Data(bytes)
++    }
++
++    static func acquire(directory: URL, scope: VMRunAuthenticationScope, valid: @escaping () -> Bool,
++                        cancel: @escaping () -> Void, monitor: Bool = true) throws -> ManagedAuthenticationAttempt? {
++        let fd = Darwin.open(directory.appendingPathComponent(".prompt.lock").path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0o600)
++        guard fd >= 0 else { throw HelperError.io("cannot open authentication prompt lease") }
++        var info = stat()
++        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(),
++              info.st_mode & 0o777 == 0o600, info.st_nlink == 1 else {
++            Darwin.close(fd); throw HelperError.io("unsafe authentication prompt lease")
++        }
++        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
++            let unavailable = errno == EWOULDBLOCK
++            Darwin.close(fd)
++            if unavailable { return nil }
++            throw HelperError.io("cannot acquire authentication prompt lease")
++        }
++        let attempt = ManagedAuthenticationAttempt(descriptor: fd, scope: scope, valid: valid, cancel: cancel)
++        guard attempt.isValid else { attempt.finish(); return nil }
++        if monitor {
++            let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
++            timer.schedule(deadline: .now(), repeating: .milliseconds(50))
++            timer.setEventHandler { [weak attempt] in _ = attempt?.isValid }
++            attempt.timer = timer
++            timer.resume()
++        }
++        return attempt
++    }
++
++    var isValid: Bool {
++        lock.lock(); defer { lock.unlock() }
++        guard !finished, !rejected else { return false }
++        if !valid() {
++            rejected = true
++            cancel()
++            release()
++            return false
++        }
++        return true
++    }
++
++    func finish() {
++        lock.lock(); defer { lock.unlock() }
++        finished = true; release()
++    }
++
++    private func release() {
++        timer?.cancel(); timer = nil
++        if descriptor >= 0 { Darwin.close(descriptor); descriptor = -1 }
++    }
++
++    deinit { finish() }
++}
++
++enum ManagedAuthenticationFocus {
++    static func permitsPrompt(targetFocused: Bool) -> Bool {
++        if targetFocused { return true }
++        guard let app = NSWorkspace.shared.frontmostApplication,
++              app.bundleIdentifier == "com.apple.LocalAuthentication.UIAgent",
++              let url = app.executableURL,
++              url.path.hasPrefix("/System/Library/Frameworks/LocalAuthentication.framework/") else { return false }
++        var code: SecCode?
++        guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributePid: app.processIdentifier] as CFDictionary, [], &code) == errSecSuccess,
++              let code else { return false }
++        var requirement: SecRequirement?
++        guard SecRequirementCreateWithString("anchor apple and identifier com.apple.LocalAuthentication.UIAgent" as CFString, [], &requirement) == errSecSuccess,
++              let requirement else { return false }
++        return SecCodeCheckValidity(code, [], requirement) == errSecSuccess
++    }
++}
 diff --git a/macos/Sources/OmarchyVMHelper/ManagedFactoryCache.swift b/macos/Sources/OmarchyVMHelper/ManagedFactoryCache.swift
 new file mode 100644
 index 0000000..d47aa37
@@ -2889,6 +3080,211 @@ index 0000000..7763f0c
 +    }
 +
 +}
+diff --git a/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift b/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift
+index d182da3..483aa54 100644
+--- a/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift
++++ b/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift
+@@ -191,7 +191,7 @@ struct NativeAuthenticationResponse: Equatable {
+ }
+ 
+ protocol HostAuthorizationSigning: AnyObject {
+-    func authorize(_ request: NativeAuthenticationRequest) throws -> NativeAuthenticationApproval?
++    func authorize(_ request: NativeAuthenticationRequest, valid: () -> Bool) throws -> NativeAuthenticationApproval?
+     func disable(guestID: String) throws
+     func cancel()
+ }
+@@ -226,9 +226,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+ 
+     private let lock = NSLock()
+     private let keyDirectory: URL
++    private let managedVM: UUID?
+     private var activeContext: LAContext?
++    private var cancellationGeneration: UInt64 = 0
+ 
+-    init(keyDirectory: URL? = nil) {
++    init(keyDirectory: URL? = nil, managedVM: UUID? = nil) {
++        self.managedVM = managedVM
+         self.keyDirectory = keyDirectory
+             ?? FileManager.default.urls(
+                 for: .applicationSupportDirectory,
+@@ -238,12 +241,14 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+             .appendingPathComponent("Native Authentication Keys", isDirectory: true)
+     }
+ 
+-    func authorize(_ request: NativeAuthenticationRequest) throws -> NativeAuthenticationApproval? {
++    func authorize(_ request: NativeAuthenticationRequest, valid: () -> Bool) throws -> NativeAuthenticationApproval? {
++        lock.lock(); let generation = cancellationGeneration; lock.unlock()
++        guard valid() else { return nil }
+         guard SecureEnclave.isAvailable else {
+             fputs("[authentication-bridge] The Secure Enclave is unavailable.\n", stderr)
+             return nil
+         }
+-        let keyURL = keyURL(for: request.guestID)
++        let keyURL = try keyURL(for: request.guestID)
+         let keyAlreadyExists = try keyExists(at: keyURL)
+         if request.operation == .disable {
+             throw HelperError.io("disable request reached the signing path")
+@@ -253,11 +258,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+             return nil
+         }
+ 
+-        guard let context = authenticate(reason: request.operation.localizedReason) else {
++        guard let context = authenticate(reason: request.operation.localizedReason, generation: generation) else {
+             return nil
+         }
+         defer { clear(context) }
+ 
++        guard isCurrent(generation) else { return nil }
+         let privateKey: SecureEnclave.P256.Signing.PrivateKey
+         if request.operation == .enroll && !keyAlreadyExists {
+             privateKey = try createPrivateKey(authenticationContext: context)
+@@ -285,6 +291,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+         )
+ 
+         let signature = try privateKey.signature(for: payload).derRepresentation
++        guard isCurrent(generation) else { return nil }
+         return NativeAuthenticationApproval(
+             issuedAt: issuedAt,
+             expiresAt: expiresAt,
+@@ -295,7 +302,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+     }
+ 
+     func disable(guestID: String) throws {
+-        let keyURL = keyURL(for: guestID)
++        let keyURL = try keyURL(for: guestID)
+         guard try keyExists(at: keyURL) else { return }
+         guard Darwin.unlink(keyURL.path) == 0 else {
+             throw HelperError.io("cannot remove Secure Enclave key representation")
+@@ -304,13 +311,18 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+ 
+     func cancel() {
+         lock.lock()
++        cancellationGeneration &+= 1
+         let context = activeContext
+         activeContext = nil
+         lock.unlock()
+         context?.invalidate()
+     }
+ 
+-    private func authenticate(reason: String) -> LAContext? {
++    private func isCurrent(_ generation: UInt64) -> Bool {
++        lock.lock(); defer { lock.unlock() }; return generation == cancellationGeneration
++    }
++
++    private func authenticate(reason: String, generation: UInt64) -> LAContext? {
+         let context = LAContext()
+         context.localizedCancelTitle = "Return to Omarchy"
+         context.localizedFallbackTitle = ""
+@@ -327,6 +339,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+         }
+ 
+         lock.lock()
++        guard generation == cancellationGeneration else { lock.unlock(); context.invalidate(); return nil }
+         activeContext = context
+         lock.unlock()
+ 
+@@ -354,8 +367,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+         lock.unlock()
+     }
+ 
+-    private func keyURL(for guestID: String) -> URL {
+-        keyDirectory.appendingPathComponent("\(guestID).key", isDirectory: false)
++    private func keyURL(for guestID: String) throws -> URL {
++        guard guestID.count == 64, guestID.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { throw HelperError.io("invalid authentication key identity") }
++        if let managedVM {
++            return try ManagedAuthenticationFiles.keyURL(vmID: managedVM, guestID: guestID)
++        }
++        return keyDirectory.appendingPathComponent("\(guestID).key", isDirectory: false)
+     }
+ 
+     private func keyExists(at url: URL) throws -> Bool {
+@@ -394,6 +411,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+     }
+ 
+     private func saveKeyRepresentation(_ representation: Data, to url: URL) throws {
++        let keyDirectory = url.deletingLastPathComponent()
+         try FileManager.default.createDirectory(
+             at: keyDirectory,
+             withIntermediateDirectories: true,
+@@ -465,16 +483,18 @@ final class NativeAuthenticationBridge {
+     typealias ProcessAlive = () -> Bool
+ 
+     private let descriptor: Int32
++    private let socketPathForGate: String
+     private let signer: HostAuthorizationSigning
+     private let focusProbe: FocusProbe
+     private let processAlive: ProcessAlive
+     private let stopLock = NSLock()
+     private var stopped = false
++    private let managed: ManagedAuthenticationEnvironment?
+ 
+     init(
+         targetPID: pid_t,
+         socketPath: String,
+-        signer: HostAuthorizationSigning = SecureEnclaveAuthorizationSigner(),
++        signer: HostAuthorizationSigning? = nil,
+         focusProbe: FocusProbe? = nil,
+         processAlive: ProcessAlive? = nil
+     ) throws {
+@@ -482,11 +502,13 @@ final class NativeAuthenticationBridge {
+               processIdentity.isQEMUSystemProcess else {
+             throw HelperError.io("native authentication bridge target is not a QEMU system process")
+         }
++        socketPathForGate = socketPath
+         descriptor = try NativeBridgeSocket.connectSecure(
+             path: socketPath,
+             label: "authentication bridge"
+         )
+-        self.signer = signer
++        managed = try ManagedAuthenticationEnvironment.current()
++        self.signer = signer ?? SecureEnclaveAuthorizationSigner(managedVM: managed?.scope.vmID)
+         self.focusProbe = focusProbe ?? {
+             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID,
+                   let application = NSRunningApplication(processIdentifier: targetPID) else {
+@@ -537,11 +559,28 @@ final class NativeAuthenticationBridge {
+         Darwin.close(descriptor)
+     }
+ 
++    private var isStopped: Bool {
++        stopLock.lock(); defer { stopLock.unlock() }; return stopped
++    }
++
++    private func deny(_ request: NativeAuthenticationRequest) throws {
++        try NativeBridgeSocket.writeAll(NativeAuthenticationResponse(request: request, approval: nil).encode(), to: descriptor, label: "authentication")
++    }
++
+     private func handle(_ data: Data) throws {
+         let request = try NativeAuthenticationRequest.decode(data)
++        let attempt: ManagedAuthenticationAttempt?
++        if let managed {
++            guard request.operation != .onePasswordUnlock else { return try deny(request) }
++            attempt = try managed.begin(socketPath: socketPathForGate, processAlive: processAlive,
++                focused: focusProbe, promptFocused: { ManagedAuthenticationFocus.permitsPrompt(targetFocused: self.focusProbe()) },
++                cancelled: { self.isStopped }, cancel: { self.signer.cancel() })
++            guard attempt != nil else { return try deny(request) }
++        } else { attempt = nil }
++        defer { attempt?.finish() }
+         if request.operation == .disable {
+             var disabled = false
+-            if processAlive(), focusProbe() {
++            if processAlive(), focusProbe(), attempt?.isValid ?? !isStopped {
+                 do {
+                     try signer.disable(guestID: request.guestID)
+                     disabled = true
+@@ -560,10 +599,10 @@ final class NativeAuthenticationBridge {
+             return
+         }
+         var approval: NativeAuthenticationApproval?
+-        if processAlive(), focusProbe() {
++        if processAlive(), focusProbe(), attempt?.isValid ?? !isStopped {
+             do {
+-                let candidate = try signer.authorize(request)
+-                if processAlive(), focusProbe() {
++                let candidate = try signer.authorize(request, valid: { attempt?.isValid ?? !self.isStopped })
++                if processAlive(), focusProbe(), attempt?.isValid ?? !isStopped {
+                     approval = candidate
+                 }
+             } catch {
 diff --git a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
 index 39b07ba..127de5a 100644
 --- a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
@@ -3143,6 +3539,18 @@ index 39b07ba..127de5a 100644
          }
      }
  }
+diff --git a/macos/Sources/OmarchyVMHelper/QEMUGPULauncher.swift b/macos/Sources/OmarchyVMHelper/QEMUGPULauncher.swift
+index ad682b0..f0bbefe 100644
+--- a/macos/Sources/OmarchyVMHelper/QEMUGPULauncher.swift
++++ b/macos/Sources/OmarchyVMHelper/QEMUGPULauncher.swift
+@@ -21,6 +21,7 @@ enum QEMUGPURuntimeEnvironment {
+ 
+     static func sanitizedForLaunch(_ base: [String: String]) -> [String: String] {
+         var environment = base
++        environment.removeValue(forKey: ManagedAuthenticationEnvironment.key)
+         environment.removeValue(forKey: inspectOnlyKey)
+         environment.removeValue(forKey: dryRunKey)
+         environment.removeValue(forKey: factoryCacheKey)
 diff --git a/macos/Sources/OmarchyVMHelper/QMPConnection.swift b/macos/Sources/OmarchyVMHelper/QMPConnection.swift
 index 9d64a0c..f598a13 100644
 --- a/macos/Sources/OmarchyVMHelper/QMPConnection.swift
@@ -3396,7 +3804,7 @@ index b6cb53b..608031f 100644
          }
      }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..bf81c63 100644
+index c959f32..5c9c359 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -3507,7 +3915,15 @@ index c959f32..bf81c63 100644
      /// A signal: shut down on the first, stop at once on the next.
      func handleTerminationSignal() {
          if shutdownRequested && session.isRunning {
-@@ -154,6 +187,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -151,9 +184,18 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+             catalog: CoreAudioHostAudioDeviceProvider().catalog()
+         ).environment
+         environment = LanguageLaunchConfiguration.make(baseEnvironment: environment).environment
++        environment.removeValue(forKey: ManagedAuthenticationEnvironment.key)
++        if let scope = configuration.authenticationScope {
++            environment[ManagedAuthenticationEnvironment.key] = ManagedAuthenticationEnvironment.launchValue(scope,
++                controller: KernelProcessIdentity.capture(processIdentifier: getpid()))
++        }
          environment[VMRunBridges.environmentKey] = VMRunBridges.names(configuration.bridges)
          environment[ProductName.environmentKey] = configuration.productName
          environment[ProductName.iconEnvironmentKey] = configuration.iconPath
@@ -3518,7 +3934,7 @@ index c959f32..bf81c63 100644
          return environment
      }
  
-@@ -244,9 +281,20 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -244,9 +286,20 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
              if let phase = VMRunPhase(rawValue: progress.phase.rawValue) {
                  emit(.progress(phase, percent: progress.percent))
              }
@@ -3539,7 +3955,7 @@ index c959f32..bf81c63 100644
          case .launchFailed(let error):
              fail(VMRunFailure.error(for: error, productName: configuration.productName))
          case .hostWakeFailed(let error):
-@@ -275,6 +323,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -275,6 +328,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
      private func finish(status: Int32) {
          guard !finished else { return }
          finished = true
@@ -3550,7 +3966,7 @@ index c959f32..bf81c63 100644
          emit(.exited(status: min(255, max(0, status))))
          Darwin.exit(status == 0 ? 0 : 1)
      }
-@@ -337,12 +389,14 @@ enum VMRunInput {
+@@ -337,12 +394,14 @@ enum VMRunInput {
          return try VMRunConfiguration.decode(line: Data(line.utf8))
      }
  
@@ -3566,7 +3982,7 @@ index c959f32..bf81c63 100644
                  case .failure:
                      fputs("omarchy-vm-helper: ignoring an unknown run mode command\n", stderr)
                  }
-@@ -407,3 +461,30 @@ enum VMRunFailure {
+@@ -407,3 +466,30 @@ enum VMRunFailure {
          return VMRunError(code: code, message: message)
      }
  }
@@ -3598,7 +4014,7 @@ index c959f32..bf81c63 100644
 +    }
 +}
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunSession.swift b/macos/Sources/OmarchyVMHelper/VMRunSession.swift
-index 9a3fe63..1699973 100644
+index 9a3fe63..c6f7ee8 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunSession.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunSession.swift
 @@ -1,6 +1,7 @@
@@ -3617,7 +4033,7 @@ index 9a3fe63..1699973 100644
          case launchFailed(Error)
          case hostWakeFailed(Error)
          case volumeUnmounted
-@@ -52,12 +54,20 @@ final class VMRunSession {
+@@ -52,12 +54,38 @@ final class VMRunSession {
  
      private var factoryDownloader: FactoryImageDownloader?
      private var downloadCancelled = false
@@ -3628,18 +4044,36 @@ index 9a3fe63..1699973 100644
      private var forcedStopTimer: DispatchWorkItem?
      private var launcherSignalled = false
 +    private var powerDownRequested = false
++    private var managedAuthentication = false
++
++    private func revokeAuthentication() {
++        guard managedAuthentication, let qmpSocketPath else { return }
++        try? FileManager.default.removeItem(at: ManagedAuthenticationEnvironment.gateURL(qmpSocketPath))
++    }
++
++    private func allowAuthentication() {
++        guard managedAuthentication, let qmpSocketPath, executionState == .running,
++              !powerDownRequested, !lifecycle.isStopping else { return }
++        let url = ManagedAuthenticationEnvironment.gateURL(qmpSocketPath)
++        do {
++            try Data(UUID().uuidString.utf8).write(to: url, options: .atomic)
++            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
++        } catch { revokeAuthentication() }
++    }
 +
 +    var executionState: VMRunExecutionState { isRunning && reachedStart ? hostSleepCoordinator.executionState : .unknown }
 +
 +    func setManualPause(_ paused: Bool) throws {
 +        guard isRunning, reachedStart, !powerDownRequested, !lifecycle.isTerminating else { throw HelperError.io("Wait until the guest is running and not stopping") }
++        revokeAuthentication()
++        defer { allowAuthentication() }
 +        if paused { try hostSleepCoordinator.pauseManually() }
 +        else { try hostSleepCoordinator.resumeManually(); HostWake.post() }
 +    }
  
      private(set) var lifecycle = VMRunLifecycle()
      private(set) var isRunning = false
-@@ -102,6 +112,7 @@ final class VMRunSession {
+@@ -102,6 +130,7 @@ final class VMRunSession {
          downloadCancelled = false
          hostSleepCoordinator.cancelWakeRetry()
          reachedStart = false
@@ -3647,34 +4081,37 @@ index 9a3fe63..1699973 100644
          pendingHostSleepControlFailure = nil
          do {
              if try beginFactoryDownloadIfNeeded(context(), then: { [weak self] image in
-@@ -152,6 +163,8 @@ final class VMRunSession {
+@@ -152,6 +181,9 @@ final class VMRunSession {
          guard isRunning, reachedStart, let qmpSocketPath else {
              throw HelperError.io("Omarchy is not running.")
          }
++        revokeAuthentication()
 +        powerDownRequested = true
 +        try hostSleepCoordinator.prepareForShutdown()
          let connection = try QMPConnection(socketPath: qmpSocketPath, identifierPrefix: "shutdown")
          _ = try connection.execute("system_powerdown")
          guard let forceAfter else { return }
-@@ -168,7 +181,7 @@ final class VMRunSession {
+@@ -168,7 +200,8 @@ final class VMRunSession {
      /// Stops the launcher, which stops QEMU and the bridges. It gets one
      /// signal: a second would cut that cleanup short.
      func quit() {
 -        hostSleepCoordinator.cancelWakeRetry()
++        revokeAuthentication()
 +        hostSleepCoordinator.disconnect()
          lifecycle.requestQuit()
          forcedStopTimer?.cancel()
          guard !launcherSignalled else { return }
-@@ -177,7 +190,7 @@ final class VMRunSession {
+@@ -177,7 +210,8 @@ final class VMRunSession {
      }
  
      func terminate(signal: Int32) {
 -        hostSleepCoordinator.cancelWakeRetry()
++        revokeAuthentication()
 +        hostSleepCoordinator.disconnect()
          lifecycle.requestTermination(signal: signal)
          supervisor.forward(signal: signal)
      }
-@@ -194,19 +207,20 @@ final class VMRunSession {
+@@ -194,19 +228,20 @@ final class VMRunSession {
      private func beginFactoryDownloadIfNeeded(_ context: LaunchContext,
          then launch: @escaping (URL) -> Void) throws -> Bool {
          guard let manifest = factoryManifest else { return false }
@@ -3705,7 +4142,7 @@ index 9a3fe63..1699973 100644
          }
          FactoryImageStore.removeObsoleteDownloads(in: directory, identity: manifest.identity)
          // The launcher then decompresses about half the disk beside it.
-@@ -239,7 +253,7 @@ final class VMRunSession {
+@@ -239,7 +274,7 @@ final class VMRunSession {
      }
  
      /// The factory a new VM disk needs, for this launch's storage folder.
@@ -3714,7 +4151,7 @@ index 9a3fe63..1699973 100644
          guard context.storageUnavailableReason == nil, let stateRoot = context.stateRoot else {
              return .ready(image: nil)
          }
-@@ -248,7 +262,8 @@ final class VMRunSession {
+@@ -248,7 +283,8 @@ final class VMRunSession {
              bundlesImage: bundlesFactoryImage,
              stateRoot: URL(fileURLWithPath: stateRoot, isDirectory: true),
              sharedFactory: context.environment[QEMUGPURuntimeEnvironment.factoryCacheKey]
@@ -3724,7 +4161,7 @@ index 9a3fe63..1699973 100644
          )
      }
  
-@@ -271,7 +286,7 @@ final class VMRunSession {
+@@ -271,13 +307,14 @@ final class VMRunSession {
                      .appendingPathComponent(VMWorkspaceTransfer.factoryCacheName, isDirectory: true)]
              } ?? []
              var factoryImage = downloadedFactoryImage
@@ -3733,7 +4170,14 @@ index 9a3fe63..1699973 100644
                  factoryImage = image
              }
              if let factoryImage {
-@@ -317,8 +332,6 @@ final class VMRunSession {
+                 context.environment[QEMUGPURuntimeEnvironment.factoryImageKey] = factoryImage.path
+                 launchedFactoryDirectories.append(factoryImage.deletingLastPathComponent())
+             }
++            managedAuthentication = context.environment[ManagedAuthenticationEnvironment.key] != nil
+             activeStateRoot = context.stateRoot
+             try supervisor.start(
+                 executableURL: launcherURL,
+@@ -317,8 +354,6 @@ final class VMRunSession {
          }
          reachedStart = true
          self.qmpSocketPath = qmpSocketPath
@@ -3742,10 +4186,27 @@ index 9a3fe63..1699973 100644
          if let identity = factoryManifest?.identity {
              let directories = launchedFactoryDirectories
              DispatchQueue.global(qos: .utility).async {
-@@ -390,23 +403,27 @@ final class VMRunSession {
+@@ -327,6 +362,7 @@ final class VMRunSession {
+                 }
+             }
+         }
++        allowAuthentication()
+         onEvent(.ready(qmpSocketPath: qmpSocketPath))
+     }
+ 
+@@ -338,6 +374,7 @@ final class VMRunSession {
+ 
+     private func childDidExit(status: Int32) {
+         guard isRunning else { return }
++        revokeAuthentication()
+         isRunning = false
+         forcedStopTimer?.cancel()
+         forcedStopTimer = nil
+@@ -390,23 +427,29 @@ final class VMRunSession {
      /// Keep this synchronous so QEMU acknowledges `stop` before macOS freezes
      /// the Hypervisor.framework process.
      private func prepareForHostSleep() {
++        revokeAuthentication()
 +        let before = executionState
 +        defer { if executionState != before { onEvent(.executionState(executionState)) } }
          do {
@@ -3757,6 +4218,7 @@ index 9a3fe63..1699973 100644
      }
  
      private func resumeAfterHostWake() {
++        defer { allowAuthentication() }
 +        let before = executionState
 +        defer { if executionState != before { onEvent(.executionState(executionState)) } }
          do {
@@ -4100,7 +4562,7 @@ index 81aef76..5eb9717 100644
      /// Omarchy to shut down: unsaved work in Omarchy is lost. The helper reads
      /// a first signal as `shutDown()` and a second as stop now, so this sends
 diff --git a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
-index 4e1af8d..18cdc3a 100644
+index 4e1af8d..1232fdb 100644
 --- a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
 +++ b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
 @@ -8,6 +8,17 @@ public enum VMRunProtocol {
@@ -4121,7 +4583,25 @@ index 4e1af8d..18cdc3a 100644
  public enum VMRunBridge: String, CaseIterable, Codable, Sendable {
      case clipboard
      case authentication
-@@ -37,6 +48,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -24,10 +35,17 @@ public enum VMRunNetwork: String, Codable, Sendable {
+     case bridged
+ }
+ 
++public struct VMRunAuthenticationScope: Equatable, Sendable {
++    public let vmID: UUID
++    public let runID: UUID
++    public init(vmID: UUID, runID: UUID) { self.vmID = vmID; self.runID = runID }
++}
++
+ /// What the run mode needs to start the VM. The storage folder here is the
+ /// VM. The settings stored for that VM win: memory, CPUs and network here
+ /// apply only where the launcher stored nothing (docs/vm-kit.md).
+ public struct VMRunConfiguration: Equatable, Sendable {
++    public var authenticationScope: VMRunAuthenticationScope? = nil
+     /// Names the app in messages, the Touch ID prompt, and the Omarchy
+     /// window's Dock entry and menus.
+     public var productName: String
+@@ -37,6 +55,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
      /// The VM's storage folder, whatever folder Try Omarchy chose. Nil is the
      /// folder chosen in Try Omarchy, else its default folder.
      public var storageRoot: String?
@@ -4129,7 +4609,7 @@ index 4e1af8d..18cdc3a 100644
      public var bridges: [VMRunBridge]
      /// Used when no resources are stored. Nil leaves the size to the
      /// launcher's automatic choice.
-@@ -45,6 +57,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -45,6 +64,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
      /// Used when no network is stored. A bridged one that cannot start fails
      /// with `bridgedNetworkUnavailable`.
      public var network: VMRunNetwork
@@ -4137,7 +4617,7 @@ index 4e1af8d..18cdc3a 100644
  
      public init(
          productName: String,
-@@ -53,7 +66,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -53,7 +73,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
          bridges: [VMRunBridge] = VMRunBridge.allCases,
          memoryMiB: Int? = nil,
          cpus: Int? = nil,
@@ -4147,7 +4627,7 @@ index 4e1af8d..18cdc3a 100644
      ) {
          self.productName = productName
          self.iconPath = iconPath
-@@ -62,6 +76,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -62,6 +83,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
          self.memoryMiB = memoryMiB
          self.cpus = cpus
          self.network = network
@@ -4155,25 +4635,26 @@ index 4e1af8d..18cdc3a 100644
      }
  
      public func encodedLine() throws -> Data {
-@@ -72,6 +87,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -72,6 +94,9 @@ public struct VMRunConfiguration: Equatable, Sendable {
              "bridges": bridges.map(\.rawValue),
              "network": network.rawValue,
          ]
++        if let scope = authenticationScope { object["authenticationScope"] = ["vmID": scope.vmID.uuidString, "runID": scope.runID.uuidString] }
 +        object["launchIntent"] = launchIntent.rawValue
 +        if let factory { object["factory"] = ["bundlePath": factory.bundlePath, "manifestSHA256": factory.manifestSHA256] }
          if let iconPath { object["iconPath"] = iconPath }
          if let storageRoot { object["storageRoot"] = storageRoot }
          if let memoryMiB { object["memoryMiB"] = memoryMiB }
-@@ -81,7 +98,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -81,7 +106,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
  
      public static func decode(line: Data) throws -> Self {
          let object = try VMRunLine.decode(line)
 -        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network"]
-+        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network", "factory", "launchIntent"]
++        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network", "factory", "launchIntent", "authenticationScope"]
          guard Set(object.keys).isSubset(of: allowed),
                VMRunLine.integer(object["version"]) == VMRunProtocol.version,
                let productName = object["productName"] as? String,
-@@ -97,6 +114,10 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -97,6 +122,10 @@ public struct VMRunConfiguration: Equatable, Sendable {
              bridges.append(bridge)
          }
          var configuration = Self(productName: productName, bridges: bridges, network: network)
@@ -4184,7 +4665,7 @@ index 4e1af8d..18cdc3a 100644
          if let value = object["iconPath"] {
              guard let path = value as? String else { throw VMRunProtocolError.invalidConfiguration }
              configuration.iconPath = path
-@@ -113,11 +134,16 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -113,11 +142,25 @@ public struct VMRunConfiguration: Equatable, Sendable {
              guard let cpus = VMRunLine.integer(value) else { throw VMRunProtocolError.invalidConfiguration }
              configuration.cpus = cpus
          }
@@ -4192,16 +4673,25 @@ index 4e1af8d..18cdc3a 100644
 +            guard let fields = value as? [String: String], Set(fields.keys) == ["bundlePath", "manifestSHA256"] else { throw VMRunProtocolError.invalidConfiguration }
 +            configuration.factory = VMFactorySelection(bundlePath: fields["bundlePath"]!, manifestSHA256: fields["manifestSHA256"]!)
 +        }
++        if let value = object["authenticationScope"] {
++            guard let fields = value as? [String: String], Set(fields.keys) == ["vmID", "runID"],
++                  let vm = UUID(uuidString: fields["vmID"]!), let run = UUID(uuidString: fields["runID"]!) else { throw VMRunProtocolError.invalidConfiguration }
++            configuration.authenticationScope = VMRunAuthenticationScope(vmID: vm, runID: run)
++        }
          try configuration.validate()
          return configuration
      }
  
      public func validate() throws {
 +        try factory?.validate()
++        if let scope = authenticationScope {
++            guard bridges.contains(.authentication), let storageRoot,
++                  URL(fileURLWithPath: storageRoot).lastPathComponent == scope.vmID.uuidString else { throw VMRunProtocolError.invalidConfiguration }
++        }
          guard (1...64).contains(productName.count), productName.utf8.count <= 255,
                productName == productName.trimmingCharacters(in: .whitespaces),
                productName.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
-@@ -144,6 +170,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -144,6 +187,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
  public enum VMRunCommand: String, Sendable {
      /// Ask Omarchy to shut down, then stop the VM if it has not within a minute.
      case shutdown
@@ -4210,7 +4700,7 @@ index 4e1af8d..18cdc3a 100644
  
      public func encodedLine() throws -> Data {
          try VMRunLine.encode(["version": VMRunProtocol.version, "command": rawValue])
-@@ -213,6 +241,7 @@ public struct VMRunError: Error, Equatable, Sendable, LocalizedError {
+@@ -213,6 +258,7 @@ public struct VMRunError: Error, Equatable, Sendable, LocalizedError {
  /// What the run mode did differently from what was asked, while Omarchy
  /// starts anyway. Codes do not change between versions; messages may.
  public enum VMRunNoticeCode: String, CaseIterable, Sendable {
@@ -4218,7 +4708,7 @@ index 4e1af8d..18cdc3a 100644
      /// Bridged networking was chosen but cannot start, so Omarchy starts with
      /// shared networking. An embedding app that registers the kit's
      /// networking daemon can offer to set it up.
-@@ -229,11 +258,28 @@ public struct VMRunNotice: Equatable, Sendable {
+@@ -229,11 +275,28 @@ public struct VMRunNotice: Equatable, Sendable {
      }
  }
  
@@ -4247,7 +4737,7 @@ index 4e1af8d..18cdc3a 100644
      case stopping
      case error(VMRunError)
      /// The last event. Status 0 is a clean shutdown.
-@@ -250,6 +296,20 @@ public enum VMRunEvent: Equatable, Sendable {
+@@ -250,6 +313,20 @@ public enum VMRunEvent: Equatable, Sendable {
              object["event"] = "notice"
              object["code"] = notice.code.rawValue
              object["message"] = String(notice.message.prefix(4_096))
@@ -4268,7 +4758,7 @@ index 4e1af8d..18cdc3a 100644
          case .ready:
              object["event"] = "ready"
          case .stopping:
-@@ -295,6 +355,28 @@ public enum VMRunEvent: Equatable, Sendable {
+@@ -295,6 +372,28 @@ public enum VMRunEvent: Equatable, Sendable {
              guard let code = VMRunNoticeCode(rawValue: codeName) else { throw VMRunProtocolError.unknownEvent }
              try require(["code", "message"])
              return .notice(VMRunNotice(code: code, message: message))
@@ -4413,6 +4903,194 @@ index 0000000..712bff5
 +        }
 +        object.removeValue(forKey: "startSeconds")
 +        #expect(throws: VMRunProtocolError.self) { try VMRunEvent.decode(line: JSONSerialization.data(withJSONObject: object)) }
++    }
++}
+diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedAuthenticationTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedAuthenticationTests.swift
+new file mode 100644
+index 0000000..e4aac1c
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/ManagedAuthenticationTests.swift
+@@ -0,0 +1,182 @@
++import Darwin
++import Foundation
++import Testing
++import TryOmarchyKitClient
++@testable import OmarchyVMHelper
++
++@Suite("Manager guest authentication")
++struct ManagedAuthenticationTests {
++    func fixture() throws -> URL {
++        let root = URL(fileURLWithPath: "/private/tmp").appendingPathComponent(UUID().uuidString)
++        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
++        return root
++    }
++    let guest = String(repeating: "ef", count: 32)
++
++    @Test("cloned guest IDs have UUID-isolated host keys and arbitrary guest paths are refused")
++    func keys() throws {
++        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
++        let a = UUID(), b = UUID()
++        let first = try ManagedAuthenticationFiles.keyURL(vmID: a, guestID: guest, base: root)
++        let second = try ManagedAuthenticationFiles.keyURL(vmID: b, guestID: guest, base: root)
++        #expect(first != second)
++        #expect(first.deletingLastPathComponent().lastPathComponent == a.uuidString)
++        #expect(try ManagedAuthenticationFiles.keyURL(vmID: a, guestID: guest, base: root) == first)
++        #expect(!first.path.contains("Try Omarchy"))
++        #expect(throws: HelperError.self) { try ManagedAuthenticationFiles.keyURL(vmID: a, guestID: "../../elsewhere", base: root) }
++        let target = try fixture(); defer { try? FileManager.default.removeItem(at: target) }
++        let directory = try ManagedAuthenticationFiles.root(base: root)
++        try FileManager.default.createSymbolicLink(at: directory.appendingPathComponent(UUID().uuidString), withDestinationURL: target)
++        try FileManager.default.removeItem(at: first.deletingLastPathComponent())
++        try FileManager.default.createSymbolicLink(at: first.deletingLastPathComponent(), withDestinationURL: target)
++        #expect(throws: HelperError.self) { try ManagedAuthenticationFiles.keyURL(vmID: a, guestID: guest, base: root) }
++        #expect(try FileManager.default.contentsOfDirectory(atPath: target.path).isEmpty)
++    }
++
++    @Test("nonblocking lease has no waiting prompt and cancellation rejects late approval and releases ownership")
++    func lease() throws {
++        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
++        let a = VMRunAuthenticationScope(vmID: UUID(), runID: UUID())
++        let b = VMRunAuthenticationScope(vmID: UUID(), runID: UUID())
++        var valid = true, cancellations = 0
++        let first = try #require(try ManagedAuthenticationAttempt.acquire(directory: root, scope: a, valid: { valid }, cancel: { cancellations += 1 }, monitor: false))
++        #expect(first.scope == a)
++        #expect(try ManagedAuthenticationAttempt.acquire(directory: root, scope: b, valid: { true }, cancel: {}, monitor: false) == nil)
++        valid = false
++        #expect(!first.isValid)
++        #expect(cancellations == 1)
++        valid = true
++        #expect(!first.isValid)
++        let next = try #require(try ManagedAuthenticationAttempt.acquire(directory: root, scope: b, valid: { true }, cancel: {}, monitor: false))
++        first.finish()
++        #expect(try ManagedAuthenticationAttempt.acquire(directory: root, scope: a, valid: { true }, cancel: {}, monitor: false) == nil)
++        next.finish()
++        let last = try #require(try ManagedAuthenticationAttempt.acquire(directory: root, scope: a, valid: { true }, cancel: {}, monitor: false))
++        last.finish()
++        #expect(cancellations == 1)
++    }
++
++    @Test("run identity refuses stale PID births and epoch changes invalidate old requests")
++    func runIdentity() throws {
++        let identity = try #require(KernelProcessIdentity.capture(processIdentifier: getpid()))
++        let scope = VMRunAuthenticationScope(vmID: UUID(), runID: UUID())
++        let unavailable = ManagedAuthenticationEnvironment.launchValue(scope, controller: nil)
++        #expect(throws: HelperError.self) {
++            try ManagedAuthenticationEnvironment.current([ManagedAuthenticationEnvironment.key: unavailable])
++        }
++        #expect(QEMUGPURuntimeEnvironment.sanitizedForLaunch([ManagedAuthenticationEnvironment.key: "inherited"])[ManagedAuthenticationEnvironment.key] == nil)
++        let value = ManagedAuthenticationEnvironment.encode(scope, controller: identity)
++        let parsed = try #require(try ManagedAuthenticationEnvironment.current([ManagedAuthenticationEnvironment.key: value]))
++        #expect(parsed.scope == scope)
++        #expect(parsed.controller == identity)
++        let reused = KernelProcessIdentity(processIdentifier: identity.processIdentifier, executablePath: identity.executablePath,
++            startSeconds: identity.startSeconds + 1, startMicroseconds: identity.startMicroseconds)
++        #expect(!reused.isStillRunning)
++        #expect(throws: HelperError.self) {
++            try ManagedAuthenticationEnvironment.current([ManagedAuthenticationEnvironment.key: ManagedAuthenticationEnvironment.encode(scope, controller: reused)])
++        }
++        #expect(try ManagedAuthenticationEnvironment.current([:]) == nil)
++        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
++        let url = ManagedAuthenticationEnvironment.gateURL(root.appendingPathComponent("authentication.sock").path)
++        #expect(ManagedAuthenticationAttempt.epoch(at: url) == nil)
++        try Data(UUID().uuidString.utf8).write(to: url)
++        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
++        let epoch = try #require(ManagedAuthenticationAttempt.epoch(at: url))
++        let attempt = try #require(try ManagedAuthenticationAttempt.acquire(directory: root, scope: scope,
++            valid: { ManagedAuthenticationAttempt.epoch(at: url) == epoch }, cancel: {}, monitor: false))
++        try FileManager.default.removeItem(at: url)
++        #expect(!attempt.isValid)
++        try Data(UUID().uuidString.utf8).write(to: url)
++        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
++        #expect(!attempt.isValid)
++        attempt.finish()
++    }
++
++    @Test("scope travels through strict host configuration, never accepts a host key path")
++    func configuration() throws {
++        let scope = VMRunAuthenticationScope(vmID: UUID(), runID: UUID())
++        var configuration = VMRunConfiguration(productName: "Fixture", storageRoot: "/private/tmp/" + scope.vmID.uuidString, bridges: [.authentication])
++        configuration.authenticationScope = scope
++        #expect(try VMRunConfiguration.decode(line: configuration.encodedLine()) == configuration)
++        var object = try #require(JSONSerialization.jsonObject(with: configuration.encodedLine()) as? [String: Any])
++        object["authenticationScope"] = ["vmID": scope.vmID.uuidString, "runID": scope.runID.uuidString, "keyPath": "/tmp/escape"]
++        #expect(throws: VMRunProtocolError.self) { try VMRunConfiguration.decode(line: JSONSerialization.data(withJSONObject: object)) }
++        configuration.storageRoot = "/private/tmp/" + UUID().uuidString
++        #expect(throws: VMRunProtocolError.self) { try configuration.validate() }
++        configuration.storageRoot = "/private/tmp/" + scope.vmID.uuidString
++        configuration.bridges = [.battery]
++        #expect(throws: VMRunProtocolError.self) { try configuration.validate() }
++    }
++}
++
++extension ManagedAuthenticationTests {
++    @Test("focus, stop, exact process loss and revoked epochs cancel an in-flight run without queued approval", arguments: ["focus", "stop", "process", "pause"])
++    func cancellation(_ reason: String) throws {
++        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
++        let socket = root.appendingPathComponent("authentication.sock").path
++        let gate = ManagedAuthenticationEnvironment.gateURL(socket)
++        try Data(UUID().uuidString.utf8).write(to: gate)
++        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: gate.path)
++        let identity = try #require(KernelProcessIdentity.capture(processIdentifier: getpid()))
++        let environment = ManagedAuthenticationEnvironment(scope: VMRunAuthenticationScope(vmID: UUID(), runID: UUID()), controller: identity)
++        var focused = true, alive = true, stopped = false, cancelled = false
++        let attempt = try #require(try environment.begin(socketPath: socket, processAlive: { alive }, focused: { focused }, promptFocused: { focused }, cancelled: { stopped }, cancel: { cancelled = true }, leaseDirectory: root, monitor: false))
++        switch reason {
++        case "focus": focused = false
++        case "stop": stopped = true
++        case "process": alive = false
++        default: try FileManager.default.removeItem(at: gate)
++        }
++        #expect(!attempt.isValid)
++        #expect(cancelled)
++        focused = true; alive = true; stopped = false
++        #expect(!attempt.isValid)
++        attempt.finish()
++    }
++
++    @Test("lease contention also works across processes and process exit releases the kernel lease")
++    func processLease() throws {
++        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
++        let path = root.appendingPathComponent(".prompt.lock").path
++        let process = Process(), pipe = Pipe(), input = Pipe()
++        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
++        process.arguments = ["-c", "import os,sys,fcntl; fd=os.open(sys.argv[1], os.O_RDWR|os.O_CREAT, 0o600); fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB); print('locked',flush=True); sys.stdin.read(1)", path]
++        process.standardInput = input; process.standardOutput = pipe
++        try process.run()
++        defer { if process.isRunning { process.terminate(); process.waitUntilExit() } }
++        let ready = pipe.fileHandleForReading.availableData
++        #expect(String(decoding: ready, as: UTF8.self) == "locked\n")
++        let scope = VMRunAuthenticationScope(vmID: UUID(), runID: UUID())
++        #expect(try ManagedAuthenticationAttempt.acquire(directory: root, scope: scope, valid: { true }, cancel: {}, monitor: false) == nil)
++        try input.fileHandleForWriting.close()
++        process.waitUntilExit()
++        #expect(process.terminationStatus == 0)
++        let attempt = try #require(try ManagedAuthenticationAttempt.acquire(directory: root, scope: scope, valid: { true }, cancel: {}, monitor: false))
++        attempt.finish()
++    }
++}
++
++private final class AuthenticationCancellationFixture: @unchecked Sendable {
++    private let lock = NSLock()
++    private var allowed = true
++    let cancelled = DispatchSemaphore(value: 0)
++    var valid: Bool { lock.lock(); defer { lock.unlock() }; return allowed }
++    func revoke() { lock.lock(); allowed = false; lock.unlock() }
++}
++
++extension ManagedAuthenticationTests {
++    @Test("the independent monitor cancels a blocked prompt without waiting for its signer to return")
++    func monitoredCancellation() throws {
++        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
++        let state = AuthenticationCancellationFixture()
++        let scope = VMRunAuthenticationScope(vmID: UUID(), runID: UUID())
++        let attempt = try #require(try ManagedAuthenticationAttempt.acquire(directory: root, scope: scope,
++            valid: { state.valid }, cancel: { state.cancelled.signal() }))
++        state.revoke()
++        #expect(state.cancelled.wait(timeout: .now() + 2) == .success)
++        #expect(!attempt.isValid)
++        let next = try #require(try ManagedAuthenticationAttempt.acquire(directory: root,
++            scope: VMRunAuthenticationScope(vmID: UUID(), runID: UUID()), valid: { true }, cancel: {}, monitor: false))
++        next.finish(); attempt.finish()
 +    }
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedFactoryCacheTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedFactoryCacheTests.swift

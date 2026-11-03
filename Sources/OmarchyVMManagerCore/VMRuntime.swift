@@ -79,6 +79,7 @@ public struct TryOmarchyRuntime: VMRuntime {
         var factorySelection: VMFactorySelection?
         if let storage = managedStorage, let admission = pocAdmission {
             try admission.validateKit()
+            try GuestTouchIDPolicy.validate(request.profile, lockData: admission.lockData)
             let catalog = try FactoryCatalog(applicationSupport: storage.applicationSupport, kit: kit, lockData: admission.lockData)
             factorySelection = try catalog.selection(for: request.profile.factory)
             if let factory = request.profile.factory { try catalog.validateCapacity(factory, diskGiB: request.profile.diskGiB ?? 64) }
@@ -107,7 +108,10 @@ public struct TryOmarchyRuntime: VMRuntime {
             let owner = ManagedOwnerStorage(root: request.storageRoot)
             let password = try owner.passwordForLaunch(request.profile, secrets: ownerSecrets)
             _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password, ownerContract: try catalog.ownerSetupContract(for: request.profile.factory))
-        } else { try pocAdmission?.admit(request) }
+        } else {
+            if let pocAdmission { try GuestTouchIDPolicy.validate(request.profile, lockData: pocAdmission.lockData) }
+            try pocAdmission?.admit(request)
+        }
         var configuration = try Self.configuration(for: request)
         guard managedStorage != nil || request.profile.factory?.kind != .custom else { throw FactoryCatalog.invalid("Custom factories require the verified managed runtime.") }
         configuration.factory = factorySelection
@@ -141,11 +145,15 @@ public struct TryOmarchyRuntime: VMRuntime {
         }
         var bridges: [VMRunBridge] = [.battery, .timezone]
         if request.profile.clipboardEnabled { bridges.insert(.clipboard, at: 0) }
-        let configuration = VMRunConfiguration(
+        if request.profile.guestTouchIDEnabled { bridges.append(.authentication) }
+        var configuration = VMRunConfiguration(
             productName: request.profile.name, iconPath: guestIcon?.path, storageRoot: request.storageRoot.path,
             bridges: bridges, memoryMiB: request.profile.memoryMiB, cpus: request.profile.cpus, network: .shared,
             launchIntent: request.launchIntent == .foreground ? .foreground : .background
         )
+        if request.profile.guestTouchIDEnabled {
+            configuration.authenticationScope = VMRunAuthenticationScope(vmID: request.profile.id, runID: request.sessionID)
+        }
         try configuration.validate()
         return configuration
     }

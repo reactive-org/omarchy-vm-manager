@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-03T00:00:00+00:00",
+  "authorDate": "2026-11-03T02:45:00+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-03T00:00:00+00:00",
-  "subject": "Admit reviewed guest integration independently of source revision",
-  "commit": "033d2460dc44796afeb6d08b6a32aaf51febf8be",
-  "patchSHA256": "236447a6c44429c857b9fbba1d30fc78b1f5900eb64523aa33a841bc09fb8e6d"
+  "committerDate": "2026-11-03T02:45:00+00:00",
+  "subject": "Scope manager guest sudo authentication by VM and coordinate host prompts",
+  "commit": "8d5015ec740aad5417b601e05d451b28ed45d573",
+  "patchSHA256": "d27bd42e8af1a66ef106001c7f1ca3e516532e2ed08d45771c5200c67498f647"
 }
