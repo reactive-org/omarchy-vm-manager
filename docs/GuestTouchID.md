@@ -61,6 +61,23 @@ test_guest='TEST_VM'
 
 The Mac terminal replies must show `ok: true` and states `paused`, then `running`; inspect the reply if either action fails. Immediately focus that guest and run `try-omarchy-touch-id-test`. Leave the native prompt untouched. The timer pauses after 15 seconds and resumes five seconds after a successful pause acknowledgement. The pending prompt must cancel; after resume, the old guest test must fail without a late Touch ID success. A new `try-omarchy-touch-id-test` request should then pass when the user approves it. If either CLI action fails, do not claim a lifecycle result; inspect the state and stop that test. This snippet does not stop/start/delete a VM, sleep the Mac or run two guests, and has not been executed by the agent.
 
+## Focus-preserving Mac sleep/wake check
+
+**VERIFIED — source/manual inspection:** the helper revokes its authentication epoch synchronously before host-sleep preparation. Wake allows a fresh epoch only for running, non-stopping execution; a manual pause remains separate. The local macOS `pmset` manual describes `sleepnow` as immediate system sleep, distinct from display sleep. These checks do not establish native cancellation/recovery.
+
+**Manual procedure / TO PROVE:** begin with the selected test guest running, not manually paused. In a Mac terminal, schedule the transient host-sleep command without redirecting errors:
+
+```sh
+(
+  sleep 15
+  /usr/bin/pmset sleepnow
+) &
+```
+
+Within 15 seconds, focus the guest and run `try-omarchy-touch-id-test`. Leave the native prompt untouched. The whole Mac should sleep; wake and unlock it normally after roughly 10–20 seconds. Mac unlock is separate from guest approval. Return to the guest and inspect the old test: it must report authentication failure without a guest-password fallback or late signed success. Then run `try-omarchy-touch-id-test` again and approve Touch ID; the fresh request should pass.
+
+If the command reports an error or the Mac only turns off its display, do not claim a host-sleep result or add privileged commands automatically. Record the actual old/fresh guest test outcomes and distinguish user observations from helper state reports. This procedure does not change power settings, schedule an automatic wake, start/stop a guest, use experimental disk suspension or require a custom guest kernel. It has not been executed by the agent.
+
 ## Optional 1Password follow-up
 
 The upstream package already ships its narrowly scoped polkit agent, password dialog and disabled service unit. This sudo milestone refuses `onepassword-unlock` in manager-scoped helpers. A follow-up must deliberately enable that operation and validate its existing signed context/cancellation boundary before native testing.
