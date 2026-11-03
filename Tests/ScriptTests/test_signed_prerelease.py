@@ -122,7 +122,7 @@ class SignedProvenanceTests(unittest.TestCase):
                     return SimpleNamespace(stdout=json.dumps(dict(id=identifier, status=outcome)))
                 with patch.dict(os.environ, values, clear=True), patch.object(signed_prerelease, "ROOT", root), patch.object(signed_prerelease, "REDACTIONS", []), patch.object(signed_prerelease, "run", side_effect=command) as commands:
                     self.assertEqual(signed_prerelease.check_submission(identifier)["status"], outcome)
-                self.assertEqual(commands.call_count, 2 if outcome == "Invalid" else 1)
+                self.assertEqual(commands.call_count, 2 if outcome in ("Accepted", "Invalid") else 1)
                 self.assertEqual(list(private.iterdir()), [])
                 self.assertEqual((root / "outputs").read_text(), "status=" + outcome + "\n")
                 self.assertEqual(json.loads((root / ".build/notarization/existing-submission.json").read_text())["id"], identifier)
@@ -141,15 +141,17 @@ class SignedProvenanceTests(unittest.TestCase):
         identifier = "12345678-1234-1234-1234-123456789abc"
         for outcome in ["Accepted", "Invalid"]:
             with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temp:
+                archive = Path(temp) / "fixture.zip"
+                archive.write_bytes(b"synthetic-candidate")
                 responses = [SimpleNamespace(stdout=json.dumps({"id": identifier})),
                              SimpleNamespace(stdout=json.dumps({"id": identifier, "status": "In Progress"})),
                              SimpleNamespace(stdout=json.dumps({"id": identifier, "status": outcome})), SimpleNamespace(stdout="")]
                 with patch.object(signed_prerelease, "ROOT", Path(temp)), patch.object(signed_prerelease, "run", side_effect=responses), patch.object(signed_prerelease.time, "sleep"):
                     if outcome == "Accepted":
-                        self.assertEqual(signed_prerelease.notarize(Path("fixture.zip"), [], "app")["status"], "Accepted")
+                        self.assertEqual(signed_prerelease.notarize(archive, [], "app")["status"], "Accepted")
                     else:
                         with self.assertRaisesRegex(RuntimeError, "not accepted"):
-                            signed_prerelease.notarize(Path("fixture.zip"), [], "app")
+                            signed_prerelease.notarize(archive, [], "app")
                 saved = json.loads((Path(temp) / ".build/notarization/app-submission.json").read_text())
                 self.assertEqual(saved["status"], outcome)
 
