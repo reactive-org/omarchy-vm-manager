@@ -134,6 +134,13 @@ credentials, Apple requests or guest operation has occurred. The original scope
 stays pinned; real compiler/signature, notarization and original-Mac/loaded-child
 checks remain TO PROVE. This supersedes the earlier unconnected-signer boundary.
 
+The [real signed-candidate gate](DevVMMilestone6Runbook.md#real-signed-candidate-gate-preparation--4-november-2026)
+is prepared as a private review packet, with exact origin/profile/source bindings
+and separate approval stages. Candidate/handoff and clean pinned local sources
+are re-admitted without SDK or credential access. The real runtime, team/identity,
+isolated keychain and profile path remain unselected; signing is not ready or
+authorized. Pins stay out of Git and no execution gate changes.
+
 [Milestone 6 disposable admission](DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
 adds independent manager/helper approval checks for exact disposable UUID/root
 identity pins, including restart, cleanup and terminal input. Twelve fake/local

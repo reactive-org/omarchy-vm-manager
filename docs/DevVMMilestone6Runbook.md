@@ -327,6 +327,107 @@ approval remains nil; factory access, fresh tool readiness, SSH/owner setup and
 every real guest row remain pending. Actual signing and guest execution require
 their separate explicit approvals.
 
+## Real signed-candidate gate preparation — 4 November 2026
+
+**PREPARED, NOT READY, NOT AUTHORIZED:** a private review packet now binds the
+actual retained candidate, frozen request, original scope, source archive/overlay
+and committed signer adapter. Exact digests and canonical local source paths stay
+in the ignored mode-0700 packet; its JSON files are mode 0600. This is a review
+record, not `ExecutionAuthorization`, a material loader or a guest approval. It
+contains no credential bytes. All approvals are explicitly NOT_GRANTED; unselected
+material fields are null. No credential locations were searched or opened.
+
+**VERIFIED — read-only local:** the actual candidate inventory and reviewed digest
+match; the frozen request re-admits with its previously recorded independent
+digest. The existing patched client and TOMLDecoder checkouts are clean at the
+exact revisions required by the archived source. These observations use local Git
+only, with hooks/fsmonitor/global configuration disabled and optional index locks
+off. They are observations to repeat before execution, not signing readiness.
+No target VM root/registry is visited and no original identity pin is recaptured.
+No accepted signed runtime is selected; the reviewed Config/build/artifact locations
+establish no eligible real signed lock. This is not a whole-machine search.
+
+The gate requires these exact input relationships:
+
+| Input | Required selection and evidence | Current state |
+| --- | --- | --- |
+| Frozen candidate | Previously reviewed candidate/request/scope digests and six-file overlay; preserve original UUID/root/device/inode/marker constants | Re-admitted privately; no scope change |
+| Runtime | Local `TryOmarchyKit.bundle`, `TryOmarchyKit.zip`, `TryOmarchySignedRuntime.lock.json` together in one owned private directory | No real signed artifact selected; ad-hoc candidate and fake fixtures are ineligible |
+| Runtime origin | `sourceLockSHA256` equals the exact frozen development-lock bytes; `sourceKitSHA256` equals that lock's kit digest; capabilities, patched commit and immutable payload remain exact | Required origin/inventory copied into private packet; signed digests remain null |
+| Runtime signatures | Selected app team, valid Developer ID signatures, hardened runtime/timestamps and upstream signature-only validation; valid versioned prerelease artifact tag | Not inspected; not established |
+| Client/parser sources | Canonical nonsymlink paths resolving to the exact archived patch/parser revisions; clean before/after build | Both observed clean and matching; revalidation required |
+| Signing identity | Explicit `Developer ID Application: … (TEAMID)` identity, ten-character team shared by runtime/app/children, available in the explicitly selected isolated keychain | Team and identity unselected; no identity enumeration |
+| Isolated keychain | Explicit canonical absolute path; owned regular mode-0600 single-link file below an owned mode-0700 parent; already prepared/unlocked only after separate authorization | Path unselected; no Keychain access |
+| Provisioning profile | Explicit canonical local file matching the profile digest frozen from `Config/TouchIDProfile.lock.json`; valid macOS Developer ID distribution profile for the exact selected team and `dev.omarchy.vm-manager`; unexpired and authorizes the actual signing leaf certificate | Path unselected; profile bytes/expiry/certificates not read or decoded |
+| Entitlements | Only the exact App ID/team restricted entitlements on the manager; no shared Keychain groups/debug entitlement; children retain empty app entitlements | Repository contract reviewed; real signatures unproven |
+| Build/output | Existing Swift 6/macOS 15+ build toolchain; exact source projections; fresh private output outside VM/release/source namespaces | Tool execution not probed; proposed unused output recorded privately |
+
+The required runtime is the **signed variant of the frozen patched development
+kit**, not a newer kit, the stock reference, the current ad-hoc bundle or a fake
+artifact. The packet records the exact original lock/kit/patch/parser bindings,
+capabilities and inventory without putting their pins in Git. The signed runtime's
+new archive/lock hashes, team and artifact tag can only be recorded after a real
+local artifact is explicitly selected and admitted. No replacement root or new
+origin is inferred to fill a missing field.
+
+**Runtime acquisition boundary:** the adapter consumes an already signed local
+runtime; it does not create one. If none is available, prepare a separate reviewed
+upstream signing-only job against the exact source kit, with a new private output.
+The inspected upstream kit builder accepts an identity but exposes no explicit
+keychain selector; its isolated-keychain handling must be resolved before that job
+is approved. Do not substitute global keychain search-list changes. The ordinary
+`make signed-prerelease`/tag workflow imports credentials, performs notarization
+and publishes/retains archives, so it is not this private gate. The upstream
+builder also expects fresh output and rebuilds its pinned networking components;
+its execution needs a separate review, not an assumption that app-signing approval
+covers it. No upstream build/sign/download occurred during gate preparation.
+
+Approvals must describe concrete selected inputs, rather than grant blanket
+permission to use whatever signing assets are found:
+
+1. **Select and inspect materials:** supply nonsecret local artifact/profile/
+   isolated-keychain paths and team/identity selectors privately. Then separately
+   approve bounded validation of those named inputs. No system-wide identity search,
+   private-key extraction, credential import, unlock or password collection is
+   implied. If isolated-keychain preparation is required, approve it separately
+   or have the operator prepare it. Do not paste P12 data, passwords or API keys
+   into a request, shell history, repository, transcript or gate packet.
+2. **Produce a runtime, only if missing:** separately approve the reviewed upstream
+   operation and its exact local source, identity/keychain handling, timestamps and
+   fresh private output. No notarization, publication, host install, guest launch
+   or modification of the retained source kit is included.
+3. **Build/sign the private app:** once real material selections and validation
+   evidence are complete, freeze their exact binding and review a trusted one-shot
+   caller for `Adapter.run`. Explicitly approve the request/scope/material binding,
+   local build/inspect effects, selected signing key use and **Apple secure timestamp
+   requests**. The adapter has no signing CLI and the packet must never mint an
+   authorization object. The proposed output must still be new. Keep all outputs
+   and fixed failure records private; do not replay or fall back after failure.
+4. **Validate on the original Mac:** separately approve read-only original-scope
+   inspection of the signed result. Static same-team checks do not establish the
+   loaded child's code identity. A concrete non-activating owned-helper validation
+   harness must be reviewed before a loaded-child experiment; bundle-only
+   diagnostics must not be represented as that experiment.
+5. **Notarize, only when requested:** approve the exact archive digest, Apple
+   submission and separate notary credentials. The current adapter stops at
+   `SIGNED_STATIC_CHECKS_ONLY` and a signed/not-notarized ZIP. It neither needs nor
+   accepts an Apple API key, notary credential profile or P12 import password for
+   app signing. Notarization/upload is not included in timestamp approval.
+6. **Run guest acceptance later:** separately approve disposable-only factory-byte
+   access/verification, fresh tool checks, owner/managed SSH and exact setup inputs/
+   consents, followed by scoped launches and the acceptance matrix. Signing approval
+   grants none of these operations or host installs. Factory access remains
+   unresolved and every real guest row remains NOT_RUN.
+
+**NEXT ACTION:** choose the real local signed-runtime artifact and nonsecret
+team/identity/profile/isolated-keychain selectors. Those missing selections prevent
+a concrete request to execute signing today. This preparation requests no approval
+and performs no signing, credential access, Apple/network request, SDK command,
+SSH/Ansible, install, normal UI, VM launch or disk operation. Product approval stays
+nil. Actual compiler/profile/cryptographic/notarization/original-Mac/loaded-child
+behavior remains TO PROVE. Documentation changes are separate from executable
+policy; the committed adapter and its existing 91-test evidence are unchanged.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

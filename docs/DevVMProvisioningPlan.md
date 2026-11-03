@@ -2949,3 +2949,38 @@ notarization, final original-Mac scope and loaded-child checks. Prior factory/to
 SSH/owner gates and all real guest rows remain pending. This implements the adapter
 only; the [runbook](DevVMMilestone6Runbook.md#private-signer-adapter--fake-process-runners-4-november-2026)
 records the exact authorization boundary before any real operation.
+
+## Milestone 6 real signed-candidate gate preparation — 4 November 2026
+
+**PREPARED / DESIGN DECISION:** an ignored private review packet binds the actual
+candidate/request/original scope, archived source/overlay and committed adapter.
+It records exact runtime-origin/inventory/profile requirements, clean pinned local
+source observations, unresolved real material selectors and distinct NOT_GRANTED
+approvals. It is neither executable authorization nor a product approval loader.
+Actual pins and canonical paths stay private; no credential bytes are collected.
+
+**VERIFIED — read-only local:** retained candidate inventory/reviewed digest and
+frozen request independently re-admit; canonical patched-client/parser checkouts
+are clean and match the archived revisions. Local Git alone observes them, without
+fetch, hooks/fsmonitor or optional index updates. No original VM root/registry is
+visited, no pins recaptured and no SDK, signing, credential, Apple/network,
+transport, install, UI, disk or guest operation occurs. The existing 91-test signer
+evidence remains applicable; adapter/product/shared source is unchanged.
+
+**BLOCKED ON SELECTION / TO PROVE:** no accepted real signed runtime is selected;
+team, Developer ID identity, isolated keychain and exact pinned profile path remain
+unselected/uninspected. The required runtime is the signed variant of the frozen
+development kit, with the same origin/capabilities/payload and the selected app's
+team. The ad-hoc candidate and synthetic fixtures cannot satisfy this gate. If a
+runtime must be produced, review a separate upstream signing-only route and its
+isolated-keychain handling; the ordinary release wrapper combines credential
+imports, notarization and publication, and is unsuitable here.
+
+The [gate runbook](DevVMMilestone6Runbook.md#real-signed-candidate-gate-preparation--4-november-2026)
+identifies exact material relationships and approval stages: named material
+inspection/preparation, optional upstream runtime production, private app build/
+key use/secure timestamps, original-Mac scope and non-activating loaded-child
+validation, optional notarization and later real guest acceptance. No approval is
+requested or granted by preparing the record. A trusted one-shot caller and real
+material binding must be reviewed after selection; there is no signing CLI. All
+real compiler/signature/profile/notary/guest outcomes remain TO PROVE/NOT_RUN.

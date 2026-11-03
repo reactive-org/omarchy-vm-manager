@@ -2534,3 +2534,27 @@ remains the visual target for milestone 5.
 - **TO PROVE:** authorized local runtime/materials and actual compiler/SwiftPM,
   SDK/profile/signature behavior, notarization, final original-Mac scope and loaded
   child admission. Factory/tool/SSH/owner and all guest rows remain pending/NOT_RUN.
+
+## Real signed-candidate gate preparation — 4 November 2026
+
+- **DESIGN DECISION:** a private review-only packet binds the retained candidate,
+  request/original scope/source and committed adapter, exact runtime/profile
+  requirements and unresolved material selectors. Every approval is NOT_GRANTED;
+  no file/env input becomes execution authority. Named material inspection,
+  optional upstream runtime preparation, app build/key use/secure timestamps,
+  original-Mac/loaded-child checks, notarization and guest acceptance are distinct.
+- **VERIFIED — read-only local:** candidate inventory/reviewed digest and frozen
+  request match; canonical client/parser checkouts are clean at the archived pins.
+  Local Git uses no fetch/hooks/fsmonitor or optional index writes. No root/registry
+  observation, pin recapture, SDK/signing command, credential access, Apple/network,
+  SSH/Ansible, install, UI, disk or guest operation. Adapter/shared/product source
+  and its 91-test evidence remain unchanged; actual pins and packet stay private.
+- **PRIVATE COUPLING:** runtime consumption needs the signed variant of the exact
+  frozen development kit, sharing the selected app team and immutable origin/
+  payload. A missing runtime needs separate upstream preparation; its signer lacks
+  an explicit keychain selector. The ordinary release wrapper couples credentials,
+  notarization and publication and must not be used unchanged for this gate.
+- **TO PROVE:** no real runtime/team/identity/keychain/profile path is selected or
+  inspected. Real material binding/trusted caller, compiler/SDK/profile/signature,
+  notarization/original-Mac/loaded-child and all guest rows remain unproven. See the
+  [gate](docs/DevVMMilestone6Runbook.md#real-signed-candidate-gate-preparation--4-november-2026).
