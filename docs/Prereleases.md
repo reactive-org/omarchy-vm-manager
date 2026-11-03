@@ -202,3 +202,6 @@ The host fix and reported no-prompt failure are detailed in [Guest Touch ID](Gue
 
 
 **VERIFIED — user-confirmed shutdown/restart case:** the user confirmed pending-prompt cancellation at shutdown and successful fresh guest authentication after restart without re-enrollment. The CLI reports stopped/inactive and the existing helper report records matching old-session exit status 0. [Scoped evidence](GuestTouchID.md#user-confirmed-shutdown-cancellation-and-restart-recovery--3-november-2026) marks this manual build 26 case passed; forced-stop/crash and two-VM behavior remain **TO PROVE**.
+
+
+**VERIFIED — user-confirmed two-VM cases:** independently enrolled A/B pass; overlapping A succeeds while delayed background B fails, then focused fresh B succeeds. B enrollment removal reports guest-and-host cleanup, disabled B fails without a prompt, and A remains functional. These manual build 26 routing/disable cases are passed. [Scope and remaining limits](GuestTouchID.md#user-confirmed-two-guest-routing-and-disable-independence--3-november-2026) retain native lease-busy, cloned-identical-ID and crash-path distinctions. Private read-only process identities are captured for cleanup; both test guests are still running pending user shutdown and matching-exit/process checks.
