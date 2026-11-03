@@ -4,14 +4,15 @@ Milestone 1A implements the Homebrew Ansible CLI dependency contract from the [s
 
 The pinned Swift package now provides offline parsing/planning and an internal
 coordinator/helper foundation with private frozen-input delivery and independent
-helper-side context validation. Product setup execution, job UI/CLI attachment
+helper-side context validation, concrete adapter construction and fresh manager
+session authority checks. Product setup execution, job UI/CLI attachment
 and the live terminal remain unavailable. Every dependency-report feature still
 reports `implemented: false` and `enabled: false`, even when `toolsReady` is true.
 Normal VM management does not depend on these checks.
 
-See the [current milestone-3 handoff](DevVMProvisioningPlan.md#milestone-3-frozen-input-delivery-and-helper-context-validation--3-november-2026).
+See the [current milestone-3 handoff](DevVMProvisioningPlan.md#milestone-3-helper-backend-and-manager-session-authority--3-november-2026).
 The helper validates frozen reviewed inputs before acknowledgement, but the product
-supplies no transport backend and rejects activation. These dependency reports
+supplies no transport-resource provider and rejects activation. These dependency reports
 and their schema-2 readiness semantics are unchanged.
 
 ## Native and CLI reports

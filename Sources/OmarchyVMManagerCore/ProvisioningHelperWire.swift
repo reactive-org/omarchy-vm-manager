@@ -38,12 +38,12 @@ struct ProvisioningHelperCredentials: Sendable, CustomStringConvertible, CustomD
     }
     /// Anonymous bootstrap pipe only; never argv, environment, disk or diagnostics.
     func privateBootstrap() throws -> Data {
-        try helperJSON(Bootstrap(version: registration?.delivery != nil ? 3 : registration == nil ? 1 : 2, identity: identity, channelID: channelID, secret: secret, registration: registration))
+        try helperJSON(Bootstrap(version: registration?.sessionAuthorityVersion != nil ? 4 : registration?.delivery != nil ? 3 : registration == nil ? 1 : 2, identity: identity, channelID: channelID, secret: secret, registration: registration))
     }
     init(privateBootstrap data: Data) throws {
         guard data.count <= 4096, case .object(let fields) = try PlainDataParser.parse(data, format: .json) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         let base: Set<String> = ["version", "identity", "channelID", "secret"]
-        guard (fields["version"] == .integer(1) && Set(fields.keys) == base) || ([ManifestValue.integer(2), .integer(3)].contains(fields["version"] ?? .null) && Set(fields.keys) == base.union(["registration"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard (fields["version"] == .integer(1) && Set(fields.keys) == base) || ([ManifestValue.integer(2), .integer(3), .integer(4)].contains(fields["version"] ?? .null) && Set(fields.keys) == base.union(["registration"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         guard let identity = fields["identity"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
         try Self.validateIdentity(identity)
         if let registration = fields["registration"] { try ProvisioningHelperWorkerRegistration.validateDocument(registration) }
@@ -52,11 +52,20 @@ struct ProvisioningHelperCredentials: Sendable, CustomStringConvertible, CustomD
         guard value.secret.count == 32 else { throw ProvisioningHelperIPCFailure.authentication }
         self.identity = value.identity; channelID = value.channelID; secret = value.secret
         registration = value.registration
-        guard (fields["version"] == .integer(3)) == (registration?.delivery != nil) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard ([ManifestValue.integer(3), .integer(4)].contains(fields["version"] ?? .null)) == (registration?.delivery != nil),
+              (fields["version"] == .integer(4)) == (registration?.sessionAuthorityVersion != nil) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         if let registration { try registration.validate(); guard registration.scope.helperIdentity == value.identity else { throw ProvisioningHelperIPCFailure.ownership } }
     }
     static func validateIdentity(_ value: ManifestValue) throws {
         guard case .object(let fields) = value, Set(fields.keys) == ["instanceID", "executableSHA256", "packageLockSHA256"] else { throw ProvisioningHelperIPCFailure.protocolViolation }
+    }
+    /// Independent MAC key domain; control packets cannot authenticate on the
+    /// reverse session channel even with the same peer/sequence/payload.
+    func sessionCredentials() -> Self {
+        Self(identity: identity, channelID: channelID, secret: Data(HMAC<SHA256>.authenticationCode(for: Data("omarchy-session-authority-v1".utf8), using: key)), registration: registration)
+    }
+    private init(identity: ProvisioningHelperIdentity, channelID: UUID, secret: Data, registration: ProvisioningHelperWorkerRegistration?) {
+        self.identity = identity; self.channelID = channelID; self.secret = secret; self.registration = registration
     }
     fileprivate var key: SymmetricKey { SymmetricKey(data: secret) }
 }

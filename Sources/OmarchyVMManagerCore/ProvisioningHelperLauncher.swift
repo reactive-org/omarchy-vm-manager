@@ -2,7 +2,7 @@ import Foundation
 
 /// Explicit internal factory only. App/CLI execution gates do not construct it.
 /// One admitted helper reservation at a time; no automatic restart or adoption.
-actor ProvisioningHelperLauncher: ProvisioningHelperDispatching, ProvisioningFrozenHelperLaunching {
+actor ProvisioningHelperLauncher: ProvisioningManagerSessionDispatching {
     enum Phase: Sendable { case prepared, launching, registered, abandoned, exited, unconfirmed }
     private struct Pending: Sendable {
         let admission: ProvisioningHelperLaunchAdmission
@@ -16,6 +16,8 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching, ProvisioningFro
         var phase = Phase.prepared
         var child: ProvisioningHelperChild?
         var client: ProvisioningHelperIPCClient?
+        var sessionServer: ProvisioningManagerSessionServer?
+        var sessionTask: Task<Void, Never>?
     }
     private let layout: ProvisioningPackageLayout
     private let directory: URL
@@ -56,10 +58,15 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching, ProvisioningFro
         entry.phase = .launching; entries[ticket.id] = entry
         do {
             let root = entry.directory
-            let child = try await helperBlocking { try ProvisioningHelperChild.spawn(admission: pending.admission, directory: root, hasDelivery: pending.delivery != nil) }
+            let child = try await helperBlocking { try ProvisioningHelperChild.spawn(admission: pending.admission, directory: root, hasDelivery: pending.delivery != nil, hasSessionAuthority: ticket.registration.sessionAuthorityVersion != nil) }
             entries[ticket.id]?.child = child
             Task { [self] in let exit = await child.waitForExit(); observedExit(ticket.id, child: child.identity, exit: exit) }
             guard entries[ticket.id]?.phase == .launching else { child.disconnect(); throw ProvisioningHelperIPCFailure.unavailable }
+            if let channel = child.sessionSocket {
+                let server = try ProvisioningManagerSessionServer(socket: channel, credentials: pending.credentials)
+                entries[ticket.id]?.sessionServer = server
+                entries[ticket.id]?.sessionTask = Task { await server.serve() }
+            }
             let client = ProvisioningHelperIPCClient(socket: child.socket, credentials: pending.credentials)
             entries[ticket.id]?.client = client
             // Verify both held file identity and the owned live child's loaded
@@ -84,7 +91,7 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching, ProvisioningFro
     func abandon(_ ticket: ProvisioningHelperLaunchTicket) async {
         guard let entry = entries[ticket.id], entry.ticket == ticket, entry.phase != .exited else { return }
         entries[ticket.id]?.phase = .abandoned
-        entry.child?.disconnect(); entry.client?.disconnect()
+        entry.child?.disconnect(); entry.client?.disconnect(); entry.sessionServer?.stop()
         if entry.child == nil, entry.phase == .prepared { entries[ticket.id]?.pending = nil; entries[ticket.id]?.phase = .exited }
     }
     func reconcile(_ expectation: ProvisioningRecoveryExpectation) async throws -> ProvisioningRecoveryPermit {
@@ -92,6 +99,11 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching, ProvisioningFro
               entry.phase == .registered, let client = entry.client,
               expectation.helperIdentity == entry.ticket.identity else { throw ProvisioningHelperIPCFailure.ownership }
         return try await client.reconcile(expectation)
+    }
+    func bindSessionAuthority(_ activation: ProvisioningHelperActivation, check: @escaping ProvisioningManagerSessionCheck) async throws {
+        guard let entry = entries.values.first(where: { $0.ticket.registration.scope.sameWorker(as: activation.scope) }),
+              entry.phase == .registered, let server = entry.sessionServer else { throw ProvisioningHelperIPCFailure.ownership }
+        try await server.bind(activation, check: check)
     }
     func dispatch(_ kind: ProvisioningHelperDispatchKind, activation: ProvisioningHelperActivation) async throws -> ProvisioningHelperWorkerSnapshot {
         guard let entry = entries.values.first(where: { $0.ticket.registration.scope.sameWorker(as: activation.scope) }),
@@ -113,8 +125,9 @@ actor ProvisioningHelperLauncher: ProvisioningHelperDispatching, ProvisioningFro
         guard entries[id]?.child?.identity == child else { return }
         switch exit {
         case .exited:
-            entries[id]?.phase = .exited; entries[id]?.client?.disconnect()
+            entries[id]?.phase = .exited; entries[id]?.client?.disconnect(); entries[id]?.sessionServer?.stop()
             entries[id]?.pending = nil; entries[id]?.client = nil; entries[id]?.child = nil
+            entries[id]?.sessionServer = nil; entries[id]?.sessionTask = nil
         case .unconfirmed: entries[id]?.phase = .unconfirmed
         }
     }

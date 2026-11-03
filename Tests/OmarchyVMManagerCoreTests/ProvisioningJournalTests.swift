@@ -59,7 +59,7 @@ private final class JournalFixture {
             case "oversized": try Data(repeating: 32, count: ProvisioningJobJournal.maximumBytes + 1).write(to: f.file)
             case "duplicate-key": try Data("{\"schemaVersion\":1,\"schemaVersion\":1}".utf8).write(to: f.file)
             default:
-                if kind == "schema" { root["schemaVersion"] = 6 }
+                if kind == "schema" { root["schemaVersion"] = 7 }
                 if kind == "field" { jobs[0]["privateKey"] = "never-accept" }
                 if kind == "duplicate-job" { jobs.append(jobs[0]) }
                 if kind == "digest" { jobs[0]["dependencyDigest"] = "unknown" }
@@ -127,7 +127,7 @@ private final class JournalFixture {
         #expect(rows == [record] && rows[0].inputArchiveSHA256 == nil && rows[0].workerToken == nil)
         try store.save(rows)
         let upgraded = try JSONSerialization.jsonObject(with: Data(contentsOf: f.file)) as! [String: Any]
-        #expect(upgraded["schemaVersion"] as? Int == 5)
+        #expect(upgraded["schemaVersion"] as? Int == 6)
         store.close()
         #expect(throws: ProvisioningJobFailure.journalUnavailable) { _ = try store.load() }
     }
@@ -240,6 +240,32 @@ private final class JournalFixture {
         let bytes = try JSONSerialization.data(withJSONObject: document); try bytes.write(to: f.file)
         let reopened = try ProvisioningJobJournal(directory: f.directory)
         if kind == "legacy" { let old = try #require(reopened.load().first); #expect(old.helperDelivery == nil && old.helperIdentity == row.helperIdentity && old.cleanupRequired) }
+        else { #expect(throws: ProvisioningJobFailure.journalUnavailable) { _ = try reopened.load() }; #expect(try Data(contentsOf: f.file) == bytes) }
+    }
+
+    @Test(arguments: ["roundtrip", "legacy", "schema", "null", "future", "delivery"])
+    func sessionAuthorityVersionCannotBeDowngradedOrInventedFromLegacyRows(kind: String) throws {
+        let f = try JournalFixture(), store = try ProvisioningJobJournal(directory: f.directory)
+        _ = try store.load()
+        var row = journalRecord(); let pin = String(repeating: "d", count: 64)
+        row.payloadID = UUID(); row.workerToken = UUID(); row.inputArchiveSHA256 = pin; row.cleanupCheckpointSHA256 = pin
+        row.helperIdentity = .init(instanceID: UUID(), executableSHA256: pin, packageLockSHA256: pin)
+        row.helperRegistrationDigest = pin; row.helperRegistered = true; row.cleanupRequired = true
+        row.helperDelivery = .init(format: 1, sha256: pin, byteCount: 100, metadataSHA256: pin, archiveSHA256: pin)
+        row.helperSessionAuthorityVersion = 1
+        try store.save([row]); store.close()
+        if kind == "roundtrip" { let reopened = try ProvisioningJobJournal(directory: f.directory); #expect(try reopened.load() == [row]); return }
+        var document = try JSONSerialization.jsonObject(with: Data(contentsOf: f.file)) as! [String: Any]
+        var rows = document["jobs"] as! [[String: Any]]
+        if kind == "legacy" { document["schemaVersion"] = 5; rows[0].removeValue(forKey: "helperSessionAuthorityVersion") }
+        if kind == "schema" { document["schemaVersion"] = 5 }
+        if kind == "null" { rows[0]["helperSessionAuthorityVersion"] = NSNull() }
+        if kind == "future" { rows[0]["helperSessionAuthorityVersion"] = 2 }
+        if kind == "delivery" { rows[0].removeValue(forKey: "helperDelivery") }
+        document["jobs"] = rows
+        let bytes = try JSONSerialization.data(withJSONObject: document); try bytes.write(to: f.file)
+        let reopened = try ProvisioningJobJournal(directory: f.directory)
+        if kind == "legacy" { let old = try #require(reopened.load().first); #expect(old.helperSessionAuthorityVersion == nil && old.helperDelivery == row.helperDelivery && old.cleanupRequired) }
         else { #expect(throws: ProvisioningJobFailure.journalUnavailable) { _ = try reopened.load() }; #expect(try Data(contentsOf: f.file) == bytes) }
     }
 

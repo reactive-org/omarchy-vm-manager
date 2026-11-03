@@ -5,7 +5,7 @@ public enum ProvisioningProcessInput: Sendable {
     case closed, bytes(Data), terminalLease(UUID)
 }
 public enum ProvisioningProcessOutput: Sendable { case boundedCapture, terminalStream }
-public enum ProvisioningProcessPurpose: String, Sendable {
+public enum ProvisioningProcessPurpose: String, Sendable, Codable {
     case identity, bootstrap, copyPayload, preparePayload, native, packages, features, repository, quiesce, remove
 }
 /// Describes an exact executable/argv/environment. It has no launch method.
@@ -137,6 +137,8 @@ public struct ProvisioningSSHConnection: Sendable, CustomStringConvertible, Cust
               digest(ed25519HostKey) == binding.hostKeyDigest else { throw SequencingFailure.identityMismatch }
         self.binding = binding; self.port = port; self.identity = identity; hostKey = ed25519HostKey
     }
+    /// Revalidate the explicit identity reference without reading key bytes.
+    public func verify() throws { try identity.verify() }
     var alias: String { "omarchy-" + binding.vmID.uuidString.lowercased() }
 }
 public struct ProvisioningTransportTools: Sendable {
@@ -146,7 +148,7 @@ public struct ProvisioningTransportTools: Sendable {
                 ansiblePlaybook: ProvisioningExecutablePin, ansibleInventory: ProvisioningExecutablePin) {
         self.ssh = ssh; self.scp = scp; self.sftp = sftp; playbook = ansiblePlaybook; inventory = ansibleInventory
     }
-    func verify() throws {
+    public func verify() throws {
         for pin in [ssh, scp, sftp, playbook, inventory] { _ = try pin.verify() }
     }
 }

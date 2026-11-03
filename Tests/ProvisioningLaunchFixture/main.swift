@@ -11,10 +11,10 @@ do {
     if args.count == 2, args[0] == "--ownership-channel-fd", let descriptor = Int32(args[1]), let executable = Bundle.main.executableURL {
         let layout = ProvisioningPackageLayout(contents: executable.deletingLastPathComponent().deletingLastPathComponent())
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("fixture-inputs")
-        try await ProvisioningHelperControl.serveInherited(descriptor: descriptor, layout: layout, engineFactory: DispatchFixtureEngineFactory(root: root, layout: layout), deliveredBackend: DispatchFixtureDeliveredBackend(layout: layout))
+        try await ProvisioningHelperControl.serveInherited(descriptor: descriptor, layout: layout, engineFactory: DispatchFixtureEngineFactory(root: root, layout: layout), deliveredBackend: DispatchFixtureDeliveredBackend(layout: layout), transportProvider: FixtureTransportProvider())
         exit(0)
     }
-    guard args.count == 3, ["normal", "policy", "tamper", "replace", "dispatch", "dispatch-cancel", "dispatch-denied", "delivery", "delivery-cancel", "delivery-denied", "delivery-tamper"].contains(args[2]) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+    guard args.count == 3, ["normal", "policy", "tamper", "replace", "dispatch", "dispatch-cancel", "dispatch-denied", "delivery", "delivery-cancel", "delivery-denied", "delivery-tamper", "backend", "backend-cancel", "backend-denied"].contains(args[2]) else { throw ProvisioningHelperIPCFailure.protocolViolation }
     let layout = ProvisioningPackageLayout(contents: URL(fileURLWithPath: args[0]))
     let root = URL(fileURLWithPath: args[1]); try PrivateFiles.directory(root)
     let launcher = try ProvisioningHelperLauncher(layout: layout, directory: root.appendingPathComponent("control"), policy: args[2] == "policy" ? .sameApplicationTeam : .adHocFixture)
@@ -25,15 +25,17 @@ do {
         bindingDigest: try ProvisioningCoordinator.bindingIdentity(target), reviewDigest: pin, checkpointDigest: pin)
     var registration = ProvisioningHelperWorkerRegistration(scope: scope, planDigest: pin, inputDigest: pin, mode: .apply)
     var deliverySource: ProvisioningFrozenDeliverySource?
-    if args[2].hasPrefix("dispatch") || args[2].hasPrefix("delivery") {
-        let request = try DispatchFixtureBlueprint.request(root: root.appendingPathComponent("fixture-inputs"), scope: scope, mode: .apply, delivered: args[2].hasPrefix("delivery"))
+    let usesBackend = args[2].hasPrefix("backend")
+    if args[2].hasPrefix("dispatch") || args[2].hasPrefix("delivery") || usesBackend {
+        let request = try DispatchFixtureBlueprint.request(root: root.appendingPathComponent("fixture-inputs"), scope: scope, mode: .apply, delivered: args[2].hasPrefix("delivery") || usesBackend, transport: usesBackend, cancelTransport: args[2] == "backend-cancel")
         scope = .init(challenge: scope.challenge, jobID: scope.jobID, vmID: scope.vmID, sessionID: scope.sessionID, payloadID: scope.payloadID, workerToken: scope.workerToken,
             engineDigest: try ProvisioningCoordinator.engineIdentity(request.plan), dependencyDigest: scope.dependencyDigest,
-            bindingDigest: scope.bindingDigest, reviewDigest: request.reviewIdentity, checkpointDigest: scope.checkpointDigest)
+            bindingDigest: try ProvisioningCoordinator.bindingIdentity(request.target), reviewDigest: request.reviewIdentity, checkpointDigest: scope.checkpointDigest)
         registration = .init(scope: scope, planDigest: request.plan.identity, inputDigest: request.plan.snapshot.identity, mode: request.mode)
-        if args[2].hasPrefix("delivery") {
+        if args[2].hasPrefix("delivery") || usesBackend {
             let delivery = try ProvisioningFrozenDelivery(request: request, approval: .init(reviewIdentity: request.reviewIdentity, persistentGrantAcknowledged: true), archive: request.plan.snapshot.privateArchive())
             registration.delivery = delivery.receipt
+            if usesBackend { registration.sessionAuthorityVersion = 1 }
             try PrivateFiles.write(delivery.bytes, name: "fixture.delivery", in: root, exclusively: true)
             deliverySource = try ProvisioningFrozenDeliverySource(url: root.appendingPathComponent("fixture.delivery"), receipt: delivery.receipt)
         }
@@ -51,7 +53,7 @@ do {
     var row = ProvisioningJobRecord(jobID: scope.jobID, vmID: scope.vmID, sessionID: scope.sessionID, reviewDigest: scope.reviewDigest,
         planDigest: registration.planDigest, inputDigest: registration.inputDigest, engineDigest: scope.engineDigest, dependencyDigest: scope.dependencyDigest, bindingDigest: scope.bindingDigest, mode: .apply)
     row.payloadID = scope.payloadID; row.workerToken = scope.workerToken; row.inputArchiveSHA256 = pin; row.cleanupCheckpointSHA256 = pin
-    row.helperDelivery = registration.delivery
+    row.helperDelivery = registration.delivery; row.helperSessionAuthorityVersion = registration.sessionAuthorityVersion
     if let delivery = registration.delivery { row.inputArchiveSHA256 = delivery.archiveSHA256 }
     row.helperIdentity = ticket.identity; row.helperRegistrationDigest = try ticket.registration.digest; row.helperRegistered = false; row.cleanupRequired = true
     try journal.save([row])
@@ -98,18 +100,20 @@ do {
     var expected = ticket.registration.scope; expected = .init(challenge: UUID(), jobID: expected.jobID, vmID: expected.vmID, sessionID: expected.sessionID,
         payloadID: expected.payloadID, workerToken: expected.workerToken, engineDigest: expected.engineDigest, dependencyDigest: expected.dependencyDigest,
         bindingDigest: expected.bindingDigest, reviewDigest: expected.reviewDigest, checkpointDigest: expected.checkpointDigest, helperIdentity: expected.helperIdentity)
-    if args[2].hasPrefix("delivery") {
+    if args[2].hasPrefix("delivery") || usesBackend {
         // Remove the parent checkout before any activation. Child uses only its
         // validated private tree; this is disposable test metadata, never a VM.
         try FileManager.default.removeItem(at: root.appendingPathComponent("fixture-inputs"))
     }
-    if args[2].hasPrefix("dispatch") || args[2].hasPrefix("delivery") {
+    if args[2].hasPrefix("dispatch") || args[2].hasPrefix("delivery") || usesBackend {
         fixtureStep = "dispatch"
         let activation = ProvisioningHelperActivation(activationID: UUID(), registrationDigest: try ticket.registration.digest, scope: expected,
             customTasksReviewed: true, persistentGrantAcknowledged: true, dockerRootAccessAcknowledged: true)
         row.helperActivationID = activation.activationID; row.helperActivationDigest = try activation.digest
         row.state = .running; row.workerOutstanding = true; row.sequence += 1; try journal.save([row])
-        if args[2] == "dispatch-denied" || args[2] == "delivery-denied" {
+        let sessionChecks = FixtureSessionChecks()
+        if usesBackend { try await launcher.bindSessionAuthority(activation) { try await sessionChecks.validate($0, activation: activation) } }
+        if args[2] == "dispatch-denied" || args[2] == "delivery-denied" || args[2] == "backend-denied" {
             do { _ = try await launcher.dispatch(.activate, activation: activation); throw ProvisioningJobFailure.invalidRequest }
             catch ProvisioningHelperDispatchDenial.executionUnavailable {}
         } else {
@@ -125,7 +129,11 @@ do {
                 }
             }
             guard status.terminal, !status.cleanupRequired,
-                  status.outcome == (args[2].hasSuffix("-cancel") ? .cancelled : .applied) else { throw ProvisioningJobFailure.invalidRequest }
+                  status.outcome == (args[2].hasSuffix("-cancel") ? .cancelled : .applied) else {
+                fixtureStep = "dispatch-" + status.phase.rawValue + "-" + (status.outcome?.rawValue ?? "pending") + (status.cleanupRequired ? "-risk" : "-clean")
+                throw ProvisioningJobFailure.invalidRequest
+            }
+            if usesBackend { guard await sessionChecks.count > 10 else { throw ProvisioningJobFailure.invalidRequest } }
         }
     }
     fixtureStep = "reconcile"
@@ -139,7 +147,7 @@ do {
     while await launcher.phase(ticket) != .exited, ContinuousClock.now < end { try await Task.sleep(for: .milliseconds(20)) }
     guard await launcher.phase(ticket) == .exited else { throw ProvisioningHelperIPCFailure.unavailable }
     let controlEntries = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("control/" + ticket.identity.instanceID.uuidString).path)
-    guard args[2].hasPrefix("dispatch") || args[2].hasPrefix("delivery") || controlEntries.isEmpty else { throw ProvisioningJobFailure.invalidRequest }
+    guard args[2].hasPrefix("dispatch") || args[2].hasPrefix("delivery") || usesBackend || controlEntries.isEmpty else { throw ProvisioningJobFailure.invalidRequest }
     print("{\"registered\":true,\"reconciled\":true,\"exited\":true,\"executionEnabled\":false}")
 } catch {
     let code = (error as? ProvisioningHelperIPCFailure)?.rawValue ?? (error as? ProvisioningJobFailure)?.rawValue ?? "launch-fixture-failed"

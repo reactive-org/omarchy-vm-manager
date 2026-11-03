@@ -129,7 +129,7 @@ def run_checks(binaries, launcher_binaries):
             for scenario in ("valid", "mac", "bootstrap"): ownership_fixture(scenario)
             # The Swift fixture uses the real admitted-launch factory. It is a
             # debug-only build product, never staged into the application.
-            for scenario in ("policy", "tamper", "replace", "normal", "dispatch-denied", "delivery-denied", "delivery-tamper"):
+            for scenario in ("policy", "tamper", "replace", "normal", "dispatch-denied", "delivery-denied", "delivery-tamper", "backend-denied"):
                 control_root = root / str(uuid.uuid4()); control_root.mkdir(mode=0o700)
                 result = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(contents), str(control_root), scenario],
                                         env=environment, cwd=root, capture_output=True, timeout=20)
@@ -157,7 +157,7 @@ def run_checks(binaries, launcher_binaries):
             for path in [engine_app, *engine_app.rglob("*")]:
                 path.chmod(0o555 if path.is_dir() or path.parent.name == "MacOS" else 0o444)
             try:
-                for scenario in ("dispatch", "dispatch-cancel", "delivery", "delivery-cancel"):
+                for scenario in ("dispatch", "dispatch-cancel", "delivery", "delivery-cancel", "backend", "backend-cancel"):
                     control_root = root / str(uuid.uuid4()); control_root.mkdir(mode=0o700)
                     result = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), str(engine_contents), str(control_root), scenario],
                                             env=environment, cwd=root, capture_output=True, timeout=20)

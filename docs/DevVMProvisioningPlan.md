@@ -245,7 +245,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | 1. Original dependency probes — committed | Provider, native/CLI report, host Python/PyYAML/Ansible checks and feature gates at 62a4c62 | Existing no-VM results retained as historical evidence; not the final Swift dependency contract |
 | 1A. Swift dependency contract — implemented | Retained discovery/isolation; replaced direct Python/shebang/import gates with Homebrew Ansible CLI checks; dependency-report schema 2 | No-VM fixtures cover independent planning prerequisites, healthy/broken/wrapped/mismatched command pairs, GUI PATH, timeout, replacement and authentication deferral; execution stays disabled; see ProvisioningTools.md for exact evidence |
 | 2. Shared Swift controller and packaging — offline planning, sequencing and concrete command adapters implemented; remaining port pending | SwiftPM library, strict parsers, offline plans/snapshots, pinned SSH/Ansible command construction, private materialization, bundled guest resources and scope-control helper; local process runner/PTY now implemented against disposable local fixtures; offline manager/helper package/resource/launcher integration now implemented; operational CLI, job/session adapters and full release acceptance remain pending | 227 manager Swift tests / 48 script tests plus relocated package fixtures and prior 64 package tests plus 18 plain-data/66 proposal-error oracle fixtures pass; adapters use fake runners and the local runner uses disposable local processes. Remote guest/process proofs, complete parity and full runtime-app/release acceptance remain pending |
-| 3. Job coordination — validated frozen delivery implemented, production integration pending | Private frozen delivery and schema-5 journal, admitted helper registration/replan, one-shot shared sequencer, authenticated status/cancel and original-worker fencing; product backend factory disabled | Fake runtimes/adapters and signed local helper fixtures cover delivery/context/consent checks, immutable reviewed inputs, activation, cleanup, uncertainty and no replay. Real transport/session authority, product wiring, full restart and terminal integration remain pending |
+| 3. Job coordination — helper backend/session authority foundation implemented, product wiring pending | Frozen delivery/replan, schema-6 journal, single-use shared-adapter/fenced-runner construction and independent authenticated manager authority; product provider disabled | Fake runtimes/process runners and signed local helpers cover session/command/invocation admission, construction, cancellation, cleanup, uncertainty and no replay. Product resource handoff, operational terminal/runner wiring and restart acceptance remain pending |
 | 4. PTY and stream transport | Helper, terminal frames, input lease and attachment | Local fixture processes prove colours, prompts, hidden input, resizing, detach/reconnect, output limits and process cleanup |
 | 5. UI and CLI | Setup selection, preview, tools report, terminal page and commands | Both surfaces operate the same job and expose identical dependency/recovery states; old CLI contract remains valid |
 | 6. Guest acceptance | Explicitly approved manager-owned disposable guest only | End-to-end setup, reapplication, authenticated restart, check and sudo revocation observed; failure scenarios recorded |
@@ -1280,3 +1280,144 @@ helper restart/reconnect and reviewed rebinding, real release-signature acceptan
 power-loss durability and artifact-retention UX. Real guest authorization, echo,
 remote cleanup/quiescence, crashes and kernel stalls remain unproved. The Setup-tab
 screenshot remains a visual target; this slice does not complete milestone 3.
+
+## Milestone 3 helper backend and manager session authority — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 with helper backend
+construction and manager-aware session authority, using fake runtimes and local
+fixtures only. No real SSH/SCP/SFTP/Ansible, host installs or VM launches. This
+supersedes the pending construction/authority foundation above. Product setup gates
+remain disabled. The product helper supplies no transport-resource provider and
+still rejects activation; neither UI nor installed app changes.
+
+**IMPLEMENTED — backend construction:** after explicit activation, the helper
+constructs the existing shared `SSHAnsibleGuestAdapter` and one permanently fenced
+process runner for the original worker. A trusted helper-local provider supplies
+an explicit pinned connection, transport tools, dependency digest and idle process
+runner factory. These resources are not decoded from a manifest, journal, control
+request or arbitrary path/command argument. Preparation is single-use, including
+a failed preparation. Recheck frozen root/source/review, original job/session/mode,
+plan/input/engine identities and package admission before asking for resources.
+
+Require the manager's fresh session permission before provider access and again
+before runner creation. Compare the connection's exact guest binding and dependency
+digest, revalidate the explicit identity-file reference without reading its bytes,
+and verify every executable pin without running a probe. Repeat checks around
+asynchronous preparation, then construct the shared adapter with that same authority
+and runner. The worker verifies the concrete manager authority and its exact runner
+association; it cannot substitute an older local-only authority for a registration
+that requires manager checks. Existing delivered/backend/activation consent AND,
+shared sequencing and permanent original-worker fencing remain intact.
+
+The provider is an internal trusted resource-admission boundary, not a sandbox for
+arbitrary providers. Production managed-SSH connection/key-reference handoff,
+Homebrew report-to-resource admission and a real local runner/terminal provider
+remain separate product wiring. No default discovers credentials, probes host
+tools or creates an executable backend. All providers exercised here pin inert
+fixture files and return fake process runners; constructing the concrete adapter
+does not launch SSH, Ansible or any other program.
+
+**IMPLEMENTED — independent authenticated authority:** bootstrap 4 binds
+`sessionAuthorityVersion: 1` into the original registration and reserves inherited
+fd 5 for a second private AF_UNIX stream. Frozen data remains on fd 4 and control
+on fd 3. The anonymous capability is still handed over only after owned-child image
+admission. Session frames use an independently derived HMAC key domain, separate
+sequence counters and the existing bounded frame/payload/time limits. A correctly
+MACed control packet cannot authenticate as session permission. Bootstrap 1–3
+remain supported; a downgrade cannot silently discard the authority marker.
+
+Before activation RPC, the coordinator has fsynced the activation identity/risk
+and installed the active VM lease. Only then bind a one-shot manager callback to
+the exact admitted registration/activation. The separate reverse-RPC loop awaits
+that callback without acquiring the launcher's control transaction lock. Status,
+cancel and shutdown remain serviceable while validation awaits another actor.
+There is no listener path, reconnect, saved-PID lookup or automatic authority retry.
+
+Fresh queries cover backend preparation, each command, adapter admission within
+a command, each process invocation and command completion. Requests contain only
+a challenge UUID, registration digest, original scope, mode, command/operation,
+optional invocation/purpose and explicit cleanup classification. They carry no
+owner name, credential, source, tool path, argv, environment or terminal bytes.
+Strict schemas reject unknown/null fields, wrong modes/workers and impossible
+operation/purpose or cleanup combinations. The server admits at most 4096 queries
+on one channel. Responses echo the entire request and a fixed typed decision.
+Lost, malformed, mismatched or replayed responses poison the channel; successful
+decisions are never cached or reusable permission receipts.
+
+The coordinator compares its current active generation, journaled activation,
+original worker/helper/review/session/binding and mode. It checks the actual
+VMManager lifecycle reservation and the injected dependency/binding authority,
+then repeats actor-owned checks after every await. VM lease checks include current
+running session, SSH owner/readiness, pending shutdown, power/execution and storage
+operations. SSH host-key/owner proof cannot invent manager VM/session ownership.
+Cancellation revokes body work; cleanup is admitted only for the explicit original
+target and narrow cleanup operations while its lease/dependencies remain valid.
+An expired/invalid target or missing authority never grants cleanup by assumption.
+
+The fenced runner records ownership **before** requesting per-invocation permission
+and rechecks its fence/cancellation after the reply, before calling the process
+backend. Refusal truthfully returns not-started. An authenticated body-stop decision
+is reported to the sequencer as cancellation without fabricating a process exit.
+An uncertain local result still overrides apparent clean guest completion and
+retains its exact runner for explicit original-worker reconciliation.
+
+Failed journal writes revoke body admission but retain the known live lease and
+reverse authority long enough to attempt original-target cleanup. Status polling
+and cancellation continue; durable cleanup success is never claimed while storage
+is failed. Package/source availability does not govern cleanup. Lost control or
+authority channels fence local work, keep uncertainty and cannot provide remote
+grant revocation proof. Hard stalls and full-process restart remain unproved.
+
+**IMPLEMENTED — journal compatibility:** schema 6 persists the optional original
+session-authority version alongside delivery/owner pins before spawn. Version 1
+requires a genuine delivered-input receipt and helper owner. Unknown/null versions,
+legacy-schema markers and missing delivery fail closed. Schemas 1–5 preserve their
+original risk/owner/delivery data without inventing authority or replaying apply.
+Reopen still requires explicit original-owner reconciliation and reviewed rebinding
+where applicable; a new helper cannot recover authority from disk.
+
+**PRIVATE COUPLING:** shared `ProvisioningSSHConnection.verify()` exposes stat-only
+identity revalidation; `ProvisioningTransportTools.verify()` is now public and
+`ProvisioningProcessPurpose` gains Codable for fixed metadata. Update the exact
+82-file base-plus-patch export, inventory, engine hash and compiled lock pin together.
+The base remains `bb3fae22be45b38035fac52aefa0eb270a9d0fea` plus the reviewed
+`Patches/dev-vm-durable-state.patch`; this is a changed engine identity. Guest
+resources, parser dependencies and C launcher bytes are unchanged.
+
+**VERIFIED — fake/local checks:** `make test` passes 319 manager Swift functions
+in 45 suites, 49 script tests and expanded relocated/read-only signed-helper
+fixtures. New parameterized tests exercise concrete-adapter apply/check with fake
+process runners, construction ordering/resource changes and no duplicate backend,
+private challenge correlation/key domains/replay/malformed/missing replies,
+one-shot binding, strict bootstrap/journal migration and local-authority bypass
+refusal. Every recorded fake process invocation has a matching manager query.
+Cancellation, ordinary shutdown, VM exit, readiness/dependency/package loss and
+channel closure stop further body calls. A dependency-validation suspension test
+proves cancellation is rechecked after the await. Failed journals still allow
+original cleanup and retain risk; uncertain local ownership needs explicit proof
+and recovery without constructing another backend.
+
+The actual product helper acknowledges frozen inputs but refuses the new backend
+activation without a provider. A separately sealed/ad-hoc-signed Debug fixture
+helper constructs the concrete shared adapter with only inert fixture tools and a
+fake process runner, asks the parent over the real inherited reverse channel,
+completes one job and cancels another with cleanup. Its cancellation fixture holds
+fake feature work until interruption so observation does not depend on a short
+sleep. The owned child is reaped. The normal app/helper is never replaced or enabled.
+
+Shared build/tests and development oracle checks pass 68 Swift functions, 18 parser
+fixtures and 66 complete planning/error fixtures using the existing command:
+`make build-provisioning test-provisioning test-provisioning-oracle test-provisioning-planning-oracle ORACLE_PYTHON=/opt/homebrew/opt/ansible/libexec/bin/python`.
+The existing Python runtime serves only development comparisons, not Ansible or a
+product fallback. Existing local socket/mock-auth/PTY sandbox exceptions and ad-hoc
+fixture signing are used. No real credentials, auth UI, host installs, actual guest
+transport, VM launch or installed-app change occurs.
+
+**TO PROVE / REMAINING:** product connection/tool-resource admission and private
+handoff, concrete manager construction, operational runner/terminal/input leases,
+job UI/CLI attachment, full manager/helper restart/reconnect and reviewed rebinding,
+release-signer acceptance, power-loss/retention UX and all real guest authorization,
+echo, transport, remote quiescence/cleanup and crash/kernel behavior. Fresh RPC
+checks are not an atomic transaction with remote execution or proof of guest
+identity/liveness after a reply. The screenshot remains the live terminal target;
+this slice does not complete milestone 3 or enable operational provisioning.

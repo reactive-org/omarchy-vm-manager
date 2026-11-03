@@ -117,7 +117,7 @@ private final class JobFixture: Sendable {
     let recoveryAuthority = JobRecoveryAuthority()
     let coordinator: ProvisioningCoordinator
     let package = JobPackageAdmission()
-    init(grace: Duration = .seconds(2), docker: Bool = false, quota: Int = 256 * 1024 * 1024) async throws {
+    init(grace: Duration = .seconds(2), docker: Bool = false, quota: Int = 256 * 1024 * 1024, hostKey: String = String(repeating: "a", count: 64)) async throws {
         root = URL(fileURLWithPath: "/private/tmp/provisioning-job-test-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         source = root.appendingPathComponent("source")
@@ -134,7 +134,7 @@ private final class JobFixture: Sendable {
         #expect(await eventually { await localManager.snapshots().first { $0.id == id }?.state == .running })
         let session = try #require(await manager.snapshots().first { $0.id == id }?.sessionID)
         await manager.receiveSSH(.ready(user: "fixture_owner", command: "synthetic-unused"), vmID: id, sessionID: session)
-        target = try GuestBinding(vmID: id, sessionID: session, owner: "fixture_owner", ownerUID: 1000, hostKeyDigest: String(repeating: "a", count: 64))
+        target = try GuestBinding(vmID: id, sessionID: session, owner: "fixture_owner", ownerUID: 1000, hostKeyDigest: hostKey)
         authority = JobAuthority()
         journal = try ProvisioningJobJournal(directory: root.appendingPathComponent("journal"))
         faults = FailingJobJournal(journal)
@@ -890,6 +890,112 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(await guest.commands.allSatisfy { $0.context.target == f.target })
         if kind != "exit" { #expect(await f.manager.activeSessionCount == 1) }
         await dispatcher.close()
+    }
+
+    @Test(arguments: [false, true])
+    func concreteHelperBackendUsesFreshManagerAuthorityWithoutExecutingTools(check: Bool) async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest), request = try f.request(check: check)
+        let provider = try SessionFixtureProvider(), launcher = LocalTransportLauncher(provider: provider)
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        #expect(provider.builds == 0 && provider.preparations == 0)
+        #expect(try f.journal.load().first?.helperSessionAuthorityVersion == 1)
+        try FileManager.default.removeItem(at: f.source)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+        #expect(try await f.coordinator.wait(request.jobID).state == (check ? .checked : .succeeded))
+        _ = try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+        #expect(provider.builds == 1 && provider.preparations == 1)
+        let invocations = await provider.runner.invocations, queries = await launcher.checks.requests
+        #expect(!invocations.isEmpty)
+        #expect(invocations.allSatisfy { call in queries.contains { $0.boundary == .invocation && $0.invocationID == call.id && $0.commandID == call.commandID } })
+        #expect(queries.allSatisfy { $0.scope.jobID == request.jobID && $0.scope.sessionID == f.target.sessionID })
+        #expect(queries.contains { $0.cleanup } && queries.contains { $0.boundary == .preparation })
+        let text = String(decoding: try helperJSON(queries), as: UTF8.self)
+        #expect(!text.contains(provider.root.path) && !text.contains(f.target.owner) && !text.contains("not-a-credential"))
+        await launcher.close()
+    }
+    @Test(arguments: ["cancel", "shutdown", "exit", "ssh", "dependency", "package", "channel", "journal"])
+    func reverseAuthorityRechecksAfterAnAwaitAndAllowsOnlyValidOriginalCleanup(kind: String) async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest), request = try f.request()
+        let provider = try SessionFixtureProvider(), launcher = LocalTransportLauncher(provider: provider), gate = IPCWorkerGate()
+        await launcher.checks.pause(gate)
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+        #expect(await eventually { await gate.entered })
+        if kind == "cancel" { try await f.coordinator.cancel(request.jobID) }
+        if kind == "shutdown" { await f.manager.shutDown(f.profile.id) }
+        if kind == "exit" { f.runtime.startedHandles[0].emit(.exited(status: 0)); #expect(await eventually { await f.manager.activeSessionCount == 0 }) }
+        if kind == "ssh" { await f.manager.receiveSSH(.failed("fixture readiness lost"), vmID: f.profile.id, sessionID: f.target.sessionID) }
+        if kind == "dependency" { await f.authority.deny() }
+        if kind == "package" { f.package.refuse() }
+        if kind == "channel" { await launcher.breakSessionChannel() }
+        if kind == "journal" { f.faults.failWrites(); try await f.coordinator.cancel(request.jobID) }
+        await gate.release()
+        let status = try await f.coordinator.wait(request.jobID)
+        let calls = await provider.runner.invocations
+        #expect(!calls.contains { $0.purpose == .features })
+        if kind == "cancel" || kind == "shutdown" {
+            #expect(status.state == .cancelled && !status.cleanupRequired)
+            #expect(calls.contains { $0.purpose == .remove })
+        } else if kind == "package" { #expect(status.state == .failed && !status.cleanupRequired) }
+        else {
+            #expect(status.cleanupRequired)
+            if kind == "journal" { #expect(calls.contains { $0.purpose == .remove }) }
+        }
+        await launcher.close()
+    }
+    @Test(arguments: ["binding", "dependency", "tool", "identity"])
+    func backendConstructionRejectsChangedResourcesBeforeCreatingAProcessRunner(kind: String) async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest), request = try f.request()
+        let provider = try SessionFixtureProvider(wrongBinding: kind == "binding", wrongDependencies: kind == "dependency")
+        if kind == "tool" { try Data("changed".utf8).write(to: provider.root.appendingPathComponent("ssh")) }
+        if kind == "identity" { chmod(provider.root.appendingPathComponent("synthetic-identity").path, 0o644) }
+        let launcher = LocalTransportLauncher(provider: provider)
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+        #expect(try await f.coordinator.wait(request.jobID).cleanupRequired)
+        #expect(provider.builds == 0)
+        #expect(await provider.runner.invocations.isEmpty)
+        await launcher.close()
+    }
+
+    @Test func managerAuthorityRechecksCancellationAfterDependencyValidationSuspends() async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest), request = try f.request()
+        let provider = try SessionFixtureProvider(), launcher = LocalTransportLauncher(provider: provider), gate = JobGate()
+        await launcher.checks.interceptFeatures { await f.authority.pauseNext(gate) }
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+        #expect(await eventually { await gate.entered })
+        try await f.coordinator.cancel(request.jobID); await gate.release()
+        #expect(try await f.coordinator.wait(request.jobID).state == .cancelled)
+        #expect(await !provider.runner.invocations.contains { $0.purpose == .features })
+        #expect(await provider.runner.invocations.contains { $0.purpose == .remove })
+        await launcher.close()
+    }
+
+    @Test func aSessionBoundRegistrationCannotFallBackToLocalAuthority() async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest), request = try f.request()
+        let provider = try SessionFixtureProvider(), launcher = LocalTransportLauncher(provider: provider, bypassAuthority: true)
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+        #expect(try await f.coordinator.wait(request.jobID).cleanupRequired)
+        #expect(await launcher.bypassGuest.commands.isEmpty)
+        #expect(provider.builds == 0)
+        await launcher.close()
+    }
+    @Test func concreteBackendRetainsUncertainLocalOwnershipForOriginalWorkerRecovery() async throws {
+        let f = try await JobFixture(hostKey: sessionFixtureHostKeyDigest), request = try f.request()
+        let runner = SessionFixtureRunner(uncertainFeatures: true), provider = try SessionFixtureProvider(runner: runner)
+        let launcher = LocalTransportLauncher(provider: provider)
+        try await f.coordinator.registerHelperWorker(request, approval: f.approve(request), launcher: launcher)
+        try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
+        #expect(try await f.coordinator.wait(request.jobID).cleanupRequired)
+        await #expect(throws: ProvisioningJobFailure.ownershipUnverified) { try await f.coordinator.recover(request.jobID, target: f.target, adapter: JobGuest()) }
+        await runner.proveCleanup()
+        try await f.coordinator.recover(request.jobID, target: f.target, adapter: JobGuest())
+        #expect(try await f.coordinator.wait(request.jobID).state == .cleanupConfirmed)
+        #expect(provider.builds == 1 && provider.preparations == 1)
+        #expect(await launcher.activations == 1)
+        await launcher.close()
     }
 
 }

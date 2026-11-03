@@ -8,12 +8,13 @@ final class ProvisioningHelperChild: @unchecked Sendable {
     let pid: pid_t
     let socket: ProvisioningHelperSocket
     private let input: ProvisioningHelperSocket?
+    let sessionSocket: ProvisioningHelperSocket?
     private let lock = NSLock()
     private var bootstrapFD: Int32
     private var exit: Exit?
     private var waiters: [CheckedContinuation<Exit, Never>] = []
-    private init(pid: pid_t, socket: ProvisioningHelperSocket, writer: Int32, input: ProvisioningHelperSocket?) {
-        self.pid = pid; self.socket = socket; bootstrapFD = writer; self.input = input
+    private init(pid: pid_t, socket: ProvisioningHelperSocket, writer: Int32, input: ProvisioningHelperSocket?, sessionSocket: ProvisioningHelperSocket?) {
+        self.pid = pid; self.socket = socket; bootstrapFD = writer; self.input = input; self.sessionSocket = sessionSocket
         DispatchQueue.global(qos: .utility).async { [self] in
             var status: Int32 = 0, result: pid_t
             repeat { result = waitpid(pid, &status, 0) } while result < 0 && errno == EINTR
@@ -29,7 +30,7 @@ final class ProvisioningHelperChild: @unchecked Sendable {
         }
     }
     func disconnect() {
-        socket.stop(); input?.stop()
+        socket.stop(); input?.stop(); sessionSocket?.stop()
         lock.withLock { if bootstrapFD >= 0 { Darwin.close(bootstrapFD); bootstrapFD = -1 } }
     }
     func deliver(_ data: Data) throws {
@@ -60,7 +61,7 @@ final class ProvisioningHelperChild: @unchecked Sendable {
             }
         }
     }
-    static func spawn(admission: ProvisioningHelperLaunchAdmission, directory: URL, hasDelivery: Bool = false) throws -> ProvisioningHelperChild {
+    static func spawn(admission: ProvisioningHelperLaunchAdmission, directory: URL, hasDelivery: Bool = false, hasSessionAuthority: Bool = false) throws -> ProvisioningHelperChild {
         try admission.revalidate(); try PrivateFiles.directory(directory)
         var pair = [Int32](repeating: -1, count: 2), bootstrap = [Int32](repeating: -1, count: 2)
         guard socketpair(AF_UNIX, SOCK_STREAM, 0, &pair) == 0 else { throw ProvisioningHelperIPCFailure.unavailable }
@@ -81,8 +82,19 @@ final class ProvisioningHelperChild: @unchecked Sendable {
         let inputSource = hasDelivery ? fcntl(inputPair[1], F_DUPFD_CLOEXEC, 10) : -1
         defer { if inputSource >= 0 { Darwin.close(inputSource) } }
         guard !hasDelivery || inputSource >= 0 else { throw ProvisioningHelperIPCFailure.unavailable }
+        var sessionPair = [Int32](repeating: -1, count: 2)
+        defer { if sessionPair[1] >= 0 { Darwin.close(sessionPair[1]) } }
+        var sessionSocket: ProvisioningHelperSocket?
+        if hasSessionAuthority {
+            guard hasDelivery, socketpair(AF_UNIX, SOCK_STREAM, 0, &sessionPair) == 0 else { throw ProvisioningHelperIPCFailure.unavailable }
+            guard fcntl(sessionPair[1], F_SETFD, FD_CLOEXEC) == 0 else { Darwin.close(sessionPair[0]); throw ProvisioningHelperIPCFailure.unavailable }
+            sessionSocket = try ProvisioningHelperSocket(taking: sessionPair[0])
+        }
+        let sessionSource = hasSessionAuthority ? fcntl(sessionPair[1], F_DUPFD_CLOEXEC, 10) : -1
+        defer { if sessionSource >= 0 { Darwin.close(sessionSource) } }
+        guard !hasSessionAuthority || sessionSource >= 0 else { throw ProvisioningHelperIPCFailure.unavailable }
         // Sources above stdio/control avoid dup2 aliasing. CLOEXEC_DEFAULT closes
-        // every unrelated descriptor; only 0/1/2/3 and optional 4 are explicitly inherited.
+        // every unrelated descriptor; only 0/1/2/3 and optional 4/5 are explicitly inherited.
         let sourceSocket = fcntl(pair[1], F_DUPFD_CLOEXEC, 10), sourceInput = fcntl(bootstrap[0], F_DUPFD_CLOEXEC, 10)
         defer { if sourceSocket >= 0 { Darwin.close(sourceSocket) }; if sourceInput >= 0 { Darwin.close(sourceInput) } }
         let null = open("/dev/null", O_RDWR | O_CLOEXEC)
@@ -102,6 +114,7 @@ final class ProvisioningHelperChild: @unchecked Sendable {
               posix_spawn_file_actions_addchdir_np(&actions, directory.path) == 0,
               posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { throw ProvisioningHelperIPCFailure.unavailable }
         if hasDelivery { guard posix_spawn_file_actions_adddup2(&actions, inputSource, 4) == 0 else { throw ProvisioningHelperIPCFailure.unavailable } }
+        if hasSessionAuthority { guard posix_spawn_file_actions_adddup2(&actions, sessionSource, 5) == 0 else { throw ProvisioningHelperIPCFailure.unavailable } }
         let arguments = [admission.executable.path, "--ownership-channel-fd", "3"].map { strdup($0) } + [nil]
         let environment = ["PATH=/nonexistent", "LC_ALL=C", "HOME=" + directory.path, "TMPDIR=" + directory.path].map { strdup($0) } + [nil]
         defer { arguments.forEach { free($0) }; environment.forEach { free($0) } }
@@ -111,7 +124,7 @@ final class ProvisioningHelperChild: @unchecked Sendable {
         } }
         guard result == 0 else { throw ProvisioningHelperIPCFailure.unavailable }
         Darwin.close(pair[1]); pair[1] = -1; Darwin.close(bootstrap[0]); bootstrap[0] = -1
-        let child = ProvisioningHelperChild(pid: pid, socket: parent, writer: bootstrap[1], input: input); bootstrap[1] = -1
+        let child = ProvisioningHelperChild(pid: pid, socket: parent, writer: bootstrap[1], input: input, sessionSocket: sessionSocket); bootstrap[1] = -1
         return child
     }
 }

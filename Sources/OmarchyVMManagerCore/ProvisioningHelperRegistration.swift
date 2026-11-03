@@ -9,16 +9,19 @@ struct ProvisioningHelperWorkerRegistration: Codable, Equatable, Sendable {
     let inputDigest: String
     let mode: ProvisioningMode
     var delivery: ProvisioningFrozenDeliveryReceipt? = nil
+    var sessionAuthorityVersion: Int? = nil
     func validate() throws {
         try scope.validate()
         try delivery?.validate()
+        guard sessionAuthorityVersion == nil || (sessionAuthorityVersion == 1 && delivery != nil) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         guard provisioningDigest(planDigest), provisioningDigest(inputDigest) else { throw ProvisioningHelperIPCFailure.protocolViolation }
     }
     var digest: String { get throws { KitVerifier.sha256(try helperJSON(self)) } }
     static func validateDocument(_ value: ManifestValue) throws {
         let required: Set<String> = ["scope", "planDigest", "inputDigest", "mode"]
-        guard case .object(let fields) = value, required.isSubset(of: Set(fields.keys)), Set(fields.keys).isSubset(of: required.union(["delivery"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard case .object(let fields) = value, required.isSubset(of: Set(fields.keys)), Set(fields.keys).isSubset(of: required.union(["delivery", "sessionAuthorityVersion"])) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         try validateExpectation(fields["scope"])
+        if let version = fields["sessionAuthorityVersion"] { guard version == .integer(1) else { throw ProvisioningHelperIPCFailure.protocolViolation } }
         if let delivery = fields["delivery"] { try ProvisioningFrozenDeliveryReceipt.validateDocument(delivery) }
     }
 }

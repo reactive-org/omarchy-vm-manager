@@ -88,6 +88,10 @@ actor ProvisioningHelperEngineWorker {
     }
     private func validate(_ value: ProvisioningHelperEngineContext) async throws {
         let request = value.request, scope = registration.scope
+        if registration.sessionAuthorityVersion != nil {
+            guard let authority = value.authority as? ProvisioningHelperSessionAuthority,
+                  await authority.matches(registration), await value.runner.matchesAuthority(authority) else { throw SequencingFailure.identityMismatch }
+        }
         if let delivery = registration.delivery {
             guard let frozen = value.frozenContext, frozen.receipt == delivery, request.repository == frozen.storage.directory,
                   request.reviewIdentity == frozen.request.reviewIdentity else { throw SequencingFailure.identityMismatch }
@@ -114,7 +118,8 @@ actor ProvisioningHelperEngineWorker {
         if !cleanup, cancelled || fenced || !bodyAllowed() { throw SequencingFailure.cancelled }
         if !cleanup { try context.admitPackage(); try context.frozenContext?.storage.verifyRoot() }
         if cleanup, command.inputLeaseID != nil { throw SequencingFailure.protocolViolation }
-        try await context.authority.revalidate(context.request.target, dependencyDigest: registration.scope.dependencyDigest)
+        if let authority = context.authority as? any ProvisioningCommandSessionAuthorizing { try await authority.begin(command) }
+        else { try await context.authority.revalidate(context.request.target, dependencyDigest: registration.scope.dependencyDigest) }
         if !cleanup, cancelled || fenced || !bodyAllowed() { throw SequencingFailure.cancelled }
         operation = command.operation; commandID = command.id; bump()
     }
@@ -122,6 +127,18 @@ actor ProvisioningHelperEngineWorker {
         guard let context else { throw SequencingFailure.identityMismatch }
         try await context.authority.revalidate(context.request.target, dependencyDigest: registration.scope.dependencyDigest)
         if command.plan != nil, cancelled || fenced || !bodyAllowed() { throw SequencingFailure.cancelled }
+    }
+    fileprivate func failure(_ error: any Error, command: DevVMProvisioningCore.GuestCommand) async -> any Error {
+        // The runner truthfully reports not-started when authority revokes a
+        // queued launch. Preserve that local ownership proof while reporting
+        // the authenticated body-stop decision as cancellation to the engine.
+        if error as? SequencingFailure == .adapterFailed, command.plan != nil,
+           let authority = context?.authority as? ProvisioningHelperSessionAuthority,
+           await authority.bodyWasStopped(command.id) { return SequencingFailure.cancelled }
+        return error
+    }
+    fileprivate func end(_ commandID: UUID) async {
+        if let authority = context?.authority as? any ProvisioningCommandSessionAuthorizing { await authority.end(commandID) }
     }
     private func complete(_ result: ProvisioningOutcome, failure: SequencingFailure?, cleanup: [SequencingFailure], required: Bool) {
         self.outcome = result; self.failure = failure; cleanupFailures = cleanup; cleanupRequired = required
@@ -133,10 +150,13 @@ private struct HelperEngineAdapter: ProvisioningGuestAdapter {
     let owner: ProvisioningHelperEngineWorker
     let underlying: any ProvisioningGuestAdapter
     func perform(_ command: DevVMProvisioningCore.GuestCommand) async throws -> DevVMProvisioningCore.GuestReply {
-        try await owner.before(command)
-        let reply = try await underlying.perform(command)
-        try await owner.after(command)
-        return reply
+        do {
+            try await owner.before(command)
+            let reply = try await underlying.perform(command)
+            try await owner.after(command)
+            await owner.end(command.id)
+            return reply
+        } catch { let failure = await owner.failure(error, command: command); await owner.end(command.id); throw failure }
     }
     func interrupt(commandID: UUID, context: GuestJobContext) async { await underlying.interrupt(commandID: commandID, context: context) }
 }

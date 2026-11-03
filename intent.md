@@ -1884,3 +1884,78 @@ real release-signature acceptance, power-loss durability/retention UX, live term
 PTY/input/UI/CLI integration and real guest/auth/echo/quiescence/crash/kernel behavior.
 The supplied screenshot remains a visual reference; no UI or installed app changes.
 See the [frozen-input handoff](docs/DevVMProvisioningPlan.md#milestone-3-frozen-input-delivery-and-helper-context-validation--3-november-2026).
+
+## Helper backend construction and manager session authority — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes
+and disposable local fixtures only. No real SSH/Ansible, installs or VM launches.
+This supersedes the pending construction/authority foundation above; execution
+surfaces remain disabled and no UI or installed app changes.
+
+**DESIGN DECISION / IMPLEMENTED:** a single-use helper backend constructs the
+existing shared SSH/Ansible adapter and original-worker fenced runner from an
+explicit trusted helper-local transport-resource provider. Require the validated
+frozen request, original bindings/digests, package admission and fresh manager
+permission before resource access and runner construction. Verify connection/tool
+pins around awaits without probes or reading identity-file bytes. The exact same
+manager authority guards the context, adapter and runner; authority-bound workers
+cannot fall back to local-only validation. Product entry points provide no resource
+provider or operational runner; all tested factories return fake process runners.
+Production managed-SSH/Homebrew resource admission and handoff remain product work.
+
+**DESIGN DECISION / IMPLEMENTED:** bootstrap 4 binds the authority version and an
+independent inherited fd-5 session channel. Frozen data/control remain separate.
+Session HMAC keys have a distinct derivation domain and counters; control packets
+cannot act as authority. One-shot registration/activation binding follows durable
+activation/lease publication. A separate reverse-RPC loop awaits the coordinator
+without blocking the launcher's control lock, keeping status/cancel serviceable.
+Fresh challenge-bound checks cover preparation, commands, process invocations and
+completion. Strict bounded metadata includes original opaque scope and typed
+operation/purpose, never owner names, credentials, paths/argv or terminal bytes.
+No successful decision is cached; bad/lost/replayed replies poison the channel.
+
+The coordinator compares the live generation/journaled activation and original
+scope, revalidates the actual VMManager lease plus dependency/binding authority,
+and repeats its state checks after awaits. Current running session, SSH owner,
+shutdown/power/execution/storage state remain manager-owned. Process ownership is
+recorded before permission; fencing/cancellation is checked again before backend
+launch. Body revocation returns not-started locally and typed cancellation to the
+sequencer. Valid original-target cleanup can continue after cancellation or package/
+source loss; failed journal writes stop body work while permitting cleanup against
+the retained lease and preserving risk. Missing/expired/invalid authority cannot
+invent remote cleanup proof. Physical uncertainty retains the exact local runner.
+
+**DESIGN DECISION / IMPLEMENTED:** schema 6 persists the optional original session
+version, requiring genuine delivery and helper owner. Unknown/null/legacy markers
+fail closed; schemas 1–5 retain risk/pins without invented authority or replay.
+Lost channels fence local work. A new helper, saved PID or disk row cannot adopt
+manager/VM ownership. Matching VM/helper exit boundaries remain separately retained.
+
+**PRIVATE COUPLING:** shared connection verification is public stat-only metadata
+revalidation, tool verification is public, and fixed process purposes gain Codable.
+The engine inventory and exact 82-file base-plus-patch export/compiled pin change
+together. Base `bb3fae2`, guest resources, parser dependencies and C launcher remain
+unchanged; the patched engine identity is new.
+
+**VERIFIED — fake/local checks:** `make test` passes 319 manager Swift functions/
+45 suites, 49 script tests and expanded relocated/read-only signed-helper fixtures.
+Coverage includes concrete adapter apply/check with fake runners, construction
+resource checks, fresh per-invocation permission, cancellation/shutdown/exit/SSH/
+dependency/package/channel races, cancellation during dependency validation,
+failed-journal cleanup, strict MAC/challenge/schema/one-shot binding, local-authority
+bypass refusal and physical-uncertainty recovery without backend reconstruction.
+The actual product helper refuses activation without a provider. A separate
+ad-hoc-signed Debug helper constructs the adapter with inert files/fake runner and
+uses the actual inherited authority channel for completion and deterministic
+cancellation/cleanup; matching owned child exit is reaped. Shared checks pass 68
+Swift functions, 18 parser oracle fixtures and 66 complete planning/error fixtures.
+Only local socket/mock-auth/PTY sandbox exceptions and ad-hoc fixture signing are
+used. No real credentials/auth UI, transport, installs or VM operation occurs.
+
+**TO PROVE:** product transport-resource admission/handoff and construction, real
+runner/terminal/input leases, UI/CLI, full restart/reconnect/rebinding, release
+signatures, power-loss/retention UX and real guest/auth/echo/transport/quiescence/
+cleanup/crash/kernel behavior. Fresh RPC checks are not atomic remote execution
+or proof of guest liveness after a reply. Earlier real-guest evidence labels stay
+unchanged; the supplied terminal screenshot remains a visual target.
+See the [backend/session-authority handoff](docs/DevVMProvisioningPlan.md#milestone-3-helper-backend-and-manager-session-authority--3-november-2026).

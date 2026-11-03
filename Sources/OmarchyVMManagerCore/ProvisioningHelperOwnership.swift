@@ -15,16 +15,18 @@ actor ProvisioningFencedProcessRunner: ProvisioningProcessRunner {
     private let scope: ProvisioningRecoveryExpectation
     private let target: GuestBinding
     private let mode: ProvisioningMode
+    private let authority: (any ProvisioningInvocationAuthorizing)?
     private var fenced = false
     private var active: [UUID: Task<ProvisioningProcessResult, Never>] = [:]
     private var uncertain = Set<UUID>()
     private var seen = Set<UUID>()
-    init(backend: any ProvisioningProcessRunner, scope: ProvisioningRecoveryExpectation, target: GuestBinding, mode: ProvisioningMode) throws {
+    init(backend: any ProvisioningProcessRunner, scope: ProvisioningRecoveryExpectation, target: GuestBinding, mode: ProvisioningMode, authority: (any ProvisioningInvocationAuthorizing)? = nil) throws {
         try scope.validate()
         guard target.vmID == scope.vmID, target.sessionID == scope.sessionID,
               try ProvisioningCoordinator.bindingIdentity(target) == scope.bindingDigest else { throw ProvisioningHelperIPCFailure.ownership }
-        self.backend = backend; self.scope = scope; self.target = target; self.mode = mode
+        self.backend = backend; self.scope = scope; self.target = target; self.mode = mode; self.authority = authority
     }
+    func matchesAuthority(_ value: ProvisioningHelperSessionAuthority) -> Bool { (authority as? ProvisioningHelperSessionAuthority) === value }
     func matches(_ expectation: ProvisioningRecoveryExpectation) -> Bool { scope.sameWorker(as: expectation) }
     func run(_ invocation: ProvisioningProcessInvocation) async -> ProvisioningProcessResult {
         guard !fenced, active.isEmpty, uncertain.isEmpty, seen.count < 4096, !seen.contains(invocation.id),
@@ -40,6 +42,9 @@ actor ProvisioningFencedProcessRunner: ProvisioningProcessRunner {
         return result.invocationID == invocation.id ? result : .init(invocationID: invocation.id, termination: .cleanupUnconfirmed)
     }
     private func launch(_ invocation: ProvisioningProcessInvocation) async -> ProvisioningProcessResult {
+        guard !fenced, !Task.isCancelled else { return .init(invocationID: invocation.id, termination: .notStarted) }
+        do { try await authority?.authorize(invocation) }
+        catch { return .init(invocationID: invocation.id, termination: .notStarted) }
         guard !fenced, !Task.isCancelled else { return .init(invocationID: invocation.id, termination: .notStarted) }
         return await backend.run(invocation)
     }

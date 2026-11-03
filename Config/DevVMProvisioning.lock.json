@@ -80,7 +80,7 @@
     "tests/DevVMProvisioningCoreTests/TransportTests.swift": "5f1a646e06825992c06222c0f001b1ba670576e20b071d8e147d9177fea406c1",
     "tests/ProcessFixture/main.c": "36d59d76a07eedc4cf78f06a95fa205abd22bb2cc100f88bb7e8b0cf3c005fae"
   },
-  "engineSHA256": "2ddaf8ab753f5c6672cea1511e844ec7736ea1fb134d6d1f4412ddf0668a74cc",
+  "engineSHA256": "8c0e20b4ab39320dc086e72cfbdbf8f5ece24d4f4fa7e50b3e85af9f88d4199c",
   "files": {
     "AGENTS.md": "df05f49430ac4197c88fae97e9309e16c04b36bc42c7b2ffa31526cc65a9444e",
     "Package.resolved": "1c1292adea6d7e8ccf2bca848d90a720bb644bb41c564053d500921b46e7017b",
@@ -105,7 +105,7 @@
     "Sources/DevVMProvisioningCore/LocalProvisioningProcessRunner.swift": "613add4a5978c1ea26c8fcae1d9e33f15d3ab43f541e68c8f49e48b1df4feac1",
     "Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift": "666dfb614c00fc5ebe0a4f7e69089f1336ac6a95ad7639d4291a880c22e5c3cd",
     "Sources/DevVMProvisioningCore/PlainData.swift": "71a28c2c8da37a9e44ee296c60976cbb2b98d3bc5eaa2eb3260c996ee73b5dd5",
-    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "2e805b617c3e842d3021caa5222b30c165d49f0a36a01b13d8ab393a965fa596",
+    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "917dcd0afb8e8331b16875c7757f295e358c3f02ada61bb75e24fd3121e65169",
     "Sources/DevVMProvisioningCore/ProvisioningSequencer.swift": "4ba039a9b4bac11cf8d1dfea029d2a7115e1d47212f3084912d6864db09dea81",
     "Sources/DevVMProvisioningCore/ProvisioningTerminal.swift": "098254567d79d5266b6dd71f2ba8f2ec77eb9c04a0d632100395e656bfbaf74d",
     "Sources/DevVMProvisioningCore/Resources/LibYAML-LICENSE.txt": "c40112449f254b9753045925248313e9270efa36d226b22d82d4cc6c43c57f29",
@@ -143,7 +143,7 @@
     "Sources/DevVMProvisioningCore/Resources/Yams-LICENSE.txt": "0354b0ea403d2e78059c5ae0510a2cfae9f8eb306fcef094ac9fff5b47e20bed",
     "Sources/DevVMProvisioningCore/Resources/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
     "Sources/DevVMProvisioningCore/Resources/catalogue.schema.json": "234128f6847d0b5b428d5b063261d4aa6f50129c13846d41d10812783b787ea6",
-    "Sources/DevVMProvisioningCore/Resources/engine-identity.json": "2ddaf8ab753f5c6672cea1511e844ec7736ea1fb134d6d1f4412ddf0668a74cc",
+    "Sources/DevVMProvisioningCore/Resources/engine-identity.json": "8c0e20b4ab39320dc086e72cfbdbf8f5ece24d4f4fa7e50b3e85af9f88d4199c",
     "Sources/DevVMProvisioningCore/Resources/selection.schema.json": "351a0754a2b9091a806e1e1237485cfd251e82e018610f0e1831ba3a049d17c9",
     "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "3dd49155e97127dd6361a15db60b7d28f6d610c6c7e8edaee0aeaa78b2501c7e",
     "Sources/DevVMProvisioningCore/SelectionSchema.swift": "e46a8ee4a2f81c17c3f33cb2ff0e7cf9ad5f6e70d32c79fc5021976c32eca29d",
@@ -169,7 +169,7 @@
   "integrationPatches": [
     {
       "path": "Patches/dev-vm-durable-state.patch",
-      "sha256": "1a6960231f174739fad5bf3520843a74c90b935f1e9ea7c7b9fa3e907d3c2062"
+      "sha256": "bc2f9a14c6e776cfb9cb40b6d4862bf07a47c59fc975161cea14405bb87b79c1"
     }
   ],
   "launcher": "dev-vm-process-host",
@@ -179,5 +179,5 @@
   "revision": "bb3fae22be45b38035fac52aefa0eb270a9d0fea",
   "setupAPI": 1,
   "source": "https://github.com/reactive-org/dev-vm",
-  "sourceSnapshotSHA256": "54e155ed221530e6f1fdd67277b8ad52835b20b21decbce119873b5549efeb78"
+  "sourceSnapshotSHA256": "65eb5daaa615c173e561c0ef1d1cd62a2dc535543024612d1758ca8ba56609c4"
 }

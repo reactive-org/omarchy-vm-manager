@@ -80,7 +80,7 @@ protocol ProvisioningHelperDispatching: ProvisioningHelperLaunching {
 }
 
 /// Trusted helper-local preparation only. It must not launch processes or run
-/// guest operations. Production frozen-input/context transfer is not enabled.
+/// guest operations. Product entry points supply no transport resource provider.
 protocol ProvisioningHelperEnginePreparing: Sendable {
     func prepare(_ registration: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperEngineContext
 }

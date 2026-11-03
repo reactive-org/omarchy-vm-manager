@@ -15,7 +15,7 @@ Omarchy VM Manager is a project of reactive.org enterprises: https://www.reactiv
 
 The developer provisioning library uses the source snapshot from reactive-org/dev-vm
 at `bb3fae22be45b38035fac52aefa0eb270a9d0fea` plus the exact durable-state integration
-patch (including the public reviewed manifest path) in
+patch (including reviewed manifest metadata and explicit transport verification) in
 `Patches/dev-vm-durable-state.patch`. Guest resources/parser dependencies
 and the C launcher retain their upstream bytes.
 `Config/DevVMProvisioning.lock.json` inventories the exported source and

@@ -87,19 +87,20 @@ final class ProvisioningHelperIPCServer: Sendable {
     private let registration: ProvisioningHelperWorkerRegistration?
     private let engineFactory: (any ProvisioningHelperEnginePreparing)?
     private let frozenInput: ProvisioningValidatedFrozenContext?
-    init(socket: ProvisioningHelperSocket, credentials: ProvisioningHelperCredentials, registry: ProvisioningHelperOwnershipRegistry, engineFactory: (any ProvisioningHelperEnginePreparing)? = nil, frozenInput: ProvisioningValidatedFrozenContext? = nil) throws {
+    private let sessionConnected: @Sendable () -> Bool
+    init(socket: ProvisioningHelperSocket, credentials: ProvisioningHelperCredentials, registry: ProvisioningHelperOwnershipRegistry, engineFactory: (any ProvisioningHelperEnginePreparing)? = nil, frozenInput: ProvisioningValidatedFrozenContext? = nil, sessionConnected: @escaping @Sendable () -> Bool = { true }) throws {
         guard credentials.identity == registry.identity else { throw ProvisioningHelperIPCFailure.authentication }
         guard credentials.registration?.delivery == frozenInput?.receipt else { throw ProvisioningHelperIPCFailure.authentication }
         self.socket = socket; self.credentials = credentials; self.registry = registry
         registration = credentials.registration; self.engineFactory = engineFactory
-        self.frozenInput = frozenInput
+        self.frozenInput = frozenInput; self.sessionConnected = sessionConnected
     }
     func stop() { socket.stop() }
     func serve() async {
         guard gate.claim() else { return }
         let monitor = Task {
             while !Task.isCancelled {
-                if socket.peerClosed { await registry.managerDisconnected(); return }
+                if socket.peerClosed || !sessionConnected() { socket.stop(); await registry.managerDisconnected(); return }
                 do { try await Task.sleep(for: .milliseconds(40)) } catch { return }
             }
         }
@@ -108,7 +109,7 @@ final class ProvisioningHelperIPCServer: Sendable {
         do {
             if let registration {
                 let control = socket
-                try await registry.registerPrepared(registration, bodyAllowed: { !control.peerClosed })
+                try await registry.registerPrepared(registration, bodyAllowed: { !control.peerClosed && self.sessionConnected() })
                 let receipt = ProvisioningHelperRegistrationReceipt(identity: credentials.identity, registrationDigest: try registration.digest, state: "registered", deliveryDigest: frozenInput?.receipt.sha256)
                 let frame = try codec.encode(helperJSON(receipt))
                 try await helperBlocking { try self.socket.send(frame) }
@@ -147,7 +148,7 @@ public enum ProvisioningHelperControl {
     public static func serveInheritedOwnershipChannel(descriptor: Int32, layout: ProvisioningPackageLayout) async throws {
         try await serveInherited(descriptor: descriptor, layout: layout, engineFactory: nil)
     }
-    static func serveInherited(descriptor: Int32, layout: ProvisioningPackageLayout, engineFactory: (any ProvisioningHelperEnginePreparing)?, deliveredBackend: (any ProvisioningDeliveredBackendPreparing)? = nil) async throws {
+    static func serveInherited(descriptor: Int32, layout: ProvisioningPackageLayout, engineFactory: (any ProvisioningHelperEnginePreparing)?, deliveredBackend: (any ProvisioningDeliveredBackendPreparing)? = nil, transportProvider: (any ProvisioningHelperTransportProviding)? = nil) async throws {
         guard (3...1024).contains(descriptor) else { throw ProvisioningHelperIPCFailure.authentication }
         let socket = try ProvisioningHelperSocket(taking: descriptor)
         defer { socket.stop() }
@@ -157,6 +158,12 @@ public enum ProvisioningHelperControl {
         guard credentials.identity.packageLockSHA256 == ProvisioningPackagePin.lockSHA256,
               credentials.identity.executableSHA256 == (try BundledProvisioning.helperExecutableSHA256(layout)) else { throw ProvisioningHelperIPCFailure.authentication }
         _ = try BundledProvisioning.inspect(layout)
+        var sessionClient: ProvisioningSessionClient?
+        if credentials.registration?.sessionAuthorityVersion == 1 {
+            guard descriptor != 5 else { throw ProvisioningHelperIPCFailure.protocolViolation }
+            sessionClient = ProvisioningSessionClient(socket: try ProvisioningHelperSocket(taking: 5), credentials: credentials)
+        }
+        defer { sessionClient?.stop() }
         var input: ProvisioningValidatedFrozenContext?
         var factory = engineFactory
         if let registration = credentials.registration, let receipt = registration.delivery {
@@ -167,10 +174,17 @@ public enum ProvisioningHelperControl {
             let parent = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             let validated = try ProvisioningValidatedFrozenContext.load(bytes, registration: registration, parent: parent)
             input = validated
-            factory = deliveredBackend.map { ProvisioningDeliveredEngineFactory(input: validated, backend: $0) }
+            if let sessionClient {
+                if let transportProvider {
+                    let backend = ProvisioningHelperTransportBackend(provider: transportProvider, client: sessionClient,
+                        admitPackage: { _ = try BundledProvisioning.inspect(layout) })
+                    factory = ProvisioningDeliveredEngineFactory(input: validated, backend: backend)
+                } else { factory = nil } // No downgrade to a helper-local authority.
+            } else { factory = deliveredBackend.map { ProvisioningDeliveredEngineFactory(input: validated, backend: $0) } }
         }
         let registry = try ProvisioningHelperOwnershipRegistry(identity: credentials.identity)
-        let server = try ProvisioningHelperIPCServer(socket: socket, credentials: credentials, registry: registry, engineFactory: factory, frozenInput: input)
+        let peer = sessionClient
+        let server = try ProvisioningHelperIPCServer(socket: socket, credentials: credentials, registry: registry, engineFactory: factory, frozenInput: input, sessionConnected: { peer?.connected ?? true })
         // Bootstrap reserves the original worker before its receipt. The public
         // product entry point supplies no context factory and rejects activation.
         await server.serve()

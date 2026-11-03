@@ -189,6 +189,7 @@ public actor ProvisioningCoordinator {
                 payloadID: payload, workerToken: worker, engineDigest: record.engineDigest, dependencyDigest: record.dependencyDigest,
                 bindingDigest: record.bindingDigest, reviewDigest: record.reviewDigest, checkpointDigest: files.cleanupSHA256)
             var registration = ProvisioningHelperWorkerRegistration(scope: scope, planDigest: record.planDigest, inputDigest: record.inputDigest, mode: record.mode)
+            if launcher is any ProvisioningManagerSessionLaunching { registration.sessionAuthorityVersion = 1 }
             let prepared: ProvisioningHelperLaunchTicket
             if let frozen = launcher as? any ProvisioningFrozenHelperLaunching {
                 let delivery = try artifacts.prepareDelivery(request, approval: approval, inputsSHA256: files.inputsSHA256)
@@ -200,7 +201,7 @@ public actor ProvisioningCoordinator {
             try prepared.identity.validate()
             guard prepared.registration.scope == expected, prepared.registration.planDigest == record.planDigest,
                   prepared.registration.inputDigest == record.inputDigest, prepared.registration.mode == record.mode,
-                  prepared.registration.delivery == registration.delivery,
+                  prepared.registration.delivery == registration.delivery, prepared.registration.sessionAuthorityVersion == registration.sessionAuthorityVersion,
                   prepared.identity.packageLockSHA256 == ProvisioningPackagePin.lockSHA256,
                   !jobs.values.contains(where: { $0.helperIdentity?.instanceID == prepared.identity.instanceID }) else { throw ProvisioningJobFailure.invalidRequest }
             do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
@@ -209,7 +210,7 @@ public actor ProvisioningCoordinator {
             catch { throw ProvisioningJobFailure.dependencyChanged }
             try await manager.validateProvisioning(lease, cleanup: false)
             record.helperIdentity = prepared.identity; record.helperRegistrationDigest = try prepared.registration.digest
-            record.helperRegistered = false; record.cleanupRequired = true; record.helperDelivery = registration.delivery
+            record.helperRegistered = false; record.cleanupRequired = true; record.helperDelivery = registration.delivery; record.helperSessionAuthorityVersion = registration.sessionAuthorityVersion
             try persist(record) // Original owner and pending registration precede spawn.
             helperAuthorities[record.jobID] = launcher
             let receipt = try await launcher.launch(prepared)
@@ -517,6 +518,7 @@ extension ProvisioningCoordinator {
               try Self.bindingIdentity(request.target) == record.bindingDigest,
               request.selectedTasks.isEmpty || approval.customTasksReviewed,
               request.mode == .check || approval.persistentGrantAcknowledged else { throw ProvisioningJobFailure.invalidRequest }
+        guard record.helperSessionAuthorityVersion == nil || dispatcher is any ProvisioningManagerSessionDispatching else { throw ProvisioningJobFailure.invalidRequest }
         admitting = true; defer { admitting = false }
         try admitPackage()
         guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
@@ -551,6 +553,13 @@ extension ProvisioningCoordinator {
     private func driveHelper(_ generation: UUID) async {
         guard let running = helperActive, running.generation == generation else { return }
         do {
+            if jobs[running.jobID]?.helperSessionAuthorityVersion == 1 {
+                guard let dispatcher = running.dispatcher as? any ProvisioningManagerSessionDispatching else { throw ProvisioningHelperIPCFailure.ownership }
+                try await dispatcher.bindSessionAuthority(running.activation) { [weak self] request in
+                    guard let self else { throw ProvisioningHelperIPCFailure.unavailable }
+                    try await self.validateHelperSession(request, generation: generation)
+                }
+            }
             var status = try await running.dispatcher.dispatch(.activate, activation: running.activation)
             var cancelSent = false
             while true {
@@ -572,6 +581,29 @@ extension ProvisioningCoordinator {
             await manager.releaseProvisioning(current.lease, cleanupRequired: true); helperActive = nil
         }
     }
+    /// Fresh reverse-RPC authority, never a saved receipt or a port/SSH proof.
+    /// Recheck actor-owned cancellation and scope after every external await.
+    private func validateHelperSession(_ request: ProvisioningSessionRequest, generation: UUID) async throws {
+        try request.validate()
+        let running = try helperSessionOwner(request, generation: generation)
+        if !request.cleanup { try admitPackage() }
+        do { try await authority.revalidate(running.target, dependencyDigest: request.scope.dependencyDigest) }
+        catch { throw SequencingFailure.dependencyChanged }
+        _ = try helperSessionOwner(request, generation: generation)
+        do { try await manager.validateProvisioning(running.lease, cleanup: request.cleanup) }
+        catch { throw SequencingFailure.identityMismatch }
+        _ = try helperSessionOwner(request, generation: generation)
+    }
+    private func helperSessionOwner(_ request: ProvisioningSessionRequest, generation: UUID) throws -> HelperActive {
+        guard !closed, let running = helperActive, running.generation == generation,
+              !running.expired, !running.invalidated, !running.completing,
+              let row = jobs[running.jobID], row.workerOutstanding, row.helperSessionAuthorityVersion == 1,
+              row.helperActivationID == running.activation.activationID, row.helperActivationDigest == (try running.activation.digest),
+              request.scope.sameWorker(as: running.activation.scope), request.registrationDigest == running.activation.registrationDigest,
+              request.mode == row.mode, try Self.bindingIdentity(running.target) == request.scope.bindingDigest else { throw SequencingFailure.identityMismatch }
+        if !request.cleanup, running.cancelled || storageFailed { throw SequencingFailure.cancelled }
+        return running
+    }
     private func observeHelper(_ status: ProvisioningHelperWorkerSnapshot, generation: UUID) async throws {
         try status.validate()
         guard let running = helperActive, running.generation == generation,
@@ -591,7 +623,14 @@ extension ProvisioningCoordinator {
         if changed, var row = jobs[running.jobID] {
             row.operation = status.operation; row.commandID = status.commandID
             if status.phase == .cancelling, !current.expired { row.state = .cancelling }
-            try advance(&row); try persist(row)
+            try advance(&row)
+            do { try persist(row) }
+            catch {
+                guard row.helperSessionAuthorityVersion == 1 else { throw error }
+                // Keep the known original lease and authority alive for cleanup.
+                // Disk failure revokes body work and can never clear the hold.
+                try? cancel(running.jobID)
+            }
         }
     }
     private func helperCleanupTimedOut(_ generation: UUID) async {

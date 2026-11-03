@@ -834,7 +834,8 @@ extension VMManager {
     func validateProvisioning(_ lease: ProvisioningLifecycleLease, cleanup: Bool) throws {
         guard let reservation = provisioningReservation, reservation.lease == lease, reservation.valid,
               let session = sessions[lease.vmID], session.id == lease.sessionID, states[lease.vmID] == .running,
-              !session.shutdownRequested, !session.forceRequested,
+              !session.shutdownRequested, !session.forceRequested, !session.powerBusy, session.executionCommand == nil,
+              !storageTransactions.contains(lease.vmID),
               case .ready(let owner, _) = sshStates[lease.vmID], owner == reservation.owner,
               cleanup || (!quitting && !reservation.shutdownPending) else { throw ProvisioningJobFailure.targetChanged }
     }
