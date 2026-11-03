@@ -15,6 +15,17 @@ struct ManagerView: View {
     private var active: [VMSnapshot] { model.snapshots.filter { $0.sessionID != nil } }
 
     var body: some View {
+        Group {
+            if model.isLoading {
+                ManagerLoadingView()
+            } else {
+                managerContent
+            }
+        }
+        .frame(minWidth: 920, minHeight: 650)
+    }
+
+    private var managerContent: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 List(selection: $destination) {
@@ -78,7 +89,6 @@ struct ManagerView: View {
                     .keyboardShortcut("n", modifiers: .command)
             }
         }
-        .frame(minWidth: 920, minHeight: 650)
         .onChange(of: destination) { page = .home }
         .onChange(of: model.snapshots.compactMap(\.sessionID)) { previous, current in
             guard let session = current.last(where: { !previous.contains($0) }),
@@ -495,6 +505,26 @@ private struct VMEditor: View {
         catch { keyError = error.localizedDescription }
     }
 
+}
+
+private struct ManagerLoadingView: View {
+    var body: some View {
+        VStack(spacing: 24) {
+            ManagerArtwork(size: 112)
+            VStack(spacing: 8) {
+                Text("Omarchy VM Manager").font(.title.bold())
+                Text("Loading your virtual machines…")
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView()
+                .controlSize(.regular)
+                .accessibilityLabel("Loading your virtual machines")
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .navigationTitle("Omarchy VM Manager")
+    }
 }
 
 private struct ManagerArtwork: View {

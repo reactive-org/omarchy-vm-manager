@@ -28,6 +28,7 @@ final class AppModel: ObservableObject {
     @Published var diagnostics: KitDiagnostics?
     @Published var diagnosticError: String?
     @Published var registryError: String?
+    @Published private(set) var isLoading = true
     @Published var checking = true
     @Published var snapshots: [VMSnapshot] = []
     @Published var records: [VMLifecycleRecord] = []
@@ -63,6 +64,7 @@ final class AppModel: ObservableObject {
             support = FileManager.default.temporaryDirectory.appendingPathComponent("omarchy-layout-preview")
             manager = VMManager(runtime: FakeRuntime(), profiles: [], applicationSupport: support)
             checking = false
+            isLoading = false
             return
         }
         support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
@@ -111,7 +113,10 @@ final class AppModel: ObservableObject {
 
     func observe() async {
         await refresh()
+        guard !Task.isCancelled else { return }
         startCommandServer()
+        // An empty snapshot list is meaningful only after the first full refresh.
+        isLoading = false
         while !Task.isCancelled {
             await update()
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
