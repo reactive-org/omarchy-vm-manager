@@ -5,17 +5,11 @@ import argparse
 import os
 from pathlib import Path
 import plistlib
-import re
 import subprocess
 import tempfile
 
 from kit_artifacts import ROOT, digest
-
-
-def validate_tag(tag, version):
-    if not re.fullmatch(re.escape("v" + version) + r"-dev\.[1-9][0-9]*", tag):
-        raise ValueError(f"Use v{version}-dev.N (N >= 1); only development prereleases are supported")
-    return tag
+from release_metadata import validate_tag, verify_release_info
 
 
 def package():
@@ -27,6 +21,7 @@ def package():
     tag = validate_tag(os.environ.get("RELEASE_TAG", ""), info["CFBundleShortVersionString"])
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     app = ROOT / "dist/prerelease-staging/Omarchy VM Manager.app"
+    verify_release_info(plistlib.loads((app / "Contents/Info.plist").read_bytes()), tag, info["CFBundleShortVersionString"])
     folder = ROOT / "dist/prerelease"
     folder.mkdir(parents=True, exist_ok=True)
     flavor = "notarized" if args.signed else "development"
@@ -37,6 +32,7 @@ def package():
     with tempfile.TemporaryDirectory(prefix="prerelease-check-", dir=ROOT / ".build") as temp:
         subprocess.run(["ditto", "-x", "-k", str(archive), temp], check=True)
         extracted = Path(temp) / app.name
+        verify_release_info(plistlib.loads((extracted / "Contents/Info.plist").read_bytes()), tag, info["CFBundleShortVersionString"])
         subprocess.run([str(ROOT / "Scripts/verify-app.sh"), "--bundle-only", str(extracted), str(args.runtime_lock)], check=True)
         if args.signed:
             subprocess.run(["python3", str(ROOT / "Scripts/verify_signed_app.py"), str(extracted)], check=True)

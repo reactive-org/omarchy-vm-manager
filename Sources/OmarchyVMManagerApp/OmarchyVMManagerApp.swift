@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct OmarchyVMManagerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model: AppModel
+    @StateObject private var updateChecker = UpdateCheckController()
     private let instanceLock: ManagerInstanceLock
 
     init() {
@@ -78,5 +79,14 @@ struct OmarchyVMManagerApp: App {
         }
         .defaultSize(width: 1120, height: 780)
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button(updateChecker.isChecking ? "Checking for Updates…" : "Check for Updates…") {
+                    updateChecker.checkForUpdates()
+                }
+                .disabled(updateChecker.isChecking)
+                Divider()
+            }
+        }
     }
 }

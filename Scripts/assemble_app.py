@@ -11,6 +11,7 @@ import subprocess
 from kit_artifacts import ROOT, digest
 from build_patched_kit import inventory
 from keychain_profile import stage_keychain_profile, verify_keychain_profile
+from release_metadata import release_info
 
 
 def run(*args, **kwargs):
@@ -31,6 +32,8 @@ def assemble():
     assert not (args.preview and args.layout_preview)
     assert args.keychain_profile is None or args.signed_prerelease, "a Keychain profile requires authorized Developer ID signing"
     assert not args.signed_prerelease or args.keychain_profile is not None, "signed prereleases require the pinned Touch ID profile"
+    info = release_info(plistlib.loads((ROOT / "App/Info.plist").read_bytes()), os.environ.get("RELEASE_TAG", ""))
+    assert not args.signed_prerelease or info.get("OmarchyReleaseTag"), "signed prereleases require RELEASE_TAG"
     lock_path = args.runtime_lock
     lock = json.loads(lock_path.read_bytes())
     assert lock["kitVersion"] == "development" and lock["focusAwareClipboard"] is True
@@ -57,7 +60,6 @@ def assemble():
         assert resources.is_dir() and not resources.is_symlink(), "missing core resource bundle"
         assert all(not entry.is_symlink() for entry in resources.rglob("*")), "linked core resource entry"
         shutil.copytree(resources, stage / "Contents/Resources" / resources.name)
-        info = plistlib.loads((ROOT / "App/Info.plist").read_bytes())
         if args.layout_preview:
             info["CFBundleIdentifier"] = "dev.omarchy.vm-manager.layout-preview"
             info["CFBundleName"] = info["CFBundleDisplayName"] = "Omarchy VM Manager Layout Preview"

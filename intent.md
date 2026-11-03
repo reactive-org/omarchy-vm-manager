@@ -1329,6 +1329,14 @@ The helper owns QMP pause/resume and keeps manual ownership separate from host-s
 **TO PROVE:** native Touch ID/password-fallback interaction, saved-password migration and real guest behavior are not established by these CI/bundle checks. No local signing credentials, installation/UI control, permission grants, factory-image download or guest/storage operation occurred. Existing custom factories tied to ad-hoc runtime provenance remain preserved and require compatible signed-runtime preparation.
 
 
+## Manual application update checks — 3 November 2026
+
+**DESIGN DECISION — user request:** add **Check for Updates…** to the manager's application menu. Only an explicit selection queries public GitHub release metadata for `reactive-org/omarchy-vm-manager`. Include stable releases and prereleases with uploaded app archives, compare full semantic versions, ignore drafts and runtime-only releases, and show a native result modal. **View Release** opens that release's GitHub page for manual download. No automatic checks, app installation, runtime update, guest/storage operation or provenance admission is introduced.
+
+**DESIGN DECISION — release identity:** embed the exact validated `RELEASE_TAG` as `OmarchyReleaseTag` during app assembly before signing. Preserve normal bundle version/build fields. Package verification requires matching tags/versions in staged and extracted apps. A local build without a full tag reports that it cannot reliably compare prereleases rather than guessing from git or the build number. See [manual check behavior and validation](docs/Prereleases.md#manual-update-checks).
+
+**USER-REPORTED — UI smoke check:** the user accepted the opened isolated tagged build (“looks good”); individual result branches and View Release navigation were not separately recorded. **TO PROVE:** independent live GitHub response verification and browser navigation. Fixture/no-window bundle checks establish neither of these. Real two-VM, focus, sleep/wake, crash and authentication behavior retain their existing evidence boundaries.
+
 ## Independent factory guest compatibility — 3 November 2026
 
 **DESIGN DECISION — supersedes source equality and full-runtime binding for new lean factories:** use independently versioned guest integration contract 1 and format-2 manifests. Require supported guest status/SSH/setup/contracts/report versions, the complete reviewed lean package archive identity, unchanged lean owner-program contract, intact image/build evidence and all existing payload checksums. Preserve source commits as provenance, allowing different commits with the same supported package. Keep complete current runtime inventory/signatures/compiled pins as execution requirements rather than comparing a factory's historical host binaries with the current kit. The manager and private helper use the same compiled reviewed contract. See [the policy, review identities and limitations](docs/FactoryCompatibility.md).

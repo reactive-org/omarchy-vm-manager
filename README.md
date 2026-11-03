@@ -14,6 +14,8 @@ This project is based heavily on the work of the [Try Omarchy team](https://gith
 
 The native SwiftUI app requires macOS 15 or later. The current private debug build provides a persistent guest library, configuration and safe deletion through macOS Trash. Guests start when you choose **Launch** or issue a CLI start command. The two retained POC profiles keep their original configuration and can be moved to Trash through the normal confirmed deletion flow.
 
+Use **Omarchy VM Manager → Check for Updates…** to check published app releases, including prereleases. An available update offers **View Release** for manual download from GitHub. See [release identity and local-build behavior](docs/Prereleases.md#manual-update-checks).
+
 **[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [48-second MP4 tour](docs/media/quick-tour.mp4)
 
 ## Build and check

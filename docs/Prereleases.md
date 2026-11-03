@@ -11,6 +11,24 @@ GitHub Actions publishes versioned development-fork builds of Omarchy VM Manager
 
 The ZIP contains `Omarchy VM Manager.app`, including the CLI, storage helper, runtime, licenses and third-party notices. The release notes record the manager commit and runtime source/archive pins. Only the tagged package job has repository write permission; pull-request jobs remain read-only and cannot publish releases. Existing release assets are not overwritten automatically.
 
+## Manual update checks
+
+Choose **Omarchy VM Manager → Check for Updates…** to query the repository's public GitHub release metadata. The check includes prereleases, compares semantic versions (so `dev.10` follows `dev.2` and a stable version follows its prereleases), and ignores drafts, runtime-only releases and releases without an uploaded Apple Silicon app ZIP. It follows release-list pagination rather than relying on GitHub's stable-only latest-release endpoint. **View Release** opens the selected GitHub release page for manual download. There are no scheduled checks, asset downloads or automatic installation.
+
+Assembly embeds `RELEASE_TAG` as `OmarchyReleaseTag` in the app's `Info.plist` before signing, while preserving `CFBundleShortVersionString` and `CFBundleVersion`. Both ad-hoc and signed prerelease packaging use this path. Packaging refuses a staged or extracted app whose embedded tag/version differs from the requested release. Local builds without `RELEASE_TAG` omit the tag; their update dialog explains that they cannot reliably compare published prereleases. They do not infer a release identity from a git tag or build number.
+
+Checks use an anonymous HTTPS request with an ephemeral session and report offline, timeout, rate-limit and invalid-response failures in a native modal. An empty app-release list is reported separately from being up to date. A bounded pagination limit refuses an incomplete check. No release metadata is used as runtime provenance or permission to change a VM.
+
+### Update-check validation — 3 November 2026
+
+- `make test`: 221 Swift tests in 37 suites and 55 Python tests pass. Eight new Swift checks cover semantic ordering, both app archive flavors, draft/runtime/incomplete release filtering, fixed-repository links, pagination, cancellation, unknown local identity and HTTP/JSON/network failures. Four new Python checks cover plist round trips, stale-tag removal and refusal of missing/mismatched release identities before archiving. The initial sandboxed run could not bind disposable local socket fixtures; the successful rerun used execution access for those fixtures. No real Keychain/authentication UI is used by these tests.
+- `make build`: passes with Swift 6, including the menu and modal controller.
+- `RELEASE_TAG=v0.10.0-dev.1 Scripts/build-app.sh --output-directory "$PWD/.build/update-check-verification" --runtime-directory '/Users/danwas/.codex/worktrees/factory-compatibility/Omarchy VM Manager/VendorArtifacts/patched-033d2460dc44' --preserve-runtime-signatures`: passes. The normal artifact directory in this checkout is absent; the explicit read-only source is the exact archive/inventory matching the existing committed runtime lock. No runtime was rebuilt or substituted. This tag is a packaging fixture, not a newly published release.
+- `Scripts/verify-app.sh --bundle-only "$PWD/.build/update-check-verification/Omarchy VM Manager.app"`: passes ad-hoc signatures, 22 runtime Mach-O signatures, macOS compatibility, exact payload inventory and NAT/no-image layout. A `ditto -c -k --sequesterRsrc --keepParent` / `ditto -x -k` ZIP round trip followed by the same verification on `extracted/Omarchy VM Manager.app` also passes. `verify_release_info` confirms `OmarchyReleaseTag=v0.10.0-dev.1`, short version `0.10.0` and build `23` before and after extraction. Diagnostics report `hostPreflightPerformed: false` and `vmLaunchEnabled: false`.
+- `git diff --check`: passes. Logs are retained in `.build/update-check-verification/`.
+
+**USER-REPORTED — UI smoke check:** the isolated tagged build was opened on request and the user reported “looks good.” Individual result branches and View Release navigation were not separately recorded. **TO PROVE:** independent live GitHub transport verification and browser navigation. No installed app, VM, factory image, signing credential, permission or guest storage was changed. No new signed/notarized release was produced; those existing CI gates remain in place.
+
 Local packaging uses separate build output and does not open or install an app:
 
 ```sh
