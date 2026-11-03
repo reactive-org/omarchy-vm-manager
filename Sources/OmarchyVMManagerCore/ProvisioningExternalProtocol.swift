@@ -3,6 +3,7 @@ import Foundation
 
 public enum ProvisioningExternalOperation: String, Codable, Sendable {
     case capabilities, list, status, cancel, attach, read, reset, claim, release, input, resize, detach, heartbeat
+    case previewCreate, preview, taskSource, prepareApply, apply
 }
 /// External protocol 1, exclusively on setup-v1.sock. A connection owns at most
 /// one attachment. Helper capabilities and credentials never leave the manager.
@@ -12,6 +13,12 @@ public struct ProvisioningExternalRequest: Codable, Sendable, CustomStringConver
     public let sequence: UInt64
     public let operation: ProvisioningExternalOperation
     public var workflowID: UUID?
+    public var previewID: UUID?
+    public var vmID: UUID?
+    public var source: ProvisioningSetupSource?
+    public var consent: ProvisioningApplyConsent?
+    public var taskName: String?
+    public var offset: Int?
     public var invocationID: UUID?
     public var bytes: Data?
     public var rows: Int?
@@ -25,13 +32,24 @@ public struct ProvisioningExternalRequest: Codable, Sendable, CustomStringConver
         guard data.count <= 9 * 1024, case .object(let fields) = try PlainDataParser.parse(data, format: .json) else { throw ProvisioningTerminalDenial.bounds }
         let v = try JSONDecoder().decode(Self.self, from: data)
         var keys: Set<String> = ["version", "requestID", "sequence", "operation"]
-        if ![.capabilities, .list].contains(v.operation) { keys.insert("workflowID") }
+        let reviewOperations: Set<ProvisioningExternalOperation> = [.previewCreate, .preview, .taskSource, .prepareApply, .apply]
+        if reviewOperations.contains(v.operation) { keys.insert("previewID") }
+        else if ![.capabilities, .list].contains(v.operation) { keys.insert("workflowID") }
+        if v.operation == .previewCreate { keys.formUnion(["vmID", "source"]) }
+        if v.operation == .apply { keys.insert("consent") }
+        if v.operation == .taskSource { keys.formUnion(["taskName", "offset"]) }
         if [.input, .resize].contains(v.operation) { keys.insert("invocationID") }
         if v.operation == .input { keys.insert("bytes") }
         if [.claim, .resize].contains(v.operation) { keys.formUnion(["rows", "columns"]) }
         guard v.version == 1, v.sequence > 0, v.sequence < UInt64(Int64.max), Set(fields.keys) == keys,
-              [.capabilities, .list].contains(v.operation) || v.workflowID != nil,
+              [.capabilities, .list].contains(v.operation) || (reviewOperations.contains(v.operation) ? v.previewID != nil : v.workflowID != nil),
               ![.input, .resize].contains(v.operation) || v.invocationID != nil else { throw ProvisioningTerminalDenial.bounds }
+        if v.operation == .previewCreate { guard v.vmID != nil, let source = v.source else { throw ProvisioningTerminalDenial.bounds }; try source.validate() }
+        if v.operation == .apply { guard let consent = v.consent else { throw ProvisioningTerminalDenial.bounds }; try consent.validate() }
+        if v.operation == .taskSource {
+            guard let name = v.taskName, !name.isEmpty, name.utf8.count <= 64, let offset = v.offset, offset >= 0, offset <= SourceSnapshot.maximumBytes else { throw ProvisioningTerminalDenial.bounds }
+        }
+        guard try PlainDataParser.parse(helperJSON(v), format: .json) == PlainDataParser.parse(data, format: .json) else { throw ProvisioningTerminalDenial.bounds }
         if v.operation == .input { guard let bytes = v.bytes, !bytes.isEmpty, bytes.count <= 4096 else { throw ProvisioningTerminalDenial.bounds } }
         if [.claim, .resize].contains(v.operation) {
             guard let rows = v.rows, let columns = v.columns else { throw ProvisioningTerminalDenial.bounds }
@@ -45,6 +63,9 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
     public let requestID: UUID
     public let sequence: UInt64
     public let operation: ProvisioningExternalOperation
+    public var previewPlan: ProvisioningPlanPreview?
+    public var applyReview: ProvisioningApplyReview?
+    public var taskSource: ProvisioningTaskSource?
     public var executionEnabled: Bool?
     public var workflows: [ProvisioningWorkflowSnapshot]?
     public var job: ProvisioningJobSnapshot?
@@ -61,6 +82,10 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
         else {
             switch request.operation {
             case .capabilities: keys.insert("executionEnabled")
+            case .previewCreate, .preview: keys.insert("previewPlan")
+            case .prepareApply: keys.insert("applyReview")
+            case .taskSource: keys.insert("taskSource")
+            case .apply: keys.insert("workflows")
             case .list, .status, .cancel: keys.insert("workflows"); if v.job != nil && request.operation != .list { keys.insert("job") }
             case .read, .reset: keys.insert("page")
             default: break
@@ -68,14 +93,26 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
         }
         guard v.version == 1, v.requestID == request.requestID, v.sequence == request.sequence, v.operation == request.operation,
               Set(fields.keys) == keys,
-              v.failure == nil || ["unavailable", "busy", "unknown-workflow", "denied", "disabled"].contains(v.failure!),
+              v.failure == nil || ["unavailable", "busy", "unknown-workflow", "denied", "disabled", "review-required", "task-trust-required", "changed", "quota", "consent-conflict"].contains(v.failure!),
               v.failure != nil || (request.operation != .capabilities || v.executionEnabled != nil),
-              v.failure != nil || (![.list, .status, .cancel].contains(request.operation) || v.workflows != nil),
+              v.failure != nil || (![.list, .status, .cancel, .apply].contains(request.operation) || v.workflows != nil),
               v.failure != nil || (![.read, .reset].contains(request.operation) || v.page != nil) else { throw ProvisioningTerminalDenial.bounds }
         let encoded = try PlainDataParser.parse(helperJSON(v), format: .json)
         guard encoded == (try PlainDataParser.parse(data, format: .json)), (v.workflows?.count ?? 0) <= 128 else { throw ProvisioningTerminalDenial.bounds }
-        if [.status, .cancel].contains(request.operation), let rows = v.workflows {
-            guard rows.count == 1, rows[0].id == request.workflowID else { throw ProvisioningTerminalDenial.bounds }
+        if let preview = v.previewPlan {
+            try preview.validate(); guard preview.id == request.previewID, request.operation != .previewCreate || preview.vmID == request.vmID else { throw ProvisioningTerminalDenial.bounds }
+        }
+        if let review = v.applyReview { try review.validate(); guard review.previewID == request.previewID else { throw ProvisioningTerminalDenial.bounds } }
+        if let source = v.taskSource {
+            guard source.previewID == request.previewID, source.name == request.taskName, source.offset == request.offset,
+                  provisioningDigest(source.sha256), source.bytes.count <= 4096, source.total >= 0, source.total <= SourceSnapshot.maximumBytes,
+                  source.offset >= 0, source.offset <= source.total, source.bytes.count == min(4096, source.total - source.offset) else { throw ProvisioningTerminalDenial.bounds }
+        }
+        guard v.failure != nil || (![.previewCreate, .preview].contains(request.operation) || v.previewPlan != nil),
+              v.failure != nil || (request.operation != .prepareApply || v.applyReview != nil),
+              v.failure != nil || (request.operation != .taskSource || v.taskSource != nil) else { throw ProvisioningTerminalDenial.bounds }
+        if [.status, .cancel, .apply].contains(request.operation), let rows = v.workflows {
+            guard rows.count == 1, rows[0].id == (request.operation == .apply ? request.previewID : request.workflowID) else { throw ProvisioningTerminalDenial.bounds }
             if let job = v.job { guard job.vmID == rows[0].vmID, [rows[0].checkJobID, rows[0].applyJobID].contains(job.jobID) else { throw ProvisioningTerminalDenial.bounds } }
         }
         if let page = v.page {
@@ -103,6 +140,16 @@ actor ProvisioningExternalSession {
         do {
             switch r.operation {
             case .capabilities: reply.executionEnabled = service.executionEnabled
+            case .previewCreate, .preview, .taskSource, .prepareApply, .apply:
+                guard let service = service as? any ProvisioningReviewing else { reply.failure = "unavailable"; return reply }
+                switch r.operation {
+                case .previewCreate: reply.previewPlan = try await service.preview(id: r.previewID!, vmID: r.vmID!, source: r.source!)
+                case .preview: reply.previewPlan = try await service.preview(r.previewID!)
+                case .taskSource: reply.taskSource = try await service.taskSource(r.previewID!, name: r.taskName!, offset: r.offset!)
+                case .prepareApply: reply.applyReview = try await service.prepareApply(r.previewID!)
+                case .apply: reply.workflows = [try await service.apply(r.previewID!, consent: r.consent!)]
+                default: break
+                }
             case .list: reply.workflows = await service.statuses()
             case .status, .cancel:
                 guard let row = await service.status(r.workflowID!) else { reply.failure = "unknown-workflow"; return reply }
@@ -131,6 +178,16 @@ actor ProvisioningExternalSession {
             guard !closed else { throw ProvisioningTerminalDenial.attachment }
         } catch ProvisioningTerminalDenial.busy { reply.failure = "busy" }
         catch ProvisioningServiceFailure.disabled { reply.failure = "disabled" }
+        catch let failure as ProvisioningReviewFailure {
+            switch failure {
+            case .consentRequired: reply.failure = "review-required"
+            case .taskTrustRequired: reply.failure = "task-trust-required"
+            case .changed: reply.failure = "changed"
+            case .quota: reply.failure = "quota"
+            case .conflictingConsent: reply.failure = "consent-conflict"
+            default: reply.failure = "denied"
+            }
+        }
         catch { reply.failure = "denied" }
         return reply
     }

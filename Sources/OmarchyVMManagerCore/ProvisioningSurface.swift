@@ -39,10 +39,42 @@ extension ProvisioningWorkflowSnapshot {
 public enum ProvisioningSetupCLI: Sendable, Equatable {
     case capabilities, list, status(UUID), cancel(UUID), attach(UUID, interactive: Bool), events(UUID)
     case plan(URL), preset(String), presets
+    case createPreview(UUID, UUID, ProvisioningSetupSource), preview(UUID), taskSource(UUID, String, Int)
+    case prepareApply(UUID), apply(UUID, ProvisioningApplyConsent)
     public static func parse(_ args: [String]) throws -> Self? {
         guard args.first == "setup", args.count >= 2, args[1] != "tools" else { return nil }
-        if ["apply", "check", "recover"].contains(args[1]) {
+        if ["check", "recover"].contains(args[1]) {
             throw commandFailure("setup-execution-disabled", "Setup execution is disabled pending guest acceptance. Use setup plan, status or attach for an existing admitted job.")
+        }
+        if ["preview", "prepare-apply", "apply", "task-source"].contains(args[1]) {
+            guard args.count >= 3, let id = UUID(uuidString: args[2]) else { throw commandFailure("usage", "Use an exact UUID for setup review commands.") }
+            if args.count == 3, args[1] == "preview" { return .preview(id) }
+            if args.count == 3, args[1] == "prepare-apply" { return .prepareApply(id) }
+            if args[1] == "task-source", args.count == 4 || args.count == 6 {
+                let offset: Int
+                if args.count == 6 { guard args[4] == "--offset", let n = Int(args[5]), (0...32 * 1024 * 1024).contains(n) else { throw commandFailure("usage", "Invalid source offset.") }; offset = n }
+                else { offset = 0 }
+                guard !args[3].isEmpty, args[3].utf8.count <= 64 else { throw commandFailure("usage", "Invalid task name.") }
+                return .taskSource(id, args[3], offset)
+            }
+            var values: [String: String] = [:], flags = Set<String>(), index = 3
+            let options: Set<String> = args[1] == "preview" ? ["--from", "--preset", "--preview-id"] : ["--review", "--trust-tasks"]
+            while index < args.count {
+                let option = args[index]; index += 1
+                if args[1] == "apply", ["--ack-sudo", "--ack-docker-root"].contains(option), flags.insert(option).inserted { continue }
+                guard options.contains(option), values[option] == nil, index < args.count, !args[index].hasPrefix("--") else { throw commandFailure("usage", "Unknown, duplicate or incomplete review option.") }
+                values[option] = args[index]; index += 1
+            }
+            if args[1] == "preview", let token = values["--preview-id"], let previewID = UUID(uuidString: token),
+               (values["--from"] == nil) != (values["--preset"] == nil) {
+                let source = values["--from"].map { ProvisioningSetupSource(directory: $0) } ?? .init(preset: values["--preset"]!)
+                do { try source.validate() } catch { throw commandFailure("usage", "Choose a bundled preset or an absolute setup folder.") }
+                return .createPreview(id, previewID, source)
+            }
+            if args[1] == "apply", let review = values["--review"], provisioningDigest(review), values["--trust-tasks"].map(provisioningDigest) ?? true {
+                return .apply(id, .init(reviewIdentity: review, taskTrustIdentity: values["--trust-tasks"], persistentGrantAcknowledged: flags.contains("--ack-sudo"), dockerRootAccessAcknowledged: flags.contains("--ack-docker-root")))
+            }
+            throw commandFailure("usage", "Use preview VM_UUID --from /folder|--preset NAME --preview-id UUID; preview UUID; prepare-apply UUID; apply UUID --review DIGEST --ack-sudo [--trust-tasks DIGEST] [--ack-docker-root]; task-source UUID NAME [--offset N].")
         }
         if args == ["setup", "capabilities"] { return .capabilities }
         if args == ["setup", "list"] { return .list }

@@ -2127,3 +2127,28 @@ remains the visual target for milestone 5.
   acceptance, nested guest/SSH authentication and cleanup, hard-kill TTY recovery,
   and distribution. This is an uninstalled worktree build. No real transports,
   host installs, factory downloads, VM operations or user UI takeover occurred.
+
+### 3 November 2026 — milestone 5 frozen review and explicit task trust
+
+- **DESIGN DECISION:** manager-owned Preview freezes selected inputs into a fresh
+  private UUID tree, replans and verifies hashes, then binds an explicit target
+  review/consent to that snapshot. Later source edits do not alter it. UI and CLI
+  share capture/lookup, explicit task-source inspection, prepare/apply and status.
+  Task trust has its own digest over the exact review, all frozen inputs and
+  selected tasks; general Apply, sudo and Docker consent do not imply it.
+  Submission repeats package, original resource/session and fresh dependency
+  checks before existing helper admission, with one owned operation per UUID and
+  no automatic mutation retry. Source bytes are returned only on a deliberate
+  task-source read; no terminal/input/archive/credential enters normal status.
+- **PRIVATE COUPLING:** additive review operations on setup protocol 1, bounded
+  previews/task chunks and memory-only review/consent handles. Existing strict
+  workflow/helper journals govern prepared jobs; retained private source trees
+  are not executable authority after reopen. Product composition has neither an
+  enabled execution gate nor an operational owner/UID/key resolver. Tests inject
+  synthetic evidence; the manager never guesses a real guest UID.
+- **VERIFIED:** `make test` passed 390 manager Swift test functions in 52 suites, 52 script tests and the relocated/read-only/ad-hoc-signed helper fixture suite (including original-owner loss/reopen and terminal streaming). `make test-provisioning-review` passed 28 functions in three suites: frozen previews, original-source edits, explicit task-source chunking, preview quotas, no authority after reopen, separate task/sudo/Docker consent, exact duplicate submission, changed source/tool/session admission, cancellation during a gated final recheck, stale task trust, strict nested protocol cases and CLI/native service interoperability. Tests call the native service API and actual private CLI socket, without opening the form or claiming visual acceptance. Package/export and both diff checks pass; shared package sources/resources/pins are unchanged.
+- **TO PROVE:** native feature editing/New VM coupling, reviewed restart/check/
+  recovery surfaces, operational guest identity/runner admission, visual and
+  signed distribution acceptance, all real guest/SSH/echo/cleanup/crash/sleep/wake
+  behavior. No actual transport, host install, factory download, VM or user UI
+  operation occurred. The shared package source/resources/pin are unchanged.

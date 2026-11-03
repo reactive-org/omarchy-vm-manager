@@ -8,8 +8,10 @@ import TryOmarchyKitClient
 actor WorkflowFixtureDependencies: ProvisioningDependencyProviding {
     let report: ProvisioningToolReport
     private(set) var inspections = 0
+    private var gate: IPCWorkerGate?
+    func pauseNext(_ value: IPCWorkerGate) { gate = value }
     init(_ report: ProvisioningToolReport) { self.report = report }
-    func inspect() async throws -> ProvisioningToolReport { inspections += 1; return report }
+    func inspect() async throws -> ProvisioningToolReport { inspections += 1; if let gate { self.gate = nil; await gate.wait() }; return report }
 }
 actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     let provider: SessionFixtureProvider
@@ -51,17 +53,19 @@ actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     func waitForExit(jobID: UUID, identity: ProvisioningHelperIdentity, timeout: Duration) async -> Bool { if denyExit { return false }; return (try? await selected(jobID).waitForExit(jobID: jobID, identity: identity, timeout: timeout)) ?? false }
     func close() async { for child in children.values { await child.close() } }
 }
-private final class WorkflowFixture: Sendable {
+final class WorkflowFixture: Sendable {
     let root: URL, source: URL, state: URL
     let manager: VMManager, runtime: FakeRuntime, profile: VMProfile, target: GuestBinding
     let provider: SessionFixtureProvider, dependencies: WorkflowFixtureDependencies, launcher: WorkflowFixtureLauncher
     let plan: SetupPlan, service: ProvisioningService
-    init(docker: Bool = false, ready: Bool = true, enabled: Bool = true) async throws {
+    init(docker: Bool = false, ready: Bool = true, enabled: Bool = true, task: String? = nil) async throws {
         root = URL(fileURLWithPath: "/private/tmp/provisioning-workflow-" + UUID().uuidString)
         source = root.appendingPathComponent("source"); state = root.appendingPathComponent("state")
         try PrivateFiles.directory(root, create: true); try PrivateFiles.directory(source, create: true)
         let setup = docker ? "setup: {features: {enable: [cli, docker]}, options: {docker: {access: sudoless}}}" : "setup: {features: {enable: [cli]}}"
-        try Data(("schema_version: 1\nid: workflow-fixture\n" + setup + "\nvars: {private: NEVER-PUBLISH-WORKFLOW-INPUT}\n").utf8).write(to: source.appendingPathComponent("vm.yml"))
+        if let task { try Data(task.utf8).write(to: source.appendingPathComponent("custom.yml")) }
+        let custom = task == nil ? "" : "tasks: [{name: custom, file: custom.yml}]\n"
+        try Data(("schema_version: 1\nid: workflow-fixture\n" + setup + "\n" + custom + "vars: {private: NEVER-PUBLISH-WORKFLOW-INPUT}\n").utf8).write(to: source.appendingPathComponent("vm.yml"))
         plan = try SetupPlanner.plan(repository: source)
         var profile = VMProfile(id: UUID(), name: "Workflow fixture", clipboardEnabled: false); profile.ssh = .init(hostPort: 22222); self.profile = profile
         runtime = FakeRuntime(initialEvents: [.ready])
@@ -74,8 +78,12 @@ private final class WorkflowFixture: Sendable {
         try seedTransportEndpoint(root: runtime.startRequests[0].storageRoot, target: target, port: 22222)
         await manager.receiveSSH(ready ? .ready(user: target.owner, command: "fixture-unused") : .connecting, vmID: id, sessionID: session)
         provider = try SessionFixtureProvider(); dependencies = WorkflowFixtureDependencies(try provider.admittedReport()); launcher = WorkflowFixtureLauncher(provider: provider)
+        let fixtureTarget = target
         service = try await ProvisioningService.open(manager: manager, directory: state, environment: .init(executionEnabled: enabled,
-            engineDigest: ProvisioningCoordinator.engineIdentity(plan), dependencies: dependencies, launcher: launcher, transportPolicy: .fixture(provider.root), admitPackage: {}))
+            engineDigest: ProvisioningCoordinator.engineIdentity(plan), dependencies: dependencies, launcher: launcher, transportPolicy: .fixture(provider.root), admitPackage: {}, resolveTarget: { vm, session in
+                guard vm == fixtureTarget.vmID, session == fixtureTarget.sessionID else { throw ProvisioningReviewFailure.changed }
+                return fixtureTarget
+            }))
     }
     deinit { for handle in runtime.startedHandles where handle.isRunning { handle.emit(.exited(status: 0)) }; try? FileManager.default.removeItem(at: root) }
     func preview(_ id: UUID = UUID()) async throws -> ProvisioningPreparedJob {

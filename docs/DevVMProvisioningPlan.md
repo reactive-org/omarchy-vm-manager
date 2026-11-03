@@ -1778,7 +1778,7 @@ product execution remains disabled. Earlier TO PROVE labels remain unchanged.
 
 **DESIGN DECISION:** this slice supplies offline selection/review and live observation
 surfaces while preserving the product execution gate. Milestones 3/4 were committed
-first in manager `6a71b06` and dev-vm `3d616f0`; new milestone-5 changes are uncommitted.
+first in manager `6a71b06` and dev-vm `3d616f0`; that terminal/UI/CLI slice is now committed in manager `18feed5` and companion docs `f5d495c`. The following review/submission slice remains uncommitted.
 The native Setup tab and separate CLI socket consume `ProvisioningObserving`, backed
 by the same manager-owned service, workflow status, child status, cancellation and
 original helper attachment. Closing a view or CLI releases its viewer, not its job.
@@ -1871,3 +1871,122 @@ visual acceptance of the complete screen and signed distribution remain separate
 acceptance. No real SSH/SCP/SFTP/Ansible, host installs, downloads of factory images,
 VM operations, personal credentials, installed-app updates or user UI takeover
 occurred. SwiftTerm source retrieval was source-only dependency work.
+
+## Milestone 5 frozen preview, apply submission and task trust — 3 November 2026
+
+**DESIGN DECISION:** `ProvisioningReviewing` extends the existing shared UI/CLI
+observation service with manager-owned frozen previews, explicit task-source reads,
+apply preparation and consent-bound submission. It uses the existing coordinator,
+private input trees, source archive and helper admission; it adds no VM owner,
+host controller, guest transport implementation or Python runtime.
+
+A preview names an existing VM UUID and either one bundled preset or an explicitly
+selected absolute local folder. Capture runs the pinned planner, archives its
+selected files, materializes a fresh private UUID tree, replans there and compares
+plan/input/engine hashes. The returned proposal and task receipts describe that
+private snapshot. Subsequent source-folder edits do not change it; Refresh preview
+creates a new identifier. Reusing an identifier is a lookup of the original
+snapshot and rejects a different target/selection. Capture does not inspect tools,
+contact a guest, create VM storage, reserve an input owner or authorize execution.
+The current session is recorded when present; a changed session needs a fresh
+preview. A stopped-guest preview can acquire its exact session only at apply review.
+VM name/resources/factory declarations remain a proposal, never configuration edits.
+
+At most 16 previews/captures live in one service instance, with the existing
+128-tree/256-MiB private-source retention limits. Proposals are at most 48 KiB;
+there are at most 64 task receipts, with names at most 64 bytes and paths at most
+256 bytes. Larger previews fail closed rather than truncating a review. Failed,
+expired-by-restart and orphaned private trees are preserved and counted; no
+recursive deletion or automatic eviction is introduced. Preview handles, consent
+and apply-review authority are memory-only. Reopening cannot reconstruct them
+from a UUID or source tree, resume an apply, or infer previous task trust. Once a
+workflow is prepared/submitted, the existing strict workflow/job journals and
+cleanup holds govern restart/loss as before.
+
+Apply preparation is a separate gated operation. It resolves the exact VM/session
+through trusted manager-side target evidence, waits for matching managed SSH,
+admits package/resources/Homebrew dependencies and returns the existing request
+review identity. This binds plan/input hashes, target/session/owner/UID/host key,
+dependency digest, mode, task selection and reserved interactive scope. It creates
+no helper. Product composition remains `executionEnabled: false` and supplies no
+target resolver. This avoids guessing a guest UID from a username or assuming
+UID 1000; real manager-owned owner/UID/key evidence is still required before an
+operational resolver is installed. Tests inject synthetic bindings only.
+
+Custom-task trust is independent of general Apply, persistent sudo and Docker
+root-equivalent access. Its digest covers `custom-task-trust-v1`, the exact request
+review identity, frozen input digest and selected task names. A boolean or an old
+snapshot's trust digest is insufficient. The scope includes the complete frozen
+snapshot (including referenced assets), not just entrypoint text. The UI explains
+that custom Ansible can execute on the controller Mac, use controller credentials
+and delegate work. Each task has an explicit plain-text inspection action; normal
+preview/status/terminal replies contain no task-source bytes. A separate explicit
+task-source operation returns at most 4096 bytes bound to preview/name/hash/offset.
+The native sheet assembles only a complete UTF-8 task up to 64 KiB before allowing
+its inspection prerequisite; the CLI can explicitly request larger files in chunks.
+No source is fed to the terminal renderer, executed for review, or logged. Merely
+opening text does not grant task trust; the checkbox/CLI digest remains deliberate.
+This is consent, not a code audit or sandbox.
+
+Submission verifies exact review/task-trust digests and separate sudo/Docker
+acknowledgements before helper creation. It checks the retained private tree,
+repeats package admission and dependency discovery, validates original transport
+stamps/current manager session, compares the new dependency digest, then invokes
+the existing approval path. Duplicate preparation/submission shares one owned
+operation. Exact repeated consent returns the same acceptance result; changed
+consent is refused. Failed/uncertain submissions are cached, not silently retried
+or recreated. The workflow status remains the authoritative evolving result.
+Cancellation during the final dependency await cannot activate a helper. Existing
+helper-side identity/resource checks still apply after acceptance and at operation
+boundaries. An error alone remains no proof of process exit or cleanup.
+
+**PRIVATE COUPLING — external protocol 1:** additive operations `previewCreate`,
+`preview`, `taskSource`, `prepareApply` and `apply` use the separate same-user
+`setup-v1.sock`; `control.sock` and existing guest command JSON are unchanged.
+`previewID` is distinct from `workflowID`; the former becomes the workflow UUID
+on preparation. Nested source/consent and responses reject unknown/duplicate/null
+fields, oversized or invalid offsets, wrong scopes and legacy boolean task trust.
+The existing request/reply bounds, peer UID checks, sequence/correlation, poison-on-
+lost-reply and detach semantics remain. No helper credential, input token, raw
+terminal byte, private archive or guest credential is added to the review wire.
+Only an explicit `taskSource` response carries requested source-file bytes.
+
+The UI now freezes its Preview button through this service, can open a CLI-created
+preview UUID for the selected guest, inspects frozen task text, prepares target
+review and presents independent consent controls. Apply remains disabled in the
+product. A submission attempt disables implicit UI resubmission and directs the
+user to workflow status. Source selection cannot edit an already prepared native
+review. The supplied Setup screenshot remains the visual reference.
+
+CLI additions (manager must already be running):
+
+```sh
+omarchy-vm setup preview VM_UUID --preset developer --preview-id PREVIEW_UUID
+omarchy-vm setup preview VM_UUID --from /absolute/folder --preview-id PREVIEW_UUID
+omarchy-vm setup preview PREVIEW_UUID
+omarchy-vm setup task-source PREVIEW_UUID TASK_NAME --offset 0
+omarchy-vm setup prepare-apply PREVIEW_UUID
+omarchy-vm setup apply PREVIEW_UUID --review REVIEW_DIGEST --ack-sudo
+# Only when deliberately approved for this exact review:
+omarchy-vm setup apply PREVIEW_UUID --review REVIEW_DIGEST --ack-sudo --trust-tasks TASK_TRUST_DIGEST --ack-docker-root
+```
+
+The caller chooses/retains `--preview-id` so a lost capture reply can be inspected
+without recapturing mutable input. CLI parsing never infers acknowledgements,
+accepts a password flag or automatically supplies task trust. Ordinary review
+commands return one correlated JSON reply, not terminal output. Well-formed
+prepare/apply commands return `failure: "disabled"` in the current product before
+target/dependency probes or helper launch. Existing check/recover commands still
+return `setup-execution-disabled`. Pure `setup plan` remains an offline proposal;
+it is not a frozen manager preview or an apply receipt.
+
+**VERIFIED — fake/local acceptance:** `make test` passed 390 manager Swift test functions in 52 suites, 52 script tests and the relocated/read-only/ad-hoc-signed helper fixture suite (including original-owner loss/reopen and terminal streaming). `make test-provisioning-review` passed 28 functions in three suites: frozen previews, original-source edits, explicit task-source chunking, preview quotas, no authority after reopen, separate task/sudo/Docker consent, exact duplicate submission, changed source/tool/session admission, cancellation during a gated final recheck, stale task trust, strict nested protocol cases and CLI/native service interoperability. Tests call the native service API and actual private CLI socket, without opening the form or claiming visual acceptance. Package/export and both diff checks pass; shared package sources/resources/pins are unchanged.
+
+**TO PROVE / NEXT:** native common-feature editing and New VM setup handoff,
+reviewed restart/check/recovery UI/CLI actions, operational guest binding/runner
+construction, complete visual acceptance and all real-guest echo/nested SSH,
+remote cleanup, crash/sleep/wake and signed distribution checks remain. Product
+execution is still disabled. No actual SSH/SCP/SFTP/Ansible, host installs, factory
+image downloads, VM launches/changes, real credentials or user UI takeover occurred.
+Only fake runtimes, original fake process adapters and disposable private fixtures
+were exercised. Shared package sources/resources/pins are unchanged.

@@ -63,3 +63,8 @@ This is a project of [reactive.org enterprises](https://www.reactive.org/). Omar
 records the uninstalled native terminal, offline presets/folder preview, separate
 same-user streaming endpoint, explicit input ownership and local fixture evidence (376 manager Swift tests, 52 script tests and signed-helper fixtures).
 Execution/submission, New VM coupling and reviewed recovery actions remain gated.
+
+[Frozen previews, apply review and task trust](DevVMProvisioningPlan.md#milestone-5-frozen-preview-apply-submission-and-task-trust--3-november-2026)
+adds the shared UI/CLI review contract, immutable private inputs, independent
+hash-bound custom-task consent, final dependency checks and fake-only submissions.
+Product execution and New VM/restart/check/recovery integration remain gated.

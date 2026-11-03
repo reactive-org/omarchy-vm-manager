@@ -46,6 +46,21 @@ do {
         switch setup {
         case .attach(let id, let interactive):
             try await ProvisioningCLITerminal.attach(client: client, workflowID: id, interactive: interactive); exit(0)
+        case .createPreview(let vm, let id, let source):
+            let reply = try await client.request(.previewCreate, previewID: id, vmID: vm, source: source)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
+        case .preview(let id):
+            let reply = try await client.request(.preview, previewID: id)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
+        case .taskSource(let id, let name, let offset):
+            let reply = try await client.request(.taskSource, previewID: id, taskName: name, offset: offset)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
+        case .prepareApply(let id):
+            let reply = try await client.request(.prepareApply, previewID: id)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
+        case .apply(let id, let consent):
+            let reply = try await client.request(.apply, previewID: id, consent: consent)
+            printSetup(try JSONEncoder().encode(reply)); await client.close(); exit(reply.failure == nil ? 0 : 1)
         case .events(let id):
             var prior: UInt64?
             while !Task.isCancelled {

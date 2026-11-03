@@ -15,6 +15,14 @@ public struct GuestCLIInvocation: Sendable {
       setup presets                List bundled offline setup presets
       setup plan --preset NAME     Preview a bundled setup without a VM
       setup plan --from /folder    Preview local vm.yml without a VM
+      setup preview VM_UUID --from /folder|--preset NAME --preview-id UUID
+                                   Freeze a manager-owned preview; retain its UUID
+      setup preview UUID           Read an existing frozen preview
+      setup task-source UUID NAME [--offset N]
+                                   Explicitly inspect a frozen task (4096-byte chunk)
+      setup prepare-apply UUID     Review target/dependencies (execution gate applies)
+      setup apply UUID --review SHA256 --ack-sudo [--trust-tasks SHA256] [--ack-docker-root]
+                                   Submit exact reviewed inputs, with separate task trust
       setup capabilities|list      Discover setup protocol / list workflows
       setup status UUID [--events] Read status / structured NDJSON (no terminal)
       setup attach UUID [--input]  View original live terminal; opt in to input

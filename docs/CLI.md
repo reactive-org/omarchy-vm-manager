@@ -217,8 +217,53 @@ connection; mutations are never automatically replayed. The endpoint admits
 only same-user peers, at most eight connections and one viewer per connection,
 with a 15-second activity lease. Inactive clients must poll or heartbeat.
 
-Apply/check/recover, automatic New VM setup, reviewed custom-task trust and
-restart/check/recovery actions remain gated follow-up work. Execution commands
-return `setup-execution-disabled` even when Homebrew dependencies are ready.
-No job is submitted by these commands. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
+The frozen review/consent contract is described below. Product prepare/apply returns `failure: "disabled"` even when tools are ready; check/recover still return `setup-execution-disabled`. Automatic New VM setup and reviewed restart/check/recovery actions remain follow-up work. No product job is submitted. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
 for validation and the remaining acceptance boundary.
+
+### Frozen preview and separate task trust
+
+This uninstalled worktree adds review/submission contracts on the separate setup
+endpoint. Product execution remains disabled; the operational path is exercised
+only with fake runtimes and fixture adapters.
+
+```sh
+omarchy-vm setup preview VM_UUID --from /absolute/folder --preview-id PREVIEW_UUID
+omarchy-vm setup preview VM_UUID --preset project-managed --preview-id PREVIEW_UUID
+omarchy-vm setup preview PREVIEW_UUID
+omarchy-vm setup task-source PREVIEW_UUID TASK_NAME --offset 0
+omarchy-vm setup prepare-apply PREVIEW_UUID
+omarchy-vm setup apply PREVIEW_UUID --review REVIEW_DIGEST --ack-sudo
+```
+
+Choose/retain the preview UUID before capture. A repeated UUID looks up its exact
+frozen inputs; it does not reread an edited source folder. A changed target/selection
+under that UUID is refused. Create a new preview to capture edits. `setup plan`
+remains a standalone proposal and cannot be supplied as an apply receipt. Preview
+capture starts no VM/helper and runs no dependency probe. Manager restart loses
+preview/consent handles; retained private files cannot restore execution authority.
+
+Review replies expose exact plan/input hashes, task entrypoint names/hashes and
+target review identity. Task-source reads are explicit 4096-byte chunks, encoded
+as `taskSource.bytes` (base64) with name/hash/offset/total. Normal status and
+preview metadata do not contain task code. Native inspection displays complete
+UTF-8 task files up to 64 KiB; larger task files can be inspected through repeated
+CLI offsets. Trust covers the complete frozen snapshot and referenced assets.
+Custom Ansible can run on the Mac and use controller credentials; it is not a guest
+sandbox. Inspect and trust the source independently of general Apply approval.
+
+For selected custom tasks, add `--trust-tasks TASK_TRUST_DIGEST` using the exact
+`applyReview.taskTrustIdentity`. It binds the reviewed request, all frozen input
+hashes and selected tasks; `true`, a stale digest or a general approval is refused.
+`--ack-sudo` separately acknowledges a persistent grant until cleanup is confirmed.
+Add `--ack-docker-root` only for the separately reviewed Docker root-equivalent
+access. No flag is inferred and no password/keystroke automation flag is accepted.
+
+Preparation and submission deduplicate by the preview/workflow UUID. Repeating
+identical consent retrieves the original acceptance result; status tracks its
+current outcome. A failed submission is not retried by reconnecting. Changes to
+frozen private data, session or tool pins require explicit fresh review. Submission
+rechecks package/resources and current dependencies before the existing helper
+admission path. A disconnected CLI leaves manager-owned work intact. The product
+returns `failure: "disabled"` before target/dependency probes for prepare/apply;
+it does not infer a guest UID or install a runner. See the
+[frozen review validation record](DevVMProvisioningPlan.md#milestone-5-frozen-preview-apply-submission-and-task-trust--3-november-2026).

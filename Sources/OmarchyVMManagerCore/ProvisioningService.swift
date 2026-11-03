@@ -26,6 +26,9 @@ struct ProvisioningServiceEnvironment: Sendable {
     let launcher: any ProvisioningServiceLaunching
     let transportPolicy: ProvisioningTransportPolicy
     let admitPackage: @Sendable () throws -> Void
+    // Trusted fixture injection until manager-owned guest UID/key evidence is
+    // admitted. Product construction supplies nil and remains disabled.
+    var resolveTarget: (@Sendable (UUID, UUID) async throws -> GuestBinding)? = nil
 }
 actor ProvisioningAdmittedSessionAuthority: ProvisioningSessionAuthority {
     let manager: VMManager
@@ -46,13 +49,13 @@ actor ProvisioningAdmittedSessionAuthority: ProvisioningSessionAuthority {
 /// survive a cancelled waiter. No public UI/CLI execution entry point is enabled.
 public actor ProvisioningService {
     public nonisolated let executionEnabled: Bool
-    private let manager: VMManager
+    let manager: VMManager
     let coordinator: ProvisioningCoordinator
     private let workflows: ProvisioningWorkflowJournal
     private let jobs: ProvisioningJobJournal
     private let artifacts: ProvisioningJobArtifacts
-    private let sourceDirectory: URL
-    private let environment: ProvisioningServiceEnvironment
+    let sourceDirectory: URL
+    let environment: ProvisioningServiceEnvironment
     private let authority: ProvisioningAdmittedSessionAuthority
     private var rows: [UUID: ProvisioningWorkflowRecord]
     private var tasks: [UUID: Task<Void, Never>] = [:]
@@ -66,6 +69,12 @@ public actor ProvisioningService {
     private var rebindInFlight = Set<UUID>()
     private var unconfirmedExits = Set<UUID>()
     private var busyID: UUID?
+    var drafts: [UUID: ProvisioningDraft] = [:]
+    var draftCaptures = Set<UUID>()
+    var applyPreparations: [UUID: Task<ProvisioningApplyReview, Error>] = [:]
+    var applyReviews: [UUID: ProvisioningApplyReview] = [:]
+    var applySubmissions: [UUID: (ProvisioningApplyConsent, Task<ProvisioningWorkflowSnapshot, Error>)] = [:]
+    var reviewOperations = Set<UUID>()
     private var closed = false, failed = false
 
     private init(manager: VMManager, coordinator: ProvisioningCoordinator, jobs: ProvisioningJobJournal, workflows: ProvisioningWorkflowJournal,
@@ -107,6 +116,7 @@ public actor ProvisioningService {
         return .init(manager: manager, coordinator: coordinator, jobs: jobs, workflows: workflows, artifacts: artifacts,
             sourceDirectory: sourceDirectory, environment: environment, authority: authority, rows: records)
     }
+    func reviewAvailable() throws { guard !closed, !failed else { throw ProvisioningServiceFailure.unavailable } }
     public func status(_ id: UUID) -> ProvisioningWorkflowSnapshot? { rows[id]?.snapshot }
     public func attachTerminal(_ id: UUID) async throws -> ProvisioningTerminalAttachment {
         guard !closed, let row = rows[id], let launcher = environment.launcher as? any ProvisioningTerminalLaunching else { throw ProvisioningTerminalDenial.unavailable }
@@ -124,7 +134,7 @@ public actor ProvisioningService {
         await tasks[id]?.value
         return rows[id]!.snapshot
     }
-    private func enabled() throws {
+    func enabled() throws {
         guard !closed, !failed else { throw ProvisioningServiceFailure.unavailable }
         guard executionEnabled else { throw ProvisioningServiceFailure.disabled }
     }
@@ -383,12 +393,12 @@ public actor ProvisioningService {
         if busyID == id { busyID = nil }
     }
     func closeForReopen() async throws {
-        guard rebindInFlight.isEmpty, tasks.keys.allSatisfy({ id in ![.running, .checking, .waitingForSSH, .waitingForExit].contains(rows[id]?.stage) }) else { throw ProvisioningServiceFailure.busy }
+        guard reviewOperations.isEmpty, draftCaptures.isEmpty, rebindInFlight.isEmpty, tasks.keys.allSatisfy({ id in ![.running, .checking, .waitingForSSH, .waitingForExit].contains(rows[id]?.stage) }) else { throw ProvisioningServiceFailure.busy }
         let pendingPreparations = preparations; preparations.removeAll()
         for lease in pendingPreparations.values { await coordinator.endPreparation(lease) }
         let pendingRestarts = restarts; restarts.removeAll()
         for lease in pendingRestarts.values { await coordinator.cancelRestart(lease) }
-        try await coordinator.closeForReopen(); workflows.close(); closed = true; previews.removeAll(); original.removeAll(); sources.removeAll(); tasks.removeAll()
+        try await coordinator.closeForReopen(); workflows.close(); closed = true; drafts.removeAll(); applyPreparations.removeAll(); applyReviews.removeAll(); applySubmissions.removeAll(); previews.removeAll(); original.removeAll(); sources.removeAll(); tasks.removeAll()
     }
     /// Explicit recovery requires live original resource admission and an injected
     /// adapter. A fresh process with an empty launcher still cannot prove the
