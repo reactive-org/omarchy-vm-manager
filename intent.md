@@ -2467,3 +2467,22 @@ remains the visual target for milestone 5.
   owner configuration, existing factory/tool readiness, exact inputs/consents and
   all real guest acceptance. No launch, real SSH/Ansible, install, credential use,
   normal UI or worker body occurred. Real acceptance remains NOT_RUN.
+
+## Offline candidate signing/readiness audit — 3 November 2026
+
+- **VERIFIED — static/local:** nineteen checks confirm unchanged candidate/evidence,
+  exact inventories/signatures, source archive/overlay and original root/registry.
+  Static Ansible metadata is Core 2.21.5 in the expected family, with no CLI execution
+  or readiness claim. Factory metadata is present but bytes are access-denied and
+  checksum NOT_VERIFIED. No permission grant, image/disk creation, credential, host
+  install, normal UI, workflow, signing, network or real transport/guest operation.
+- **PRIVATE COUPLING / SOURCE INFERENCE:** supported promotion rebuilds signed
+  runtime/profile/pin composition while retaining original scope. Existing tag CI
+  checks out ordinary source and publishes archives; it is unsuitable unchanged for
+  this ignored private candidate. A private nonpublishing handoff and final original-
+  Mac scope validation must precede later authorized signing. No such route is run
+  or implemented here; detailed artifacts and pins remain outside Git.
+- **TO PROVE:** seven signing/readiness gates, including fresh CLI checks, approved
+  SSH/owner/input configuration, verified factory bytes and actual loaded-child/
+  guest behavior. Product approval remains nil and guest rows remain NOT_RUN. See
+  the [audit record](docs/DevVMMilestone6Runbook.md#offline-signing-and-readiness-audit).

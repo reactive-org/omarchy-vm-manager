@@ -112,6 +112,13 @@ admission suite pass. Fake-runtime probes start nothing. The candidate is ad-hoc
 signed, and its unchanged production helper-signing policy correctly blocks it.
 The ordinary build stays disabled; real guest acceptance remains NOT_RUN.
 
+The [offline signing/readiness audit](DevVMMilestone6Runbook.md#offline-signing-and-readiness-audit)
+records nineteen static checks and seven remaining gates. Promotion requires the
+supported signed-prerelease rebuild and a private nonpublishing signing handoff.
+Tool files/static Core metadata are present but unprobed; factory bytes remain
+unverified after OS access refusal. No permission, credential, signing, installed-
+tool, workflow or guest operation occurred.
+
 [Milestone 6 disposable admission](DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
 adds independent manager/helper approval checks for exact disposable UUID/root
 identity pins, including restart, cleanup and terminal input. Twelve fake/local

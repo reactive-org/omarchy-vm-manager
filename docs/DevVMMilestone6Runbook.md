@@ -145,6 +145,53 @@ NOT_RUN. The package verifier's `executionEnabled: false` describes its offline
 command contract; the private inspection separately reports `scopeConfigured: true`.
 Neither report supplies guest-run consent or bypasses signing/session/tool checks.
 
+## Offline signing and readiness audit
+
+**VERIFIED — static/local, 3 November 2026:** nineteen checks pass; one factory-byte
+check remains NOT_VERIFIED because OS file access was refused. Candidate/evidence
+hashes, exact package/kit inventories, deep/strict local signatures, original
+scope/root/registry and reconstructed private overlay remain consistent. The base
+archive also matches an independent Git archive of its recorded source commit.
+Only static `codesign` display/verification and local Git archive/temporary patch
+reconstruction run; no candidate binary or installed provisioning tool is executed.
+The audit and its detailed observations remain private/ignored.
+
+**SIGNING BLOCKERS:** the app/helper are ad-hoc signed, lack a Team ID, hardened
+runtime/timestamp and the embedded protected-Keychain profile required by the
+supported signed-prerelease path. The production same-team gate remains intact.
+Promotion requires a signed-prerelease rebuild carrying the original scope, signed
+runtime lock/origin, `RuntimePin`/`SignedBuildPin`, approved profile/entitlements and
+post-sign executable seal. Child helpers must retain their restricted credential
+scope. Static signature integrity establishes none of those release capabilities.
+
+**PRIVATE COUPLING / SOURCE INFERENCE:** the existing tag workflow checks out the
+ordinary repository, then publishes prerelease and failure-diagnostic archives.
+It neither carries the ignored scope overlay nor provides the required private
+artifact handling. A reviewed nonpublishing signing handoff is needed before using
+credentials; no signing workflow was invoked or implemented by this audit. A
+remote signer must retain the original constants, not recapture substitute root
+identities. Final scope checks belong against the original root on the approved Mac.
+
+**READINESS:** both Homebrew Ansible paths resolve to the same formula directory.
+Static distribution metadata reports Core 2.21.5, consistent with the required
+2.21.x family. CLI versions, inventory/syntax self-checks and fresh transport
+admission remain UNPROVEN; no brew/Ansible/SSH/gh command ran. The expected compressed
+factory has file metadata in the managed cache, but its contents could not be read,
+including outside the tool sandbox. Its checksum is NOT_VERIFIED. No macOS
+permission was granted, no image downloaded/copied/decompressed and no guest disk
+created. SSH/owner/setup selection are still absent from the disposable profile.
+
+**TO PROVE:** seven signing/readiness gates remain: same-team code admission;
+signed runtime/profile/rebuild composition; private signing handoff; SSH/owner/input
+configuration; fresh actual CLI readiness; loaded-child and real guest results;
+and verified factory bytes. No signing identity enumeration, Keychain access,
+credential use, signing, notarization/Gatekeeper request, network request, release
+publication, normal UI or VM operation occurred. Ordinary execution remains disabled
+and all real guest rows remain NOT_RUN. The next safe development task is to prepare
+the private handoff and its checks using fake/local fixtures; actual signing,
+permission grants, metadata/account changes, tool execution and guest runs need
+their own explicit authorization.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

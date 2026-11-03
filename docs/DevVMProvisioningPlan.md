@@ -2826,3 +2826,38 @@ readiness, exact frozen-input/privilege/task consent and real execution still ne
 their own scoped approval/evidence. No launch or real provisioning is authorized by
 candidate preparation. Every guest acceptance row remains NOT_RUN; milestone 6 is
 not complete. See the [runbook](DevVMMilestone6Runbook.md#private-scoped-candidate-preparation).
+
+## Milestone 6 offline signing/readiness audit — 3 November 2026
+
+**VERIFIED — static/local:** nineteen checks confirm retained artifacts and evidence,
+deep/strict signature integrity, exact kit/package/resource inventories, original
+scope and unchanged root/registry, private-overlay reconstruction and an independent
+base archive match to its Git commit. No candidate process or installed provisioning
+tool runs. Static Homebrew observations find both Ansible commands in the same
+formula directory and distribution metadata for Core 2.21.5; no readiness status is
+inferred from that data. The expected compressed factory's metadata exists in the
+managed cache, but OS access refuses its bytes even outside the tool sandbox. Its
+checksum is NOT_VERIFIED, not a factory acceptance pass. No permissions are granted
+and no image/disk is created or transformed. Private reports, fingerprints and
+source evidence remain outside Git. This audit changes no product/shared source.
+
+**SOURCE FINDINGS:** the debug candidate remains ad-hoc, without same-team identity,
+hardened runtime/timestamp or its protected-Keychain profile. The supported signing
+path rebuilds with `SIGNED_PRERELEASE`, signed kit origin/lock, `RuntimePin` and
+`SignedBuildPin`, approved profile/entitlements and a post-sign distribution seal.
+The existing tag workflow uses ordinary checkout and publishes release and failure
+archives; source inspection shows it cannot carry this ignored private overlay or
+meet private artifact handling unchanged. A reviewed nonpublishing signing handoff
+must retain the original constants and verify scope on the approved Mac. It must
+not manufacture new pins on a remote signer. No workflow, signing credentials,
+identity enumeration, Keychain, signing or notarization request is used here.
+
+**TO PROVE / REMAINING:** same-team/loaded-child admission; signed rebuild/profile
+composition; the private signing handoff; separately approved SSH/owner/frozen-input
+configuration; fresh bounded actual CLI checks; all real guest rows; factory-byte
+verification. Seven gates are recorded in the private audit. The next safe slice
+is private-handoff design and fake/local checks, with actual credential/permission/
+tool/guest operations still separately authorized. Ordinary product approval stays
+nil and guest acceptance stays NOT_RUN. The
+[runbook](DevVMMilestone6Runbook.md#offline-signing-and-readiness-audit) distinguishes
+static passes, access refusal, source inference and live evidence still missing.
