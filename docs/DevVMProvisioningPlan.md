@@ -3065,3 +3065,35 @@ No profile bytes, credentials, signing, Apple/network, SSH/Ansible, installs, im
 UI or guest operation occurs. Actual app compilation, material selection/admission,
 cryptographic/loaded-child and real guest evidence remain TO PROVE/NOT_RUN. See the
 [input gate](DevVMMilestone6Runbook.md#integrated-candidate-inputs-for-7e46241--4-november-2026).
+
+## Source-only admission and trusted caller — 4 November 2026
+
+**IMPLEMENTED:** an explicit version-2 admission API consumes the frozen source-only
+packet without changing its version-1 data format, historical scope/source commit,
+pins or gate. A typed trusted review independently binds source commit/archive/
+overlay, original scope bytes/semantic digest/definition, lineage, packet digest,
+team and fixture mode. Normalized request digests are separated from legacy and
+packet digests. The old app-based signer path remains explicit and unchanged.
+
+Strict immutable inventories, safe archives, exact config/package/resources,
+reviewed source reconstruction and runtime-origin/payload/ZIP checks precede use.
+The adapter readmits across callbacks, requires the reviewed runtime selector and
+preserves existing signed-pipeline policies. The one-shot caller requires typed
+review/material objects, defaults to denial before credential IO/output, and
+consumes use before admission under a lock. Gate files, sidecars and environments
+cannot create signing authority; no CLI, publication or credential importer is added.
+
+**VERIFIED — fake/local:** eighteen new tests include full fake adapter/ZIP
+roundtrip, scope preservation, version/authority/runtime tampering, callback/source
+mutation and concurrent one-shot refusal. The allowed full Python run has 127 passes
+and five signing/PKCS12 skips (132 discovered), with no forbidden process attempt.
+The actual `7e46241` packet admits as file data only, under prohibited process/
+network hooks. All 1,161 existing private artifact entries remain unchanged; exact
+identities and new evidence stay private. Production/shared code and pins are
+unchanged and provisioning approval stays nil.
+
+**TO PROVE:** selected profile/keychain validation and separately authorized real
+compiler/SDK/signing/loaded-child/original-Mac evidence. No actual signing,
+credentials/profile bytes, Apple request, SSH/Ansible, install, UI, image or VM
+operation occurs. Guest acceptance stays NOT_RUN. See the
+[versioned caller](DevVMMilestone6Runbook.md#version-2-source-only-admission-and-caller--4-november-2026).

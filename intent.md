@@ -2919,3 +2919,28 @@ remains the visual target for milestone 5.
   credentials, signing, Apple/network, SSH/Ansible, installs, image, UI or guest
   operation; product approval remains nil and all later approvals NOT_GRANTED.
   See the [input gate](docs/DevVMMilestone6Runbook.md#integrated-candidate-inputs-for-7e46241--4-november-2026).
+
+## Versioned source-only admission/caller — 4 November 2026
+
+- **DESIGN DECISION:** explicit version-2 admission consumes unchanged source-only
+  packets. Typed in-memory review binds new source/archive/overlay independently
+  of original scope bytes/semantic hash/definition and prior request, plus packet,
+  team and fixture mode. Its request digest cannot alias legacy/packet digests.
+  Gate files/env/sidecars confer no authority. Legacy admission is separate.
+- **PRIVATE COUPLING:** immutable source/runtime/lineage and resource/archive
+  checks, exact reconstructed source/definition, callback re-admission and selected
+  runtime/team binding feed the existing adapter. The typed caller is atomically
+  one-shot and default-denied before material IO/output; no signing CLI, automatic
+  retry, credential import or publication path is added.
+- **VERIFIED — fake/local:** eighteen new tests, including full fake adapter/ZIP
+  roundtrip and concurrent replay refusal; 127 allowed Python passes/five signing
+  skips (132 discovered), without a forbidden process attempt. Actual frozen
+  `7e46241` inputs admit as data only with external process/network hooks blocked.
+  All 1,161 retained private entries are unchanged. Evidence is separate/private;
+  no real runner authorization is created for that packet.
+- **TO PROVE:** named material selection/validation and authorized compiler/SDK/
+  signing/profile/loaded-child/original-Mac and guest behavior. No credentials or
+  profile bytes, signing, Apple requests, SSH/Ansible, installs, app/UI, image or VM
+  operation. Shared/product source and pins are unchanged, provisioning approval
+  stays nil and real guest rows NOT_RUN. See the
+  [caller](docs/DevVMMilestone6Runbook.md#version-2-source-only-admission-and-caller--4-november-2026).

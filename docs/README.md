@@ -198,3 +198,11 @@ packet. Original scope/source pins and prior artifacts stay unchanged. Twenty-tw
 input checks and 12 fake signer tests pass; no app/signing or credential operation
 occurs. The gate records source-only signer admission and profile/keychain
 validation as pending, with every execution/signing/guest approval ungranted.
+
+[Version-2 source admission and caller](DevVMMilestone6Runbook.md#version-2-source-only-admission-and-caller--4-november-2026)
+now consume that unchanged packet through an explicit typed API, preserving original
+scope bytes and legacy admission. Default execution is denied; one-shot use,
+independent review bindings and immutable source/runtime checks are tested with
+fake runners. Eighteen new tests and 127 allowed Python passes succeed, with five
+signing cases skipped. The actual packet admits as data only, all private artifacts
+stay unchanged, and profile/keychain/real signing and guest gates remain pending.

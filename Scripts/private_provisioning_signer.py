@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 
 import private_provisioning_package as private
 
@@ -202,7 +203,7 @@ class Adapter:
 
     def _call(self, stage, effect, argv, cwd=None, timeout=120):
         self.events.append(stage)
-        private.load_handoff(self.handoff, self.expected)
+        self._revalidate_inputs()
         spec = Command(stage, effect, tuple(map(str, argv)), cwd or self.work, dict(self.environment),
                        self.expected, self.request["scopeSHA256"], self.material.binding(), timeout)
         try:
@@ -213,8 +214,12 @@ class Adapter:
                             "private-command-failed")
         except Exception:
             raise private.Refused("private-command-failed") from None
-        private.load_handoff(self.handoff, self.expected)
+        self._revalidate_inputs()
         return result
+
+    def _revalidate_inputs(self):
+        return (self.source_admission.revalidate() if self.source_admission is not None
+                else private.load_handoff(self.handoff, self.expected))
 
     def _git(self, stage, directory, *args):
         return self._call(stage, "build", [TOOLS["git"], "-c", "core.fsmonitor=false",
@@ -249,11 +254,15 @@ class Adapter:
         private.private_directory(m.signed_runtime)
         raw = private.read(m.signed_runtime / "TryOmarchySignedRuntime.lock.json", 65536)
         signed = private.decode(raw)
+        if self.source_admission is not None:
+            private.require(private.digest(raw) == self.request["signedRuntimeLockSHA256"], "reviewed-runtime-lock-changed")
         original_raw = private.read(self.handoff / "inputs/Config/TryOmarchyRuntime.lock.json", 65536)
         original = private.decode(original_raw)
         private.validate_signed_lock(signed, original, private.digest(original_raw), m.team)
         require_archive = private.read(m.signed_runtime / "TryOmarchyKit.zip")
         private.require(private.digest(require_archive) == signed["kitSHA256"], "signed-runtime-archive-changed")
+        if self.source_admission is not None:
+            private.require(signed["kitSHA256"] == self.request["signedRuntimeArchiveSHA256"], "reviewed-runtime-archive-changed")
         source = self.handoff / "inputs/TryOmarchyKit.bundle"
         private.validate_payload(original["files"], signed["files"], _macho_paths(source))
         self.runtime = self.work / "runtime"; self.runtime.mkdir(mode=0o700)
@@ -277,6 +286,8 @@ class Adapter:
         self._call("apply-original-overlay", "build", [TOOLS["git"], "apply", patch], cwd=self.source)
         for item in evidence["overlayFiles"]:
             private.require(private.digest(private.read(self.source / item["path"])) == item["afterSHA256"], "source-overlay-changed")
+        if self.source_admission is not None:
+            self.source_admission.validate_reconstruction(self.source)
         literal = self.source / "Sources/OmarchyVMManagerCore/PrivateM6Acceptance.swift"
         text = private.read(literal).decode()
         scope = private.decode(private.read(inputs / "scope.json", 65536))
@@ -476,9 +487,23 @@ class Adapter:
         return identities
 
     def run(self, handoff, output, expected):
+        """Legacy v1 only; never auto-detect or reinterpret a source-only packet."""
+        return self._execute(handoff, output, expected)
+
+    def run_source_inputs(self, folder, output, review):
+        from private_provisioning_inputs import SourceInputAdmission
+        private.require(type(self.material) is Material, "typed-signing-material-required")
+        admitted = SourceInputAdmission.open(folder, review)
+        return self._execute(admitted.folder, output, admitted.requestSHA256, admitted)
+
+    def _execute(self, handoff, output, expected, source_admission=None):
         private.private_context()
         self.handoff, self.expected = Path(handoff), expected
-        self.request = private.load_handoff(self.handoff, expected)
+        self.source_admission = source_admission
+        self.request = self._revalidate_inputs()
+        if source_admission is not None:
+            private.require(self.material.signed_runtime == self.handoff / "runtime", "reviewed-runtime-directory-required")
+            private.require(self.material.team == self.request["signingTeamID"], "reviewed-signing-team-required")
         # Mandatory before reading any profile/keychain material or creating jobs.
         self.runner.authorize(expected, self.request["scopeSHA256"], self.material.binding())
         private.require(type(self.runner.test_double) is bool)
@@ -508,6 +533,11 @@ class Adapter:
                       "processRunnerTestDouble": self.runner.test_double, "productionCryptographyObserved": not self.runner.test_double,
                       "notarization": "NOT_REQUESTED_NOT_ESTABLISHED", "localScopeValidation": "PENDING_ORIGINAL_MAC",
                       "loadedChildAdmission": "NOT_RUN", "guestRunAuthorized": False, "publication": "forbidden", "events": self.events}
+            result["inputAdmissionVersion"] = self.request["format"]
+            if source_admission is not None:
+                result["candidateInputsSHA256"] = source_admission.review.candidateInputsSHA256
+                result["sourceCommit"] = source_admission.review.sourceCommit
+                result["scopeBytesSHA256"] = source_admission.review.scopeBytesSHA256
             private.write_json(self.work / "signer-result.json", result)
             return result
         except Exception:
@@ -518,6 +548,30 @@ class Adapter:
             except OSError:
                 pass  # Failure-record IO must not expose backend or private paths.
             raise private.Refused("private-signer-adapter-failed") from None
+
+
+class SourceInputCaller:
+    """One-shot trusted composition. Files/env never grant signing authority.
+
+    ReviewedSourceInputs and Material must be supplied explicitly in memory.
+    The default runner denies before material IO or output creation. A caller is
+    consumed before admission, including failures; it never retries automatically.
+    """
+    def __init__(self, review, material, runner=None):
+        from private_provisioning_inputs import ReviewedSourceInputs
+        private.require(type(review) is ReviewedSourceInputs and type(material) is Material,
+                        "typed-source-review-and-material-required")
+        self.review, self.material = review, material
+        self.runner = runner if runner is not None else SystemRunner()
+        self._lock, self._used = threading.Lock(), False
+
+    def __repr__(self): return "SourceInputCaller(redacted)"
+
+    def run(self, folder, output):
+        with self._lock:
+            private.require(not self._used, "source-input-caller-already-used")
+            self._used = True
+        return Adapter(self.runner, self.material).run_source_inputs(folder, output, self.review)
 
 
 if __name__ == "__main__":

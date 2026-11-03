@@ -564,6 +564,74 @@ timestamp and later guest approvals remain NOT_GRANTED. No credential/profile
 bytes, signing, Apple/network request, SSH/Ansible, install, image, UI or VM operation
 occurs, and every real guest acceptance row stays NOT_RUN.
 
+## Version 2 source-only admission and caller — 4 November 2026
+
+**IMPLEMENTED — developer tooling:** `Scripts/private_provisioning_inputs.py`
+admits the existing version-1 `PRIVATE_INTEGRATED_CANDIDATE_INPUTS` data through a
+distinct version-2 signing-input contract. No packet, scope pin or historical gate
+is rewritten. The legacy app-based `Adapter.run` remains separate and does not
+auto-detect source inputs. `Adapter.run_source_inputs` and `SourceInputCaller`
+are explicit APIs; there is no signing CLI or file/environment approval loader.
+
+The trusted caller supplies a typed `ReviewedSourceInputs` in memory. It binds
+the independently reviewed packet digest, new source commit/archive/overlay, exact
+original scope semantic and byte digests, original request lineage, preserved
+scope-definition source digest and selected signing team. Fixture mode is also
+bound. The version-2 request digest has its own domain; neither an old request
+digest nor the packet/checksum sidecar digest can authorize its dispatch. The
+gate JSON's approval claims are not read as authority.
+
+Admission verifies strict version/kind/fields, explicit non-authority flags,
+immutable input/runtime/lineage inventories, receipt and prior-request bindings,
+safe source archive, archive/config equality, six overlay paths, original scope
+definition, full expected scoped-source inventory, exported package/resource
+hashes and runtime origin/payload/ZIP inventories. Runtime/team/material selectors
+must match the review. The VM-root namespace is refused before observing its
+directory, and scope root strings are never used to read or recapture a real root.
+
+An admitted value supplies data for the existing adapter sequence. The actual
+applied overlay must reproduce the full reviewed source inventory before signed
+pin/inspection projections, and the original scope-definition bytes must match.
+Inputs are readmitted across process callbacks. The selected runtime lock/archive
+stay exact; child signing, post-sign seal, outer signing, strict verification and
+private extraction checks retain their existing policies. Legacy inputs continue
+through their original version-1 path.
+
+`SourceInputCaller` takes typed review and material objects with an optional
+injected runner. Its default `SystemRunner` still refuses before profile/keychain
+IO or output creation without separately approved in-memory authorization for the
+version-2 request, scope, material and effects. Caller use is consumed atomically
+before admission; failure or concurrent invocation cannot replay it. No retry,
+publisher, keychain import/unlock or notary operation is added.
+
+```sh
+make test-private-provisioning-inputs
+make test-private-provisioning-signer
+```
+
+**VERIFIED — offline/fake:** eighteen new test functions cover full fake adapter/
+archive roundtrip, independent source/scope preservation, default denial, malicious
+gate/sidecar claims, version confusion, duplicate/unsafe data, resealed runtime/
+scope changes, callback mutation, unexpected source files and concurrent one-shot
+use. The full allowed Python run discovers 132 tests: 127 pass and five software-
+signing/PKCS12 cases are deliberately skipped. Auditing records only local Git and
+Python processes, with no forbidden-tool attempt. The actual frozen `7e46241`
+packet also admits as version-2 file data with process/network hooks prohibited;
+no runner/material authorization is constructed for that packet.
+
+All 1,161 previously retained private artifact entries remain unchanged, including
+the gate's preparation-time compatibility/status fields. New admission evidence
+is retained separately. Those historical fields do not grant execution or claim
+fresh signatures. Product provisioning approval stays nil; shared Swift/package
+source and pins are unchanged. No real signing, profile bytes, credentials, Apple
+requests, SSH/Ansible, installs, app/UI, image or VM operation occurs.
+
+**NEXT / TO PROVE:** named profile/isolated-keychain selection and separately
+approved bounded validation, reviewed real execution authorization, actual source
+compilation/signature/profile/loaded-child and original-Mac scope evidence. No
+real build/signing caller is invoked here. Notarization and every real guest row
+retain their separate approvals and NOT_RUN status.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without
