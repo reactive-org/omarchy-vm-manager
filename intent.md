@@ -1498,3 +1498,10 @@ All nine published asset sizes/digests and both ZIP checksums match. Downloaded 
 
 
 **VERIFIED — scoped user clarification, 3 November 2026:** the user noticed the native Touch ID prompt cancel during the pause/resume test sequence, but could not confirm the other outcomes. Record observed prompt cancellation only, alongside the previously recorded helper pause/resume acknowledgements. The exact timing/cause of cancellation was not independently observed. **TO PROVE:** the old password-fallback-disabled guest test returned failure after resume without late authentication, and a fresh request subsequently succeeded. Do not mark the complete lifecycle cancellation/recovery test passed. No further pause/resume, guest action or authentication interaction was performed by the agent.
+
+
+## User-confirmed pause cancellation and recovery — 3 November 2026
+
+**VERIFIED — user report plus helper acknowledgements:** following the previously recorded five-second pause/resume cycle and observed native prompt cancellation, the user supplied both guest test outputs. The old `try-omarchy-touch-id-test` reported denial, no supplied guest password and authentication failure with password fallback disabled. A fresh invocation then reported successful sudo authentication without a guest password. Record the described manual pause/resume cancellation/recovery case as passed in the build 26 test sequence: the old request failed and a fresh request succeeded. This supersedes the immediately preceding unknown old-test/fresh-request outcomes. The agent did not operate the guest or observe exact native timing; no key, password or personal identifiers are recorded.
+
+**TO PROVE:** Mac sleep/wake, shutdown/forced-stop/crash cancellation, rapid focus transitions/exact prompt counts, unavailable-biometry fallback, re-pairing and two-VM contention/key isolation remain pending. The passed manual case does not establish all lifecycle behavior or grant agent-driven native interaction.

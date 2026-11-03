@@ -193,3 +193,6 @@ The host fix and reported no-prompt failure are detailed in [Guest Touch ID](Gue
 
 
 **VERIFIED — further user confirmation:** the user confirmed the three proposed single-guest checks: Linux-password fallback after cancelling Touch ID, focus-loss cancellation preventing late approval, and fresh-request recovery after returning to the guest. See [the scoped evidence](GuestTouchID.md#user-confirmed-fallback-focus-cancellation-and-recovery--3-november-2026). Lifecycle cancellation, unavailable-biometry fallback and two-VM isolation remain **TO PROVE**. No agent-driven native test or VM change occurred.
+
+
+**VERIFIED — user-reported pause/resume case:** helper reports show a five-second pause/resume cycle; the user observed prompt cancellation and subsequently supplied the old password-fallback-disabled test failing and a fresh test passing. Record that manual cancellation/recovery case as passed for build 26. [Exact scope and remaining native gates](GuestTouchID.md#user-confirmed-pause-cancellation-and-recovery--3-november-2026) remain distinct from independent agent observation.
