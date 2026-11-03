@@ -116,3 +116,48 @@ extension GuestTouchIDTests {
         #expect(update.ok && update.guest?.guestTouchID.enabled == false)
     }
 }
+
+private struct DiagnosticRuntime: VMRuntime {
+    func preflight() -> VMRunError? { nil }
+    func start(_ request: VMStartRequest, onEvent: @escaping @Sendable (VMRuntimeEvent) -> Void) throws -> any VMRuntimeHandle { DiagnosticHandle() }
+}
+
+private final class DiagnosticHandle: VMRuntimeHandle, @unchecked Sendable {
+    var isRunning: Bool { true }
+    var recentStandardError: String { VMGuestAuthenticationDiagnostic.prefix + "focus-before\n" }
+    func pause() throws {}
+    func resume() throws {}
+    func shutDown() {}
+    func terminate() {}
+}
+
+extension GuestTouchIDTests {
+    @Test("only complete whitelisted host diagnostics are displayed and approval clears the old denial")
+    func diagnostics() {
+        let prefix = VMGuestAuthenticationDiagnostic.prefix
+        #expect(VMGuestAuthenticationDiagnostic.latest(in: prefix + "focus-before\n") == .focusBefore)
+        #expect(VMGuestAuthenticationDiagnostic.latest(in: prefix + "focus-before\n" + prefix + "approved") == .focusBefore)
+        #expect(VMGuestAuthenticationDiagnostic.latest(in: prefix + "focus-before\n" + prefix + "approved\n")?.explanation == nil)
+        for line in ["untrusted guest text", prefix + "unknown", prefix + "focus-before synthetic-secret"] {
+            #expect(VMGuestAuthenticationDiagnostic.latest(in: line + "\n") == nil)
+        }
+    }
+
+    @Test("an authentication denial is a notice and keeps the active client and resources until exit")
+    func diagnosticLifecycle() async throws {
+        let files = try RegistryFixture(); defer { files.cleanup() }
+        var profile = VMProfile(id: UUID(), name: "Fixture")
+        profile.guestTouchIDEnabled = true
+        let manager = VMManager(runtime: DiagnosticRuntime(), profiles: [profile], applicationSupport: files.support,
+            hostMemoryMiB: 65536, logicalCPUs: 64)
+        try await manager.start(profile.id)
+        let snapshot = try #require(await manager.snapshots().first)
+        #expect(snapshot.notice == VMGuestAuthenticationDiagnostic.focusBefore.explanation)
+        #expect(snapshot.lastFailure == nil)
+        #expect(await manager.activeSessionCount == 1)
+        #expect(await manager.allocatedMemoryMiB == profile.memoryMiB)
+        await manager.receive(.exited(status: 0), vmID: profile.id, sessionID: try #require(snapshot.sessionID))
+        #expect(await manager.activeSessionCount == 0)
+        #expect(await manager.allocatedMemoryMiB == 0)
+    }
+}

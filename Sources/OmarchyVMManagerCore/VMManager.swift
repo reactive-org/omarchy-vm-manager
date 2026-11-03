@@ -370,10 +370,16 @@ public actor VMManager {
     public func snapshots() -> [VMSnapshot] {
         profiles.map {
             VMSnapshot(profile: $0, state: states[$0.id] ?? .stopped,
-                       sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: notices[$0.id],
+                       sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: authenticationNotice($0.id) ?? notices[$0.id],
                        sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped),
                        ownerSetupReadiness: ownerReadiness($0), sharedFolderReadiness: sharingReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false)
         }
+    }
+
+    private func authenticationNotice(_ id: UUID) -> String? {
+        guard profiles.first(where: { $0.id == id })?.guestTouchIDEnabled == true,
+              let standardError = sessions[id]?.handle?.recentStandardError else { return nil }
+        return VMGuestAuthenticationDiagnostic.latest(in: standardError)?.explanation
     }
 
     private func ownerReadiness(_ profile: VMProfile) -> OwnerSetupReadiness {

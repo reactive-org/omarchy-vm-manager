@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-03T02:45:00+00:00",
+  "authorDate": "2026-11-03T03:56:16+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-03T02:45:00+00:00",
-  "subject": "Scope manager guest sudo authentication by VM and coordinate host prompts",
-  "commit": "8d5015ec740aad5417b601e05d451b28ed45d573",
-  "patchSHA256": "d27bd42e8af1a66ef106001c7f1ca3e516532e2ed08d45771c5200c67498f647"
+  "committerDate": "2026-11-03T03:56:16+00:00",
+  "subject": "Service guest authentication focus and prompt completion on the main run loop",
+  "commit": "37c635f8992a9e19cc99696542bf061baff804c0",
+  "patchSHA256": "b4184dfdd39de0dfa7e0796e037db675fe372e1b1349216cfb8ac5b7d866c46e"
 }

@@ -111,7 +111,7 @@ def build(reuse_guest_package_from=None):
         "kitVersion": value["version"], "runProtocolVersion": value["runProtocolVersion"],
         "buildDate": value["buildDate"], "focusAwareClipboard": True, "managedAuthenticationVersion": 1, "managedSSHVersion": 1, "managedSetupVersion": 1, "manualPauseVersion": 1, "launchIntentVersion": 1, "customFactoryVersion": 1, "factoryCompatibilityVersion": 1, "ownerSetupContractsVersion": 1, "ownerSetupReportVersion": 1,
         "guestPackageVersion": "0.1.0-43",
-        "composition": "Source-built helper with UUID-scoped guest sudo authentication and nonblocking prompt lease, and guest adapter with explicit launch intent and exact display-process reporting, reviewed official/lean owner contracts, verified factory selection, manual Pause/Resume and manager Downloads cache, guest integration package 0.1.0-43 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
+        "composition": "Source-built helper with UUID-scoped guest sudo authentication, responsive main-run-loop focus checks, fixed non-secret denial diagnostics and nonblocking prompt lease, and guest adapter with explicit launch intent and exact display-process reporting, reviewed official/lean owner contracts, verified factory selection, manual Pause/Resume and manager Downloads cache, guest integration package 0.1.0-43 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
         "files": inventory(destination / "TryOmarchyKit.bundle")
     }
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"

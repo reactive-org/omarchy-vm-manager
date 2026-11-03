@@ -2675,10 +2675,10 @@ index 40d02e3..828a0db 100644
      /// Checks one part against its digest and feeds it to the whole-image hash.
 diff --git a/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift b/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift
 new file mode 100644
-index 0000000..d5c2de9
+index 0000000..fb18a2f
 --- /dev/null
 +++ b/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,196 @@
 +import AppKit
 +import Darwin
 +import Foundation
@@ -2719,12 +2719,19 @@ index 0000000..d5c2de9
 +    func begin(socketPath: String, processAlive: @escaping () -> Bool, focused: @escaping () -> Bool,
 +               promptFocused: @escaping () -> Bool, cancelled: @escaping () -> Bool,
 +               cancel: @escaping () -> Void, leaseDirectory: URL? = nil, monitor: Bool = true) throws -> ManagedAuthenticationAttempt? {
-+        guard controller.isStillRunning, processAlive(), focused(), !cancelled(),
-+              let epoch = ManagedAuthenticationAttempt.epoch(at: Self.gateURL(socketPath)) else { return nil }
++        guard controller.isStillRunning, processAlive() else { NativeAuthenticationDiagnostic.report(.processChanged); return nil }
++        guard focused() else { NativeAuthenticationDiagnostic.report(.focusBefore); return nil }
++        guard !cancelled() else { NativeAuthenticationDiagnostic.report(.cancelled); return nil }
++        guard let epoch = ManagedAuthenticationAttempt.epoch(at: Self.gateURL(socketPath)) else { NativeAuthenticationDiagnostic.report(.gateUnavailable); return nil }
 +        let directory = try leaseDirectory ?? ManagedAuthenticationFiles.root()
 +        return try ManagedAuthenticationAttempt.acquire(directory: directory, scope: scope,
-+            valid: { self.controller.isStillRunning && processAlive() && !cancelled()
-+                && ManagedAuthenticationAttempt.epoch(at: Self.gateURL(socketPath)) == epoch && promptFocused() }, cancel: cancel, monitor: monitor)
++            valid: {
++                guard self.controller.isStillRunning, processAlive() else { NativeAuthenticationDiagnostic.report(.processChanged); return false }
++                guard !cancelled() else { NativeAuthenticationDiagnostic.report(.cancelled); return false }
++                guard ManagedAuthenticationAttempt.epoch(at: Self.gateURL(socketPath)) == epoch else { NativeAuthenticationDiagnostic.report(.gateChanged); return false }
++                guard promptFocused() else { NativeAuthenticationDiagnostic.report(.focusLost); return false }
++                return true
++            }, cancel: cancel, monitor: monitor, onContention: { NativeAuthenticationDiagnostic.report(.leaseBusy) })
 +    }
 +}
 +
@@ -2797,7 +2804,7 @@ index 0000000..d5c2de9
 +    }
 +
 +    static func acquire(directory: URL, scope: VMRunAuthenticationScope, valid: @escaping () -> Bool,
-+                        cancel: @escaping () -> Void, monitor: Bool = true) throws -> ManagedAuthenticationAttempt? {
++                        cancel: @escaping () -> Void, monitor: Bool = true, onContention: () -> Void = {}) throws -> ManagedAuthenticationAttempt? {
 +        let fd = Darwin.open(directory.appendingPathComponent(".prompt.lock").path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK, 0o600)
 +        guard fd >= 0 else { throw HelperError.io("cannot open authentication prompt lease") }
 +        var info = stat()
@@ -2808,7 +2815,7 @@ index 0000000..d5c2de9
 +        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
 +            let unavailable = errno == EWOULDBLOCK
 +            Darwin.close(fd)
-+            if unavailable { return nil }
++            if unavailable { onContention(); return nil }
 +            throw HelperError.io("cannot acquire authentication prompt lease")
 +        }
 +        let attempt = ManagedAuthenticationAttempt(descriptor: fd, scope: scope, valid: valid, cancel: cancel)
@@ -2850,6 +2857,10 @@ index 0000000..d5c2de9
 +
 +enum ManagedAuthenticationFocus {
 +    static func permitsPrompt(targetFocused: Bool) -> Bool {
++        NativeBridgeMainRunLoop.readOnMain { permitsPromptOnMain(targetFocused: targetFocused) }
++    }
++
++    private static func permitsPromptOnMain(targetFocused: Bool) -> Bool {
 +        if targetFocused { return true }
 +        guard let app = NSWorkspace.shared.frontmostApplication,
 +              app.bundleIdentifier == "com.apple.LocalAuthentication.UIAgent",
@@ -3081,10 +3092,18 @@ index 0000000..7763f0c
 +
 +}
 diff --git a/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift b/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift
-index d182da3..483aa54 100644
+index d182da3..3eaeed3 100644
 --- a/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift
 +++ b/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift
-@@ -191,7 +191,7 @@ struct NativeAuthenticationResponse: Equatable {
+@@ -4,6 +4,7 @@ import Darwin
+ import Foundation
+ import LocalAuthentication
+ import Security
++import TryOmarchyKitClient
+ 
+ enum NativeAuthenticationOperation: String, Equatable {
+     case disable
+@@ -191,7 +192,7 @@ struct NativeAuthenticationResponse: Equatable {
  }
  
  protocol HostAuthorizationSigning: AnyObject {
@@ -3093,7 +3112,7 @@ index d182da3..483aa54 100644
      func disable(guestID: String) throws
      func cancel()
  }
-@@ -226,9 +226,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+@@ -226,9 +227,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
  
      private let lock = NSLock()
      private let keyDirectory: URL
@@ -3107,16 +3126,20 @@ index d182da3..483aa54 100644
          self.keyDirectory = keyDirectory
              ?? FileManager.default.urls(
                  for: .applicationSupportDirectory,
-@@ -238,12 +241,14 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+@@ -238,26 +242,32 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
              .appendingPathComponent("Native Authentication Keys", isDirectory: true)
      }
  
 -    func authorize(_ request: NativeAuthenticationRequest) throws -> NativeAuthenticationApproval? {
 +    func authorize(_ request: NativeAuthenticationRequest, valid: () -> Bool) throws -> NativeAuthenticationApproval? {
 +        lock.lock(); let generation = cancellationGeneration; lock.unlock()
-+        guard valid() else { return nil }
++        guard valid() else {
++            if isCurrent(generation) { NativeAuthenticationDiagnostic.report(.cancelled) }
++            return nil
++        }
          guard SecureEnclave.isAvailable else {
-             fputs("[authentication-bridge] The Secure Enclave is unavailable.\n", stderr)
+-            fputs("[authentication-bridge] The Secure Enclave is unavailable.\n", stderr)
++            NativeAuthenticationDiagnostic.report(.secureEnclaveUnavailable)
              return nil
          }
 -        let keyURL = keyURL(for: request.guestID)
@@ -3124,7 +3147,10 @@ index d182da3..483aa54 100644
          let keyAlreadyExists = try keyExists(at: keyURL)
          if request.operation == .disable {
              throw HelperError.io("disable request reached the signing path")
-@@ -253,11 +258,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+         }
+         if request.operation != .enroll && !keyAlreadyExists {
+-            fputs("[authentication-bridge] Touch ID sudo is not enrolled for this Mac.\n", stderr)
++            NativeAuthenticationDiagnostic.report(.unpaired)
              return nil
          }
  
@@ -3138,7 +3164,7 @@ index d182da3..483aa54 100644
          let privateKey: SecureEnclave.P256.Signing.PrivateKey
          if request.operation == .enroll && !keyAlreadyExists {
              privateKey = try createPrivateKey(authenticationContext: context)
-@@ -285,6 +291,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+@@ -285,6 +295,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
          )
  
          let signature = try privateKey.signature(for: payload).derRepresentation
@@ -3146,7 +3172,7 @@ index d182da3..483aa54 100644
          return NativeAuthenticationApproval(
              issuedAt: issuedAt,
              expiresAt: expiresAt,
-@@ -295,7 +302,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+@@ -295,7 +306,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
      }
  
      func disable(guestID: String) throws {
@@ -3155,7 +3181,7 @@ index d182da3..483aa54 100644
          guard try keyExists(at: keyURL) else { return }
          guard Darwin.unlink(keyURL.path) == 0 else {
              throw HelperError.io("cannot remove Secure Enclave key representation")
-@@ -304,13 +311,18 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+@@ -304,13 +315,18 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
  
      func cancel() {
          lock.lock()
@@ -3175,7 +3201,14 @@ index d182da3..483aa54 100644
          let context = LAContext()
          context.localizedCancelTitle = "Return to Omarchy"
          context.localizedFallbackTitle = ""
-@@ -327,6 +339,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+@@ -321,12 +337,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+             .deviceOwnerAuthenticationWithBiometrics,
+             error: &availabilityError
+         ) else {
+-            let detail = availabilityError?.localizedDescription ?? "Touch ID is unavailable"
+-            fputs("[authentication-bridge] \(detail)\n", stderr)
++            NativeAuthenticationDiagnostic.report(.biometryUnavailable)
+             return nil
          }
  
          lock.lock()
@@ -3183,7 +3216,15 @@ index d182da3..483aa54 100644
          activeContext = context
          lock.unlock()
  
-@@ -354,8 +367,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+@@ -340,6 +356,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+             cancel: { context.invalidate() }
+         )
+         if !result {
++            if isCurrent(generation) { NativeAuthenticationDiagnostic.report(.notApproved) }
+             clear(context)
+             return nil
+         }
+@@ -354,8 +371,12 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
          lock.unlock()
      }
  
@@ -3198,7 +3239,7 @@ index d182da3..483aa54 100644
      }
  
      private func keyExists(at url: URL) throws -> Bool {
-@@ -394,6 +411,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
+@@ -394,6 +415,7 @@ final class SecureEnclaveAuthorizationSigner: HostAuthorizationSigning, @uncheck
      }
  
      private func saveKeyRepresentation(_ representation: Data, to url: URL) throws {
@@ -3206,7 +3247,7 @@ index d182da3..483aa54 100644
          try FileManager.default.createDirectory(
              at: keyDirectory,
              withIntermediateDirectories: true,
-@@ -465,16 +483,18 @@ final class NativeAuthenticationBridge {
+@@ -465,16 +487,18 @@ final class NativeAuthenticationBridge {
      typealias ProcessAlive = () -> Bool
  
      private let descriptor: Int32
@@ -3226,7 +3267,7 @@ index d182da3..483aa54 100644
          focusProbe: FocusProbe? = nil,
          processAlive: ProcessAlive? = nil
      ) throws {
-@@ -482,11 +502,13 @@ final class NativeAuthenticationBridge {
+@@ -482,18 +506,16 @@ final class NativeAuthenticationBridge {
                processIdentity.isQEMUSystemProcess else {
              throw HelperError.io("native authentication bridge target is not a QEMU system process")
          }
@@ -3236,12 +3277,33 @@ index d182da3..483aa54 100644
              label: "authentication bridge"
          )
 -        self.signer = signer
-+        managed = try ManagedAuthenticationEnvironment.current()
+-        self.focusProbe = focusProbe ?? {
+-            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID,
+-                  let application = NSRunningApplication(processIdentifier: targetPID) else {
+-                return false
+-            }
+-            return application.isActive && !application.isTerminated
+-        }
++        do { managed = try ManagedAuthenticationEnvironment.current() }
++        catch { Darwin.close(descriptor); NativeAuthenticationDiagnostic.report(.bridgeUnavailable); throw error }
 +        self.signer = signer ?? SecureEnclaveAuthorizationSigner(managedVM: managed?.scope.vmID)
-         self.focusProbe = focusProbe ?? {
-             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID,
-                   let application = NSRunningApplication(processIdentifier: targetPID) else {
-@@ -537,11 +559,28 @@ final class NativeAuthenticationBridge {
++        let focus = QEMUAuthenticationFocus(processIdentity: processIdentity)
++        self.focusProbe = focusProbe ?? { focus.isFocused() }
+         self.processAlive = processAlive ?? { processIdentity.isStillRunning }
+     }
+ 
+@@ -502,6 +524,10 @@ final class NativeAuthenticationBridge {
+     }
+ 
+     func run() throws {
++        try NativeBridgeMainRunLoop.run { try self.readGuestChannel() }
++    }
++
++    private func readGuestChannel() throws {
+         var line = Data()
+         while true {
+             var byte: UInt8 = 0
+@@ -537,16 +563,36 @@ final class NativeAuthenticationBridge {
          Darwin.close(descriptor)
      }
  
@@ -3258,9 +3320,11 @@ index d182da3..483aa54 100644
 +        let attempt: ManagedAuthenticationAttempt?
 +        if let managed {
 +            guard request.operation != .onePasswordUnlock else { return try deny(request) }
-+            attempt = try managed.begin(socketPath: socketPathForGate, processAlive: processAlive,
-+                focused: focusProbe, promptFocused: { ManagedAuthenticationFocus.permitsPrompt(targetFocused: self.focusProbe()) },
-+                cancelled: { self.isStopped }, cancel: { self.signer.cancel() })
++            do {
++                attempt = try managed.begin(socketPath: socketPathForGate, processAlive: processAlive,
++                    focused: focusProbe, promptFocused: { NativeBridgeMainRunLoop.readOnMain { ManagedAuthenticationFocus.permitsPrompt(targetFocused: self.focusProbe()) } },
++                    cancelled: { self.isStopped }, cancel: { self.signer.cancel() })
++            } catch { NativeAuthenticationDiagnostic.report(.bridgeUnavailable); throw error }
 +            guard attempt != nil else { return try deny(request) }
 +        } else { attempt = nil }
 +        defer { attempt?.finish() }
@@ -3271,35 +3335,94 @@ index d182da3..483aa54 100644
                  do {
                      try signer.disable(guestID: request.guestID)
                      disabled = true
-@@ -560,10 +599,10 @@ final class NativeAuthenticationBridge {
++                    NativeAuthenticationDiagnostic.report(.disabled)
+                 } catch {
+-                    fputs("[authentication-bridge] \(error.localizedDescription)\n", stderr)
++                    NativeAuthenticationDiagnostic.report(.signerError)
+                 }
+             }
+             let response = disabled
+@@ -560,14 +606,21 @@ final class NativeAuthenticationBridge {
              return
          }
          var approval: NativeAuthenticationApproval?
 -        if processAlive(), focusProbe() {
-+        if processAlive(), focusProbe(), attempt?.isValid ?? !isStopped {
++        guard processAlive() else { NativeAuthenticationDiagnostic.report(.processChanged); return try deny(request) }
++        guard focusProbe() else { NativeAuthenticationDiagnostic.report(.focusBefore); return try deny(request) }
++        if attempt?.isValid ?? !isStopped {
              do {
 -                let candidate = try signer.authorize(request)
 -                if processAlive(), focusProbe() {
+-                    approval = candidate
 +                let candidate = try signer.authorize(request, valid: { attempt?.isValid ?? !self.isStopped })
-+                if processAlive(), focusProbe(), attempt?.isValid ?? !isStopped {
-                     approval = candidate
++                if candidate != nil {
++                    if !processAlive() { NativeAuthenticationDiagnostic.report(.processChanged) }
++                    else if !focusProbe() { NativeAuthenticationDiagnostic.report(.focusAfter) }
++                    else if attempt?.isValid ?? !isStopped {
++                        approval = candidate
++                        NativeAuthenticationDiagnostic.report(.approved)
++                    }
                  }
              } catch {
-diff --git a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
-index 39b07ba..127de5a 100644
---- a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
-+++ b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
-@@ -1,4 +1,5 @@
- import AppKit
+-                fputs("[authentication-bridge] \(error.localizedDescription)\n", stderr)
++                NativeAuthenticationDiagnostic.report(.signerError)
+             }
+         }
+         let response = NativeAuthenticationResponse(request: request, approval: approval)
+diff --git a/macos/Sources/OmarchyVMHelper/NativeAuthenticationDiagnostic.swift b/macos/Sources/OmarchyVMHelper/NativeAuthenticationDiagnostic.swift
+new file mode 100644
+index 0000000..421824d
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/NativeAuthenticationDiagnostic.swift
+@@ -0,0 +1,8 @@
++import Foundation
++import TryOmarchyKitClient
++
++enum NativeAuthenticationDiagnostic {
++    static func report(_ status: VMGuestAuthenticationDiagnostic) {
++        fputs(VMGuestAuthenticationDiagnostic.prefix + status.rawValue + "\n", stderr)
++    }
++}
+diff --git a/macos/Sources/OmarchyVMHelper/NativeAuthenticationFocus.swift b/macos/Sources/OmarchyVMHelper/NativeAuthenticationFocus.swift
+new file mode 100644
+index 0000000..4368a2c
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/NativeAuthenticationFocus.swift
+@@ -0,0 +1,23 @@
++import AppKit
++import Foundation
++
++final class QEMUAuthenticationFocus {
++    private let processIdentity: KernelProcessIdentity
++    private let foreground: () -> pid_t?
++    private let active: (pid_t) -> Bool
++
++    init(processIdentity: KernelProcessIdentity,
++         foreground: @escaping () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier },
++         active: @escaping (pid_t) -> Bool = { pid in
++             guard let application = NSRunningApplication(processIdentifier: pid) else { return false }
++             return application.isActive && !application.isTerminated
++         }) {
++        self.processIdentity = processIdentity; self.foreground = foreground; self.active = active
++    }
++
++    func isFocused() -> Bool {
++        NativeBridgeMainRunLoop.readOnMain {
++            processIdentity.isStillRunning && foreground() == processIdentity.processIdentifier && active(processIdentity.processIdentifier)
++        }
++    }
++}
+diff --git a/macos/Sources/OmarchyVMHelper/NativeBridgeMainRunLoop.swift b/macos/Sources/OmarchyVMHelper/NativeBridgeMainRunLoop.swift
+new file mode 100644
+index 0000000..3b78589
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/NativeBridgeMainRunLoop.swift
+@@ -0,0 +1,49 @@
++import AppKit
 +import CoreFoundation
- import CryptoKit
- import Darwin
- import Foundation
-@@ -197,29 +198,178 @@ final class GeneralPasteboard: HostPasteboardProviding {
-     }
- }
- 
-+private final class ClipboardRunCompletion: @unchecked Sendable {
++import Foundation
++
++private final class NativeBridgeRunCompletion: @unchecked Sendable {
 +    private let lock = NSLock()
 +    private var stored: Result<Void, Error>?
 +
@@ -3307,7 +3430,7 @@ index 39b07ba..127de5a 100644
 +    func finish(_ result: Result<Void, Error>) { lock.withLock { stored = result } }
 +}
 +
-+enum ClipboardMainRunLoop {
++enum NativeBridgeMainRunLoop {
 +    static func readOnMain<T>(_ read: () -> T) -> T {
 +        if Thread.isMainThread { return read() }
 +        return DispatchQueue.main.sync(execute: read)
@@ -3315,7 +3438,7 @@ index 39b07ba..127de5a 100644
 +
 +    static func run(_ operation: @escaping () throws -> Void) throws {
 +        guard Thread.isMainThread else {
-+            throw HelperError.io("the clipboard bridge must own the main run loop")
++            throw HelperError.io("the native bridge must own the main run loop")
 +        }
 +        _ = NSWorkspace.shared.frontmostApplication
 +        let loop = CFRunLoopGetCurrent()
@@ -3324,15 +3447,15 @@ index 39b07ba..127de5a 100644
 +            equal: nil, hash: nil, schedule: nil, cancel: nil, perform: { _ in }
 +        )
 +        guard let keepAlive = CFRunLoopSourceCreate(nil, 0, &context) else {
-+            throw HelperError.io("cannot create the clipboard bridge run loop")
++            throw HelperError.io("cannot create the native bridge run loop")
 +        }
 +        CFRunLoopAddSource(loop, keepAlive, .commonModes)
 +        defer {
 +            CFRunLoopRemoveSource(loop, keepAlive, .commonModes)
 +            CFRunLoopSourceInvalidate(keepAlive)
 +        }
-+        let completion = ClipboardRunCompletion()
-+        DispatchQueue(label: "dev.tryomarchy.native.clipboard-bridge-reader").async {
++        let completion = NativeBridgeRunCompletion()
++        DispatchQueue(label: "dev.tryomarchy.native.bridge-reader").async {
 +            let result = Result(catching: operation)
 +            CFRunLoopPerformBlock(loop, CFRunLoopMode.commonModes.rawValue) {
 +                completion.finish(result)
@@ -3344,7 +3467,20 @@ index 39b07ba..127de5a 100644
 +        try completion.result!.get()
 +    }
 +}
-+
+diff --git a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
+index 39b07ba..10e268f 100644
+--- a/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
++++ b/macos/Sources/OmarchyVMHelper/NativeClipboardBridge.swift
+@@ -1,4 +1,5 @@
+ import AppKit
++import CoreFoundation
+ import CryptoKit
+ import Darwin
+ import Foundation
+@@ -197,29 +198,132 @@ final class GeneralPasteboard: HostPasteboardProviding {
+     }
+ }
+ 
 +protocol ClipboardFocusProviding: AnyObject {
 +    func isFocused() -> Bool
 +}
@@ -3364,7 +3500,7 @@ index 39b07ba..127de5a 100644
 +    }
 +
 +    func isFocused() -> Bool {
-+        ClipboardMainRunLoop.readOnMain {
++        NativeBridgeMainRunLoop.readOnMain {
 +            processIdentity.isStillRunning &&
 +                frontmostProcessIdentifier() == processIdentity.processIdentifier
 +        }
@@ -3481,12 +3617,12 @@ index 39b07ba..127de5a 100644
      }
  
      deinit {
-@@ -227,7 +377,13 @@ final class NativeClipboardBridge {
+@@ -227,7 +331,13 @@ final class NativeClipboardBridge {
      }
  
      func run() throws {
 -        startPolling()
-+        try ClipboardMainRunLoop.run {
++        try NativeBridgeMainRunLoop.run {
 +            self.startPolling()
 +            try self.readGuestChannel()
 +        }
@@ -3496,7 +3632,7 @@ index 39b07ba..127de5a 100644
          var line = Data()
          var chunk = [UInt8](repeating: 0, count: 64 * 1024)
          while true {
-@@ -287,12 +443,8 @@ final class NativeClipboardBridge {
+@@ -287,12 +397,8 @@ final class NativeClipboardBridge {
      }
  
      private func pollPasteboard() {
@@ -3510,7 +3646,7 @@ index 39b07ba..127de5a 100644
          } catch {
              fputs("[clipboard-bridge] \(error.localizedDescription)\n", stderr)
              stop()
-@@ -301,27 +453,7 @@ final class NativeClipboardBridge {
+@@ -301,27 +407,7 @@ final class NativeClipboardBridge {
  
      private func handle(_ data: Data) throws {
          try stateQueue.sync {
@@ -4441,6 +4577,58 @@ index 0000000..b22e5fb
 +              runtimeFiles[VMFactorySelection.packagePath] == integrationPackageSHA256 else { throw VMRunProtocolError.invalidConfiguration }
 +    }
 +}
+diff --git a/macos/Sources/TryOmarchyKitClient/VMGuestAuthenticationDiagnostic.swift b/macos/Sources/TryOmarchyKitClient/VMGuestAuthenticationDiagnostic.swift
+new file mode 100644
+index 0000000..da7d09d
+--- /dev/null
++++ b/macos/Sources/TryOmarchyKitClient/VMGuestAuthenticationDiagnostic.swift
+@@ -0,0 +1,46 @@
++import Foundation
++
++public enum VMGuestAuthenticationDiagnostic: String, CaseIterable, Sendable {
++    public static let prefix = "[authentication-bridge] status: "
++    case approved, disabled
++    case focusBefore = "focus-before"
++    case focusLost = "focus-lost"
++    case focusAfter = "focus-after"
++    case processChanged = "process-changed"
++    case gateUnavailable = "gate-unavailable"
++    case gateChanged = "gate-changed"
++    case bridgeUnavailable = "bridge-unavailable"
++    case leaseBusy = "lease-busy"
++    case secureEnclaveUnavailable = "secure-enclave-unavailable"
++    case biometryUnavailable = "biometry-unavailable"
++    case unpaired, cancelled
++    case notApproved = "not-approved"
++    case signerError = "signer-error"
++
++    public static func latest(in standardError: String) -> Self? {
++        let completeLines = standardError.components(separatedBy: "\n").dropLast()
++        return completeLines.reversed().compactMap { line in
++            line.hasPrefix(prefix) ? Self(rawValue: String(line.dropFirst(prefix.count))) : nil
++        }.first
++    }
++
++    public var explanation: String? {
++        switch self {
++        case .approved, .disabled: nil
++        case .focusBefore: "Guest Touch ID: focus this guest window and retry pairing or sudo."
++        case .focusLost: "Guest Touch ID was cancelled when this guest lost focus. Focus it and retry."
++        case .focusAfter: "Guest Touch ID finished before this guest regained focus. Focus it and retry."
++        case .processChanged: "Guest Touch ID stopped because its host process identity changed."
++        case .gateUnavailable: "Guest Touch ID is unavailable while this guest is not ready to authenticate."
++        case .bridgeUnavailable: "Guest Touch ID bridge or key storage failed validation. No approval was sent."
++        case .gateChanged: "Guest Touch ID was cancelled by a pause, sleep or shutdown transition."
++        case .leaseBusy: "Another guest is requesting Touch ID. Use the Linux password or retry after it finishes."
++        case .secureEnclaveUnavailable: "Guest Touch ID is unavailable because the Secure Enclave is unavailable."
++        case .biometryUnavailable: "Guest Touch ID cannot currently use macOS biometric authentication."
++        case .unpaired: "Guest Touch ID is not paired with this Mac. Pair inside the guest's Security menu."
++        case .cancelled: "The guest Touch ID request was cancelled."
++        case .notApproved: "Guest Touch ID was not approved, was cancelled or timed out. The Linux password remains available."
++        case .signerError: "The host could not complete guest Touch ID signing. No approval was sent."
++        }
++    }
++}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
 new file mode 100644
 index 0000000..018da8a
@@ -4787,6 +4975,80 @@ index 4e1af8d..1232fdb 100644
          case "ready":
              try require([])
              return .ready
+diff --git a/macos/Tests/OmarchyVMHelperTests/AuthenticationMainRunLoopTests.swift b/macos/Tests/OmarchyVMHelperTests/AuthenticationMainRunLoopTests.swift
+new file mode 100644
+index 0000000..eca2a2c
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/AuthenticationMainRunLoopTests.swift
+@@ -0,0 +1,68 @@
++import Foundation
++import Testing
++@testable import OmarchyVMHelper
++
++@Suite("Authentication headless run loop")
++struct AuthenticationMainRunLoopTests {
++    @Test("actual authentication entry point services focus changes and prompt completion on main while the reader waits")
++    func executable() throws {
++        let macos = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
++        let sources = macos.appendingPathComponent("Sources/OmarchyVMHelper")
++        let runner = try String(contentsOf: sources.appendingPathComponent("NativeBridgeMainRunLoop.swift"), encoding: .utf8)
++        let adapter = try String(contentsOf: sources.appendingPathComponent("NativeAuthenticationFocus.swift"), encoding: .utf8)
++        let bridge = try String(contentsOf: sources.appendingPathComponent("NativeAuthenticationBridge.swift"), encoding: .utf8)
++        let methodStart = try #require(bridge.range(of: "    func run() throws {"))
++        let methodEnd = try #require(bridge.range(of: "    private func readGuestChannel() throws {"))
++        let method = String(bridge[methodStart.lowerBound..<methodEnd.lowerBound])
++        let promptStart = try #require(bridge.range(of: "enum NativeAuthenticationPrompt {"))
++        let promptEnd = try #require(bridge.range(of: "final class SecureEnclaveAuthorizationSigner"))
++        let prompt = String(bridge[promptStart.lowerBound..<promptEnd.lowerBound])
++        let directory = URL(fileURLWithPath: "/private/tmp").appendingPathComponent(UUID().uuidString)
++        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
++        defer { try? FileManager.default.removeItem(at: directory) }
++        let source = directory.appendingPathComponent("probe.swift")
++        let binary = directory.appendingPathComponent("probe")
++        let program = """
++        import AppKit
++        import Foundation
++        enum HelperError: Error { case io(String) }
++        struct KernelProcessIdentity { let processIdentifier: pid_t; let isStillRunning: Bool }
++        \(runner)
++        \(adapter)
++        \(prompt)
++        final class Probe {
++            var foreground: pid_t? = 42
++            var active = true
++            lazy var focus = QEMUAuthenticationFocus(processIdentity: KernelProcessIdentity(processIdentifier: 42, isStillRunning: true), foreground: {
++                guard Thread.isMainThread else { exit(10) }; return self.foreground
++            }, active: { pid in guard Thread.isMainThread, pid == 42 else { exit(11) }; return self.active })
++            \(method)
++            func readGuestChannel() throws {
++                guard !Thread.isMainThread, focus.isFocused() else { throw HelperError.io("reader blocked main or lost initial focus") }
++                let approved = NativeAuthenticationPrompt.approve(timeout: 2, evaluate: { completion in
++                    DispatchQueue.main.async { self.foreground = 43; completion(true) }
++                }, cancel: {})
++                guard approved, !focus.isFocused() else { throw HelperError.io("main-thread prompt completion or focus delivery stalled") }
++                NativeBridgeMainRunLoop.readOnMain { self.foreground = nil }
++                guard !focus.isFocused() else { throw HelperError.io("unavailable focus admitted") }
++                NativeBridgeMainRunLoop.readOnMain { self.foreground = 42; self.active = false }
++                guard !focus.isFocused() else { throw HelperError.io("inactive target admitted") }
++                NativeBridgeMainRunLoop.readOnMain { self.active = true }
++                guard focus.isFocused() else { throw HelperError.io("return-to-guest not observed") }
++                let stale = QEMUAuthenticationFocus(processIdentity: KernelProcessIdentity(processIdentifier: 42, isStillRunning: false), foreground: { exit(12) })
++                guard !stale.isFocused() else { throw HelperError.io("stale process admitted") }
++            }
++        }
++        do { try Probe().run(); exit(0) } catch { print(error); exit(1) }
++        """
++        try program.write(to: source, atomically: true, encoding: .utf8)
++        let compiler = Process()
++        compiler.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
++        compiler.arguments = ["swiftc", "-swift-version", "5", "-module-cache-path", directory.appendingPathComponent("modules").path, source.path, "-o", binary.path]
++        try compiler.run(); compiler.waitUntilExit()
++        try #require(compiler.terminationStatus == 0)
++        let probe = Process(); probe.executableURL = binary
++        try probe.run(); probe.waitUntilExit()
++        #expect(probe.terminationStatus == 0)
++    }
++}
 diff --git a/macos/Tests/OmarchyVMHelperTests/ExecutionProtocolTests.swift b/macos/Tests/OmarchyVMHelperTests/ExecutionProtocolTests.swift
 new file mode 100644
 index 0000000..02e32c6
@@ -4907,10 +5169,10 @@ index 0000000..712bff5
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedAuthenticationTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedAuthenticationTests.swift
 new file mode 100644
-index 0000000..e4aac1c
+index 0000000..cee9445
 --- /dev/null
 +++ b/macos/Tests/OmarchyVMHelperTests/ManagedAuthenticationTests.swift
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,190 @@
 +import Darwin
 +import Foundation
 +import Testing
@@ -5088,8 +5350,16 @@ index 0000000..e4aac1c
 +        state.revoke()
 +        #expect(state.cancelled.wait(timeout: .now() + 2) == .success)
 +        #expect(!attempt.isValid)
-+        let next = try #require(try ManagedAuthenticationAttempt.acquire(directory: root,
-+            scope: VMRunAuthenticationScope(vmID: UUID(), runID: UUID()), valid: { true }, cancel: {}, monitor: false))
++        // Parallel process fixtures can inherit the descriptor between fork and exec.
++        // O_CLOEXEC releases that transient copy; production acquire remains nonblocking.
++        let deadline = Date().addingTimeInterval(2)
++        var acquired: ManagedAuthenticationAttempt?
++        repeat {
++            acquired = try ManagedAuthenticationAttempt.acquire(directory: root,
++                scope: VMRunAuthenticationScope(vmID: UUID(), runID: UUID()), valid: { true }, cancel: {}, monitor: false)
++            if acquired == nil { usleep(1_000) }
++        } while acquired == nil && Date() < deadline
++        let next = try #require(acquired)
 +        next.finish(); attempt.finish()
 +    }
 +}
@@ -5389,10 +5659,10 @@ index 0000000..15b630e
 +    }
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
-index 814cebc..13363bb 100644
+index 814cebc..4d3b7c0 100644
 --- a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
 +++ b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift
-@@ -108,3 +108,250 @@ struct NativeClipboardBridgeTests {
+@@ -108,3 +108,249 @@ struct NativeClipboardBridgeTests {
          #expect(guest(b, at: window + 1))
      }
  }
@@ -5549,15 +5819,14 @@ index 814cebc..13363bb 100644
 +
 +
 +@Suite("Clipboard headless main run loop")
-+struct ClipboardMainRunLoopTests {
++struct NativeBridgeMainRunLoopTests {
 +    @Test("the actual headless runner services main-queue updates and returns reader results")
 +    func standaloneMainRunLoop() throws {
 +        let macos = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 +            .deletingLastPathComponent().deletingLastPathComponent()
 +        let source = try String(contentsOf: macos.appendingPathComponent("Sources/OmarchyVMHelper/NativeClipboardBridge.swift"), encoding: .utf8)
-+        let start = try #require(source.range(of: "private final class ClipboardRunCompletion"))
++        let runner = try String(contentsOf: macos.appendingPathComponent("Sources/OmarchyVMHelper/NativeBridgeMainRunLoop.swift"), encoding: .utf8)
 +        let end = try #require(source.range(of: "protocol ClipboardFocusProviding"))
-+        let runner = String(source[start.lowerBound..<end.lowerBound])
 +        let focusEnd = try #require(source.range(of: "final class FocusedClipboardRouting"))
 +        let focusAdapter = String(source[end.lowerBound..<focusEnd.lowerBound])
 +        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("clipboard-runloop-" + UUID().uuidString)
@@ -5592,17 +5861,17 @@ index 814cebc..13363bb 100644
 +                    processIdentity: KernelProcessIdentity(processIdentifier: 42, isStillRunning: false),
 +                    frontmostProcessIdentifier: { exit(6) }
 +                )
-+                try ClipboardMainRunLoop.run {
++                try NativeBridgeMainRunLoop.run {
 +                    guard focus.isFocused(), !stale.isFocused() else { exit(7) }
-+                    ClipboardMainRunLoop.readOnMain { foreground = 43 }
++                    NativeBridgeMainRunLoop.readOnMain { foreground = 43 }
 +                    guard !focus.isFocused() else { exit(8) }
-+                    ClipboardMainRunLoop.readOnMain { foreground = nil }
++                    NativeBridgeMainRunLoop.readOnMain { foreground = nil }
 +                    guard !focus.isFocused() else { exit(9) }
-+                    ClipboardMainRunLoop.readOnMain { foreground = 42 }
++                    NativeBridgeMainRunLoop.readOnMain { foreground = 42 }
 +                    guard focus.isFocused() else { exit(10) }
 +                }
 +            case "mainqueue":
-+                try ClipboardMainRunLoop.run { @Sendable in
++                try NativeBridgeMainRunLoop.run { @Sendable in
 +                    let delivered = DispatchSemaphore(value: 0)
 +                    DispatchQueue.main.async { delivered.signal() }
 +                    guard delivered.wait(timeout: .now() + 2) == .success else {
@@ -5610,11 +5879,11 @@ index 814cebc..13363bb 100644
 +                    }
 +                }
 +            case "completed":
-+                try ClipboardMainRunLoop.run { @Sendable in }
++                try NativeBridgeMainRunLoop.run { @Sendable in }
 +            case "error":
 +                var caught = false
 +                do {
-+                    try ClipboardMainRunLoop.run { @Sendable in throw HelperError.io("test channel closed") }
++                    try NativeBridgeMainRunLoop.run { @Sendable in throw HelperError.io("test channel closed") }
 +                } catch HelperError.io { caught = true }
 +                guard caught else { exit(2) }
 +            default: exit(3)

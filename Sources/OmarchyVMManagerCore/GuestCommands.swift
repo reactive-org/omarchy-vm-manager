@@ -124,6 +124,7 @@ public struct GuestCommandRecord: Codable, Sendable {
     public let diskGiB: Int?
     public let guestTouchID: GuestTouchIDRecord
     public let clipboard: Bool
+    public let notice: String?
     public let sharedFolder: SharedFolderMapping?
     public let sharedFolderStatus: String
     public let sharedFolderError: String?
@@ -322,7 +323,7 @@ public actor GuestCommandService {
         }
         return GuestCommandRecord(id: value.id, name: value.profile.name, protected: value.profile.isRetainedPOC,
             memoryMiB: value.profile.memoryMiB, cpus: value.profile.cpus, diskGiB: value.profile.diskGiB,
-            guestTouchID: GuestTouchIDRecord(value), clipboard: value.profile.clipboardEnabled,
+            guestTouchID: GuestTouchIDRecord(value), clipboard: value.profile.clipboardEnabled, notice: value.notice,
             sharedFolder: value.profile.sharedFolder, sharedFolderStatus: value.sharedFolderReadiness.status,
             sharedFolderError: { if case .failed(let message) = value.sharedFolderReadiness { return message }; return nil }(),
             immersive: value.profile.immersiveMode, factory: value.profile.factory, unattended: value.profile.ownerSetup != nil, state: state, active: value.sessionID != nil,
