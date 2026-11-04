@@ -119,7 +119,7 @@ class MaterialInspectionTests(unittest.TestCase):
         auth = signer.ExecutionAuthorization(self.review.request_digest(), self.fixture.review.scopeSHA256,
                                               self.selection.binding(), frozenset({"inspect"}))
         caller = signer.SourceInputCaller(self.fixture.review, self.fixture.material, signer.SystemRunner(auth))
-        with self.assertRaisesRegex(private.Refused, "not-authorized"): caller.run(self.fixture.packet, self.output)
+        with self.assertRaisesRegex(private.Refused, "legacy-real-signer-disabled"): caller.run(self.fixture.packet, self.output)
         self.assertFalse(self.output.exists())
 
     def test_fixture_cannot_run_native_inspector_even_with_matching_authorization(self):

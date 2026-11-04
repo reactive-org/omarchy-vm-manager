@@ -108,48 +108,9 @@ class SystemRunner:
                         "private-signing-execution-not-authorized")
 
     def run(self, command):
-        self.authorize(command.requestSHA256, command.scopeSHA256, command.materialSHA256)
-        private.require(command.effect in self.authorization.effects
-                        and command.effect in {"build", "inspect", "sign-with-timestamp"},
-                        "private-signing-effect-not-authorized")
-        private.require(0 < command.timeout <= 1200 and 0 < command.maximum <= 2*1024*1024)
-        program, arguments = command.argv[0], command.argv[1:]
-        if program == TOOLS["security"]:
-            private.require(arguments[:3] == ("cms", "-D", "-i"))
-        elif program == TOOLS["codesign"]:
-            private.require(arguments[0] in ("--verify", "--display", "--force"))
-            if arguments[0] == "--force":
-                private.require(command.effect == "sign-with-timestamp" and "--keychain" in arguments
-                                and "--timestamp" in arguments and "--options" in arguments)
-        elif program == TOOLS["git"]:
-            private.require(command.effect in ("build", "inspect"))
-        elif program in (TOOLS["make"], TOOLS["swift"], TOOLS["python"]):
-            private.require(command.effect in ("build", "inspect"))
-        else:
-            # Only the built app's fixed offline diagnostics may execute here.
-            private.require(program.endswith("/Contents/MacOS/OmarchyVMManager")
-                            and arguments == ("--verify-bundle-json",) and command.effect == "inspect")
-        # Anonymous private files avoid unbounded memory capture and raw logs.
-        # Own the process group through timeout/interruption. Failed jobs are
-        # private and never automatically replayed.
-        with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as error:
-            process = None
-            try:
-                process = subprocess.Popen(command.argv, cwd=command.cwd, env=command.environment,
-                                           stdin=subprocess.DEVNULL, stdout=output, stderr=error,
-                                           start_new_session=True)
-                process.wait(timeout=command.timeout)
-            except BaseException:
-                if process is not None:
-                    try: os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError: pass
-                    process.wait()
-                raise private.Refused("private-command-failed") from None
-            output.seek(0); error.seek(0)
-            stdout, stderr = output.read(command.maximum+1), error.read(command.maximum+1)
-        private.require(len(stdout) <= command.maximum and len(stderr) <= command.maximum,
-                        "private-command-output-too-large")
-        return Result(process.returncode, stdout, stderr)
+        # Retained only as a default-denied compatibility surface. Real work must
+        # use receipt-bound authority and bounded supervision, never this path.
+        raise private.Refused("legacy-real-signer-disabled")
 
 
 def _extract_source(raw, destination):
@@ -205,7 +166,7 @@ class Adapter:
         self.events.append(stage)
         self._revalidate_inputs()
         spec = Command(stage, effect, tuple(map(str, argv)), cwd or self.work, dict(self.environment),
-                       self.expected, self.request["scopeSHA256"], self.material.binding(), timeout)
+                       self._command_request(), self.request["scopeSHA256"], self.material.binding(), timeout)
         try:
             result = self.runner.run(spec)
             private.require(type(result.returncode) is int and result.returncode == 0
@@ -216,6 +177,12 @@ class Adapter:
             raise private.Refused("private-command-failed") from None
         self._revalidate_inputs()
         return result
+
+    def _command_request(self): return self.expected
+
+    def _authorize(self): self.runner.authorize(self.expected, self.request["scopeSHA256"], self.material.binding())
+
+    def _result_fields(self): return {}
 
     def _revalidate_inputs(self):
         return (self.source_admission.revalidate() if self.source_admission is not None
@@ -336,9 +303,7 @@ class Adapter:
         dependencies = self.work / "dependencies"; dependencies.mkdir(mode=0o700)
         for label, origin in (("client", self.material.upstream), ("parser", self.material.parser_checkout)):
             expected = commits[label]; private.require(re.fullmatch("[0-9a-f]{40}", expected))
-            head = self._git("check-local-" + label, origin, "rev-parse", "HEAD").stdout.decode().strip()
-            clean = self._git("check-clean-" + label, origin, "status", "--porcelain=v1", "--untracked-files=all").stdout
-            private.require(head == expected and not clean, "local-dependency-changed")
+            self._dependency_state(label, origin, expected)
             destination = dependencies / label
             self._call("copy-local-" + label, "build", [TOOLS["git"], "-c", "core.hooksPath=/dev/null", "clone",
                        "--local", "--no-hardlinks", "--no-checkout", "--", origin, destination])
@@ -365,6 +330,14 @@ class Adapter:
         private.write_json(build / "workspace-state.json", {"version": 7, "object": {"artifacts": [], "dependencies": refs, "prebuilts": []}})
         self._call("prepare-pinned-provisioning-source", "build", [TOOLS["python"], self.source / "Scripts/provisioning_package.py"], cwd=self.source)
         self._check_source()
+        self._validate_runtime_signatures()
+
+    def _dependency_state(self, label, origin, expected):
+        head = self._git("check-local-" + label, origin, "rev-parse", "HEAD").stdout.decode().strip()
+        clean = self._git("check-clean-" + label, origin, "status", "--porcelain=v1", "--untracked-files=all").stdout
+        private.require(head == expected and not clean, "local-dependency-changed")
+
+    def _validate_runtime_signatures(self):
         self._call("verify-local-runtime-signatures", "inspect", [TOOLS["python"], self.upstream / "scripts/kit_signature.py",
                    "verify", "--signature-only", "--team", self.material.team, self.runtime / "TryOmarchyKit.bundle"])
 
@@ -505,7 +478,10 @@ class Adapter:
             private.require(self.material.signed_runtime == self.handoff / "runtime", "reviewed-runtime-directory-required")
             private.require(self.material.team == self.request["signingTeamID"], "reviewed-signing-team-required")
         # Mandatory before reading any profile/keychain material or creating jobs.
-        self.runner.authorize(expected, self.request["scopeSHA256"], self.material.binding())
+        if not self.runner.test_double:
+            from receipt_bound_signing import ReceiptAdapter
+            private.require(type(self) is ReceiptAdapter, "legacy-real-signer-disabled")
+        self._authorize()
         private.require(type(self.runner.test_double) is bool)
         private.require(self.runner.test_double or not self.request["simulationFixture"], "synthetic-request-cannot-be-signed")
         private.require(re.fullmatch(r"[A-Za-z0-9 /_.-]+", str(Path(output).absolute())), "unsafe-private-build-path")
@@ -538,6 +514,7 @@ class Adapter:
                 result["candidateInputsSHA256"] = source_admission.review.candidateInputsSHA256
                 result["sourceCommit"] = source_admission.review.sourceCommit
                 result["scopeBytesSHA256"] = source_admission.review.scopeBytesSHA256
+            result.update(self._result_fields())
             private.write_json(self.work / "signer-result.json", result)
             return result
         except Exception:

@@ -283,3 +283,11 @@ proposal/output. It is not executable: receipt-bound authority, bounded signer
 supervision and legacy inspection replacement remain implementation work; key
 use/secure UI and Apple timestamp consent are still ungranted. All 1,239 old
 artifact entries/pins remain unchanged, output is absent and no signer runs.
+
+[Receipt-bound signing path](DevVMMilestone6Runbook.md#receipt-bound-signing-path--fake-tests-and-fresh-review-5-november-2026)
+implements admission, bounded supervision and legacy-verifier replacement together.
+Twenty new fake cases and the full 243-pass/five-skip suite pass without native
+library attempts. A fresh private review binds an exact uncommitted sixteen-file
+implementation and 24-file source/test snapshot. Older real dispatch is disabled;
+all key/UI/timestamp approvals remain ungranted and candidate output absent.
+Original artifacts/pins and historical inspection evidence are preserved.

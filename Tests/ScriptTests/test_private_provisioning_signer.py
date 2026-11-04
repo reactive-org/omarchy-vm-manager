@@ -228,7 +228,7 @@ class SignerAdapterTests(unittest.TestCase):
     def test_default_system_runner_denies_before_material_or_output(self):
         adapter = signer.Adapter(signer.SystemRunner(), self.fixture.material)
         with patch.object(signer.Adapter, "_validate_material", side_effect=AssertionError("material must not be read")):
-            with self.assertRaisesRegex(private.Refused, "not-authorized"):
+            with self.assertRaisesRegex(private.Refused, "legacy-real-signer-disabled"):
                 adapter.run(self.fixture.handoff, self.root / "denied", self.fixture.expected)
         self.assertFalse((self.root / "denied").exists())
 
@@ -237,49 +237,30 @@ class SignerAdapterTests(unittest.TestCase):
         runner = signer.SystemRunner(signer.ExecutionAuthorization(*values, frozenset({"inspect"})))
         with self.assertRaises(private.Refused): runner.authorize("0" * 64, *values[1:])
         command = signer.Command("forbidden", "sign-with-timestamp", (signer.TOOLS["codesign"], "--force"), self.root, {}, *values)
-        with self.assertRaisesRegex(private.Refused, "effect-not-authorized"): runner.run(command)
+        with self.assertRaisesRegex(private.Refused, "legacy-real-signer-disabled"): runner.run(command)
         for argv in ((signer.TOOLS["security"], "unlock-keychain"), ("/usr/bin/ssh", "host")):
             command = signer.Command("forbidden", "inspect", argv, self.root, {}, *values)
             with self.assertRaises(private.Refused): runner.run(command)
 
     def test_synthetic_request_never_enters_system_execution(self):
         runner = FakeCommands(self.fixture); runner.test_double = False
-        with self.assertRaisesRegex(private.Refused, "synthetic-request"):
+        with self.assertRaisesRegex(private.Refused, "legacy-real-signer-disabled"):
             signer.Adapter(runner, self.fixture.material).run(self.fixture.handoff, self.root / "denied", self.fixture.expected)
         self.assertEqual(runner.commands, []); self.assertFalse((self.root / "denied").exists())
 
-    def test_authorized_system_dispatch_uses_fake_child_and_fixed_environment(self):
-        values = (self.fixture.expected, self.fixture.scope["scopeSHA256"], self.fixture.material.binding())
-        runner = signer.SystemRunner(signer.ExecutionAuthorization(*values, frozenset({"inspect"})))
-        command = signer.Command("decode", "inspect", (signer.TOOLS["security"], "cms", "-D", "-i", str(self.fixture.material.profile)),
-                                 self.root, {"PATH": "/usr/bin:/bin"}, *values)
-        class Child:
-            pid = 123456789  # Never passed to a real process API.
-            returncode = 0
-            def wait(self, timeout=None): return 0
-        def spawn(*args, **kwargs):
-            kwargs["stdout"].write(b"fake decoded profile"); return Child()
-        with patch("subprocess.Popen", side_effect=spawn) as launch:
-            result = runner.run(command)
-        self.assertEqual(result.stdout, b"fake decoded profile")
-        self.assertEqual(launch.call_args.kwargs["env"], command.environment)
-        self.assertTrue(launch.call_args.kwargs["start_new_session"])
+    def test_legacy_real_dispatch_is_disabled_even_with_old_typed_authority(self):
+        values=(self.fixture.expected,self.fixture.scope["scopeSHA256"],self.fixture.material.binding())
+        runner=signer.SystemRunner(signer.ExecutionAuthorization(*values,frozenset({"build","inspect","sign-with-timestamp"})))
+        command=signer.Command("decode","inspect",(signer.TOOLS["security"],"cms","-D","-i","fixture"),self.root,{},*values)
+        with patch("subprocess.Popen",side_effect=AssertionError("Legacy process must not start")):
+            with self.assertRaisesRegex(private.Refused,"legacy-real-signer-disabled"):runner.run(command)
 
-    def test_timed_out_system_dispatch_kills_only_fake_owned_group_and_waits(self):
-        values = (self.fixture.expected, self.fixture.scope["scopeSHA256"], self.fixture.material.binding())
-        runner = signer.SystemRunner(signer.ExecutionAuthorization(*values, frozenset({"inspect"})))
-        command = signer.Command("decode", "inspect", (signer.TOOLS["security"], "cms", "-D", "-i", "fixture"), self.root, {}, *values)
-        class Child:
-            pid = 123456789
-            waits = 0
-            def wait(self, timeout=None):
-                self.waits += 1
-                if timeout is not None: raise subprocess.TimeoutExpired("synthetic-password-do-not-log", timeout)
-        child = Child()
-        with patch("subprocess.Popen", return_value=child), patch("os.killpg") as kill:
-            with self.assertRaisesRegex(private.Refused, "^private-command-failed$"): runner.run(command)
-        kill.assert_called_once_with(child.pid, signer.signal.SIGKILL)
-        self.assertEqual(child.waits, 2)
+    def test_legacy_real_adapter_denies_before_any_material_or_output(self):
+        values=(self.fixture.expected,self.fixture.scope["scopeSHA256"],self.fixture.material.binding())
+        runner=signer.SystemRunner(signer.ExecutionAuthorization(*values,frozenset({"build","inspect","sign-with-timestamp"})))
+        with patch.object(signer.Adapter,"_validate_material",side_effect=AssertionError("No material IO")):
+            with self.assertRaises(private.Refused):signer.Adapter(runner,self.fixture.material).run(self.fixture.handoff,self.root/'denied',self.fixture.expected)
+        self.assertFalse((self.root/'denied').exists())
 
     def test_sdk_source_build_signing_and_verification_failures_are_private(self):
         faults = ("decode-pinned-profile", "profile-team", "profile-expired", "check-original-overlay", "apply-original-overlay", "overlay-bytes",

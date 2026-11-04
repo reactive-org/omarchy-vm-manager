@@ -3364,3 +3364,30 @@ Next consolidate receipt-bound admission, bounded supervision, replacement of
 legacy inspection, fake validation and fresh review. No signing, private-key
 access, Apple request, SSH/Ansible, install, UI or VM operation occurs. See the
 [signed-candidate review](DevVMMilestone6Runbook.md#signed-candidate-review-after-offline-inspection--5-november-2026).
+
+## Receipt-bound candidate path — 5 November 2026
+
+Implemented the three review gaps together: typed one-shot receipt/current-code/
+material/output admission; shared-budget live-capped command/native supervision
+with held-group cleanup evidence; and no-network worker verification replacing
+legacy profile/daemon/app dispatch. Older real signer entry points are disabled.
+Candidate signatures require exact IDs/team/entitlements, hardened runtime and
+timestamps, CDHash and the exact public leaf. Existing source/scope/runtime,
+child-sign/seal/outer-sign and roundtrip contracts remain enforced.
+
+Twenty new fake tests cover complete concrete-supervisor/FFI/capability-worker
+composition and refusals/cleanup; full allowed Python suite: 243 pass/five signing
+skips (248 discovered), only Git/Python, no native-library attempt. A fresh private
+review binds sixteen code files and a 24-file source/test/Makefile snapshot/patch.
+Code is uncommitted; historical offline implementation and current signing
+implementation are bound independently. All 1,251 original artifact entries,
+pins and old receipts/reviews remain unchanged, with interim drafts retained.
+Credential contents stay unopened and external material/lock state is not refreshed.
+
+Output is absent; no real authority or signer is activated. Build/inspect,
+selected-key use, necessary secure key UI and Apple timestamp effects all remain
+NOT_GRANTED. Operator keychain preparation/relock may be needed; no automatic
+unlock/ACL changes are added. Parent IO is budget-checked at callbacks. Real native/
+signing behavior, original-Mac/loaded-child, notarization and guest acceptance
+remain TO PROVE. No prohibited operation occurs. See the
+[implemented path and fresh review](DevVMMilestone6Runbook.md#receipt-bound-signing-path--fake-tests-and-fresh-review-5-november-2026).

@@ -24,7 +24,7 @@ SIGNED_OID = bytes.fromhex("2a864886f70d010702")
 FAILURE_CODES = frozenset({"policy-refused", "native-status", "native-value-type",
     "native-date-nonfinite", "certificate-date-unavailable", "certificate-date-order",
     "symbol-unavailable", "type-error", "internal-error"})
-FAILURE_PHASES = frozenset({"not-started", "dependency", "locked", "profile", "certificate", "static",
+FAILURE_PHASES = frozenset({"not-started", "dependency", "locked", "profile", "certificate", "static", "candidate-code",
     "certificate-create", "certificate-name", "certificate-before-date", "certificate-after-date",
     "certificate-date-order"})
 FAILURE_MAP = {"offline-native-status": "native-status", "offline-native-value-type": "native-value-type",
@@ -130,7 +130,7 @@ class Task:
     def __repr__(self): return "OfflineInspectionTask(redacted)"
 
     def decode(self):
-        private.require(self.kind in {"dependency", "locked", "profile", "certificate", "static"}
+        private.require(self.kind in {"dependency", "locked", "profile", "certificate", "static", "candidate-code"}
                         and type(self.payload) is bytes and len(self.payload) <= 2 * LIMIT, "offline-task")
         value = private.decode(self.payload)
         private.require(type(value) is dict, "offline-task")
@@ -141,9 +141,17 @@ def task(kind, **fields):
     result = Task(kind, private.canonical(fields)); result.decode(); return result
 
 
-def requirement_for(team):
+def candidate_identifier(name):
+    return {"OmarchyVMStorageHelper": private.BUNDLE_ID + ".storage", "omarchy-vm": private.BUNDLE_ID + ".cli"}.get(name, private.BUNDLE_ID + "." + name)
+
+
+CANDIDATE_IDS = frozenset({private.BUNDLE_ID, *(candidate_identifier(n) for n in private.CHILDREN)})
+
+
+def requirement_for(team, identifier="dev.tryomarchy.kit"):
     private.require(isinstance(team, str) and re.fullmatch(r"[A-Z0-9]{10}", team), "offline-static-team")
-    return ('anchor apple generic and identifier "dev.tryomarchy.kit" and '
+    private.require(identifier == "dev.tryomarchy.kit" or identifier in CANDIDATE_IDS, "offline-static-identifier")
+    return ('anchor apple generic and identifier "' + identifier + '" and '
             'certificate leaf[field.1.2.840.113635.100.6.1.13] exists and '
             'certificate leaf[subject.OU] = "' + team + '"')
 
@@ -172,15 +180,18 @@ def _perform(spec, api):
     private.require(type(spec) is Task and type(api.test_double) is bool, "offline-worker-interface")
     fields = spec.decode()
     expected = {"dependency": {"path"}, "locked": {"path"}, "profile": {"content"},
-                "certificate": {"content"}, "static": {"path", "team", "nested", "entitlements"}}
+                "certificate": {"content"}, "static": {"path", "team", "nested", "entitlements"},
+                "candidate-code": {"path", "team", "nested", "entitlements", "identifier"}}
     private.require(set(fields) == expected[spec.kind], "offline-task-fields")
     # Reject unsafe envelopes/paths before even enabling an API context.
     content = unblob(fields["content"]) if "content" in fields else None
     embedded = signed_content(content) if spec.kind == "profile" else None
     path = safe_path(fields["path"]) if "path" in fields else None
-    if spec.kind == "static":
+    if spec.kind in ("static", "candidate-code"):
         private.require(isinstance(fields["team"], str) and re.fullmatch(r"[A-Z0-9]{10}", fields["team"])
                         and type(fields["nested"]) is bool and type(fields["entitlements"]) is dict, "offline-static-policy")
+        if spec.kind == "candidate-code":
+            private.require(type(fields["identifier"]) is str and fields["identifier"] in CANDIDATE_IDS, "offline-static-identifier")
     if spec.kind == "dependency":
         result = api.dependency_status(path)
         private.require(type(result) is dict and set(result) == {"revision", "clean"}
@@ -208,21 +219,30 @@ def _perform(spec, api):
                         "offline-certificate-info")
         return result
     flags = STATIC_FLAGS | (CHECK_NESTED if fields["nested"] else 0)
-    requirement = requirement_for(fields["team"])
+    identifier = fields.get("identifier", "dev.tryomarchy.kit")
+    if spec.kind == "candidate-code": private.require(identifier in CANDIDATE_IDS, "offline-static-identifier")
+    requirement = requirement_for(fields["team"], identifier)
     handle = api.static_open(path)
     private.require(handle is not None, "offline-static-reference")
     try:
         # No default/allow-network/revocation fallback, including on API errors.
         private.require(api.static_validate(handle, flags, requirement) is True, "offline-static-invalid")
-        info = api.static_info(handle)
-        private.require(type(info) is dict and set(info) == {"identifier", "team", "flags", "timestamp", "entitlements"}, "offline-static-info")
-        private.require(info["identifier"] == "dev.tryomarchy.kit" and info["team"] == fields["team"]
+        info = api.candidate_info(handle) if spec.kind == "candidate-code" else api.static_info(handle)
+        keys = {"identifier", "team", "flags", "timestamp", "entitlements"}
+        if spec.kind == "candidate-code": keys |= {"CDHash", "certificate"}
+        private.require(type(info) is dict and set(info) == keys, "offline-static-info")
+        private.require(info["identifier"] == identifier and info["team"] == fields["team"]
                         and type(info["flags"]) is int and 0 <= info["flags"] <= 0xffffffff
                         and info["flags"] & RUNTIME and not info["flags"] & ADHOC
                         and type(info["timestamp"]) in (int, float) and math.isfinite(info["timestamp"]) and info["timestamp"] > 0
                         and private.canonical(info["entitlements"]) == private.canonical(fields["entitlements"]), "offline-static-policy-failed")
     finally: api.release(handle)
-    return {"valid": True, "validationFlags": flags}
+    result = {"valid": True, "validationFlags": flags}
+    if spec.kind == "candidate-code":
+        private.require(type(info["CDHash"]) is str and re.fullmatch("[0-9a-f]{40,64}", info["CDHash"]), "offline-static-cdhash")
+        unblob(info["certificate"])
+        result.update(CDHash=info["CDHash"], certificate=info["certificate"])
+    return result
 
 
 if __name__ == "__main__":

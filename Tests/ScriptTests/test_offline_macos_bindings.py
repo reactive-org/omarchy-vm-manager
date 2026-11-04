@@ -33,7 +33,7 @@ class Library:
 
 
 class FakeFFI:
-    types = {"Data": 1, "String": 2, "Dictionary": 3, "Number": 4, "Date": 5, "Boolean": 6, "Code": 7, "Error": 8, "Keychain": 9, "Decoder": 10, "Requirement": 11, "URL": 12}
+    types = {"Data": 1, "String": 2, "Dictionary": 3, "Number": 4, "Date": 5, "Boolean": 6, "Code": 7, "Error": 8, "Keychain": 9, "Decoder": 10, "Requirement": 11, "URL": 12, "Array": 13}
 
     def __init__(self):
         self.heap = {}; self.owned = set(); self.counter = 100; self.calls = []; self.loads = []; self.functions = {}; self.buffers = []
@@ -41,6 +41,8 @@ class FakeFFI:
         self.certificate_dates = {"SecCertificateCopyNotValidBeforeDate": ("Date", 0),
                                   "SecCertificateCopyNotValidAfterDate": ("Date", 3_000_000_000)}
         self.entitlements_for_path = lambda path: {}
+        self.identifier_for_path = lambda path: 'dev.tryomarchy.kit'
+        self.public_leaf = CERT
         self.bindings = native.Bindings(self.load, self.constant)
 
     def node(self, kind, value, owned=True):
@@ -71,6 +73,7 @@ class FakeFFI:
         if name == "CFRelease":
             assert a[0] in self.owned, 'Only owned refs may be released'
             self.owned.remove(a[0]); return None
+        if name == "SecCertificateGetTypeID": return self.types['Code']
         if name.endswith("GetTypeID"):
             return self.types[self.heap[a[0]][0]] if name == "CFGetTypeID" else self.types[name[2:-9]]
         if name == "CFDataCreate": return self.data(C.string_at(a[1], a[2]))
@@ -85,6 +88,9 @@ class FakeFFI:
         if name == "CFStringGetCString": C.memmove(a[1], self.value(a[0]).encode() + b"\0", len(self.value(a[0]).encode()) + 1); return 1
         if name == "CFDictionaryGetValue": return self.value(a[0]).get(self.value(a[1]), 0)
         if name == "CFNumberGetValue": assert a[1] == 4; set_out(a[2], self.value(a[0]), C.c_int64); return 1
+        if name == "CFArrayGetCount": return len(self.value(a[0]))
+        if name == "CFArrayGetValueAtIndex": return self.value(a[0])[a[1]]
+        if name == "SecCertificateCopyData": return self.data(self.value(a[0]))
         if name == "CFDateGetAbsoluteTime": return self.value(a[0])
         if name == "CFPropertyListCreateData":
             assert a[2:4] == (100, 0)
@@ -108,13 +114,16 @@ class FakeFFI:
         if name == "SecRequirementCreateWithString": set_out(a[-1], self.node('Requirement', self.value(a[0]))); return -50 if self.fail == name else 0
         if name == "SecStaticCodeCheckValidityWithErrors":
             assert a[1] in (worker.STATIC_FLAGS, worker.STATIC_FLAGS | worker.CHECK_NESTED)
-            assert self.value(a[2]) == worker.requirement_for(TEAM)
+            identifier=self.identifier_for_path(Path(self.value(a[0])))
+            assert self.value(a[2]) == worker.requirement_for(TEAM,identifier)
             if self.fail == name: set_out(a[-1], self.node('Error', 'not logged')); return -67061
             return 0
         if name == "SecCodeCopySigningInformation":
             assert a[1] == native.SIGNING_INFORMATION
-            fields = {'kSecCodeInfoIdentifier': 'dev.tryomarchy.kit', 'kSecCodeInfoTeamIdentifier': TEAM,
-                      'kSecCodeInfoFlags': ('Number', worker.RUNTIME), 'kSecCodeInfoTimestamp': ('Date', 500_000_000),
+            fields = {'kSecCodeInfoIdentifier': self.identifier_for_path(Path(self.value(a[0]))), 'kSecCodeInfoTeamIdentifier': TEAM,
+                      'kSecCodeInfoFlags': ('Number', worker.RUNTIME),
+                      'kSecCodeInfoUnique': ('Data', b'c'*20),
+                      'kSecCodeInfoCertificates': ('Array', [self.node('Code',self.public_leaf,False)]), 'kSecCodeInfoTimestamp': ('Date', 500_000_000),
                       'kSecCodeInfoEntitlementsDict': ('Dictionary', self.entitlements_for_path(Path(self.value(a[0]))))}
             fields.update(self.overrides); fields = {k:v for k,v in fields.items() if v is not None}
             set_out(a[-1], self.dictionary(fields)); return -50 if self.fail == name else 0
@@ -184,6 +193,17 @@ class BindingsTests(unittest.TestCase):
             self.assertEqual(self.ffi.functions[name].restype,native.REF)
         self.assertNotIn('SecCertificateCopyValues',native.PROTOTYPES)
         self.assertFalse(any('kSecOIDX509' in name for name in native.CONSTANTS))
+
+    def test_candidate_chain_and_cdhash_types_are_checked_and_refs_released(self):
+        self.ffi.identifier_for_path=lambda _:worker.private.BUNDLE_ID
+        spec=worker.task('candidate-code',path=str(self.root),identifier=worker.private.BUNDLE_ID,team=TEAM,nested=True,entitlements={})
+        for override in ({'kSecCodeInfoCertificates':('Array',[])},
+                         {'kSecCodeInfoCertificates':('String','private error')},
+                         {'kSecCodeInfoUnique':('Data',b'short')},
+                         {'kSecCodeInfoCertificates':('Array',[self.ffi.string('not a certificate',False)])}):
+            self.ffi.overrides=override
+            with self.subTest(override=override),self.assertRaises(worker.WorkerFailure):worker.perform(spec,self.api)
+            self.assertFalse(self.ffi.owned)
 
     def test_invalid_typed_dates_refuse_with_fixed_phase_and_release_partial_refs(self):
         before='SecCertificateCopyNotValidBeforeDate'; after='SecCertificateCopyNotValidAfterDate'

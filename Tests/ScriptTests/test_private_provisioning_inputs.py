@@ -167,7 +167,7 @@ class SourceInputTests(unittest.TestCase):
         put(self.fixture.packet / "gate.json", b'{"executionAuthorized":true,"approvals":[{"status":"GRANTED"}]}')
         caller = signer.SourceInputCaller(self.fixture.review, self.fixture.material)
         with patch.object(signer.Adapter, "_validate_material", side_effect=AssertionError("No material IO")):
-            with self.assertRaisesRegex(private.Refused, "not-authorized"): caller.run(self.fixture.packet, self.root / "denied")
+            with self.assertRaisesRegex(private.Refused, "legacy-real-signer-disabled"): caller.run(self.fixture.packet, self.root / "denied")
         self.assertFalse((self.root / "denied").exists())
         with self.assertRaisesRegex(private.Refused, "already-used"): caller.run(self.fixture.packet, self.root / "again")
 
@@ -235,7 +235,7 @@ class SourceInputTests(unittest.TestCase):
 
     def test_fixture_review_cannot_enter_a_production_runner_or_swap_runtime_selector(self):
         self.runner = SourceCommands(self.fixture); self.runner.test_double = False
-        with self.assertRaisesRegex(private.Refused, "synthetic-request"):
+        with self.assertRaisesRegex(private.Refused, "legacy-real-signer-disabled"):
             signer.SourceInputCaller(self.fixture.review, self.fixture.material, self.runner).run(self.fixture.packet, self.root / "production")
         self.assertEqual(self.runner.commands, [])
         caller = self.caller(material=update(self.fixture.material, signed_runtime=self.fixture.runtime_dir))
@@ -306,7 +306,7 @@ class SourceInputTests(unittest.TestCase):
             auth = signer.ExecutionAuthorization(digest, self.fixture.review.scopeSHA256,
                 self.fixture.material.binding(), frozenset({"build", "inspect", "sign-with-timestamp"}))
             caller = signer.SourceInputCaller(self.fixture.review, self.fixture.material, signer.SystemRunner(auth))
-            with self.assertRaisesRegex(private.Refused, "not-authorized"): caller.run(self.fixture.packet, self.root / "wrong-domain")
+            with self.assertRaisesRegex(private.Refused, "legacy-real-signer-disabled"): caller.run(self.fixture.packet, self.root / "wrong-domain")
             self.assertFalse((self.root / "wrong-domain").exists())
 
     def test_two_callers_cannot_race_the_same_one_shot_instance(self):

@@ -6,7 +6,7 @@ import re
 import math
 
 import private_provisioning_package as p
-from offline_inspection_worker import STATIC_FLAGS, CHECK_NESTED, LIMIT, signed_content, requirement_for
+from offline_inspection_worker import STATIC_FLAGS, CHECK_NESTED, LIMIT, signed_content, requirement_for, blob
 
 REF = C.c_void_p
 OUT = C.POINTER(REF)
@@ -27,6 +27,10 @@ PROTOTYPES = {
     "CMSDecoderUpdateMessage": ("Security", STATUS, [REF, REF, C.c_size_t]),
     "CMSDecoderFinalizeMessage": ("Security", STATUS, [REF]),
     "CMSDecoderCopyContent": ("Security", STATUS, [REF, OUT]),
+    "SecCertificateCopyData": ("Security", REF, [REF]),
+    "SecCertificateGetTypeID": ("Security", C.c_ulong, []),
+    "CFArrayGetCount": ("CoreFoundation", INDEX, [REF]),
+    "CFArrayGetValueAtIndex": ("CoreFoundation", REF, [REF, INDEX]),
     "SecCertificateCreateWithData": ("Security", REF, [REF, REF]),
     "SecCertificateCopyCommonName": ("Security", STATUS, [REF, OUT]),
     "SecCertificateCopyNotValidBeforeDate": ("Security", REF, [REF]),
@@ -50,10 +54,10 @@ PROTOTYPES = {
     "CFDateGetAbsoluteTime": ("CoreFoundation", C.c_double, [REF]),
     "CFPropertyListCreateData": ("CoreFoundation", REF, [REF, REF, INDEX, C.c_ulong, OUT]),
 }
-for _kind in ("Data", "String", "Dictionary", "Number", "Date"):
+for _kind in ("Data", "String", "Dictionary", "Number", "Date", "Array"):
     PROTOTYPES["CF" + _kind + "GetTypeID"] = ("CoreFoundation", C.c_ulong, [])
 CONSTANTS = frozenset({"kSecCodeInfoIdentifier", "kSecCodeInfoTeamIdentifier", "kSecCodeInfoFlags",
-    "kSecCodeInfoTimestamp", "kSecCodeInfoEntitlementsDict"})
+    "kSecCodeInfoTimestamp", "kSecCodeInfoEntitlementsDict", "kSecCodeInfoUnique", "kSecCodeInfoCertificates"})
 
 
 class Bindings:
@@ -240,7 +244,8 @@ class MacOSAPI:
         self.validated.discard(handle)
         p.require(type(flags) is int and flags in (STATIC_FLAGS, STATIC_FLAGS | CHECK_NESTED), "offline-native-no-network-flags")
         match = re.search(r'OU\] = "([A-Z0-9]{10})"$', requirement)
-        p.require(match and requirement == requirement_for(match[1]), "offline-native-requirement")
+        identifier = re.search(r'identifier "([A-Za-z0-9.-]+)"', requirement)
+        p.require(match and identifier and requirement == requirement_for(match[1], identifier[1]), "offline-native-requirement")
         text = req = None; error = REF()
         try:
             text = self._string_ref(requirement); req = self._status_ref("SecRequirementCreateWithString", text, 0)
@@ -251,7 +256,7 @@ class MacOSAPI:
         finally:
             for ref in (error, req, text): self._drop(ref)
 
-    def static_info(self, handle):
+    def static_info(self, handle, evidence=False):
         code = self._handle(handle, "static"); p.require(handle in self.validated, "offline-native-not-validated")
         info = data = None; error = REF()
         try:
@@ -265,8 +270,20 @@ class MacOSAPI:
                 data = self._call("CFPropertyListCreateData", None, entitlements, 100, 0, C.byref(error))
                 p.require(data and not error.value, "offline-native-entitlements")
                 decoded = plistlib.loads(self._bytes(data)); p.require(type(decoded) is dict)
-            return {"identifier": self._string(self._value(info, "kSecCodeInfoIdentifier")),
+            result = {"identifier": self._string(self._value(info, "kSecCodeInfoIdentifier")),
                     "team": self._string(self._value(info, "kSecCodeInfoTeamIdentifier")), "flags": number.value,
                     "timestamp": self._date(self._value(info, "kSecCodeInfoTimestamp")), "entitlements": decoded}
+            if evidence:
+                result["CDHash"] = self._bytes(self._value(info, "kSecCodeInfoUnique")).hex()
+                certificates = self._value(info, "kSecCodeInfoCertificates"); self._type(certificates, "Array")
+                p.require(0 < self._call("CFArrayGetCount", certificates) <= 16, "offline-native-certificate-chain")
+                leaf = self._call("CFArrayGetValueAtIndex", certificates, 0)
+                p.require(leaf and self._call("CFGetTypeID", leaf) == self._call("SecCertificateGetTypeID"), "offline-native-certificate-type")
+                public = self._call("SecCertificateCopyData", leaf)
+                try: result["certificate"] = blob(self._bytes(public))
+                finally: self._drop(public)
+            return result
         finally:
             for ref in (error, data, info): self._drop(ref)
+
+    def candidate_info(self, handle): return self.static_info(handle, evidence=True)

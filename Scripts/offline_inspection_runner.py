@@ -70,16 +70,27 @@ class Runner:
     def _run(self, spec, revalidate, cancel=None):
         private.require(type(spec) is Task, "offline-worker-task")
         spec.decode()
+        return self._supervise(spec, spec.kind, revalidate, cancel)
+
+    def run_command(self, command, revalidate, cancel=None):
+        from private_provisioning_signer import Command
+        private.require(type(command) is Command and 0 < command.timeout <= 1200
+                        and 0 < command.maximum <= MAX_OUTPUT, "bounded-command-required")
+        private.require(self._operation.acquire(blocking=False), "offline-worker-overlap")
+        try: return self._supervise(command, command.effect, revalidate, cancel, raw=True)
+        finally: self._operation.release()
+
+    def _supervise(self, spec, kind, revalidate, cancel, raw=False):
         self.authorize(*self.bindings); self.check(cancel)
         private.require(self.active is None, "offline-worker-overlap")
         revalidate(); self.check(cancel)
-        deadline = min(self.deadline, self.clock() + STAGE_SECONDS)
+        deadline = min(self.deadline, self.clock() + (spec.timeout if raw else STAGE_SECONDS))
         private.require(len(self.worker_records) < MAX_WORKERS, "offline-worker-count-bound")
-        record = {"sequence": len(self.worker_records) + 1, "kind": spec.kind, "exitStatus": None,
+        record = {"sequence": len(self.worker_records) + 1, "kind": kind, "exitStatus": None,
                   "failureCategory": None, "diagnostic": None, "cleanupOperations": []}
         self.worker_records.append(record)
         process = None; failed = True; cleanup = True; quiet_observed = False
-        output = bytearray(); totals = {"stdout": 0, "stderr": 0}
+        output = bytearray(); errors = bytearray(); totals = {"stdout": 0, "stderr": 0}
         try:
             process = self.factory.spawn(spec)
             self.active = process
@@ -91,8 +102,9 @@ class Runner:
                 for stream, data in events:
                     private.require(stream in totals and type(data) is bytes and len(data) <= 65536, "offline-worker-stream-protocol")
                     totals[stream] += len(data)
-                    private.require(totals[stream] <= MAX_OUTPUT, "offline-worker-output-limit")
+                    private.require(totals[stream] <= (spec.maximum if raw else MAX_OUTPUT), "offline-worker-output-limit")
                     if stream == "stdout": output.extend(data)
+                    elif raw: errors.extend(data)
                 if events: revalidate()
                 self.check(cancel)
                 private.require(self.clock() < deadline, "offline-stage-timeout")
@@ -106,6 +118,10 @@ class Runner:
                     private.require(quiet_observed, "offline-worker-descendants-remain")
                     if process.streams_closed(): break
             revalidate(); self.check(cancel)
+            if raw:
+                from private_provisioning_signer import Result
+                failed = False
+                return Result(0, bytes(output), bytes(errors))
             value = private.decode(bytes(output))
             private.require(type(value) is dict, "offline-worker-response")
             if getattr(self.factory, "requires_mode_proof", False):

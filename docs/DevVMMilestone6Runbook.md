@@ -1247,6 +1247,71 @@ original-Mac/loaded-child, notarization and guest acceptance remain separate.
 No signing, private-key access, Apple request, SSH/Ansible, install, UI, VM-root
 observation/recapture or VM operation occurs during this preparation.
 
+## Receipt-bound signing path — fake tests and fresh review, 5 November 2026
+
+**IMPLEMENTED / FAKE-VALIDATED:** after review-doc commits `e8c6c1c` (manager) and
+`0bc6f31` (companion), the private developer tooling adds `ReceiptBoundCaller`.
+Its typed, one-shot review/authority binds the source/scope, exact historical
+offline request/implementation/receipt, staged material/public certificate,
+current signing implementation, output and fixture/native mode. Authorization
+precedes material/output IO. Historical receipt code and new signing code are
+independent bindings; changing the signer does not relabel or regenerate the
+successful inspection. Incomplete, fake/native-mismatched or unclean receipts
+are refused, as are changed inputs, output reuse and replay.
+
+`SigningRunner` and its explicit command factory reuse held-root process
+supervision: a 2,400-second shared deadline, at most 1,200 seconds per build and
+120 seconds per signing/native stage, live 2 MiB per stream, bounded waits and
+per-command cleanup evidence. Native workers share the remaining job budget.
+Unconfirmed cleanup retains handles and blocks reuse; intermediate errors stay
+latched false. Parent filesystem/archive IO remains checked at callbacks, not
+hard-preemptible. Commands use a closed environment, no inherited descriptors,
+and exact reviewed argv. Original-source checkouts, extra build flags, credential
+tools, arbitrary Python/programs and app execution are rejected.
+
+**LEGACY REPLACEMENT:** real dispatch through `SystemRunner` and the older adapter
+is disabled, including old typed signing authority. Their existing fake tests
+remain. The new route uses guarded profile content/policy/public-leaf membership,
+bounded filter-free dependency checks, and capability workers with explicit
+no-network code validation. Closed candidate identifiers and exact team,
+entitlements, hardened-runtime/timestamp, CDHash and public-certificate checks
+cover the private app/children and archive roundtrip. Public certificate array/
+data bindings add no key, trust-evaluation or unlock APIs. No `security cms`,
+upstream daemon verifier, default-network `codesign --verify`, built-app diagnostic
+or runtime execution is used by this route. Child-sign/seal/outer-sign ordering
+and original scope-definition/resource/runtime checks remain intact.
+
+**VERIFIED — fake/local only:** twenty new cases bring the full allowed Python
+suite to 248 discovered: 243 pass, five signing/PKCS12 cases are skipped. Only
+local Git/Python processes are observed; no forbidden program or native-library
+attempt occurs. Complete fixture build/package/roundtrip uses concrete command
+supervision and fake FFI, including the capability worker factory. Denial/mode/
+domain/replay, mutation, code/receipt separation, forbidden argv, stdout/stderr
+overflow, deadlines/cancellation, descendants, failed cleanup and fixed errors
+when private evidence IO fails are covered. These are not real signing results.
+
+**FRESH REVIEW / NOT EXECUTED:** a new private 0700/0600 review binds all sixteen
+implementation files and a 24-file source/test/Makefile archive plus base patch.
+The code is explicitly an uncommitted exact snapshot; a later commit must preserve
+its bytes. All 1,251 original private entries, earlier reviews, successful/failed
+receipts and frozen pins remain unchanged; interim preparation evidence is also
+retained. Credential-named content stays unopened with stable metadata, not a
+fresh content claim. External original signing materials/keychain are not reopened
+or stat-checked, no VM-root identity is observed or recaptured, and product approval
+remains nil. Candidate output is absent and no real selected authority/caller/
+runner/factory is activated.
+
+**TO PROVE / APPROVALS:** exact future authority requires all five effects:
+local build, inspection, selected-key use, necessary existing secure key UI and
+Apple secure timestamps. Every grant remains NOT_GRANTED. No orchestration
+unlock/import/search-list/ACL workflow is supplied; operator keychain preparation
+and restoration to locked state may be needed. Touch ID remains a preference
+only where supported by existing ACLs. Real compiler/signing/public-cert-chain/
+OS cleanup behavior is unobserved for this new path. Notarization, original-Mac/
+loaded-child and disposable-guest acceptance stay separate. No real inspection,
+signing, private-key access, Apple request, SSH/Ansible, install, UI or VM operation
+occurs in this implementation/preparation chunk.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

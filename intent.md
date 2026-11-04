@@ -3228,3 +3228,40 @@ remains the visual target for milestone 5.
   runner/inspection hardening, fake tests and fresh review. No native inspection,
   compiler, signing or prohibited operation occurs; product approval remains nil.
   See the [review](docs/DevVMMilestone6Runbook.md#signed-candidate-review-after-offline-inspection--5-november-2026).
+
+## Receipt-bound signing implementation — 5 November 2026
+
+- **USER AUTHORIZATION / IMPLEMENTED:** commit review docs (`e8c6c1c`, companion
+  `0bc6f31`), then implement receipt-bound admission, bounded supervision and
+  legacy-verifier replacement using fake tests and fresh review only.
+- **DESIGN DECISION:** typed one-shot authority binds exact historical inspection
+  receipt/implementation, source/scope, staged public material, current code,
+  output and fixture/native mode. Default denial precedes material/output IO;
+  all five build/inspect/key-use/secure-key-UI/Apple-timestamp effects are required.
+  Historical proof is not rewritten when tooling changes. Old real entry points
+  are disabled. New verification uses guarded profile data and capability workers
+  with explicit no-network flags/closed identities and public leaf/CDHash checks;
+  no legacy daemon, app execution or default-network verifier is used.
+- **DESIGN DECISION / PRIVATE COUPLING:** share a 2,400-second job deadline,
+  1,200-second build / 120-second other stages, live 2 MiB streams and held-group
+  kill/reap/descriptor evidence. Retain unresolved handles and latched cleanup
+  errors. Exact command/environment policy rejects original checkout mutation,
+  extra build flags, credentials and arbitrary programs. Parent IO remains
+  budget-checked at callbacks. Operator keychain preparation/relock stays explicit;
+  no unlock/import/ACL/search-list workflow is added.
+- **VERIFIED — fake/local:** twenty new tests; full 243 allowed Python passes and
+  five signing skips (248 discovered), only Git/Python and no forbidden process/
+  native-library attempt. Concrete command/FFI/capability roundtrip, malformed and
+  stale bindings, mode/domain/replay, mutation, resource limits and cleanup/error
+  paths pass. All 1,251 original private entries/pins and historical evidence
+  remain unchanged; interim preparation artifacts are retained. Credential content
+  stays unopened and external original materials/keychain are not refreshed.
+- **PREPARED / TO PROVE:** fresh ignored review binds sixteen implementation files
+  and a 24-file source/test/Makefile archive/patch; code is explicitly uncommitted.
+  All execution approvals are ungranted and output absent. No real selected
+  authority/native API/signer is activated. Real compiler/signing/OS/chain behavior,
+  prior failure causes, notarization/original-Mac/loaded-child and guest acceptance
+  remain unproven. No real inspection, signing, private-key access, Apple request,
+  SSH/Ansible, install, UI, VM-root observation/recapture or VM operation occurs;
+  product approval stays nil. See the
+  [implemented path](docs/DevVMMilestone6Runbook.md#receipt-bound-signing-path--fake-tests-and-fresh-review-5-november-2026).
