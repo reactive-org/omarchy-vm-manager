@@ -226,3 +226,10 @@ implements the typed one-shot policy, no-network API calls, CMS guards and live
 worker time/output/cleanup limits against injected fakes. Thirty-two new tests and
 178 allowed Python passes succeed, with five signing skips. Concrete native API /
 process activation remains absent and separately gated; private pins stay unchanged.
+
+[Concrete macOS bindings and launcher](DevVMMilestone6Runbook.md#macos-bindings-and-bounded-launcher--fake-ffiprocesses-4-november-2026)
+now implement lazy offline APIs, private parent-pipe task binding, nonblocking IO
+and non-reaping process-group ownership. Thirty-three fake FFI/process tests and
+211 allowed Python passes succeed, with five signing skips and no inspection
+library attempt. Defaults remain denied; fresh private review and separate native
+approval are next. Frozen artifacts/pins remain unchanged.

@@ -110,6 +110,13 @@ def task(kind, **fields):
     result = Task(kind, private.canonical(fields)); result.decode(); return result
 
 
+def requirement_for(team):
+    private.require(isinstance(team, str) and re.fullmatch(r"[A-Z0-9]{10}", team), "offline-static-team")
+    return ('anchor apple generic and identifier "dev.tryomarchy.kit" and '
+            'certificate leaf[field.1.2.840.113635.100.6.1.13] exists and '
+            'certificate leaf[subject.OU] = "' + team + '"')
+
+
 def perform(spec, api, expected_test_double=True):
     try:
         private.require(type(expected_test_double) is bool and api.test_double is expected_test_double, "offline-api-mode")
@@ -136,13 +143,13 @@ def _perform(spec, api):
     if spec.kind == "static":
         private.require(isinstance(fields["team"], str) and re.fullmatch(r"[A-Z0-9]{10}", fields["team"])
                         and type(fields["nested"]) is bool and type(fields["entitlements"]) is dict, "offline-static-policy")
-    private.require(api.disable_interaction() is True, "offline-interaction-not-disabled")
     if spec.kind == "dependency":
         result = api.dependency_status(path)
         private.require(type(result) is dict and set(result) == {"revision", "clean"}
                         and isinstance(result["revision"], str) and re.fullmatch("[0-9a-f]{40}", result["revision"])
                         and result["clean"] is True, "offline-source-state")
         return result
+    private.require(api.disable_interaction() is True, "offline-interaction-not-disabled")
     if spec.kind == "locked":
         handle = api.keychain_open(path)
         private.require(handle is not None, "offline-keychain-reference")
@@ -163,9 +170,7 @@ def _perform(spec, api):
                         "offline-certificate-info")
         return result
     flags = STATIC_FLAGS | (CHECK_NESTED if fields["nested"] else 0)
-    requirement = ('anchor apple generic and identifier "dev.tryomarchy.kit" and '
-                   'certificate leaf[field.1.2.840.113635.100.6.1.13] exists and '
-                   'certificate leaf[subject.OU] = "' + fields["team"] + '"')
+    requirement = requirement_for(fields["team"])
     handle = api.static_open(path)
     private.require(handle is not None, "offline-static-reference")
     try:
@@ -174,7 +179,8 @@ def _perform(spec, api):
         info = api.static_info(handle)
         private.require(type(info) is dict and set(info) == {"identifier", "team", "flags", "timestamp", "entitlements"}, "offline-static-info")
         private.require(info["identifier"] == "dev.tryomarchy.kit" and info["team"] == fields["team"]
-                        and type(info["flags"]) is int and info["flags"] & RUNTIME and not info["flags"] & ADHOC
+                        and type(info["flags"]) is int and 0 <= info["flags"] <= 0xffffffff
+                        and info["flags"] & RUNTIME and not info["flags"] & ADHOC
                         and type(info["timestamp"]) in (int, float) and math.isfinite(info["timestamp"]) and info["timestamp"] > 0
                         and private.canonical(info["entitlements"]) == private.canonical(fields["entitlements"]), "offline-static-policy-failed")
     finally: api.release(handle)

@@ -18,6 +18,7 @@ from offline_inspection_runner import Runner
 from offline_inspection_worker import task, blob, unblob, signed_content, STATIC_FLAGS, CHECK_NESTED
 
 IMPLEMENTATION_FILES = ("private_provisioning_offline.py", "offline_inspection_runner.py", "offline_inspection_worker.py",
+                        "offline_macos_api.py", "offline_native_process.py", "offline_native_worker.py",
                         "private_provisioning_inputs.py", "private_provisioning_materials.py", "private_provisioning_signer.py",
                         "private_provisioning_package.py", "provisioning_package.py", "keychain_profile.py",
                         "signed_prerelease.py", "fetch_runtime_kit.py")

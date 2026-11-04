@@ -3022,3 +3022,29 @@ remains the visual target for milestone 5.
   SSH/Ansible, install, UI, image or VM operation occurs; fake receipts grant no
   signing/guest authority. See the
   [adapter](docs/DevVMMilestone6Runbook.md#offline-inspection-adapter--fake-apisworkers-4-november-2026).
+
+## Concrete macOS inspection bindings — 4 November 2026
+
+- **DESIGN DECISION / IMPLEMENTED:** concrete lazy offline API and process factory
+  remain explicitly composed, default-denied and bound to typed authority/current
+  implementation. Closed symbols omit SecTrust/CMS signer-status, identity/key and signing APIs.
+  Anonymous capability/task pipes bind parent, task, code and fake/native mode;
+  no file/env approval loader or automatic native activation is added.
+- **PRIVATE COUPLING:** SDK ctypes prototypes, CF ownership/type checks, explicit
+  no-network validity, certified timestamp metadata, isolated worker environment,
+  nonblocking IO and unreaped root/group ownership are enforced. Darwin waitid
+  supports system Python without that wrapper; bounded proc_listpids queries
+  require the held root. Unconfirmed cleanup retains handles and blocks launches.
+  Filter-free Git metadata plus raw index/worktree checks avoid clean-filter
+  execution. New code joins the implementation digest; old reviews stay stale.
+- **VERIFIED — fake FFI/process only:** 33 new tests and 211 allowed Python passes /
+  five signing skips (216 discovered), only Git/Python programs and no forbidden
+  tool/inspection-library attempt. A synthetic roundtrip uses concrete wrappers
+  and launcher with fake primitives. All 1,161 retained private entries and prior
+  reviews stay unchanged; no actual material/keychain/native inspection occurs.
+- **TO PROVE:** fresh exact-implementation review and native approval; real API/ABI,
+  root/group visibility, scheduling, cleanup/crash and validation results. Source
+  coupling is not observed OS behavior or signer/key/notarization/guest proof.
+  No signing, Apple request, SSH/Ansible, install, UI, image or VM operation occurs;
+  shared/product source and ordinary approval stay unchanged. See the
+  [binding contract](docs/DevVMMilestone6Runbook.md#macos-bindings-and-bounded-launcher--fake-ffiprocesses-4-november-2026).

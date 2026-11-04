@@ -851,6 +851,86 @@ artifacts/pins, shared package/product source and ordinary approval remain
 unchanged. No real inspection, keychain access, signing, Apple requests,
 SSH/Ansible, install, UI, disk image or VM operation occurs.
 
+## macOS bindings and bounded launcher — fake FFI/processes, 4 November 2026
+
+**IMPLEMENTED — developer tooling, not activated:** `offline_macos_api.py` now
+provides concrete lazy ctypes bindings for the injected offline API. A closed
+symbol/constant table excludes explicit SecTrust and CMS signer-status APIs,
+identity/private-key queries, unlocking and signing. Constructors/imports load
+no inspection framework. After interaction is disabled, only the named keychain
+reference/status is available. CMS APIs create/update/finalize/copy content after
+the existing signedData/plist guard. Public certificate fields are copied without
+trust evaluation. Static code checks enforce the exact offline flags/Developer ID
+requirement with no fallback; metadata access requires successful validation.
+Only the certified timestamp field is accepted. CF types, sizes, unsigned flags
+and full string lengths are checked, including embedded-NUL truncation refusal.
+Owned outputs, partial/error references and temporary CF objects are released.
+
+`offline_native_process.py` provides an explicit `MacOSWorkerFactory` and handle
+for the existing supervisor. It requires the exact typed in-memory authorization,
+review/scope/selection/implementation and source-fixture mode before pipe/process
+effects. Neither the default caller nor imported modules select it automatically.
+All new sources join the implementation digest, invalidating stale reviews rather
+than modifying frozen pins or historical proposals.
+
+Each worker uses the current resolved Python with `-I -B`, a fresh 0700 scratch
+directory, a small environment allowlist, piped stdio, a new session and exactly
+one inherited capability FD. No passwords/approval selectors appear in argv or
+environment. The internal `offline_native_worker.py` entry rejects stdio/regular
+files as capabilities. Anonymous parent-pipe data binds a per-launch token, parent
+PID, task digest, implementation digest and fake/native classification. Task input
+arrives on a separate bounded pipe and must match before API initialization.
+Files, environments and gate JSON cannot substitute for the trusted parent
+composition. This is same-user workflow/task isolation, not protection against a
+compromised parent capable of directly invoking macOS APIs. The response carries
+the worker API mode; a fake result cannot become a native receipt.
+
+Nonblocking partial input writes and simultaneous bounded stdout/stderr reads
+use selectors. The concrete handle enforces the live stream caps too. Root exit
+is observed without reaping (`WNOWAIT`), reserving its process-group identity until
+descendants are quiescent. System Python 3.9 lacks `os.waitid`; a lazy Darwin libc
+binding supplies the SDK's 64-bit `siginfo_t` layout and non-reaping semantics.
+The group query uses `proc_listpids(PROC_PGRP_ONLY)` byte counts with a fixed PID
+bound and requires the held root to remain visible. Missing ownership/query proof
+refuses; no signal is sent after reaping or losing the owned root. Startup failures
+kill/reap and close streams/FDs; unresolved handles remain retained and block more
+launches. Deadlines, live caps and cancellation remain with the shared supervisor.
+
+Dependency checks use four fixed local Git **metadata** reads and bounded raw
+worktree/index comparison. They avoid `git status`/clean filters, disable hooks,
+fsmonitor, global config, replacement objects and interactive/SSH behavior, and
+reject unsupported/linked/credential paths. Nested Git stays in the worker's group
+with live stream caps and ten-second command bounds. No runtime executable,
+privileged service, shell, download or installer is dispatched.
+
+```sh
+make test-private-provisioning-native
+```
+
+**VERIFIED — fake FFI/process only:** 33 new tests cover ABI out-pointers and
+CF ownership on errors, exact no-network flags, content-only CMS, certificate/
+timestamp/type policy, authenticated/bounded framing, default denial, fake/native
+classification, partial IO, overflow/hang/cancellation cleanup, failed startup/
+reap, descendants, root identity release, Darwin wait/group ABI and filter-free
+Git checks. A full synthetic adapter roundtrip uses the concrete launcher and
+ctypes wrappers with fake symbols/process primitives throughout. The full allowed
+Python run discovers 216 tests: 211 pass/five signing cases are skipped. Its audit
+observes only local Git/Python and zero forbidden tools or attempts to load
+Security/CoreFoundation/libproc/libSystem inspection bindings. No real worker or
+selected material is inspected. All 1,161 retained private entries and historical
+review packets remain unchanged; shared package/product code and approval stay
+unchanged.
+
+**NEXT / TO PROVE:** after committing, bind the final implementation and exact
+private selection/output into a fresh review, then separately approve bounded
+native inspection. Do not replay old authorizations or rewrite their preparation
+status. Real API/ABI behavior, CF value shapes, kernel group enumeration of the
+held exited root, scheduling, cleanup/parent-crash behavior and native results are
+unobserved. Static offline success will not prove signer trust, online revocation,
+notarization, key possession, daemon execution or guest behavior. No real
+inspection, keychain/credential access, signing, Apple request, SSH/Ansible,
+install, UI, image or VM operation occurs in this implementation work.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

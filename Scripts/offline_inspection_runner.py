@@ -2,8 +2,8 @@
 
 Factories own a process group atomically: spawn returns promptly with its handle;
 native work belongs in the child, never inline in spawn. Handles drain bounded nonblocking chunks, expose EOF/group
-state, kill the whole group and wait/reap with a timeout. A native factory is not
-provided or selected implicitly. A failed handoff leaves cleanup unconfirmed.
+state, kill the whole group and wait/reap with a timeout. No factory is selected
+implicitly; the concrete factory requires explicit trusted composition. A failed handoff leaves cleanup unconfirmed.
 Tests supply virtual processes and clocks.
 """
 from dataclasses import dataclass
@@ -47,6 +47,7 @@ class Runner:
         private.require(self.factory is not None and type(self.test_double) is bool
                         and self.factory.api_test_double is self.test_double
                         and self.factory.implementationSHA256 == implementation, "offline-worker-factory-unavailable")
+        if hasattr(self.factory, "bind_authorization"): self.factory.bind_authorization(a)
 
     def start(self, bindings):
         self.authorize(*bindings)
@@ -96,6 +97,8 @@ class Runner:
             revalidate(); self.check(cancel)
             value = private.decode(bytes(output))
             private.require(type(value) is dict, "offline-worker-response")
+            if getattr(self.factory, "requires_mode_proof", False):
+                private.require(value.pop("_offlineAPITestDouble", None) is self.factory.api_test_double, "offline-worker-mode-proof")
             failed = False
             return value
         except BaseException:

@@ -3184,3 +3184,34 @@ budget-checked at callbacks; virtual process tests do not prove native schedulin
 or cleanup. No actual materials/keychain/native inspection, signing, Apple
 requests, SSH/Ansible, installs, UI, image or VM operation occurs. See the
 [adapter contract](DevVMMilestone6Runbook.md#offline-inspection-adapter--fake-apisworkers-4-november-2026).
+
+## Concrete offline bindings and launcher — 4 November 2026
+
+**IMPLEMENTED — not activated:** lazy closed-symbol Security/CoreFoundation
+bindings provide content-only CMS, public certificate parsing, locked keychain
+status and explicit no-network static validation. Type/size/string/flags checks,
+certified timestamp selection, validity-before-metadata and owned/error reference
+release are enforced. An explicit factory binds trusted authorization and current
+implementation, launches an isolated Python worker through anonymous bounded
+capability/task pipes, verifies parent/task/code/mode and supplies nonblocking IO
+to the existing deadline/output supervisor. No default caller activation is added.
+
+The root remains unreaped until its group is quiescent; a Darwin waitid ABI binding
+supports system Python without `os.waitid`. Bounded group queries fail closed on
+missing root ownership; no signal follows PID release. Failed startup/cleanup
+retains unresolved handles and blocks more launches. Fixed filter-free Git
+metadata/raw worktree checks replace potentially executable clean-filter checks.
+All new modules join the implementation digest; frozen runtime/pins stay exact.
+
+**VERIFIED — fake FFI/process only:** 33 new tests include a full synthetic adapter
+roundtrip through the concrete wrappers/launcher. The allowed Python suite has
+211 passes/five signing skips (216 discovered), only local Git/Python programs,
+and no forbidden-tool or inspection-library attempt. No actual native worker,
+API, signing material or keychain is inspected; all 1,161 private entries and
+historical reviews stay unchanged. Shared package/product code remains unchanged.
+
+**TO PROVE:** fresh final-implementation review and separate native approval,
+then real ABI/API value shapes, wait/group semantics, scheduling/cleanup/crash and
+inspection results. No real inspection, signing, Apple requests, SSH/Ansible,
+installs, UI, image or VM operation occurs. See the
+[binding boundary](DevVMMilestone6Runbook.md#macos-bindings-and-bounded-launcher--fake-ffiprocesses-4-november-2026).
