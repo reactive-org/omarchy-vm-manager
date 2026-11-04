@@ -291,3 +291,11 @@ library attempts. A fresh private review binds an exact uncommitted sixteen-file
 implementation and 24-file source/test snapshot. Older real dispatch is disabled;
 all key/UI/timestamp approvals remain ungranted and candidate output absent.
 Original artifacts/pins and historical inspection evidence are preserved.
+
+[First reviewed candidate attempt](DevVMMilestone6Runbook.md#first-reviewed-candidate-attempt--preparation-stop-5-november-2026)
+stops in frozen provisioning-source preparation (exit 1) before compilation or
+signing. All twelve supervised roots/workers clean up, and all 1,279 original
+artifact entries/pins are preserved. Source data checks pass, but discarded raw
+stderr leaves the exact cause unknown. No key, secure UI, timestamp or VM stage
+is reached. The request is consumed; fixture/diagnostic work and fresh review are
+next, without replaying this attempt.

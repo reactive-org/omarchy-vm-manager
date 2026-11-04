@@ -3391,3 +3391,26 @@ unlock/ACL changes are added. Parent IO is budget-checked at callbacks. Real nat
 signing behavior, original-Mac/loaded-child, notarization and guest acceptance
 remain TO PROVE. No prohibited operation occurs. See the
 [implemented path and fresh review](DevVMMilestone6Runbook.md#receipt-bound-signing-path--fake-tests-and-fresh-review-5-november-2026).
+
+## Reviewed candidate attempt — preparation stop, 5 November 2026
+
+The user approves the committed `27c672f` receipt-bound run, selected-key/secure-UI
+and Apple timestamps, excluding notarization, SSH/Ansible, installs and VM launch.
+Exact snapshot/code/receipt/input bindings pass. The attempt completes overlay and
+pinned local dependency preparation but stops at the frozen provisioning-source
+helper with exit 1 after 125.283 seconds. Its exact cause is unknown: stream counts
+(0 stdout / 278 stderr bytes) are retained, not raw error text. Read-only source
+hash/mode/patch/syntax checks pass without replaying preparation.
+
+Nine supervised command roots and three validation workers are reaped after group
+quietness with descriptors closed, no unresolved handles and no recorded-PID
+survivors in a bounded snapshot. All 1,279 old artifact entries and pins remain
+unchanged; credential content stays unopened. No compiler, app/archive assembly,
+runtime-validation phase, signing/key use/UI or timestamp stage is reached. No
+notarization or prohibited guest/install action occurs; product approval stays nil.
+
+The consumed request is not retried. Next combine a fake/local-fixture regression
+for the actual frozen preparation path, fixed bounded command-failure diagnosis
+and a fresh review. Real signing/OS/key/candidate and later acceptance remain
+unproven; prior approval is not promoted to a different request. See the
+[attempt and limitations](DevVMMilestone6Runbook.md#first-reviewed-candidate-attempt--preparation-stop-5-november-2026).

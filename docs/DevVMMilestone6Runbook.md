@@ -1312,6 +1312,55 @@ loaded-child and disposable-guest acceptance stay separate. No real inspection,
 signing, private-key access, Apple request, SSH/Ansible, install, UI or VM operation
 occurs in this implementation/preparation chunk.
 
+## First reviewed candidate attempt — preparation stop, 5 November 2026
+
+**AUTHORIZED / STOPPED BEFORE BUILD OR SIGNING:** after commits `27c672f` (manager)
+and `92593c9` (companion), the user explicitly approved the exact reviewed private
+build/sign/verify run, including selected-key use, existing secure key UI and Apple
+timestamps. The 24 source/test/Makefile snapshot files and sixteen-file code digest
+match the commit/current tree. A separate private execution record grants this
+one-shot request; the preparation packet and historical approval fields remain
+unchanged and do not become an approval loader.
+
+The attempt stops after 125.283 seconds at `prepare-pinned-provisioning-source`:
+the frozen Python helper exits 1. Source/receipt/material admission, public
+certificate validation, original overlay check/apply and both pinned local
+dependency copy/checkout/revision checks complete. No Swift compilation, runtime
+static-validation phase, app assembly, signing command, selected-key use, secure
+key UI or Apple timestamp request is reached. There is no candidate app/archive
+or success receipt. Partial source/runtime/dependency staging and fixed failure
+records remain private under the approved output.
+
+**DIAGNOSIS LIMIT:** the last command produces zero stdout bytes and 278 stderr
+bytes. The reviewed supervisor retains stream counts and a fixed process-exit
+failure, not raw stderr; the exact cause is therefore unknown. Read-only source
+analysis confirms that the 95 staged package files (853,039 bytes), source map/
+snapshot digest and all four integration-patch file hashes match; modes/types
+are acceptable and the frozen helper parses with the current interpreter. These
+facts do not reproduce its execution or prove why it failed. No preparation step,
+reverse patch, native validation, build or signing command is rerun for diagnosis.
+
+**VERIFIED — cleanup/preservation:** all nine supervised command roots and three
+native validation workers record successful cleanup, root reap after group
+quietness and closed descriptors; no unresolved handles remain. A bounded
+read-only snapshot restricted to their twelve recorded PIDs finds none remaining,
+and the snapshot process is reaped. All 1,279 preexisting private artifact entries,
+frozen pins, prior reviews and successful/failed receipts remain unchanged.
+Retained credential-named content stays unopened with stable metadata rather than
+fresh content validation. Keychain lock status is not re-queried or changed;
+the run never reaches key use, unlock or relock. No original VM root is observed
+or recaptured, and ordinary product approval remains nil.
+
+**NEXT / TO PROVE:** this request is consumed and is not automatically retried.
+The next consolidated fake/local-fixture change should cover the actual frozen
+preparation helper path (the old build-command double treats it as a no-op), add
+bounded fixed command-failure classification without raw path/secret logging,
+then prepare a fresh reviewed attempt. Real compiler/signing/key/UI/timestamps,
+output-chain validation, notarization/original-Mac/loaded-child and guest evidence
+remain unproven. The signing approval was not exercised and is not carried to a
+different request. No notarization, SSH/Ansible, install, app/runtime execution
+or VM operation occurs.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

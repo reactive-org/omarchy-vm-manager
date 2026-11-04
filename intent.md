@@ -3265,3 +3265,31 @@ remains the visual target for milestone 5.
   SSH/Ansible, install, UI, VM-root observation/recapture or VM operation occurs;
   product approval stays nil. See the
   [implemented path](docs/DevVMMilestone6Runbook.md#receipt-bound-signing-path--fake-tests-and-fresh-review-5-november-2026).
+
+## First private candidate attempt — 5 November 2026
+
+- **USER AUTHORIZATION:** execute the exact reviewed build/sign/verify flow after
+  commits `27c672f` / companion `92593c9`, including selected-key use, existing
+  secure key UI and Apple timestamps. No notarization, SSH/Ansible, installs or
+  VM launch is authorized. Snapshot/current code and frozen bindings match.
+- **VERIFIED — partial:** source/receipt/material admission, public certificate,
+  overlay check/apply and pinned dependency copies/checkouts pass. At 125.283
+  seconds, the frozen provisioning-source helper exits 1, before Swift compilation,
+  runtime static validation, app assembly or signing. No selected key, secure UI
+  or timestamp request is used. There is no app/archive or success receipt.
+- **VERIFIED — cleanup/preservation:** nine command roots and three validation
+  workers are reaped after group quietness with closed descriptors and no pending
+  handles. A bounded snapshot finds none of those PIDs remaining. All 1,279 old
+  private artifact entries, pins, reviews and receipts remain unchanged; retained
+  credential content stays unopened with stable metadata. Only approved partial
+  output/private failure evidence is added. Keychain state is not refreshed or
+  changed, no VM-root pin is recaptured and product approval stays nil.
+- **PRIVATE COUPLING / DIAGNOSIS LIMIT:** fixed evidence retains exit 1 and
+  0 stdout / 278 stderr bytes, not raw error text; actual cause remains unknown.
+  Read-only package/source/patch/mode/syntax checks pass without replay. The old
+  command double skips the actual provisioning preparation behavior.
+- **TO PROVE / NEXT:** request consumed, no retry or approval transfer. Consolidate
+  frozen-helper fake/local-fixture regression, bounded fixed command diagnostics
+  and fresh review. No actual compiler/signing/key/UI/timestamp or later candidate/
+  notarization/loaded-child/guest proof is established. No prohibited operation
+  occurs. See the [attempt](docs/DevVMMilestone6Runbook.md#first-reviewed-candidate-attempt--preparation-stop-5-november-2026).
