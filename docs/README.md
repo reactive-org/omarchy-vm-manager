@@ -310,3 +310,11 @@ cause and real compiler/signing/candidate/guest behavior remain unproven.
 [Private local signing](PrivateLocalSigning.md) documents the maintained developer
 `prepare`, `check` and interactive one-shot `run` commands, including private
 selection files, fresh per-plan consent, bounded execution and cleanup evidence.
+
+[Fresh candidate assembly stop](DevVMMilestone6Runbook.md#fresh-candidate-attempt--compiled-resource-assembly-stop-5-november-2026)
+passes frozen preparation, runtime validation and release compilation, then
+refuses a provisioning resource inventory mismatch: payload matches, but four
+frozen signature records are absent from fresh build output. All 42 owned roots
+clean up and 4,002 prior artifact entries/pins are preserved. Signing/key/UI/Apple
+timestamp stages are not reached. The request is consumed; narrow resource
+fixtures/admission and fresh review precede any separately approved attempt.

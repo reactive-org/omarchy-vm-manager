@@ -1416,6 +1416,54 @@ signing, key access, Apple request, SSH/Ansible, install, UI or VM operation.
 Real compiler/native/signing/key/UI/timestamp and candidate-chain behavior remain
 unproven; notarization, loaded-child and guest acceptance are separate.
 
+## Fresh candidate attempt — compiled, resource assembly stop, 5 November 2026
+
+**AUTHORIZED / STOPPED BEFORE SIGNING:** the user approves the fresh private
+build/sign/verify run after manager `31f0bd7` / companion `3a7285b`, including
+selected-key use, existing secure key UI and Apple timestamps. Preflight confirms
+all 28 reviewed source/test/Makefile files match the commit and current files,
+the seventeen-file implementation digest, receipt and frozen inputs. Authority is
+one-shot trusted composition for this new request; preparation files remain
+unchanged and grant no authority themselves. No prior request is replayed.
+
+**VERIFIED — partial:** the exact frozen provisioning helper passes with the
+private-output Git discovery ceiling. All 23 runtime static checks and public
+certificate/dependency validations pass (30 validation workers total). The private
+release build and both binary-location commands succeed; compiled manager/helper
+scope markers pass. All twelve supervised commands exit zero. After 447.472
+seconds the parent assembly check refuses with `input-inventory-changed`.
+
+**VERIFIED — retained-file diagnosis:** the core resource bundle copies exactly.
+The freshly compiled provisioning resource bundle matches every frozen payload
+file, but lacks four signature records present in the frozen reference:
+`Contents/_CodeSignature/CodeDirectory`, `CodeRequirements`, `CodeResources` and
+`CodeSignature`. No payload file differs and no extra file appears. The exact
+whole-tree check in `_assemble` / `copy_tree` therefore refuses before copying
+that bundle. This is an observed input/reference mismatch, not a command failure;
+there is no failed child stderr to classify. No frozen input, expected inventory
+or signature is changed to bypass the refusal.
+
+**VERIFIED — cleanup/preservation:** all twelve command roots and thirty native
+workers are reaped after group quietness, with closed descriptors and no pending
+handles. A bounded read-only snapshot restricted to those 42 recorded PIDs finds
+none remaining; its process is reaped. All 4,002 prior private artifact entries,
+frozen pins, reviews and earlier failure evidence compare unchanged. Retained
+credential-named content stays unopened with stable metadata. The selected
+external keychain receives metadata-only admission checks, no content/key access,
+unlock or state re-query; historical locked-state evidence is not refreshed.
+No VM scope root is observed or recaptured; product approval stays nil.
+
+**NOT REACHED / TO PROVE:** app assembly is incomplete. No signing command,
+selected-key use, secure-key UI or Apple timestamp stage is reached, and there is
+no success receipt or signed archive. No notarization, app/runtime execution,
+SSH/Ansible, install or VM operation occurs. New output/build products and private
+failure/audit records are retained. This request is consumed, without retry or
+approval transfer. Next add fixtures distinguishing frozen resource payload from
+inherited signature records, narrowly validate that relationship and the final
+sealed bundle, and prepare a fresh review. Do not weaken general inventory checks
+or rewrite frozen pins. Real signing/key/UI/timestamps and candidate/guest
+acceptance remain unproven. Concurrent unrelated CLI worktree edits are preserved.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

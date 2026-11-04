@@ -3440,3 +3440,29 @@ inspection, build, signing, key access, Apple request, SSH/Ansible, install, UI 
 VM operation occurs. Commit before separately reviewing a fresh candidate attempt;
 real signing/candidate and guest acceptance remain TO PROVE. See the
 [fixtures, diagnostics and review](DevVMMilestone6Runbook.md#frozen-helper-and-safe-failure-diagnostics--5-november-2026).
+
+## Fresh reviewed candidate — resource assembly stop, 5 November 2026
+
+The explicitly approved `31f0bd7` / companion `3a7285b` attempt passes the exact
+frozen-helper preparation, all 23 runtime static checks, public certificate and
+dependency validation, release compilation and binary/scope-marker checks.
+Twelve commands and thirty validation workers succeed. At 447.472 seconds,
+assembly refuses `input-inventory-changed`: the compiled provisioning bundle's
+payload matches the frozen reference, whose four `_CodeSignature` records are
+absent from fresh build output. The core resource copy matches. This parent
+inventory refusal has no failed-command stderr; retained files establish the
+specific mismatch without rerunning anything or changing pins.
+
+All 42 recorded roots/workers have confirmed group/reap/descriptor cleanup and
+are absent in a bounded PID snapshot. All 4,002 prior private artifact entries and
+pins remain unchanged; credential content is unopened, external keychain admission
+is metadata-only and lock state unqueried. Partial assembly/build output is kept.
+No signing/key/UI/timestamp stage, success receipt or signed archive is reached.
+No notarization, SSH/Ansible, install, app/runtime or VM operation occurs.
+
+The request is consumed. Next consolidate exact fixtures for compiled payload vs
+inherited resource signatures, narrow assembly admission/final seal validation
+and a fresh review; never relax generic inventories or modify frozen inputs.
+Real signing/candidate and guest acceptance remain TO PROVE. Concurrent unrelated
+CLI edits are left intact. See the
+[result and retained-file diagnosis](DevVMMilestone6Runbook.md#fresh-candidate-attempt--compiled-resource-assembly-stop-5-november-2026).

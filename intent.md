@@ -3337,3 +3337,30 @@ remains the visual target for milestone 5.
   real selection, keychain, native API, signer or VM is operated for this task.
   Real terminal/key/UI/timestamp and later candidate/guest behavior remain unproven
   for this new entry point. See [operator usage](docs/PrivateLocalSigning.md).
+
+## Fresh private candidate — resource assembly refusal, 5 November 2026
+
+- **USER AUTHORIZATION:** execute the fresh reviewed private run after manager
+  `31f0bd7` / companion `3a7285b`, including selected key, secure UI and timestamps;
+  no notarization, SSH/Ansible, installs or VM launches. The 28 reviewed files and
+  seventeen-file implementation match at preflight; no prior approval is reused.
+- **VERIFIED — partial:** frozen-helper preparation, 23 runtime static checks,
+  public certificate/dependency checks, release compilation and binary/scope-marker
+  checks pass. Twelve commands and thirty native workers succeed. Assembly stops
+  at 447.472 seconds with `input-inventory-changed`: compiled provisioning payload
+  matches but lacks the four signature records in the frozen resource reference.
+  Core resources copy exactly; no signature or frozen inventory is altered.
+- **VERIFIED — cleanup/preservation:** all 42 roots/workers reap after group
+  quietness with closed descriptors/no pending handles; a bounded recorded-PID
+  snapshot finds none remaining. All 4,002 old artifact entries/pins are unchanged.
+  Credential content stays unopened, external keychain admission is metadata-only,
+  lock state is not re-queried and no scope root/pin is observed/recaptured.
+  Partial output is preserved; concurrent unrelated CLI edits are left intact.
+- **DESIGN DECISION / TO PROVE:** parent inventory refusal consumes the request;
+  no retry or approval transfer. No signing/key/UI/timestamp stage, success receipt
+  or signed archive is reached; product approval stays nil. No notarization,
+  SSH/Ansible, install, app/runtime execution or VM operation occurs. Next add
+  compiled-vs-frozen resource/signature fixtures, narrow assembly/final-seal
+  admission and fresh review, preserving generic inventory checks and frozen pins.
+  Real signing/candidate/guest evidence remains unproven. See the
+  [result](docs/DevVMMilestone6Runbook.md#fresh-candidate-attempt--compiled-resource-assembly-stop-5-november-2026).
