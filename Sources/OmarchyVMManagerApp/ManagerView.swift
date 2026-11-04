@@ -25,7 +25,7 @@ struct ManagerView: View {
         .frame(minWidth: 920, minHeight: 650)
     }
 
-    private var managerContent: some View {
+    private var navigationContent: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 List(selection: $destination) {
@@ -100,6 +100,10 @@ struct ManagerView: View {
             VMEditor(model: model, profile: selection.profile, reuseSource: selection.reuseSource) { id in focusGuest(id); editor = nil }
         }
         .sheet(isPresented: $model.shuttingDown) { ProgressView("Shutting down VMs…").padding(40).interactiveDismissDisabled() }
+    }
+
+    private var backupConfirmationContent: some View {
+        navigationContent
         .alert("Back up the guest home?", isPresented: Binding(get: { model.homeBackupReview != nil }, set: { if !$0 { model.homeBackupReview = nil } })) {
             Button("Back Up Home") {
                 if let snapshot = model.homeBackupReview {
@@ -111,6 +115,10 @@ struct ManagerView: View {
         } message: {
             Text("Save the guest owner’s home, including hidden files and credentials, as an unencrypted home.tgz in a new backup folder inside \(model.homeBackupReview?.profile.sharedFolder?.hostPath ?? "the host share"). Close guest apps first: this is a live file backup, not a VM snapshot. Other mounted filesystems are excluded and symbolic links are stored as links. Unreadable or changing files make the backup fail. Existing backups are preserved.")
         }
+    }
+
+    private var storageConfirmationContent: some View {
+        backupConfirmationContent
         .alert("Power off this VM?", isPresented: Binding(get: { model.forceStopID != nil }, set: { if !$0 { model.forceStopID = nil } })) {
             Button("Force Stop", role: .destructive) { if let id = model.forceStopID { model.forceStopID = nil; Task { await model.forceStop(id) } } }
             Button("Cancel", role: .cancel) { model.forceStopID = nil }
@@ -125,6 +133,10 @@ struct ManagerView: View {
                 Text(review.identity == nil ? "Remove “\(review.name)”? No storage folder is present at its registered location. Any files already in Trash remain there." : "The entire storage folder for “\(review.name)” will move to the Mac Trash. You can recover its files from there.")
             }
         }
+    }
+
+    private var managerContent: some View {
+        storageConfirmationContent
         .alert(model.experimentalPowerReview?.title ?? "Experimental power action", isPresented: Binding(get: { model.experimentalPowerReview != nil }, set: { if !$0 { model.experimentalPowerReview = nil } })) {
             Button(model.experimentalPowerReview?.button ?? "Continue", role: .destructive) {
                 if let review = model.experimentalPowerReview { model.experimentalPowerReview = nil; Task { await model.experimentalPower(review) } }
