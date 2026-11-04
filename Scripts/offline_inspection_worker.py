@@ -19,6 +19,37 @@ LIMIT = 1024 * 1024
 DATA_OID = bytes.fromhex("2a864886f70d010701")
 SIGNED_OID = bytes.fromhex("2a864886f70d010702")
 
+# Closed diagnostic vocabulary: never serialize an exception message, path,
+# certificate subject, native error description or untrusted worker field.
+FAILURE_CODES = frozenset({"policy-refused", "native-status", "native-value-type",
+    "native-date-nonfinite", "certificate-date-unavailable", "certificate-date-order",
+    "symbol-unavailable", "type-error", "internal-error"})
+FAILURE_PHASES = frozenset({"not-started", "dependency", "locked", "profile", "certificate", "static",
+    "certificate-create", "certificate-name", "certificate-before-date", "certificate-after-date",
+    "certificate-date-order"})
+FAILURE_MAP = {"offline-native-status": "native-status", "offline-native-value-type": "native-value-type",
+    "offline-native-date-nonfinite": "native-date-nonfinite",
+    "offline-certificate-date-unavailable": "certificate-date-unavailable",
+    "offline-certificate-date-order": "certificate-date-order"}
+
+
+class WorkerFailure(private.Refused):
+    def __init__(self, code, phase):
+        private.require(code in FAILURE_CODES and phase in FAILURE_PHASES, "offline-worker-diagnostic-invalid")
+        self.code, self.phase = code, phase
+        super().__init__("offline-api-worker-refused")
+
+    def record(self): return {"format": 1, "code": self.code, "phase": self.phase}
+
+
+def validate_failure(value):
+    private.require(type(value) is dict and set(value) == {"format", "code", "phase"}
+                    and type(value["format"]) is int and value["format"] == 1
+                    and type(value["code"]) is str and value["code"] in FAILURE_CODES
+                    and type(value["phase"]) is str and value["phase"] in FAILURE_PHASES,
+                    "offline-worker-diagnostic-invalid")
+    return dict(value)
+
 
 def blob(raw): return base64.b64encode(raw).decode("ascii")
 
@@ -121,7 +152,14 @@ def perform(spec, api, expected_test_double=True):
     try:
         private.require(type(expected_test_double) is bool and api.test_double is expected_test_double, "offline-api-mode")
         return _perform(spec, api)
-    except BaseException: raise private.Refused("offline-api-worker-refused") from None
+    except BaseException as error:
+        phase = getattr(api, "phase", None)
+        if type(phase) is not str or phase not in FAILURE_PHASES or phase == "not-started":
+            phase = spec.kind if type(spec) is Task and spec.kind in FAILURE_PHASES else "not-started"
+        code = (FAILURE_MAP.get(str(error), "policy-refused") if isinstance(error, private.Refused) else
+                "symbol-unavailable" if isinstance(error, AttributeError) else
+                "type-error" if isinstance(error, TypeError) else "internal-error")
+        raise WorkerFailure(code, phase) from None
 
 
 def _perform(spec, api):

@@ -3296,3 +3296,24 @@ fake-only implementation/validation/fresh-review chunk. Another native attempt
 requires separate approval. No signing, private-key access, Apple request,
 SSH/Ansible, install, UI or VM operation occurs. See the
 [result and limitations](DevVMMilestone6Runbook.md#corrected-native-inspection-result--5-november-2026).
+
+## Diagnostics, cleanup evidence and typed dates — 5 November 2026
+
+Implemented together: mode-proven closed failure code/phase envelopes; private
+per-worker exit and categorized cleanup evidence; held-root/reap/quiet/descriptor
+snapshots including failed handoffs; no redundant signal after observed group
+quietness; and macOS 15 retained typed certificate date getters with strict
+validation/releases. Intermediate cleanup failures stay false; live/unproven
+groups retain kill/reap behavior. No generic certificate-values fallback is allowed.
+
+Twelve new fake FFI/process tests and the full 223-pass/five-skip allowed Python
+suite pass (228 discovered), with only Git/Python and no native-library attempt.
+A fresh private review binds all 14 implementation files, a 17-file source/test
+snapshot plus patch, corrected guard and new request/output. Code is explicitly
+uncommitted; no new native execution authority is created. All 1,191 old artifact
+entries, pins and failed receipts remain unchanged; credential contents stay
+unopened and external material/lock observations stay historical. The fresh output
+is absent. Prior native failure causes remain unknown. Separate exact-review
+approval is next; no real inspection, signing, private-key access, Apple request,
+SSH/Ansible, install, UI or VM operation occurs. See the
+[hardening and fresh review](DevVMMilestone6Runbook.md#diagnostic-and-date-hardening--fake-validation-and-fresh-review-5-november-2026).

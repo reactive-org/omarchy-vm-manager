@@ -1091,6 +1091,58 @@ post-checks, profile signer trust and all signing/guest acceptance remain unprov
 No signing, private-key access, Apple request, SSH/Ansible, install, UI, VM-root
 observation or VM operation occurs.
 
+## Diagnostic and date hardening — fake validation and fresh review, 5 November 2026
+
+**IMPLEMENTED / FAKE-VALIDATED:** authenticated workers now return a closed,
+versioned failure code/phase envelope with mode proof. The supervisor rejects
+extra fields, unknown codes/phases and invalid mode proof before storing a
+diagnostic. Raw exceptions, stderr, certificate names, task contents and paths
+are not copied into diagnostics. Startup/fatal worker exits retain their bounded
+exit status instead of masquerading as a structured API failure.
+
+Private success/failure records include per-worker task/exit/diagnostic and
+categorized kill/wait/fallback/close results. Concrete handles snapshot held PID,
+reap/quiet-before-reap/descriptor state and stream counts without polling a
+released process group. Factory records also retain cleanup facts for failed
+handoffs. Intermediate cleanup errors remain latched false even when fallback
+ultimately leaves no retained handle. An exited root is not signalled after its
+held group is observed quiet; wait and group recheck still precede reap. Live or
+unproven groups retain kill/reap behavior. A 4,112-worker ceiling bounds evidence.
+
+Certificate dates now use macOS 15's retained
+`SecCertificateCopyNotValidBeforeDate` / `SecCertificateCopyNotValidAfterDate`
+references, with null/type/finite/order checks and release on every path. Generic
+`SecCertificateCopyValues` and its date-property constants are removed from the
+allowed binding surface; there is no legacy, trust-evaluation or network fallback.
+
+**VERIFIED — fake/local only:** twelve new fake FFI/process tests cover exact date
+ABI, missing/null/wrong/nonfinite/reversed values, reference cleanup, framed and
+unframed errors, malformed diagnostics, permission/timeout cleanup evidence,
+fallback completion, retained unresolved handles and worker bounds. The full
+allowed Python suite discovers 228 tests: 223 pass, five signing/PKCS12 cases are
+deliberately skipped. Only local Git/Python processes are observed; no forbidden
+process or native-library attempt occurs. Existing lifecycle tests distinguish
+killing active groups from reaping already quiet roots.
+
+**PREPARED / NOT EXECUTED:** a new ignored 0700/0600 packet binds the changed
+14-file implementation, a 17-file source/test archive and patch against the
+recorded base, unchanged corrected guard, frozen inputs and fresh request/output.
+The new code is an exact **uncommitted source snapshot**, not falsely attributed
+to `ddf5451` or a new code commit. A later commit must retain these exact bytes.
+All 1,191 previous private artifact entries and prior failure/cleanup/consumption
+records remain unchanged. Credential-named retained content stays unopened, with
+stable metadata rather than fresh content validation. External signing-material
+and keychain observations remain historical. The new output is absent and all
+new approvals are false; no selected native caller/authority/factory is activated.
+
+**TO PROVE:** the earlier certificate and cleanup failure causes remain unknown.
+The changes improve diagnostics and remove an unproven date-shape assumption;
+fake results do not demonstrate that either observed failure is fixed. Separate
+approval of this exact implementation snapshot, corrected guard and fresh review
+precedes native work. Existing job/worker/output limits, no retry, scope and
+ordinary product denial remain. No real inspection, signing, private-key access,
+Apple request, SSH/Ansible, install, UI, VM-root observation or VM operation occurs.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

@@ -11,7 +11,7 @@ import sys
 import time
 
 import private_provisioning_package as p
-from offline_inspection_runner import OfflineAuthorization, MAX_OUTPUT
+from offline_inspection_runner import OfflineAuthorization, MAX_OUTPUT, MAX_WORKERS
 from offline_inspection_worker import Task
 
 WIRE_LIMIT = 2 * 1024 * 1024 + 4096
@@ -196,6 +196,14 @@ class ProcessHandle:
         self.closed = True; self.clean_descriptors = not errors; self.on_close(self)
         p.require(not errors, "offline-descriptor-cleanup")
 
+    def evidence(self):
+        # A snapshot only: do not poll, signal, inspect a released group or turn
+        # a later clean state into retroactive cleanup success.
+        return {"pid": self.process.pid, "exitStatus": self.status, "rootReaped": self.reaped,
+                "groupQuietBeforeReap": self.quiet, "descriptorsClosed": self.clean_descriptors,
+                "handleClosed": self.closed, "openStreams": len(self.open_streams),
+                "stdoutBytes": self.counts["stdout"], "stderrBytes": self.counts["stderr"]}
+
 
 class MacOSWorkerFactory:
     requires_mode_proof = True
@@ -205,7 +213,7 @@ class MacOSWorkerFactory:
         self.review, self.scope, self.selection, self.source_fixture = review, scope, selection, source_fixture
         self.ops = ops if ops is not None else ProcessOps()
         self.test_double = self.api_test_double = self.ops.test_double
-        self.authorization = None; self.serial = 0; self.pending_cleanup = []
+        self.authorization = None; self.serial = 0; self.pending_cleanup = []; self.cleanup_records = []
 
     @property
     def implementationSHA256(self):
@@ -225,6 +233,7 @@ class MacOSWorkerFactory:
         self.authorization = authorization
 
     def _closed(self, handle):
+        self.cleanup_records.append(handle.evidence())
         if not handle.reaped or not handle.quiet or not handle.clean_descriptors:
             if handle not in self.pending_cleanup: self.pending_cleanup.append(handle)
         elif handle in self.pending_cleanup: self.pending_cleanup.remove(handle)
@@ -233,6 +242,7 @@ class MacOSWorkerFactory:
         p.require(type(spec) is Task and self.authorization is not None, "offline-launch-not-authorized")
         self.bind_authorization(self.authorization)
         p.require(self.implementationSHA256 == self.review.implementationSHA256 and not self.pending_cleanup, "offline-launch-implementation-or-cleanup")
+        p.require(self.serial < MAX_WORKERS, "offline-worker-count-bound")
         fields = spec.decode()
         if hasattr(self.ops, "preflight"): self.ops.preflight()
         p.private_directory(self.review.output)

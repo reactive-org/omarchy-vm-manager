@@ -7,15 +7,17 @@ implicitly; the concrete factory requires explicit trusted composition. A failed
 Tests supply virtual processes and clocks.
 """
 from dataclasses import dataclass
+import subprocess
 import threading
 import time
 
 import private_provisioning_package as private
-from offline_inspection_worker import Task
+from offline_inspection_worker import Task, validate_failure
 
 MAX_OUTPUT = 2 * 1024 * 1024
 JOB_SECONDS = 300
 STAGE_SECONDS = 120
+MAX_WORKERS = 4112
 
 
 @dataclass(frozen=True, repr=False)
@@ -35,6 +37,7 @@ class Runner:
         self.test_double = factory.test_double if factory is not None else False
         self._lock = threading.Lock(); self._operation = threading.Lock(); self._used = False
         self.active = None; self.cleanup_confirmed = True
+        self.worker_records = []
 
     def __repr__(self): return "BoundedOfflineInspectionRunner(redacted)"
 
@@ -71,7 +74,11 @@ class Runner:
         private.require(self.active is None, "offline-worker-overlap")
         revalidate(); self.check(cancel)
         deadline = min(self.deadline, self.clock() + STAGE_SECONDS)
-        process = None; failed = True; cleanup = True
+        private.require(len(self.worker_records) < MAX_WORKERS, "offline-worker-count-bound")
+        record = {"sequence": len(self.worker_records) + 1, "kind": spec.kind, "exitStatus": None,
+                  "failureCategory": None, "diagnostic": None, "cleanupOperations": []}
+        self.worker_records.append(record)
+        process = None; failed = True; cleanup = True; quiet_observed = False
         output = bytearray(); totals = {"stdout": 0, "stderr": 0}
         try:
             process = self.factory.spawn(spec)
@@ -91,40 +98,84 @@ class Runner:
                 private.require(self.clock() < deadline, "offline-stage-timeout")
                 status = process.poll()
                 if status is not None:
-                    private.require(type(status) is int and status == 0, "offline-worker-failed")
-                    private.require(not process.group_alive(), "offline-worker-descendants-remain")
+                    private.require(type(status) is int and -255 <= status <= 255, "offline-worker-exit-status")
+                    record["exitStatus"] = status
+                    quiet_observed = not process.group_alive()
+                    if status != 0: record["failureCategory"] = "worker-exit"
+                    private.require(status == 0, "offline-worker-failed")
+                    private.require(quiet_observed, "offline-worker-descendants-remain")
                     if process.streams_closed(): break
             revalidate(); self.check(cancel)
             value = private.decode(bytes(output))
             private.require(type(value) is dict, "offline-worker-response")
             if getattr(self.factory, "requires_mode_proof", False):
                 private.require(value.pop("_offlineAPITestDouble", None) is self.factory.api_test_double, "offline-worker-mode-proof")
+            if "offlineFailure" in value:
+                record["failureCategory"] = "worker-diagnostic-invalid"
+                private.require(set(value) == {"offlineFailure"}, "offline-worker-diagnostic-invalid")
+                record["diagnostic"] = validate_failure(value["offlineFailure"])
+                record["failureCategory"] = "worker-diagnostic"
+                raise private.Refused("offline-worker-reported-failure")
             failed = False
             return value
         except BaseException:
             if process is None: cleanup = False
             raise private.Refused("offline-worker-refused") from None
         finally:
-            if process is not None:
-                if failed:
-                    try: process.kill_group()
-                    except ProcessLookupError: pass
-                    except BaseException: cleanup = False
+            def error_kind(error):
+                if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)): return "timeout"
+                if isinstance(error, PermissionError): return "permission"
+                if isinstance(error, ChildProcessError): return "ownership-lost"
+                if isinstance(error, private.Refused): return "validation"
+                return "other"
+
+            def operation(label, action, absent_ok=False):
+                nonlocal cleanup
                 try:
-                    status = process.wait(timeout=5)
-                    private.require(failed or (type(status) is int and status == 0))
-                    private.require(not process.group_alive())
-                except BaseException:
+                    action()
+                    record["cleanupOperations"].append({"operation": label, "result": "ok"})
+                    return True
+                except ProcessLookupError:
+                    if absent_ok:
+                        record["cleanupOperations"].append({"operation": label, "result": "process-absent"})
+                        return True
                     cleanup = False
-                    try: process.kill_group()
-                    except BaseException: pass
-                    try: process.wait(timeout=5)
-                    except BaseException: pass
-                try: process.close()
-                except BaseException: cleanup = False
+                    record["cleanupOperations"].append({"operation": label, "result": "ownership-lost"})
+                except BaseException as error:
+                    cleanup = False
+                    record["cleanupOperations"].append({"operation": label, "result": error_kind(error)})
+                return False
+
+            def wait_and_check():
+                status = process.wait(timeout=5)
+                private.require(failed or (type(status) is int and status == 0))
+                private.require(not process.group_alive())
+
+            if process is not None:
+                # A held exited root plus an observed quiet group needs reaping,
+                # not a signal. Never infer quietness merely from an exit code.
+                if failed and not quiet_observed:
+                    operation("kill-primary", process.kill_group, absent_ok=True)
+                if not operation("wait-primary", wait_and_check):
+                    operation("kill-fallback", process.kill_group, absent_ok=True)
+                    operation("wait-fallback", wait_and_check)
+                operation("close", process.close)
+                if hasattr(process, "evidence"):
+                    # Concrete handles return only local lifecycle facts; no raw
+                    # argv, paths, task bodies, native errors or certificate data.
+                    operation("evidence", lambda: record.update(handle=process.evidence()))
+            else:
+                cleanup = False
+                record["cleanupOperations"].append({"operation": "spawn-handoff", "result": "unconfirmed"})
+            record["status"] = "REFUSED" if failed else "COMPLETED"
+            if failed and record["failureCategory"] is None: record["failureCategory"] = "supervision"
+            record["cleanupConfirmed"] = cleanup
             self.active = None
+            # Intermediate failures stay latched, even if fallback ultimately
+            # reaps and closes the handle. Evidence explains that distinction.
             self.cleanup_confirmed = self.cleanup_confirmed and cleanup
             if not cleanup: raise private.Refused("offline-worker-cleanup-unconfirmed") from None
+
 
 
 if __name__ == "__main__":

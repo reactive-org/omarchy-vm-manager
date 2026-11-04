@@ -103,6 +103,9 @@ class OfflineInspectionCaller:
                 try:
                     private.write_json(self.work / "failure.json", {"status": "OFFLINE_INSPECTION_FAILED_OUTPUT_PRESERVED",
                         "events": self.events, "cleanupConfirmed": self.runner.cleanup_confirmed,
+                        "workerEvidence": self.runner.worker_records,
+                        "factoryCleanupEvidence": getattr(self.runner.factory, "cleanup_records", []),
+                        "unresolvedHandles": len(getattr(self.runner.factory, "pending_cleanup", [])),
                         "automaticRetry": False, "signingAuthorized": False, "guestRunAuthorized": False})
                 except OSError: pass
             raise private.Refused("offline-inspection-refused") from None
@@ -182,6 +185,9 @@ class OfflineInspectionCaller:
                    "onlineRevocation": "NOT_CHECKED", "notarization": "NOT_REQUESTED", "codeValidationFlags": STATIC_FLAGS,
                    "staticCodeChecks": len(targets) + 1, "nativeValidationObserved": not self.runner.test_double,
                    "cleanupConfirmed": self.runner.cleanup_confirmed, "events": self.events,
+                   "workerEvidence": self.runner.worker_records,
+                   "factoryCleanupEvidence": getattr(self.runner.factory, "cleanup_records", []),
+                   "unresolvedHandles": len(getattr(self.runner.factory, "pending_cleanup", [])),
                    "signingAuthorized": False, "guestRunAuthorized": False, "publication": "forbidden"}
         self.runner.check(self.cancel)
         private.write_json(self.work / "offline-inspection.json", receipt)

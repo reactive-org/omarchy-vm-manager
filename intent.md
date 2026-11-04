@@ -3142,3 +3142,34 @@ remains the visual target for milestone 5.
   inspection, signer trust, key possession, signing or guest proof is claimed.
   No prohibited operation occurs. See the
   [result record](docs/DevVMMilestone6Runbook.md#corrected-native-inspection-result--5-november-2026).
+
+## Inspection diagnostics, cleanup evidence and typed dates — 5 November 2026
+
+- **USER AUTHORIZATION / IMPLEMENTED:** after committing the partial-result docs,
+  implement closed mode-proven worker failure diagnostics, per-worker cleanup and
+  handle evidence, and macOS 15 typed certificate dates with fake tests and fresh
+  review. No native inspection is authorized for this change.
+- **DESIGN DECISION:** diagnostics serialize only fixed allowlisted code/phase,
+  never raw exception/stderr/subject/path data. Keep cleanup errors latched false
+  while recording final reap/quiet/descriptor facts separately. Skip signalling
+  only after observing held-root exit and quiet group; retain wait/group recheck
+  before reap and kill/reap for live/unproven groups. Bound workers/evidence at
+  4,112. Typed retained CFDate getters replace generic certificate-property values;
+  enforce null/type/finite/order checks and release all partial references.
+- **VERIFIED — fake/local:** twelve new tests; full suite 223 allowed passes and
+  five signing/PKCS12 skips (228 discovered), only Git/Python processes and no
+  forbidden process/native-library attempt. Malformed/mode-mismatched diagnostics,
+  date failures, cleanup timeout/permission/fallback/retention and bounds are covered.
+  All 1,191 private entries, frozen pins and historical failures remain unchanged;
+  credential content stays unopened with stable metadata.
+- **PRIVATE COUPLING / PREPARED:** ignored 0700/0600 review binds the new 14-file
+  implementation, 17-file source/test snapshot and base patch, corrected guard,
+  unchanged candidate/scope/material/runtime and new request/output. Code is
+  explicitly uncommitted; all new approvals are false and output absent. No real
+  selected authority/caller/factory or API is activated; external material/lock
+  observations remain historical and product approval remains nil.
+- **TO PROVE:** previous native failure causes and actual new API/worker/cleanup
+  behavior remain unknown. Separate exact-review approval precedes another native
+  attempt. No signing, private-key access, Apple requests, SSH/Ansible, installs,
+  UI, VM-root observation or VM operation occurs. See the
+  [hardening record](docs/DevVMMilestone6Runbook.md#diagnostic-and-date-hardening--fake-validation-and-fresh-review-5-november-2026).

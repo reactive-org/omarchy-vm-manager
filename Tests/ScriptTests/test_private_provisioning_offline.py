@@ -366,7 +366,9 @@ class OfflineTests(unittest.TestCase):
     def test_api_exception_causes_fixed_private_failure_and_releases_native_references(self):
         self.factory.api.fault = "static-exception"; self.fail()
         self.assertEqual(self.factory.api.references, set())
-        self.assertTrue(self.factory.processes[-1].killed and self.factory.processes[-1].closed)
+        process = self.factory.processes[-1]
+        self.assertTrue(process.reaped and process.closed); self.assertFalse(process.killed)
+        self.assertFalse(process.group_alive())
         self.assertNotIn(b"synthetic-secret", (self.review.output / "failure.json").read_bytes())
 
     def test_keyboard_interrupt_from_progress_check_kills_reaps_and_closes(self):
@@ -398,7 +400,9 @@ class OfflineTests(unittest.TestCase):
 
     def test_invalid_worker_json_is_private_fixed_failure(self):
         self.factory.mode = "invalid-json"; self.fail()
-        self.assertTrue(self.factory.processes[-1].killed and self.factory.processes[-1].reaped)
+        process = self.factory.processes[-1]
+        self.assertTrue(process.reaped and process.closed); self.assertFalse(process.killed)
+        self.assertFalse(process.group_alive())
         self.assertNotIn(b"synthetic-secret", (self.review.output / "failure.json").read_bytes())
 
     def test_concurrent_caller_use_is_one_shot(self):

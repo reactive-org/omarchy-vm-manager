@@ -11,7 +11,7 @@ import time
 # -I excludes the script directory; import only our adjacent reviewed sources.
 if __name__ == "__main__": sys.path.insert(0, str(Path(__file__).resolve().parent))
 import private_provisioning_package as p
-from offline_inspection_worker import Task, perform
+from offline_inspection_worker import Task, perform, WorkerFailure
 from offline_native_process import WIRE_LIMIT, PERMIT_LIMIT
 from offline_macos_api import MacOSAPI
 
@@ -118,7 +118,9 @@ def run_frame(permit_raw, request_raw, parent_pid, api_factory=None, digest=None
     p.require(digest() == permit["implementationSHA256"], "offline-worker-code-binding")
     spec = Task(request["kind"], p.canonical(request["fields"])); spec.decode()
     api = api_factory() if api_factory is not None else MacOSAPI(dependency_checker=bounded_git)
-    result = perform(spec, api, expected_test_double=permit["testDouble"])
+    p.require(api.test_double is permit["testDouble"], "offline-worker-api-mode")
+    try: result = perform(spec, api, expected_test_double=permit["testDouble"])
+    except WorkerFailure as error: result = {"offlineFailure": error.record()}
     return p.canonical(dict(result, _offlineAPITestDouble=api.test_double))
 
 

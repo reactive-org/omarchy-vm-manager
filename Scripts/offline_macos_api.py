@@ -3,6 +3,7 @@ import ctypes as C
 from dataclasses import dataclass
 import plistlib
 import re
+import math
 
 import private_provisioning_package as p
 from offline_inspection_worker import STATIC_FLAGS, CHECK_NESTED, LIMIT, signed_content, requirement_for
@@ -28,7 +29,8 @@ PROTOTYPES = {
     "CMSDecoderCopyContent": ("Security", STATUS, [REF, OUT]),
     "SecCertificateCreateWithData": ("Security", REF, [REF, REF]),
     "SecCertificateCopyCommonName": ("Security", STATUS, [REF, OUT]),
-    "SecCertificateCopyValues": ("Security", REF, [REF, REF, OUT]),
+    "SecCertificateCopyNotValidBeforeDate": ("Security", REF, [REF]),
+    "SecCertificateCopyNotValidAfterDate": ("Security", REF, [REF]),
     "SecStaticCodeCreateWithPath": ("Security", STATUS, [REF, U32, OUT]),
     "SecRequirementCreateWithString": ("Security", STATUS, [REF, U32, OUT]),
     "SecStaticCodeCheckValidityWithErrors": ("Security", STATUS, [REF, U32, REF, OUT]),
@@ -51,8 +53,7 @@ PROTOTYPES = {
 for _kind in ("Data", "String", "Dictionary", "Number", "Date"):
     PROTOTYPES["CF" + _kind + "GetTypeID"] = ("CoreFoundation", C.c_ulong, [])
 CONSTANTS = frozenset({"kSecCodeInfoIdentifier", "kSecCodeInfoTeamIdentifier", "kSecCodeInfoFlags",
-    "kSecCodeInfoTimestamp", "kSecCodeInfoEntitlementsDict", "kSecOIDX509V1ValidityNotBefore",
-    "kSecOIDX509V1ValidityNotAfter", "kSecPropertyKeyValue"})
+    "kSecCodeInfoTimestamp", "kSecCodeInfoEntitlementsDict"})
 
 
 class Bindings:
@@ -96,6 +97,7 @@ class MacOSAPI:
         self.ffi = ffi; self.test_double = ffi.test_double if ffi is not None else False
         self.dependency_checker = dependency_checker
         self.handles = set(); self.validated = set(); self.interaction_disabled = False
+        self.phase = "not-started"
 
     def __repr__(self): return "OfflineMacOSAPI(redacted)"
 
@@ -156,7 +158,10 @@ class MacOSAPI:
         return self._call("CFDictionaryGetValue", dictionary, self.ffi.constant(key))
 
     def _date(self, value):
-        self._type(value, "Date"); return self._call("CFDateGetAbsoluteTime", value) + UNIX_EPOCH
+        self._type(value, "Date")
+        result = self._call("CFDateGetAbsoluteTime", value) + UNIX_EPOCH
+        p.require(math.isfinite(result), "offline-native-date-nonfinite")
+        return result
 
     def _owned(self, kind, value):
         handle = Handle(kind, value); self.handles.add(handle); return handle
@@ -200,18 +205,27 @@ class MacOSAPI:
 
     def certificate_info(self, raw):
         p.require(self.interaction_disabled)
-        data = certificate = name = values = None; error = REF()
+        data = certificate = name = before = after = None
         try:
+            self.phase = "certificate-create"
             data = self._data(raw); certificate = self._call("SecCertificateCreateWithData", None, data)
             p.require(certificate, "offline-native-certificate")
+            self.phase = "certificate-name"
             name = self._status_ref("SecCertificateCopyCommonName", certificate)
-            values = self._call("SecCertificateCopyValues", certificate, None, C.byref(error))
-            p.require(values and not error.value, "offline-native-certificate-values")
-            before = self._value(self._value(values, "kSecOIDX509V1ValidityNotBefore"), "kSecPropertyKeyValue")
-            after = self._value(self._value(values, "kSecOIDX509V1ValidityNotAfter"), "kSecPropertyKeyValue")
-            return {"commonName": self._string(name), "notBefore": self._date(before), "notAfter": self._date(after)}
+            common_name = self._string(name)
+            self.phase = "certificate-before-date"
+            before = self._call("SecCertificateCopyNotValidBeforeDate", certificate)
+            p.require(before, "offline-certificate-date-unavailable")
+            not_before = self._date(before)
+            self.phase = "certificate-after-date"
+            after = self._call("SecCertificateCopyNotValidAfterDate", certificate)
+            p.require(after, "offline-certificate-date-unavailable")
+            not_after = self._date(after)
+            self.phase = "certificate-date-order"
+            p.require(not_before < not_after, "offline-certificate-date-order")
+            return {"commonName": common_name, "notBefore": not_before, "notAfter": not_after}
         finally:
-            for ref in (error, values, name, certificate, data): self._drop(ref)
+            for ref in (after, before, name, certificate, data): self._drop(ref)
 
     def static_open(self, path):
         p.require(self.interaction_disabled)

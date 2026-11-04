@@ -171,7 +171,7 @@ class NativeLaunchTests(unittest.TestCase):
             with self.assertRaises(p.Refused): entry.run_frame(permit,b'{}',7000)
         self.assertEqual(self.ops.ffi.loads,[])
 
-    def test_live_overflow_broken_pipe_hang_and_mode_mismatch_kill_owned_group(self):
+    def test_live_failure_kills_active_groups_and_reaps_already_quiet_roots(self):
         for i,mode in enumerate(('overflow','broken-input','hang','bad-mode')):
             f=self.fixture_case
             review=offline.OfflineReview(self.review.sourceRequestSHA256,self.review.selectionSHA256,self.review.publicCertificateSHA256,self.review.implementationSHA256,self.review.helperEntitlementsSHA256,self.review.qemuEntitlementsSHA256,self.root/('failed-'+str(i)))
@@ -180,7 +180,10 @@ class NativeLaunchTests(unittest.TestCase):
             auth=supervisor.OfflineAuthorization(review.request_digest(),self.auth.scopeSHA256,self.auth.selectionSHA256,self.auth.implementationSHA256,self.auth.effects)
             caller=offline.OfflineInspectionCaller(self.fixture.review,self.selection,review,supervisor.Runner(factory,auth,ops.clock))
             with self.subTest(mode=mode),self.assertRaises(p.Refused): caller.run(self.fixture.packet)
-            self.assertTrue(ops.processes[0].reaped); self.assertIn(('kill-group',ops.processes[0].pid),ops.trace)
+            self.assertTrue(ops.processes[0].reaped)
+            if mode in ('bad-mode','overflow'):
+                self.assertNotIn(('kill-group',ops.processes[0].pid),ops.trace)
+            else: self.assertIn(('kill-group',ops.processes[0].pid),ops.trace)
             self.assertFalse((review.output/'offline-inspection.json').exists())
 
     def test_root_is_not_reaped_while_descendants_remain(self):
@@ -268,6 +271,112 @@ class NativeLaunchTests(unittest.TestCase):
         for fd in ('0','5'):
             with patch.object(sys,'argv',['worker','--worker-fd',fd]),patch('os.fstat',return_value=SimpleNamespace(st_mode=0o100600)),patch('os.read',side_effect=AssertionError('No reads')):
                 with self.assertRaises(p.Refused): entry.main()
+
+    def test_certificate_failure_crosses_authenticated_frame_as_fixed_diagnostic(self):
+        self.ops.ffi.fail='SecCertificateCopyNotValidAfterDate'
+        with self.assertRaises(p.Refused): self.caller().run(self.fixture.packet)
+        evidence=p.decode(p.read(self.review.output/'failure.json'))
+        record=evidence['workerEvidence'][-1]
+        self.assertEqual(record['kind'],'certificate')
+        self.assertEqual(record['exitStatus'],0)  # Envelope delivered, task refused.
+        self.assertEqual(record['failureCategory'],'worker-diagnostic')
+        self.assertEqual(record['diagnostic'],{'format':1,'code':'certificate-date-unavailable','phase':'certificate-after-date'})
+        self.assertTrue(evidence['cleanupConfirmed']); self.assertEqual(evidence['unresolvedHandles'],0)
+        self.assertFalse(any(name=='kill-group' for name,_ in self.ops.trace))
+        self.assertTrue(all(r['rootReaped'] and r['groupQuietBeforeReap'] and r['descriptorsClosed'] for r in evidence['factoryCleanupEvidence']))
+        self.assertNotIn(b'do-not-log',p.read(self.review.output/'failure.json'));self.assertFalse(self.ops.ffi.owned)
+
+    def test_unframed_nonzero_exit_is_recorded_without_redundant_signal_to_quiet_root(self):
+        popen=self.ops.popen
+        def failed(*args,**kwargs):
+            proc=popen(*args,**kwargs)
+            def exit_early():
+                proc.finished=True; proc.status=7; proc.output['stderr'].extend(b'private raw error')
+            proc.input_closed=exit_early
+            return proc
+        self.ops.popen=failed
+        with self.assertRaises(p.Refused): self.caller().run(self.fixture.packet)
+        record=self.runner.worker_records[-1]
+        self.assertEqual(record['exitStatus'],7);self.assertEqual(record['failureCategory'],'worker-exit')
+        self.assertIsNone(record['diagnostic']); self.assertTrue(record['cleanupConfirmed'])
+        self.assertNotIn('private raw error',str(record));self.assertFalse(any(name=='kill-group' for name,_ in self.ops.trace))
+
+    def test_cleanup_timeout_is_latched_even_when_fallback_reaps_and_closes(self):
+        popen=self.ops.popen
+        def timeout_once(*args,**kwargs):
+            proc=popen(*args,**kwargs);wait=proc.wait;first=[True]
+            def transient(timeout):
+                if first[0]:first[0]=False;raise TimeoutError('private cleanup error')
+                return wait(timeout)
+            proc.wait=transient;return proc
+        self.ops.popen=timeout_once
+        with self.assertRaises(p.Refused): self.caller().run(self.fixture.packet)
+        record=self.runner.worker_records[-1]
+        self.assertFalse(record['cleanupConfirmed']);self.assertFalse(self.factory.pending_cleanup)
+        self.assertIn({'operation':'wait-primary','result':'timeout'},record['cleanupOperations'])
+        self.assertIn({'operation':'wait-fallback','result':'ok'},record['cleanupOperations'])
+        self.assertTrue(record['handle']['rootReaped']);self.assertTrue(record['handle']['descriptorsClosed'])
+        self.assertNotIn('private cleanup error',str(record))
+
+    def test_cleanup_permission_error_retains_reason_despite_later_clean_handle(self):
+        write=self.ops.write
+        def broken(fd,data):
+            if fd in self.ops.files and self.ops.files[fd].name=='stdin':
+                proc=self.ops.files[fd].process;proc.finished=True;proc.status=1
+                raise BrokenPipeError('private pipe error')
+            return write(fd,data)
+        self.ops.write=broken
+        self.ops.kill_group=lambda _:(_ for _ in ()).throw(PermissionError('private permission error'))
+        with self.assertRaises(p.Refused): self.caller().run(self.fixture.packet)
+        record=self.runner.worker_records[-1]
+        self.assertIn({'operation':'kill-primary','result':'permission'},record['cleanupOperations'])
+        self.assertFalse(record['cleanupConfirmed']);self.assertFalse(self.factory.pending_cleanup)
+        self.assertTrue(record['handle']['rootReaped']);self.assertTrue(record['handle']['descriptorsClosed'])
+        self.assertNotIn('private permission error',str(record));self.assertNotIn('private pipe error',str(record))
+
+    def test_failure_envelope_extra_data_is_refused_without_persisting_payload(self):
+        popen=self.ops.popen
+        def corrupted(*args,**kwargs):
+            proc=popen(*args,**kwargs);close=proc.input_closed
+            def output():
+                close()
+                proc.output['stdout']=bytearray(p.canonical({'_offlineAPITestDouble':True,
+                    'offlineFailure':{'format':1,'code':'native-status','phase':'certificate'},'raw':'private secret'}))
+            proc.input_closed=output;return proc
+        self.ops.popen=corrupted
+        with self.assertRaises(p.Refused):self.caller().run(self.fixture.packet)
+        record=self.runner.worker_records[-1]
+        self.assertEqual(record['failureCategory'],'worker-diagnostic-invalid');self.assertIsNone(record['diagnostic'])
+        self.assertNotIn(b'private secret',p.read(self.review.output/'failure.json'))
+
+    def test_factory_retains_failed_handoff_evidence_and_pending_handle(self):
+        self.ops.mode='wait-failure'
+        with self.assertRaises(p.Refused): self.caller().run(self.fixture.packet)
+        self.assertFalse(self.runner.cleanup_confirmed)
+        self.assertTrue(self.factory.cleanup_records);self.assertTrue(self.factory.pending_cleanup)
+        self.assertFalse(self.factory.cleanup_records[-1]['rootReaped'])
+        self.assertTrue(self.factory.cleanup_records[-1]['descriptorsClosed'])
+
+    def test_worker_count_bound_precedes_any_spawn_or_scratch_directory(self):
+        self.factory.bind_authorization(self.auth);self.factory.serial=supervisor.MAX_WORKERS
+        with self.assertRaises(p.Refused):self.factory.spawn(worker.task('locked',path=str(self.fixture.material.keychain)))
+        self.assertEqual(self.ops.processes,[]);self.assertFalse(self.review.output.exists())
+
+    def test_mode_proof_and_failure_schema_are_required_before_diagnostic_storage(self):
+        for bad in ({'format':1,'code':'secret-certificate-subject','phase':'certificate'},
+                    {'format':True,'code':'native-status','phase':'certificate'},
+                    {'format':1,'code':'native-status','phase':'/secret/path'},
+                    {'format':1,'code':'native-status','phase':'certificate','raw':'secret'}):
+            with self.subTest(bad=bad),self.assertRaises(p.Refused):worker.validate_failure(bad)
+
+    def test_unknown_native_exception_text_never_enters_failure_frame(self):
+        body={'kind':'certificate','fields':{'content':worker.blob(b'synthetic')}}
+        permit={'token':'a'*64,'taskSHA256':p.digest(p.canonical(body)),'implementationSHA256':self.review.implementationSHA256,'parent':7000,'testDouble':True}
+        api=SimpleNamespace(test_double=True,phase='certificate',disable_interaction=lambda:True,
+                            certificate_info=lambda _:(_ for _ in ()).throw(RuntimeError('secret subject /private/key')))
+        raw=entry.run_frame(p.canonical(permit),p.canonical(dict(body,token='a'*64)),7000,api_factory=lambda:api,digest=lambda:self.review.implementationSHA256)
+        self.assertNotIn(b'secret',raw);self.assertNotIn(b'/private/key',raw)
+        self.assertEqual(p.decode(raw)['offlineFailure'],{'format':1,'code':'internal-error','phase':'certificate'})
 
 
 class GitFile:

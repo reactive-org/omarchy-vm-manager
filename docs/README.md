@@ -262,3 +262,10 @@ match the bounded cleanup snapshot, but the runner's false cleanup flag remains.
 All 1,182 existing artifact entries and pins are preserved; five fake diagnostic
 cases support possible causes only. A consolidated fake-only diagnostics/date/
 cleanup-evidence change and fresh review are next; this request is not retried.
+
+[Diagnostics, cleanup evidence and typed dates](DevVMMilestone6Runbook.md#diagnostic-and-date-hardening--fake-validation-and-fresh-review-5-november-2026)
+are implemented with twelve new fake tests: 223 allowed Python passes and five
+signing skips, without native-library attempts. A fresh private review binds an
+exact uncommitted source/test snapshot, new request/output and corrected guard.
+All 1,191 old artifact entries/pins and failed receipts remain unchanged. The
+output is absent; actual native behavior and prior failure causes remain unproven.

@@ -38,6 +38,8 @@ class FakeFFI:
     def __init__(self):
         self.heap = {}; self.owned = set(); self.counter = 100; self.calls = []; self.loads = []; self.functions = {}; self.buffers = []
         self.fail = None; self.overrides = {}; self.keychain_status = 6
+        self.certificate_dates = {"SecCertificateCopyNotValidBeforeDate": ("Date", 0),
+                                  "SecCertificateCopyNotValidAfterDate": ("Date", 3_000_000_000)}
         self.entitlements_for_path = lambda path: {}
         self.bindings = native.Bindings(self.load, self.constant)
 
@@ -98,11 +100,10 @@ class FakeFFI:
             set_out(a[-1], self.data(worker.signed_content(self.value(a[0])))); return -50 if self.fail == name else 0
         if name == "SecCertificateCreateWithData": return self.node("Code", self.value(a[1]))
         if name == "SecCertificateCopyCommonName": set_out(a[-1], self.string('Developer ID Application: Fixture Only (' + TEAM + ')')); return -50 if self.fail == name else 0
-        if name == "SecCertificateCopyValues":
-            before = self.dictionary({'kSecPropertyKeyValue': ('Date', 0)}, False)
-            after = self.dictionary({'kSecPropertyKeyValue': ('Date', 3_000_000_000)}, False)
-            if self.fail == name: set_out(a[-1], self.node('Error', 'not logged'))
-            return self.node('Dictionary', {'kSecOIDX509V1ValidityNotBefore': before, 'kSecOIDX509V1ValidityNotAfter': after})
+        if name in self.certificate_dates:
+            if self.fail == name: return 0
+            kind, value = self.certificate_dates[name]
+            return self.node(kind, value)
         if name == "SecStaticCodeCreateWithPath": set_out(a[-1], self.node('Code', self.value(a[0]))); return -50 if self.fail == name else 0
         if name == "SecRequirementCreateWithString": set_out(a[-1], self.node('Requirement', self.value(a[0]))); return -50 if self.fail == name else 0
         if name == "SecStaticCodeCheckValidityWithErrors":
@@ -131,7 +132,7 @@ class BindingsTests(unittest.TestCase):
     def test_lazy_construction_and_closed_symbol_surface(self):
         native.MacOSAPI(); native.Bindings()
         self.assertEqual(self.ffi.loads, [])
-        for symbol in ('SecTrustEvaluate','SecItemCopyMatching','SecKeychainUnlock','SecCodeSignerAddSignature'):
+        for symbol in ('SecTrustEvaluate','SecItemCopyMatching','SecKeychainUnlock','SecCodeSignerAddSignature','SecCertificateCopyValues'):
             with self.assertRaises(p.Refused): self.ffi.bindings.call(symbol)
         with self.assertRaises(p.Refused): self.ffi.bindings.constant('kSecCodeInfoTime')
 
@@ -171,10 +172,43 @@ class BindingsTests(unittest.TestCase):
         self.assertFalse(any('Trust' in n or 'Identity' in n for n,_ in self.ffi.calls))
 
     def test_certificate_errors_release_all_owned_output_and_error_refs(self):
-        for fault in ('SecCertificateCopyCommonName','SecCertificateCopyValues'):
+        for fault in ('SecCertificateCopyCommonName','SecCertificateCopyNotValidBeforeDate','SecCertificateCopyNotValidAfterDate'):
             self.ffi.fail = fault
             with self.assertRaises(p.Refused): worker.perform(worker.task('certificate',content=worker.blob(CERT)),self.api)
             self.assertFalse(self.ffi.owned)
+
+    def test_typed_date_getters_have_exact_abi_and_no_property_dictionary_fallback(self):
+        worker.perform(worker.task('certificate',content=worker.blob(CERT)),self.api)
+        for name in self.ffi.certificate_dates:
+            self.assertEqual(self.ffi.functions[name].argtypes,[native.REF])
+            self.assertEqual(self.ffi.functions[name].restype,native.REF)
+        self.assertNotIn('SecCertificateCopyValues',native.PROTOTYPES)
+        self.assertFalse(any('kSecOIDX509' in name for name in native.CONSTANTS))
+
+    def test_invalid_typed_dates_refuse_with_fixed_phase_and_release_partial_refs(self):
+        before='SecCertificateCopyNotValidBeforeDate'; after='SecCertificateCopyNotValidAfterDate'
+        for symbol,variant,expected in ((before,('Number',0),'native-value-type'),
+                                        (after,('String','secret'),'native-value-type'),
+                                        (before,('Date',float('nan')),'native-date-nonfinite'),
+                                        (after,('Date',float('inf')),'native-date-nonfinite'),
+                                        (after,('Date',-1),'certificate-date-order')):
+            ffi=FakeFFI(); ffi.certificate_dates[symbol]=variant; api=native.MacOSAPI(ffi.bindings)
+            with self.subTest(symbol=symbol,variant=variant),self.assertRaises(worker.WorkerFailure) as caught:
+                worker.perform(worker.task('certificate',content=worker.blob(CERT)),api)
+            self.assertEqual(caught.exception.code,expected)
+            self.assertIn(caught.exception.phase,worker.FAILURE_PHASES)
+            self.assertNotIn('secret',str(caught.exception.record())); self.assertFalse(ffi.owned)
+
+    def test_missing_typed_date_symbol_is_fixed_and_never_uses_legacy_values(self):
+        call=self.ffi.call
+        def missing(name,*args):
+            if name=='SecCertificateCopyNotValidAfterDate': raise AttributeError('secret native symbol error')
+            return call(name,*args)
+        self.ffi.call=missing
+        with self.assertRaises(worker.WorkerFailure) as caught:
+            worker.perform(worker.task('certificate',content=worker.blob(CERT)),self.api)
+        self.assertEqual(caught.exception.record(),{'format':1,'code':'symbol-unavailable','phase':'certificate-after-date'})
+        self.assertFalse(self.ffi.owned)
 
     def test_static_validation_uses_explicit_flags_and_existing_certified_timestamp(self):
         result=worker.perform(worker.task('static',path=str(self.root/'code'),team=TEAM,nested=True,entitlements={}),self.api)
