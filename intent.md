@@ -2995,3 +2995,30 @@ remains the visual target for milestone 5.
   review. Exact source/SDK evidence and proposed contract remain private; product
   approval and frozen pins stay unchanged. See the
   [prepared contract](docs/DevVMMilestone6Runbook.md#bounded-native-inspection-preparation--source-review-4-november-2026).
+
+## Offline inspection adapter — fake APIs/workers, 4 November 2026
+
+- **DESIGN DECISION / IMPLEMENTED:** a distinct typed one-shot review/authorization
+  binds source/scope/selection, public certificate, implementation, entitlement
+  sources and output, requiring only `offline-native-inspect`. Default denial
+  precedes IO; file/env/legacy approvals cannot grant authority. No native binding,
+  real process factory, loader or activation CLI is supplied.
+- **PRIVATE COUPLING:** strict signedData/plist guards precede CMS APIs; API worker
+  disables interaction, requires locked status and releases references. Every
+  Mach-O/bundle uses explicit no-network static validation with exact signing
+  policy; no daemon/runtime executes. The injected supervisor monitors a shared
+  300-second budget, 120-second stage and live 2 MiB stream caps; group cleanup,
+  callback binding checks and one-shot refusal retain private fixed failures.
+  Parent filesystem reads are budget-checked at callback boundaries. Concrete
+  factories must provide prompt atomic handoff/nonblocking reads/bounded waits.
+- **VERIFIED — fake/local:** 32 new tests, 178 allowed Python passes/five signing
+  skips (183 discovered), with only Git/Python processes and no forbidden-tool
+  attempt. Native calls/processes/network are blocked in the new fixtures. All
+  1,161 retained private artifact entries and frozen pins stay unchanged; shared
+  package/product code and ordinary approval remain unchanged.
+- **TO PROVE:** concrete API/factory composition with fake FFI and process tests,
+  then separately approved native validation, OS cleanup/IO and key/signature/
+  guest evidence. No real material/keychain inspection, signing, Apple request,
+  SSH/Ansible, install, UI, image or VM operation occurs; fake receipts grant no
+  signing/guest authority. See the
+  [adapter](docs/DevVMMilestone6Runbook.md#offline-inspection-adapter--fake-apisworkers-4-november-2026).

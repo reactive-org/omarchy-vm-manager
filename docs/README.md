@@ -220,3 +220,9 @@ client's XPC check. A new offline contract requires explicit no-network Security
 validation and live worker limits, with the daemon unexecuted. The current caller
 needs that adapter and fake tests before separate native approval. This review
 executes no native verifier or cryptographic operation; exact evidence stays private.
+
+[Offline inspection adapter](DevVMMilestone6Runbook.md#offline-inspection-adapter--fake-apisworkers-4-november-2026)
+implements the typed one-shot policy, no-network API calls, CMS guards and live
+worker time/output/cleanup limits against injected fakes. Thirty-two new tests and
+178 allowed Python passes succeed, with five signing skips. Concrete native API /
+process activation remains absent and separately gated; private pins stay unchanged.

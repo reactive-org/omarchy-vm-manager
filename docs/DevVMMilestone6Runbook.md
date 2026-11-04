@@ -775,6 +775,82 @@ was run for this source review. Frozen artifacts/pins and product approval remai
 unchanged. The next task is the offline adapter with fake APIs/processes, before
 separate approval for any real inspection.
 
+## Offline inspection adapter — fake APIs/workers, 4 November 2026
+
+**IMPLEMENTED — developer tooling:** `private_provisioning_offline.py` adds a
+separate typed `OfflineReview` and atomically one-shot `OfflineInspectionCaller`.
+Its versioned request binds source/scope/selection, public certificate, exact
+implementation inventory, helper/QEMU entitlement sources and private output.
+`OfflineAuthorization` is a distinct trusted in-memory type, with exactly the
+`offline-native-inspect` effect. Legacy signing/material-inspection approvals,
+packets, sidecars and environment claims cannot authorize it. Default denial
+precedes source/material IO and output creation. Fixtures cannot use a nonfake
+factory, and API/factory test-double classifications must agree.
+
+`offline_inspection_worker.py` implements the policy against an **injected API
+facade**. It disables interaction, obtains/releases only the named keychain
+reference and refuses unlocked status. Before any CMS API, strict bounded DER
+preflight requires `signedData` with embedded plist `data`, refusing encrypted,
+detached, nested CMS, malformed/noncanonical or excessive-depth/node/size inputs.
+The facade may decode content only; returned bytes must equal the guarded payload.
+The parent applies existing exact profile policy, public-leaf membership and
+certificate identity/dates. Signer authenticity/trust is explicitly unestablished.
+
+Every admitted Mach-O, including unusual resource locations, and the enclosing
+bundle receives static validation with explicit `kSecCSNoNetworkAccess`, strict /
+all-architecture and appropriate nested-code flags. The requirement names the
+expected identifier, Apple Developer ID certificate policy and selected team.
+After validation, metadata must show the expected identity/team, hardened runtime,
+existing certified timestamp and exact entitlements. Ad-hoc/missing/mismatched
+data refuses; there is no network/default-flags fallback. Opaque API references
+release on success and failure. No daemon, client, server, supervisor, QEMU,
+signing command or native CLI is invoked by this engine.
+
+`offline_inspection_runner.py` supervises **injected process handles**. A shared
+300-second monotonic budget begins before source admission and is checked around
+input/revalidation callbacks; each worker has at most 120 seconds. Bounded reads
+actively enforce 2 MiB per stdout/stderr stream before retaining additional bytes;
+stderr is not retained as raw diagnostics. Root exit is insufficient while a
+descendant remains. Failure/cancellation/overflow kills the owned group, waits /
+reaps and closes handles. Cleanup waits have a five-second bound each, including
+one fallback kill/wait when cleanup itself fails. Unconfirmed cleanup remains an
+actionable failure, never success; no request is replayed. Dispatch overlap,
+unknown tasks, oversized/duplicate JSON and failed process handoff refuse.
+
+Private profile/certificate staging and receipts retain 0700/0600 modes. Source,
+runtime, implementation, selected/staged files and named keychain metadata are
+revalidated across callbacks; dependency revisions/cleanliness and locked state
+are checked before/after. Existing admission bounds inventories to 4,096 files /
+1 GiB, with profile/certificate at most 1 MiB each. Failure reports contain fixed
+stages and cleanup status, not backend errors. Fake receipts explicitly state no
+native validation was observed and grant no signing or guest authority.
+
+```sh
+make test-private-provisioning-offline
+```
+
+**VERIFIED — fake/local:** 32 tests cover the full synthetic roundtrip, independent
+authorization domains/implementation binding, no-network flags and static policy,
+CMS guards, locked status/reference release, callback mutation, virtual deadlines,
+live stream overflow, interruption, live descendants, failed cleanup and replay /
+concurrent-dispatch refusal. The allowed full Python run discovers 183 tests:
+178 pass and five signing/PKCS12 cases are skipped. Auditing records only local
+Git/Python processes and no forbidden-tool attempt. Native APIs, libraries,
+process launches and external sockets are blocked in the new test fixtures.
+
+**LIMIT / TO PROVE:** no concrete native API facade, real process factory,
+authorization loader or activation CLI is provided. A future factory must return
+an owned handle promptly, perform native work only in the child and honor bounded
+nonblocking reads/waits; these are interface contracts tested with virtual
+processes here. Parent filesystem reads are budget-checked at callback boundaries.
+Real OS process/IO behavior and native API correctness remain unobserved. Concrete
+bindings/launch composition must be added to the reviewed implementation inventory
+and tested with fake FFI/process boundaries before separate real-inspection
+approval. The historical private proposal is not rewritten or promoted. Frozen
+artifacts/pins, shared package/product source and ordinary approval remain
+unchanged. No real inspection, keychain access, signing, Apple requests,
+SSH/Ansible, install, UI, disk image or VM operation occurs.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

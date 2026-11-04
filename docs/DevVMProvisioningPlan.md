@@ -3154,3 +3154,33 @@ build, signing, Apple request, SSH/Ansible, install or VM execution occurs in th
 review. Private source evidence/contract stay outside Git; source-only review is
 not signed-binary, revocation, notarization, key-possession or guest proof. See the
 [bounded inspection preparation](DevVMMilestone6Runbook.md#bounded-native-inspection-preparation--source-review-4-november-2026).
+
+## Offline inspection adapter — fake boundaries, 4 November 2026
+
+**IMPLEMENTED — developer tooling:** a separate typed one-shot offline review/
+authorization domain binds source/scope/selection, certificate, implementation,
+entitlement sources and output. Default denial precedes IO; fixtures and fake API/
+factory classifications cannot become native proof. The API worker guards CMS
+envelopes before decoding, keeps the keychain locked and releases references,
+and statically validates every Mach-O/bundle with explicit no-network flags and
+exact Developer ID/team/runtime/timestamp/entitlement requirements. There is no
+daemon or runtime execution, signing or network fallback.
+
+The injected process supervisor enforces a shared 300-second budget, 120-second
+worker limit, live 2 MiB stream caps, group kill/reap/close and refusal when
+descendants or cleanup uncertainty remain. Callback/input/implementation mutations,
+bad responses and concurrent/replayed use refuse. Staged files/receipts remain
+private; no receipt supplies signing/guest authority. Native OS bindings and the
+real factory/activation path are absent, with their contracts explicitly documented.
+
+**VERIFIED — fake/local:** 32 new tests pass. The full allowed Python suite has
+178 passes/five deliberate signing/PKCS12 skips (183 discovered), observing only
+local Git/Python processes and no forbidden-tool attempt. Private artifacts,
+frozen pins and shared/product code are unchanged; ordinary approval stays nil.
+
+**TO PROVE:** concrete API/launch bindings with fake FFI/process tests, then
+separately approved native inspection and real OS behavior. Filesystem IO is
+budget-checked at callbacks; virtual process tests do not prove native scheduling
+or cleanup. No actual materials/keychain/native inspection, signing, Apple
+requests, SSH/Ansible, installs, UI, image or VM operation occurs. See the
+[adapter contract](DevVMMilestone6Runbook.md#offline-inspection-adapter--fake-apisworkers-4-november-2026).
