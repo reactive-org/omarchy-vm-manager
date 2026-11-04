@@ -106,6 +106,7 @@ class ReceiptSigningTests(unittest.TestCase):
         stages=[c.stage for c in self.ops.commands.commands]
         self.assertNotIn('decode-pinned-profile',stages);self.assertNotIn('verify-local-runtime-signatures',stages)
         self.assertFalse(any('security'==Path(c.argv[0]).name or '--verify-bundle-json' in c.argv for c in self.ops.commands.commands))
+        self.assertTrue(all(c.environment['GIT_CEILING_DIRECTORIES']==str(self.review.output) for c in self.ops.commands.commands))
         self.assertTrue(any(s.kind=='candidate-code' for s in self.tasks.specs))
         self.assertEqual(p.tree(self.review.output/'Private Candidate.app'),p.tree(self.review.output/'roundtrip/Private Candidate.app'))
 
@@ -195,6 +196,31 @@ class ReceiptSigningTests(unittest.TestCase):
             caller.run(self.fixture.packet)
         self.assertTrue(all(proc.reaped for proc in self.ops.processes))
 
+    def test_failed_root_is_drained_before_fixed_helper_classification(self):
+        caller=self.caller();run=self.ops.commands.run
+        error=b'Traceback with private path and token\nValueError: Provisioning patch base differs\n'
+        def failing(c):
+            if c.stage=='prepare-pinned-provisioning-source':return legacy.Result(1,b'',error)
+            return run(c)
+        self.ops.commands.run=failing;read=self.ops.read
+        self.ops.read=lambda fd,maximum:read(fd,min(maximum,7))
+        with self.assertRaises(p.Refused):caller.run(self.fixture.packet)
+        record=self.runner.worker_records[-1]
+        self.assertEqual(record['handle']['stderrBytes'],len(error))
+        self.assertEqual(record['commandDiagnostic'],{'format':1,'phase':'provisioning-prepare','code':'provisioning-patch-base-mismatch','stderrComplete':True})
+        self.assertTrue(record['cleanupConfirmed']);self.assertNotIn(b'private path',p.read(self.review.output/'receipt-bound-failure.json'))
+
+    def test_overflowed_helper_stderr_is_never_classified_from_partial_text(self):
+        caller=self.caller();run=self.ops.commands.run
+        def failing(c):
+            if c.stage=='prepare-pinned-provisioning-source':return legacy.Result(1,b'',b'x'*(2*1024*1024+1))
+            return run(c)
+        self.ops.commands.run=failing
+        with self.assertRaises(p.Refused):caller.run(self.fixture.packet)
+        record=self.runner.worker_records[-1]
+        self.assertEqual(record['commandDiagnostic']['code'],'command-output-incomplete')
+        self.assertFalse(record['commandDiagnostic']['stderrComplete']);self.assertTrue(record['cleanupConfirmed'])
+
     def test_no_keychain_content_read_and_no_secret_environment_inherited(self):
         caller=self.caller();read=p.read
         def guarded(path,*args):
@@ -239,6 +265,8 @@ class ReceiptSigningTests(unittest.TestCase):
         bad=[replace(valid,argv=('/usr/bin/security','unlock-keychain')),replace(valid,argv=('/usr/bin/ssh','host')),
              replace(valid,argv=(str(self.review.output/'Private Candidate.app/Contents/MacOS/OmarchyVMManager'),'--verify-bundle-json')),
              replace(valid,environment=dict(valid.environment,DYLD_INSERT_LIBRARIES='secret')),
+             replace(valid,environment={k:v for k,v in valid.environment.items() if k!='GIT_CEILING_DIRECTORIES'}),
+             replace(valid,environment=dict(valid.environment,GIT_CEILING_DIRECTORIES=str(self.material.upstream))),
              replace(valid,argv=(legacy.TOOLS['git'],'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',str(self.material.upstream),'checkout','--detach','1'*40)),
              replace(valid,stage='build-scoped-signed-prerelease',argv=(legacy.TOOLS['make'],'-o','prepare-source','build-signed','SWIFT_FLAGS=--disable-automatic-resolution; forbidden-command'))]
         for c in bad:

@@ -3414,3 +3414,29 @@ for the actual frozen preparation path, fixed bounded command-failure diagnosis
 and a fresh review. Real signing/OS/key/candidate and later acceptance remain
 unproven; prior approval is not promoted to a different request. See the
 [attempt and limitations](DevVMMilestone6Runbook.md#first-reviewed-candidate-attempt--preparation-stop-5-november-2026).
+
+## Frozen-helper regression and fresh review — 5 November 2026
+
+Prior failed-run docs are committed (`d3d70ab`, companion `09b396b`). A byte-exact
+frozen-helper fixture now covers actual preparation with the unchanged public
+package inputs. Local Python/Git reproduces a patch-base mismatch beneath an
+ignored nested Git checkout; an exact private-output `GIT_CEILING_DIRECTORIES`
+boundary fixes that case without changing pins or dependency repositories. This
+does not establish the historical failure's cause because its stderr was discarded.
+
+Failed quiet roots drain bounded pipes through EOF before recording fixed command
+codes. No raw traceback/path/error text or raw-output hash is persisted. Partial
+or capped output remains incomplete; deadlines, group ownership and cleanup
+retention remain enforced. Thirteen new cases pass; the audited full Python suite
+has 256 passes and five signing/PKCS12 skips, Git/Python processes only and no
+native-library attempts. No Swift/shared provisioning code changes.
+
+A new unexecuted private review binds seventeen implementation files and a 28-file
+exact uncommitted snapshot against `d3d70ab`, the independent historical inspection
+receipt and unchanged frozen pins. All five execution effects remain NOT_GRANTED;
+new output is absent. All 3,987 earlier artifact entries/failed outputs are retained,
+credential content is unopened and external keychain state is unqueried. No real
+inspection, build, signing, key access, Apple request, SSH/Ansible, install, UI or
+VM operation occurs. Commit before separately reviewing a fresh candidate attempt;
+real signing/candidate and guest acceptance remain TO PROVE. See the
+[fixtures, diagnostics and review](DevVMMilestone6Runbook.md#frozen-helper-and-safe-failure-diagnostics--5-november-2026).

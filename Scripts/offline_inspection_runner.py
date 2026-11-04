@@ -87,7 +87,7 @@ class Runner:
         deadline = min(self.deadline, self.clock() + (spec.timeout if raw else STAGE_SECONDS))
         private.require(len(self.worker_records) < MAX_WORKERS, "offline-worker-count-bound")
         record = {"sequence": len(self.worker_records) + 1, "kind": kind, "exitStatus": None,
-                  "failureCategory": None, "diagnostic": None, "cleanupOperations": []}
+                  "failureCategory": None, "diagnostic": None, "commandDiagnostic": None, "cleanupOperations": []}
         self.worker_records.append(record)
         process = None; failed = True; cleanup = True; quiet_observed = False
         output = bytearray(); errors = bytearray(); totals = {"stdout": 0, "stderr": 0}
@@ -114,9 +114,15 @@ class Runner:
                     record["exitStatus"] = status
                     quiet_observed = not process.group_alive()
                     if status != 0: record["failureCategory"] = "worker-exit"
-                    private.require(status == 0, "offline-worker-failed")
                     private.require(quiet_observed, "offline-worker-descendants-remain")
-                    if process.streams_closed(): break
+                    # Drain a failed root's bounded pipes through EOF before
+                    # classifying it. The root stays held and group-checked.
+                    if process.streams_closed():
+                        if raw and status != 0:
+                            from command_failure_diagnostics import classify_failure
+                            record["commandDiagnostic"] = classify_failure(spec, status, bytes(errors), True)
+                        private.require(status == 0, "offline-worker-failed")
+                        break
             revalidate(); self.check(cancel)
             if raw:
                 from private_provisioning_signer import Result
@@ -135,6 +141,9 @@ class Runner:
             failed = False
             return value
         except BaseException:
+            if raw and record["commandDiagnostic"] is None:
+                from command_failure_diagnostics import classify_failure
+                record["commandDiagnostic"] = classify_failure(spec, record["exitStatus"], b"", False)
             if process is None: cleanup = False
             raise private.Refused("offline-worker-refused") from None
         finally:

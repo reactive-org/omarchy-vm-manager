@@ -490,6 +490,7 @@ class Adapter:
         self.environment = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(home), "TMPDIR": str(self.work),
                             "LC_ALL": "C", "LANG": "C", "MACOSX_DEPLOYMENT_TARGET": "15.0",
                             "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0",
+                            "GIT_CEILING_DIRECTORIES": str(self.work),
                             "HOMEBREW_NO_AUTO_UPDATE": "1", "HOMEBREW_NO_ANALYTICS": "1"}
         try:
             self._validate_material(); self._runtime(); self._reconstruct(); self._local_dependencies(); self._build(); self._assemble(); self._sign()

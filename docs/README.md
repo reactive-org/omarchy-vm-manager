@@ -299,3 +299,10 @@ artifact entries/pins are preserved. Source data checks pass, but discarded raw
 stderr leaves the exact cause unknown. No key, secure UI, timestamp or VM stage
 is reached. The request is consumed; fixture/diagnostic work and fresh review are
 next, without replaying this attempt.
+
+[Frozen helper and safe failure diagnostics](DevVMMilestone6Runbook.md#frozen-helper-and-safe-failure-diagnostics--5-november-2026)
+add a byte-exact local fixture, private-output Git discovery boundary and bounded
+EOF/fixed-code diagnostics. The full audited suite passes 256 cases with five
+signing skips. A new private exact-source review is unexecuted with all approvals
+ungranted; 3,987 earlier artifact entries/pins remain unchanged. Historical error
+cause and real compiler/signing/candidate/guest behavior remain unproven.

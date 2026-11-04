@@ -49,6 +49,7 @@ class CommandFactory:
         expected = {'PATH':'/usr/bin:/bin:/usr/sbin:/sbin', 'HOME':str(self.review.output/'home'),
             'TMPDIR':str(self.review.output), 'LC_ALL':'C', 'LANG':'C', 'MACOSX_DEPLOYMENT_TARGET':'15.0',
             'GIT_CONFIG_NOSYSTEM':'1', 'GIT_CONFIG_GLOBAL':'/dev/null', 'GIT_TERMINAL_PROMPT':'0',
+            'GIT_CEILING_DIRECTORIES':str(self.review.output),
             'HOMEBREW_NO_AUTO_UPDATE':'1', 'HOMEBREW_NO_ANALYTICS':'1'}
         p.require(c.environment == expected and type(c.argv) is tuple and len(c.argv)>0 and all(type(a) is str for a in c.argv), 'signing-command-environment')
         args = c.argv; source = self.review.output/'source'

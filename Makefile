@@ -81,6 +81,11 @@ test-private-provisioning-native:
 test-receipt-bound-signing:
 	python3 -m unittest discover -s Tests/ScriptTests -p 'test_receipt_bound_signing.py' -v
 
+.PHONY: test-frozen-provisioning-helper
+# Only disposable package fixtures with installed Python/local Git; no SDK/signing.
+test-frozen-provisioning-helper:
+	python3 -m unittest discover -s Tests/ScriptTests -p 'test_frozen_provisioning_helper.py' -v
+
 .PHONY: test-provisioning-package test-provisioning-bundle
 test-provisioning-package: build
 	swift test $(SWIFT_FLAGS) --no-parallel --filter ProvisioningPackage

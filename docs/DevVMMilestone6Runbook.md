@@ -1361,6 +1361,61 @@ remain unproven. The signing approval was not exercised and is not carried to a
 different request. No notarization, SSH/Ansible, install, app/runtime execution
 or VM operation occurs.
 
+## Frozen helper and safe failure diagnostics — 5 November 2026
+
+**IMPLEMENTED / VERIFIED — local fixtures only:** prior failure-result docs are
+committed as manager `d3d70ab` and companion `09b396b`. The exact frozen helper from
+the retained failed candidate is now a byte-checked fixture, with unchanged public
+package source, lock, four integration patches and generated pin. It remains a
+fixture; neither the historical helper nor frozen candidate inputs are edited.
+
+`make test-frozen-provisioning-helper` executes installed Python/local Git in
+disposable directories. Outside a repository preparation passes. Inside an ignored
+candidate directory beneath a Git checkout, preparation reproduces a patch-base
+mismatch: reverse-patch Git discovers the surrounding repository. Setting
+`GIT_CEILING_DIRECTORIES` to the exact private candidate output makes that case
+pass; privately cloned dependencies still have their own Git metadata. The command
+factory requires that exact environment value, rejecting missing/changed ceilings.
+Source/patch mutation, unexpected launcher inputs and optional plugins still
+refuse; repeated preparation remains idempotent. No compiler or guest is involved.
+
+**DIAGNOSIS LIMIT:** this establishes a reproducible fixture failure and correction,
+not the earlier attempt's exact cause. Its unretained stderr cannot be recovered;
+278 bytes is the observed count, potentially partial under the previous drain
+behavior. Do not relabel the historical failure or replay its consumed request.
+
+**DESIGN DECISION:** an exited, quiet failed command root remains held while its
+bounded pipes drain to EOF. Existing job/stage deadlines, live stream caps, group
+checks, reap/descriptor evidence and cleanup retention still apply. A complete
+failed helper stream can select a fixed phase/code from its exact final allowlisted
+line. Persist no raw stderr, paths, exception text or raw-output hash. Other stages,
+signals, unknown output and incomplete/capped streams have fixed generic codes;
+partial output cannot assert a complete helper diagnosis. Cleanup uncertainty
+continues to block reuse. The new diagnostic module joins the implementation digest.
+
+**VERIFIED — tests:** thirteen new cases; 261 discovered, 256 passed and five
+signing/PKCS12 cases skipped in the audited full Python suite. Focused make targets
+for frozen helper, receipt-bound signing, native bindings and offline inspection
+also pass. Actual child programs are local Git/Python only, with no native-library
+attempts. Safe-code tests include fragmented failed-root output through EOF and
+live-cap overflow. Swift/product/companion implementation is unchanged.
+
+**PREPARED / NOT AUTHORIZED:** a fresh private review binds the historical passed
+inspection independently, the unchanged source/runtime/disposable pins, seventeen
+current implementation files and an exact 28-file source/test/Makefile snapshot.
+Code is explicitly uncommitted; its archive/patch binds base `d3d70ab`. The new
+request/output is distinct, all five execution effects are NOT_GRANTED, and output
+is absent. All 3,987 existing private artifact entries, including partial failed
+output, remain unchanged. Retained credential content stays unopened with stable
+metadata; external signing materials/keychain are neither opened nor stat-checked.
+No scope pin is recaptured, root observed or product approval changed.
+
+**TO PROVE / NEXT:** commit the reviewed bytes before considering a separately
+approved new candidate attempt. This task performs no real inspection, build,
+signing, key access, Apple request, SSH/Ansible, install, UI or VM operation.
+Real compiler/native/signing/key/UI/timestamp and candidate-chain behavior remain
+unproven; notarization, loaded-child and guest acceptance are separate.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

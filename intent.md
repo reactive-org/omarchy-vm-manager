@@ -3293,3 +3293,29 @@ remains the visual target for milestone 5.
   and fresh review. No actual compiler/signing/key/UI/timestamp or later candidate/
   notarization/loaded-child/guest proof is established. No prohibited operation
   occurs. See the [attempt](docs/DevVMMilestone6Runbook.md#first-reviewed-candidate-attempt--preparation-stop-5-november-2026).
+
+## Frozen-helper fixtures and diagnostics — 5 November 2026
+
+- **USER AUTHORIZATION / IMPLEMENTED:** commit failure-result docs in both
+  worktrees (`d3d70ab`, companion `09b396b`), then add frozen-helper coverage,
+  safe diagnostics and fresh review. No real execution is authorized here.
+- **VERIFIED — local fixtures:** the byte-exact helper with unchanged public pins
+  reproduces nested ignored-checkout patch-base mismatch. An exact private-output
+  Git discovery ceiling fixes that case while preserving cloned repositories.
+  Mutation/plugin/extra-input refusals and idempotence pass. Thirteen new cases;
+  full audited Python suite: 256 passes, five signing skips, only Git/Python child
+  programs and no native-library attempt. Swift/shared implementation is unchanged.
+- **DESIGN DECISION / PRIVATE COUPLING:** hold failed quiet roots and drain under
+  existing live caps/deadlines to EOF. Record only fixed phase/code/complete facts;
+  exact final allowlisted helper lines cannot leak arbitrary output. Partial/capped
+  output remains incomplete. Keep original group/cleanup retention guarantees.
+  Bind the diagnostic module in the current implementation digest.
+- **PREPARED / TO PROVE:** new unexecuted review binds seventeen code files and an
+  exact 28-file uncommitted snapshot; historical inspection is independently bound,
+  all execution effects ungranted and new output absent. Preserve all 3,987 old
+  artifact entries, failed output and frozen pins; credential content unopened,
+  external materials/keychain unqueried, no scope-root observation/recapture and
+  product approval nil. Historical exact failure cause stays unknown. No real
+  inspection, build, signing, key access, Apple request, SSH/Ansible, install, UI or
+  VM operation occurs. Real compiler/native/signing/candidate/guest behavior remains
+  unproven. See the [fresh review](docs/DevVMMilestone6Runbook.md#frozen-helper-and-safe-failure-diagnostics--5-november-2026).
