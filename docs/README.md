@@ -276,3 +276,10 @@ certificate checks and locked-state checks pass in 64.18 seconds. Cleanup eviden
 covers all 31 workers; a targeted PID snapshot finds no survivors. All 1,204 old
 artifact entries and frozen pins are preserved. This offline-only receipt grants
 no signing/guest authority; milestone 6 and separate real acceptance gates remain.
+
+[Signed-candidate review](DevVMMilestone6Runbook.md#signed-candidate-review-after-offline-inspection--5-november-2026)
+binds the passed inspection, staged material and frozen inputs to a private
+proposal/output. It is not executable: receipt-bound authority, bounded signer
+supervision and legacy inspection replacement remain implementation work; key
+use/secure UI and Apple timestamp consent are still ungranted. All 1,239 old
+artifact entries/pins remain unchanged, output is absent and no signer runs.

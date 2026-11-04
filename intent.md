@@ -3200,3 +3200,31 @@ remains the visual target for milestone 5.
   No signing, private-key access, Apple request, SSH/Ansible, install, UI or VM
   operation occurs. Separate signing/guest authority is still required. See the
   [native result](docs/DevVMMilestone6Runbook.md#native-offline-inspection-passed--5-november-2026).
+
+## Signed-candidate review preparation — 5 November 2026
+
+- **USER AUTHORIZATION / PREPARED:** commit native-result docs (`740fd81`,
+  companion `7d8d907`), then prepare a private signed-candidate review without
+  signing, private-key access, Apple requests, SSH/Ansible, installs or VM launches.
+  Bind the passed receipt/audit, matching staged public files/material, frozen
+  source/scope/runtime, current tooling and absent private app/ZIP output.
+- **VERIFIED — local data/source:** pure admission and receipt/material/source
+  bindings match; all 14 implementation files match committed bytes. All 1,239
+  previous private entries, successful/failed evidence and pins remain unchanged.
+  Retained credential content stays unopened with stable metadata; original
+  signing materials/keychain are not reopened or stat-checked. Earlier lock/
+  certificate observations remain historical and no scope root is recaptured.
+- **DESIGN DECISION / READINESS GAPS:** review-domain data grants no authority.
+  Before execution, bind receipt/implementation/output in signing admission,
+  provide live caps/shared deadline/owned cleanup, and replace or separately
+  review the legacy profile/daemon-verifier dispatch. Proposed limits are not
+  current signer capabilities. Keep all new approvals NOT_GRANTED and output
+  absent; no runner/caller/signer/authorization is constructed.
+- **PRIVATE COUPLING / TO PROVE:** the selected keychain was locked; actual key
+  availability remains unqueried. Key use/necessary secure UI and Apple timestamp
+  consent remain separate. Prefer Touch ID only where existing ACLs support it;
+  infer no unlock/permission/search-list changes. Notarization, original-Mac/
+  loaded-child and guest acceptance remain outside scope. Next combine admission,
+  runner/inspection hardening, fake tests and fresh review. No native inspection,
+  compiler, signing or prohibited operation occurs; product approval remains nil.
+  See the [review](docs/DevVMMilestone6Runbook.md#signed-candidate-review-after-offline-inspection--5-november-2026).

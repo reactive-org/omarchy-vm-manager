@@ -3339,3 +3339,28 @@ acceptance remain outside this result. Earlier failure causes remain unknown.
 No prohibited operation occurs. Milestone 6 remains incomplete; signing and guest
 actions need separate approval. See the
 [observed result](DevVMMilestone6Runbook.md#native-offline-inspection-passed--5-november-2026).
+
+## Signed-candidate review — 5 November 2026
+
+Following result-doc commits `740fd81` / `7d8d907`, a private review binds the
+passed offline receipt/audit, matching staged material/public files, frozen
+source/scope/runtime, committed tooling and unused private app/ZIP output. Its
+domain digest is review-only, distinct from source/inspection authority. All
+approvals remain NOT_GRANTED; no build, signer or output is activated.
+
+The review is explicitly not executable: current signing authority lacks receipt/
+implementation/output binding; the signer needs live caps/shared budget/owned
+cleanup evidence; and its legacy profile/verifier dispatch must be replaced or
+separately reviewed. The locked selected keychain's key availability remains
+unqueried. Actual key use/necessary secure UI and Apple secure-timestamp requests
+require explicit approval; Touch ID is preferred only where already supported.
+Notarization, original-Mac/loaded-child and guest acceptance remain separate.
+
+All 1,239 old artifact entries and pins are preserved. External signing materials
+and keychain are not reopened or stat-checked, retained credential content stays
+unopened, and prior observations remain historical. Pure admission, receipt/
+staged bindings and source hashes match; no native inspection or tests are rerun.
+Next consolidate receipt-bound admission, bounded supervision, replacement of
+legacy inspection, fake validation and fresh review. No signing, private-key
+access, Apple request, SSH/Ansible, install, UI or VM operation occurs. See the
+[signed-candidate review](DevVMMilestone6Runbook.md#signed-candidate-review-after-offline-inspection--5-november-2026).

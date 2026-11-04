@@ -1188,6 +1188,65 @@ build/signing/timestamps, loaded-child/original-Mac admission and guest acceptan
 remain separate gates. The consumed inspection request grants no signing or
 guest authority and triggers no automatic continuation; milestone 6 is incomplete.
 
+## Signed-candidate review after offline inspection — 5 November 2026
+
+**PREPARED / NOT EXECUTABLE:** after result-doc commits `740fd81` (manager) and
+`7d8d907` (companion), a new ignored 0700/0600 packet binds the successful native
+receipt/audit, exact staged profile/public certificate, selected material paths,
+frozen source/scope/runtime and current 14-file tooling implementation. The staged
+material binding matches the inspected receipt. Candidate source, tooling and
+historical scope-source commits remain independent. A separate review-domain
+digest also binds the proposed unused private app/ZIP output; it is neither the
+existing signer's source-request digest nor an execution/approval loader.
+
+The concrete proposed flow is exact source reconstruction and signed-build pin/
+inspection projections, pinned local build, private assembly, child signing,
+post-sign sealing, outer signing, bounded static checks and private archive/
+roundtrip. Any built-app bundle diagnostic is an explicit executable effect;
+it is not loaded provisioning-helper admission or a guest launch. Runtime bytes
+are consumed unchanged, without runtime rebuild/resign or downloads.
+
+**EXECUTION GAPS — source reviewed, not run:**
+
+- Existing signing authority binds source/scope/material/effects, but does not
+  bind the offline receipt, current implementation and exact output. A trusted
+  one-shot receipt-bound signing caller is required.
+- Existing signer output caps are checked after capture and its process lifecycle
+  lacks the inspected worker runner's shared budget/live-cap/group-cleanup evidence.
+  The review proposes a 2,400-second job, 1,200-second build, 120-second other-stage,
+  live 2 MiB stream and bounded cleanup contract; these are not implemented yet.
+- The signer still invokes `security cms` and the upstream signature-only verifier
+  that executes daemon `check`. Offline inspection approval does not cover that
+  route. Replace it with exact receipt consumption/revalidation and explicit
+  no-network checks, or separately review/authorize the additional effects.
+- The selected keychain was locked at the successful inspection; availability of
+  its private key remains unqueried. Any necessary secure unlock/dialog and actual
+  selected-key use require separate approval. Touch ID is preferred only if the
+  existing keychain/ACL supports it; no ACL, permission or search-list change is
+  inferred, and no password/P12/P8 is requested by this review.
+- Required Developer ID signing uses secure timestamps. Explicit key-use/signing
+  **and Apple timestamp-request** approval is necessary; removing timestamps to
+  manufacture an offline-only candidate is not an alternative. Notarization,
+  Apple API-key use and publication remain separate and excluded.
+
+**VERIFIED — local data/source only:** pure source admission, the receipt/staged
+bindings, 14 committed source files and dependency HEADs match. All 1,239 prior
+private artifact entries, inspection results, failure records and pins remain
+unchanged. Retained credential-named content stays unopened with stable metadata,
+not fresh content validation. External original signing materials/keychain are
+not reopened or stat-checked; prior locked-state/certificate observations stay
+historical. No native validation or tests are rerun, no build/source projection is
+generated and no signer/caller/runner/authorization is constructed. All new
+approvals are NOT_GRANTED, output is absent and product approval remains nil.
+
+**NEXT:** combine receipt-bound admission, bounded signer supervision, replacement
+of legacy inspection dispatch, fake tests and a fresh exact-code review in one
+implementation chunk. This packet is a concrete review with explicit readiness
+gaps, not permission to execute the current signer. Real signing/key/timestamp,
+original-Mac/loaded-child, notarization and guest acceptance remain separate.
+No signing, private-key access, Apple request, SSH/Ansible, install, UI, VM-root
+observation/recapture or VM operation occurs during this preparation.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without
