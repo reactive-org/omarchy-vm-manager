@@ -269,3 +269,10 @@ signing skips, without native-library attempts. A fresh private review binds an
 exact uncommitted source/test snapshot, new request/output and corrected guard.
 All 1,191 old artifact entries/pins and failed receipts remain unchanged. The
 output is absent; actual native behavior and prior failure causes remain unproven.
+
+[Native offline inspection passed](DevVMMilestone6Runbook.md#native-offline-inspection-passed--5-november-2026)
+after committing the exact reviewed snapshot. All 23 static checks, source/profile/
+certificate checks and locked-state checks pass in 64.18 seconds. Cleanup evidence
+covers all 31 workers; a targeted PID snapshot finds no survivors. All 1,204 old
+artifact entries and frozen pins are preserved. This offline-only receipt grants
+no signing/guest authority; milestone 6 and separate real acceptance gates remain.

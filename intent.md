@@ -3173,3 +3173,30 @@ remains the visual target for milestone 5.
   attempt. No signing, private-key access, Apple requests, SSH/Ansible, installs,
   UI, VM-root observation or VM operation occurs. See the
   [hardening record](docs/DevVMMilestone6Runbook.md#diagnostic-and-date-hardening--fake-validation-and-fresh-review-5-november-2026).
+
+## Native offline inspection passed — 5 November 2026
+
+- **USER AUTHORIZATION / VERIFIED:** commit diagnostics/date/cleanup changes
+  (`df8b75e`, companion docs `a8a8ba4`), execute the exact fresh review and update
+  result docs. Seventeen source/test files match the commit/current snapshot;
+  original review/guard/implementation/frozen input bindings are preserved.
+- **VERIFIED — bounded native:** the one-shot attempt completes in 64.18 seconds,
+  with before/after dependency and locked-keychain checks, profile content/policy/
+  public-leaf membership, certificate name/dates and 23 static code checks passed.
+  Explicit no-network policy is used; no runtime code or daemon check executes.
+  Receipt status is OFFLINE_STATIC_INSPECTION_ONLY.
+- **VERIFIED — cleanup/preservation:** all 31 workers exit/reap after group quiet,
+  descriptors close, no diagnostics/errors or unresolved handles remain. A bounded
+  snapshot of the recorded PIDs finds no survivors and is itself reaped. All 1,204
+  old artifact entries, pins, prior reviews and failed receipts remain unchanged.
+  Retained credential content stays unopened with stable metadata. Only approved
+  private output/evidence are added; no root pin is recaptured and product approval
+  remains nil.
+- **PRIVATE COUPLING / TO PROVE:** the old uncommitted-review label remains a
+  historical preparation record; execution evidence separately binds the committed
+  bytes. Private-key availability, CMS signer authenticity, standalone certificate
+  trust, online revocation/notarization, loaded-child and guest evidence are not
+  established. Prior failure causes remain unknown. Milestone 6 remains incomplete.
+  No signing, private-key access, Apple request, SSH/Ansible, install, UI or VM
+  operation occurs. Separate signing/guest authority is still required. See the
+  [native result](docs/DevVMMilestone6Runbook.md#native-offline-inspection-passed--5-november-2026).

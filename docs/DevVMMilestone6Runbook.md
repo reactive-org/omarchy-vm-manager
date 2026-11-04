@@ -1143,6 +1143,51 @@ precedes native work. Existing job/worker/output limits, no retry, scope and
 ordinary product denial remain. No real inspection, signing, private-key access,
 Apple request, SSH/Ansible, install, UI, VM-root observation or VM operation occurs.
 
+## Native offline inspection passed — 5 November 2026
+
+**AUTHORIZED / VERIFIED — bounded native inspection:** diagnostics/date changes
+are committed as manager `df8b75e` and companion documentation `a8a8ba4`. The user
+explicitly approved the fresh inspection and result documentation. All 17 reviewed
+source/test files match the exact committed and current bytes; the 14-file
+implementation, corrected guard, review/composition and frozen input bindings
+match. The original review retains its preparation-time uncommitted-snapshot
+record; separate private execution evidence binds the new commit without rewriting
+the packet or any old pin.
+
+The one-shot attempt completes in 64.18 seconds with
+`OFFLINE_STATIC_INSPECTION_ONLY`: both dependency checks pass before and after;
+the named keychain is observed locked before and after, with interaction disabled;
+guarded CMS content/profile policy and public-leaf membership pass; the public
+certificate name/dates pass; and all 23 Mach-O/enclosing-bundle static validations
+pass with explicit no-network flags, required signing policy and entitlements.
+No runtime/daemon code executes and no new signature or timestamp is created.
+
+**VERIFIED — cleanup:** all 31 workers exit successfully, with no diagnostics or
+categorized cleanup errors. Every handle records its root reaped only after group
+quietness, closed descriptors and no open streams; no unresolved handle remains.
+A bounded read-only snapshot restricted to these recorded worker PIDs finds none
+remaining. The snapshot process is itself reaped; raw process commands are not
+retained. All observed stream counts respect the 2 MiB live bounds. This confirms
+this run's cleanup, not arbitrary crash or scheduling scenarios.
+
+**VERIFIED — preservation:** all 1,204 preexisting private artifact entries retain
+their noncredential bytes, modes and links. The retained credential-named file
+stays unopened with stable metadata, not freshly validated contents. Both earlier
+reviews and their failed receipts/consumption evidence remain unchanged. Only the
+approved fresh output and separate private execution/analysis evidence are added
+under private permissions. Original disposable scope/root pins are not recaptured;
+ordinary product approval remains nil. No private-key query/access, signing,
+Apple request, SSH/Ansible, install, UI or VM operation occurs.
+
+**LIMITS / NEXT:** this establishes offline static inspection only. Private-key
+availability remains NOT_QUERIED; profile CMS signer authenticity is NOT_ESTABLISHED;
+standalone certificate trust is NOT_EVALUATED; online revocation is NOT_CHECKED;
+notarization is NOT_REQUESTED; daemon check is NOT_RUN. The earlier failure causes
+remain unknown: this success does not retrospectively diagnose them. Real app
+build/signing/timestamps, loaded-child/original-Mac admission and guest acceptance
+remain separate gates. The consumed inspection request grants no signing or
+guest authority and triggers no automatic continuation; milestone 6 is incomplete.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

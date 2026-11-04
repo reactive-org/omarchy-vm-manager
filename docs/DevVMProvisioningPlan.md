@@ -3317,3 +3317,25 @@ is absent. Prior native failure causes remain unknown. Separate exact-review
 approval is next; no real inspection, signing, private-key access, Apple request,
 SSH/Ansible, install, UI or VM operation occurs. See the
 [hardening and fresh review](DevVMMilestone6Runbook.md#diagnostic-and-date-hardening--fake-validation-and-fresh-review-5-november-2026).
+
+## Native offline inspection passed — 5 November 2026
+
+After manager `df8b75e` / companion docs `a8a8ba4`, the user-approved fresh run
+verifies all 17 source/test snapshot files against committed/current bytes and
+preserves the original review unchanged. The attempt completes in 64.18 seconds:
+dependency checks before/after, locked keychain before/after, guarded profile/
+public-leaf policy, certificate name/dates and all 23 static runtime checks pass.
+The receipt is OFFLINE_STATIC_INSPECTION_ONLY, with explicit no-network policy and
+no runtime code execution or signing.
+
+All 31 worker roots are reaped after observed group quietness, descriptors closed,
+no diagnostics/cleanup errors or unresolved handles. A bounded snapshot of only
+the recorded worker PIDs finds none remaining. All 1,204 old artifact entries,
+pins, prior reviews and failure records remain unchanged; retained credential
+content stays unopened with stable metadata. Product approval stays nil. Key
+availability, CMS signer authenticity, standalone certificate trust, online
+revocation/notarization, daemon behavior, candidate signing/loaded-child and guest
+acceptance remain outside this result. Earlier failure causes remain unknown.
+No prohibited operation occurs. Milestone 6 remains incomplete; signing and guest
+actions need separate approval. See the
+[observed result](DevVMMilestone6Runbook.md#native-offline-inspection-passed--5-november-2026).
