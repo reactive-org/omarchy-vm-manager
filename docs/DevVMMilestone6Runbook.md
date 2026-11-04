@@ -973,6 +973,75 @@ binding stops, without recapture/replay. Native ABI/results/cleanup, profile sig
 trust, key possession, online revocation/notarization, daemon behavior and all real
 guest rows remain unproven or outside scope. Ordinary product approval stays nil.
 
+## Approved inspection attempt stopped before native work — 5 November 2026
+
+**AUTHORIZED / STOPPED / NOT INSPECTED:** the user explicitly approved the bounded
+read-only native action for the fresh `ddf5451` review. A private one-off caller
+bound the exact review-file, request and implementation digests. Its additional
+Python audit guard stopped the preliminary committed-source Git read: Python
+opens `/dev/null` with `O_RDWR` to disable subprocess stdin, and the guard refused
+that open before the first subprocess was created. This was a composition-guard
+error, not an observed material, keychain, signature or runtime validation result.
+
+**VERIFIED — source/data only:** zero subprocesses/workers and no native API or
+external signing-material access occurred. No typed native authorization or caller
+was constructed; failure preceded that point. Cleanup has no unresolved handles.
+The inspection output remains absent and the review packet checksums match.
+All 1,161 original artifact entries remain present, with noncredential bytes,
+modes and symlink targets matching retained evidence. The credential-named
+historical artifact remains unopened; its contents are not freshly validated.
+Frozen source/scope/runtime pins and ordinary product approval are unchanged.
+
+The failed composition, consumed-request marker and preservation evidence remain
+private. Source reproduction confirms the guard failure. Ten fake audit-event
+cases validate a proposed narrow exception for `/dev/null` opened only with
+`O_RDWR` and optional `O_CLOEXEC`; credential opens and other out-of-scope writes
+remain denied. That correction has not been used for any real attempt and does
+not modify the 14-file implementation or frozen inputs.
+
+**NEXT / TO PROVE:** this attempt is consumed and is not automatically retried.
+Prepare a corrected composition and fresh digest-bound review/output, then seek
+separate approval before another attempt. Real locked-state, profile/public-leaf,
+static-signature and worker cleanup behavior remain unobserved. No signing,
+private-key access, Apple request, SSH/Ansible, install, UI or VM operation occurs.
+
+## Corrected fresh private inspection review — 5 November 2026
+
+**PREPARED / NOT EXECUTED:** a separate ignored 0700/0600 packet retains `ddf5451`
+tooling and the exact 14-file implementation, source/material selection and frozen
+scope/runtime bindings. A new output path produces a distinct typed request
+digest. The original review, consumed request, failed composition and failure
+evidence remain unchanged; no previous approval is carried forward.
+
+The private correction permits only a literal `/dev/null` open with `O_RDWR` and
+optional `O_CLOEXEC` for Python's disabled subprocess stdin. Credential opens and
+other writes remain denied. The guard module only defines functions and installs
+nothing on import. A separate composition manifest binds its exact source hash,
+the new review-file hash, request, implementation and output. There is no approval
+loader or native activation entrypoint. Twenty-two fake audit/helper cases pass,
+including the current Python DEVNULL helper with fake `os.open` and descriptor
+caching. These cases launch no process or native inspection.
+
+**VERIFIED — local data/fake guard only:** all 14 implementation files match the
+committed source. Pure admission revalidates frozen source/runtime/lineage;
+dependency HEADs and entitlement files match their pins. All 1,170 preexisting
+private artifact entries remain unchanged, including the original review packet.
+Noncredential bytes, modes and links match; one credential-named retained file
+stays unopened, with metadata stable during preparation rather than a fresh
+content claim. Prior failure checksums and consumed marker also match. External
+original signing materials/keychain are not reopened or stat-checked; historical
+certificate/profile/lock observations are not promoted to current evidence.
+
+**NEXT / TO PROVE:** separate approval must name this fresh review and corrected
+guard before trusted in-memory authority is constructed. Both inspection outputs
+remain absent; every new inspection/signing/guest approval is false. No guard is
+installed and no authorization, caller, runner, factory, capability or native API
+is constructed. The existing 300-second job, 120-second worker, live 2 MiB stream,
+owned cleanup and no-retry limits remain. Whole dependency cleanliness and actual
+native validation/cleanup remain execution-time checks. No real inspection,
+signing, private-key access, Apple request, SSH/Ansible, install, UI, VM-root
+observation or VM operation occurs. Frozen pins and product approval stay unchanged.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

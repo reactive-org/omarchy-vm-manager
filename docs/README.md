@@ -240,3 +240,17 @@ The output remains uncreated and every approval ungranted. Only stored evidence 
 source integrity is checked; signing materials and native APIs remain untouched.
 Historical artifact/pin preservation and its credential-content limitation are
 recorded privately. Separate approval precedes any bounded native inspection.
+
+[Approved inspection attempt](DevVMMilestone6Runbook.md#approved-inspection-attempt-stopped-before-native-work--5-november-2026)
+stopped at the one-off composition's overly restrictive `/dev/null` audit guard,
+before any worker, native API or material access. The review/output and artifact
+preservation are checked; a narrow guard correction has ten fake-event cases only.
+The request is consumed without retry; fresh review and separate approval precede
+another attempt. No native inspection result is claimed.
+
+[Corrected fresh private review](DevVMMilestone6Runbook.md#corrected-fresh-private-inspection-review--5-november-2026)
+binds a new request/output and the narrow `/dev/null` guard correction, with 22
+fake audit/helper cases. The implementation, frozen pins and all 1,170 existing
+artifact entries remain unchanged. The failed attempt stays consumed; both
+inspection outputs are absent and separate fresh approval is required. No native
+inspection or authority is activated.

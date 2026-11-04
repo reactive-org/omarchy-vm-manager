@@ -3234,3 +3234,39 @@ private. No test rerun, native inspection, signing, Apple request, SSH/Ansible,
 install, UI, VM-root observation or VM operation occurs. Separate exact-scope
 native approval and execution-time revalidation are next; product approval stays
 nil. See the [fresh review](DevVMMilestone6Runbook.md#fresh-private-inspection-review-for-ddf5451--4-november-2026).
+
+## Approved inspection attempt — pre-native stop, 5 November 2026
+
+The user approved the exact `ddf5451` read-only review. The private one-off
+composition's extra audit guard incorrectly refused Python's `/dev/null`
+`O_RDWR` open for disabled Git stdin. It stopped before any subprocess, worker,
+native authorization/caller or native API was constructed. There is no actual
+profile, keychain or runtime validation result, and no inspection output exists.
+
+Review checksums and original noncredential artifact bytes/modes/links match;
+all 1,161 old entries remain present. The retained credential-named artifact stays
+unopened, without a fresh content claim. Frozen pins and ordinary approval are
+unchanged. Ten fake audit-event cases cover the proposed narrow guard correction,
+which remains unused. The request is consumed without retry; a corrected fresh
+review and separate approval are next. No signing, private-key access, Apple
+request, SSH/Ansible, install, UI or VM operation occurs. See the
+[attempt record](DevVMMilestone6Runbook.md#approved-inspection-attempt-stopped-before-native-work--5-november-2026).
+
+## Corrected fresh inspection review — 5 November 2026
+
+A new ignored private packet binds a distinct request/output, the unchanged
+`ddf5451` implementation and frozen source/scope/selection/runtime, plus exact
+corrected guard source and review-file hashes. The only guard exception is a
+literal `/dev/null` `O_RDWR` open with optional `O_CLOEXEC`. Twenty-two fake
+audit/helper cases pass; no real guard, authority, caller, worker or native API
+is activated. Source admission, 14 committed files, dependency HEADs and
+entitlements match stored pins. Whole dependency cleanliness remains deferred.
+
+All 1,170 preexisting artifact entries, the original review, failed attempt and
+consumed marker are preserved. Retained credential-named content remains unopened;
+stable metadata is not fresh content validation. External material/keychain
+observations remain historical. Both outputs are absent and all new approvals
+are false. Separate exact-review approval is next; no inspection, signing,
+private-key access, Apple requests, SSH/Ansible, installs, UI or VM operation
+occurs. Product approval remains nil. See the
+[corrected review](DevVMMilestone6Runbook.md#corrected-fresh-private-inspection-review--5-november-2026).
