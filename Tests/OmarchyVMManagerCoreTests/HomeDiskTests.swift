@@ -41,7 +41,7 @@ struct HomeDiskTests {
     func creation() async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
-        let manager = VMManager(runtime: FakeRuntime(), profiles: [], applicationSupport: f.support, registry: registry, portProbe: HomePort())
+        let manager = VMManager(runtime: FakeRuntime(), profiles: [], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: registry, portProbe: HomePort())
         func create(_ name: String, separate: Bool? = nil) async throws -> UUID {
             try await manager.create(name: name, memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false,
                                      sshEnabled: false, separateHome: separate)
@@ -118,7 +118,7 @@ struct HomeDiskTests {
         replacement.homeDisk = HomeDisk(id: source.homeDisk!.id, sizeGiB: 16, sourceVMID: source.id)
         let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load(); try registry.save([source, replacement])
         _ = try f.storage.prepare(source); _ = try f.storage.prepare(replacement)
-        let manager = VMManager(runtime: FakeRuntime(), profiles: [source, replacement], applicationSupport: f.support, registry: registry)
+        let manager = VMManager(runtime: FakeRuntime(), profiles: [source, replacement], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: registry)
         let review = try #require(await manager.deletionRequest(source.id))
         if damage == "metadata" {
             try PrivateFiles.write(Data("{}".utf8), name: "state.json", in: f.storage.homeDirectory(replacement))
@@ -143,7 +143,7 @@ struct HomeDiskTests {
         var source = f.profile(name: "Source"); source.homeDisk = HomeDisk(sizeGiB: 128)
         source.ownerSetup = try OwnerDefaults(enabled: true, configuration: OwnerConfiguration(username: "original"), credentialReference: UUID()).snapshot(for: source.id)
         let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load(); try registry.save([source])
-        let manager = VMManager(runtime: FakeRuntime(), profiles: [source], applicationSupport: f.support, registry: registry, portProbe: HomePort())
+        let manager = VMManager(runtime: FakeRuntime(), profiles: [source], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: registry, portProbe: HomePort())
         let id = try await manager.create(name: "Replacement", memoryMiB: 4096, cpus: 4, diskGiB: 256,
             clipboardEnabled: true, immersiveMode: false, sshEnabled: false, reuseHomeFrom: source.id)
         let replacement = try #require(await manager.snapshots().first(where: { $0.id == id })?.profile)
@@ -185,7 +185,7 @@ struct HomeDiskTests {
         var p = f.profile(); p.homeDisk = HomeDisk(sizeGiB: 16)
         let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load(); try registry.save([p])
         _ = try f.storage.prepare(p)
-        let manager = VMManager(runtime: FakeRuntime(), profiles: [p], applicationSupport: f.support, registry: registry)
+        let manager = VMManager(runtime: FakeRuntime(), profiles: [p], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: registry)
         try await manager.update(p.id, configuration: GuestConfigurationPatch(homeDiskGiB: 32))
         #expect(await manager.snapshots()[0].profile.homeDisk?.sizeGiB == 32)
         await #expect(throws: VMFailure.self) { try await manager.update(p.id, configuration: GuestConfigurationPatch(homeDiskGiB: 16)) }
