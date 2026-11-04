@@ -81,6 +81,11 @@ test-private-provisioning-native:
 test-receipt-bound-signing:
 	python3 -m unittest discover -s Tests/ScriptTests -p 'test_receipt_bound_signing.py' -v
 
+.PHONY: test-private-signing-cli
+# Disposable public inputs and injected fake workers only; never real signing.
+test-private-signing-cli:
+	python3 -m unittest discover -s Tests/ScriptTests -p test_private_signing_cli.py -v
+
 .PHONY: test-frozen-provisioning-helper
 # Only disposable package fixtures with installed Python/local Git; no SDK/signing.
 test-frozen-provisioning-helper:

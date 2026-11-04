@@ -306,3 +306,7 @@ EOF/fixed-code diagnostics. The full audited suite passes 256 cases with five
 signing skips. A new private exact-source review is unexecuted with all approvals
 ungranted; 3,987 earlier artifact entries/pins remain unchanged. Historical error
 cause and real compiler/signing/candidate/guest behavior remain unproven.
+
+[Private local signing](PrivateLocalSigning.md) documents the maintained developer
+`prepare`, `check` and interactive one-shot `run` commands, including private
+selection files, fresh per-plan consent, bounded execution and cleanup evidence.

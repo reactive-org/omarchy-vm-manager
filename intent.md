@@ -3319,3 +3319,21 @@ remains the visual target for milestone 5.
   inspection, build, signing, key access, Apple request, SSH/Ansible, install, UI or
   VM operation occurs. Real compiler/native/signing/candidate/guest behavior remains
   unproven. See the [fresh review](docs/DevVMMilestone6Runbook.md#frozen-helper-and-safe-failure-diagnostics--5-november-2026).
+
+## Maintained private signing operator — 5 November 2026
+
+- **USER AUTHORIZATION / DESIGN DECISION:** add a maintained developer CLI in this
+  worktree for prepare/check/run. Plan files are nonauthorizing data; execution
+  requires fresh exact-plan confirmation from a controlling terminal. No saved
+  grant, environment/yes flag, automatic unlock/import or retry is supported.
+- **PRIVATE COUPLING:** reuse the existing typed receipt-bound engine and its
+  disposable source/scope, runtime, command, native-worker and cleanup restrictions.
+  Bind this wrapper independently without changing the engine implementation-file
+  list or invalidating an already-running reviewed attempt. Existing reviews,
+  artifacts and pins are not rewritten or recaptured. A durable exclusive consumed
+  marker precedes backend construction; uncertainty retains original handles.
+- **VERIFIED — fake/local / TO PROVE — native:** use disposable public-input fixtures
+  and injected command/FFI doubles, including a full fake roundtrip. No existing
+  real selection, keychain, native API, signer or VM is operated for this task.
+  Real terminal/key/UI/timestamp and later candidate/guest behavior remain unproven
+  for this new entry point. See [operator usage](docs/PrivateLocalSigning.md).
