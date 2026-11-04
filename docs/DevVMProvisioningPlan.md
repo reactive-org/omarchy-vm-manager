@@ -3215,3 +3215,22 @@ then real ABI/API value shapes, wait/group semantics, scheduling/cleanup/crash a
 inspection results. No real inspection, signing, Apple requests, SSH/Ansible,
 installs, UI, image or VM operation occurs. See the
 [binding boundary](DevVMMilestone6Runbook.md#macos-bindings-and-bounded-launcher--fake-ffiprocesses-4-november-2026).
+
+## Fresh private inspection review — ddf5451, 4 November 2026
+
+**PREPARED / NOT EXECUTED:** a separate ignored 0700/0600 packet binds committed
+`ddf5451`, its 14-file implementation digest, existing source/scope/selection and
+runtime, public leaf/entitlement hashes and an uncreated private output path.
+Historical records and pins are unchanged. Typed review data is not authority:
+all approvals remain false and no authorization, caller, worker/factory or native
+API is constructed.
+
+Stored fake evidence, source admission, dependency HEADs and entitlement files
+match; external signing materials/keychain and whole dependency cleanliness are
+not rechecked. Prior material/lock observations remain historical. All 1,161 old
+entries stay in place; a credential-named retained artifact is left unopened with
+stored digest/metadata evidence, not a fresh content check. Exact values stay
+private. No test rerun, native inspection, signing, Apple request, SSH/Ansible,
+install, UI, VM-root observation or VM operation occurs. Separate exact-scope
+native approval and execution-time revalidation are next; product approval stays
+nil. See the [fresh review](DevVMMilestone6Runbook.md#fresh-private-inspection-review-for-ddf5451--4-november-2026).

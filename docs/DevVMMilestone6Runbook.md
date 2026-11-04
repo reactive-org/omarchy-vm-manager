@@ -931,6 +931,48 @@ notarization, key possession, daemon execution or guest behavior. No real
 inspection, keychain/credential access, signing, Apple request, SSH/Ansible,
 install, UI, image or VM operation occurs in this implementation work.
 
+## Fresh private inspection review for ddf5451 — 4 November 2026
+
+**PREPARED / NOT EXECUTED:** a new ignored private packet binds committed tooling
+`ddf5451`, all 14 implementation-file digests, existing typed source/scope/material
+selection, public-certificate and entitlement-source hashes, exact frozen runtime
+and a fresh private output path. The candidate source and original scope-source
+lineage remain independently unchanged. No historical request, gate, observation,
+approval or pin is rewritten or promoted.
+
+The packet contains the typed review data/request digest, implementation manifest,
+frozen-input references, prior evidence links, bounded action/cleanup plan and a
+plain-English review. Files are 0600 under an owned 0700 root. The proposed
+inspection output is absent. All inspection/signing/guest approvals are false;
+no typed authorization, caller, runner, factory, pipe capability or native API is
+constructed. It is data for separate human review, not an execution/approval loader.
+
+**VERIFIED — stored evidence/data integrity only:** committed source bytes and
+implementation digest match the retained 211-pass/five-skip fake-test evidence.
+Pure source admission preserves source/runtime/lineage bindings. Selected
+dependency HEADs and the two reviewed entitlement files match their stored pins;
+whole-worktree cleanliness is deferred to execution guards. Original signing
+materials/keychain are not reopened or stat-checked, and no current certificate,
+profile or locked-state claim is inferred from the prior observations. A fresh
+approved run must revalidate these inputs and locked status before proceeding.
+
+All 1,161 original artifact entries remain in place with changes prohibited during
+preparation. Noncredential artifact hashes and historical review checksums match;
+one credential-named historical artifact remains unopened, with its prior digest
+retained and metadata stable. This is not a fresh content validation of that file.
+Exact selectors, digests and evidence stay private. No tests or native inspection
+are rerun for this packet preparation; no signing, Apple request, SSH/Ansible,
+install, UI, VM root observation or VM operation occurs.
+
+**NEXT / TO PROVE:** review the exact packet, then separately approve only its
+bounded read-only native action. Trusted composition must create the exact typed
+`OfflineAuthorization` in memory; editing approval JSON cannot grant it. The
+300-second job/120-second worker and live 2 MiB stream limits, original scope,
+one-shot refusal and unresolved-cleanup holds remain required. Any changed
+binding stops, without recapture/replay. Native ABI/results/cleanup, profile signer
+trust, key possession, online revocation/notarization, daemon behavior and all real
+guest rows remain unproven or outside scope. Ordinary product approval stays nil.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

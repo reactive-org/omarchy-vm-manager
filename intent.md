@@ -3048,3 +3048,25 @@ remains the visual target for milestone 5.
   No signing, Apple request, SSH/Ansible, install, UI, image or VM operation occurs;
   shared/product source and ordinary approval stay unchanged. See the
   [binding contract](docs/DevVMMilestone6Runbook.md#macos-bindings-and-bounded-launcher--fake-ffiprocesses-4-november-2026).
+
+## Fresh ddf5451 inspection review — 4 November 2026
+
+- **DESIGN DECISION / PREPARED:** a fresh ignored 0700/0600 review binds committed
+  tooling, 14-file implementation, existing source/scope/selection/runtime, public
+  leaf/entitlement hashes and an uncreated output. Historical pins/records stay
+  unchanged. Typed data supplies no authority; all approvals are false and no
+  authorization/caller/runner/factory/capability/native API is constructed.
+- **VERIFIED — stored evidence only:** source bytes match the commit and retained
+  fake-test evidence; pure source admission, dependency HEADs and entitlement
+  hashes match. External material/keychain state and whole source cleanliness are
+  not refreshed. Original 1,161 entries stay in place; noncredential hashes and
+  prior review checksums match. A credential-named artifact remains unopened,
+  with stored digest/stable metadata rather than a fresh content claim.
+- **PRIVATE COUPLING:** exact selectors, hashes, original scope lineage and prior
+  lock/material observations remain in the private packet. VM-root identity is
+  not recaptured and old gates are not promoted. Product approval remains nil.
+- **TO PROVE:** separate exact-review native approval, fresh execution-time input /
+  locked-state checks and all native/signing/key/guest evidence. No tests, native
+  inspection, signing, Apple request, SSH/Ansible, install, UI or VM operation
+  occurs in preparation. See the
+  [private review](docs/DevVMMilestone6Runbook.md#fresh-private-inspection-review-for-ddf5451--4-november-2026).

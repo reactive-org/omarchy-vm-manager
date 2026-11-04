@@ -233,3 +233,10 @@ and non-reaping process-group ownership. Thirty-three fake FFI/process tests and
 211 allowed Python passes succeed, with five signing skips and no inspection
 library attempt. Defaults remain denied; fresh private review and separate native
 approval are next. Frozen artifacts/pins remain unchanged.
+
+[Fresh private review for ddf5451](DevVMMilestone6Runbook.md#fresh-private-inspection-review-for-ddf5451--4-november-2026)
+binds the committed implementation and frozen inputs in a new ignored packet.
+The output remains uncreated and every approval ungranted. Only stored evidence /
+source integrity is checked; signing materials and native APIs remain untouched.
+Historical artifact/pin preservation and its credential-content limitation are
+recorded privately. Separate approval precedes any bounded native inspection.
