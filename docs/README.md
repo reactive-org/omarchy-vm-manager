@@ -213,3 +213,10 @@ staging, independent review bindings and callback revalidation. It never reads
 keychain contents or grants signing authority. Nineteen new fake tests pass;
 the full allowed Python suite has 146 passes/five signing skips. Actual material
 selection/inspection remains pending, and frozen artifacts/pins stay unchanged.
+
+[Bounded native inspection preparation](DevVMMilestone6Runbook.md#bounded-native-inspection-preparation--source-review-4-november-2026)
+traces the daemon's read-only `check` branch and distinguishes the privileged
+client's XPC check. A new offline contract requires explicit no-network Security
+validation and live worker limits, with the daemon unexecuted. The current caller
+needs that adapter and fake tests before separate native approval. This review
+executes no native verifier or cryptographic operation; exact evidence stays private.

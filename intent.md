@@ -2971,3 +2971,27 @@ remains the visual target for milestone 5.
   keychain, signing, credentials, Apple requests, SSH/Ansible, installs, UI, image or
   VM operation occurs. See the
   [inspection gate](docs/DevVMMilestone6Runbook.md#named-material-inspection-and-private-staging--4-november-2026).
+
+## Bounded native inspection — source review, 4 November 2026
+
+- **VERIFIED — source only:** the verifier's signature-only option still invokes
+  the daemon with exact `check`. `locate`/payload hashes/static client requirement
+  return before privileged listener/session/subprocess operations. The client's
+  XPC check is different. No daemon or native validator is executed by this review.
+- **PRIVATE COUPLING:** generated relative paths, signed-payload hashes and client
+  CDHash bind the daemon to its bundle. Source origin/inventories do not prove
+  observed signed-binary behavior. Default validation flags do not explicitly opt
+  into network access, but source review is not a network-silence guarantee.
+- **DESIGN DECISION — proposed:** a distinct offline inspection adapter/request
+  must set `kSecCSNoNetworkAccess`, decode CMS content without signer trust
+  evaluation and keep the keychain locked and runtime code unexecuted. Bound all
+  inputs/output and the future implementation; require 300-second job/120-second
+  stage deadlines, live 2 MiB stream caps, bounded inventories and kill/reap on
+  failure. Current output checks occur after capture and are not a live disk cap.
+  Preserve frozen daemon/runtime bytes; do not silently reuse existing authority.
+- **TO PROVE:** offline adapter/fake API and runner checks, then separately approved
+  real native inspection. No native verifier, profile/signature/trust API, build, signing,
+  Apple request, SSH/Ansible, install, UI or guest operation occurs in this source
+  review. Exact source/SDK evidence and proposed contract remain private; product
+  approval and frozen pins stay unchanged. See the
+  [prepared contract](docs/DevVMMilestone6Runbook.md#bounded-native-inspection-preparation--source-review-4-november-2026).

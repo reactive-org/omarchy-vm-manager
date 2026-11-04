@@ -700,6 +700,81 @@ availability, actual app compilation/signatures/profile trust/loaded-child check
 original-Mac scope evidence and all real guest behavior remain TO PROVE/NOT_RUN.
 The historical frozen gate remains a preparation record, not an authorization.
 
+## Bounded native inspection preparation — source review, 4 November 2026
+
+**VERIFIED — pinned source only:** `kit_signature.py verify --signature-only`
+skips the notarization/stapler branch but still runs the bundled daemon with the
+exact argument `check` after signature checks pass. In `daemon.c`, `main` returns
+through `locate` and `check` before the root-only listener/session branch.
+`check` tests helper executability, reads/hashes the bundled server and supervisor,
+and statically validates the bundled client's build-time CDHash requirement. It
+does not call the client, register a service, start XPC listening, create a session,
+spawn the supervisor/server, change networking or access a VM root. The **client's**
+`check` is different: it contacts the privileged Mach service and is excluded.
+Build source compiles this daemon from one C translation unit and generated pins;
+no project constructor is present before `main`. This is source reasoning, not a
+fresh proof of the signed binary's behavior.
+
+**PRIVATE COUPLING:** build-time relative resources, two signed-payload SHA-256
+values and the signed client's CDHash bind this check to its bundle. The frozen
+origin/inventory evidence stays exact. Payload hashing itself has no internal size
+or time limit; outer inventory admission and a monitored worker must bound it.
+The verifier's nested commands have no individual timeout, and the current runner
+checks captured-output size after completion rather than enforcing a live disk
+limit. An `inspect` label does not constrain descendant effects.
+
+**DESIGN DECISION — proposed, not implemented:** use a distinct offline native
+inspection adapter and request domain for this no-Apple-request run. The daemon
+uses `SecStaticCodeCheckValidity` with default flags. Those flags do not explicitly
+enable the SDK's `kSecCSAllowNetworkAccess`, but the call does not explicitly set
+`kSecCSNoNetworkAccess` either. Do not promote source absence of socket calls or
+`--signature-only` into a system-wide network-silence guarantee. Local SDK headers
+document `kSecCSNoNetworkAccess` as preventing validation work requiring network,
+including online revocation/notarization. A child network sandbox alone does not
+establish what an out-of-process trust service may do.
+
+The prepared contract binds the existing source/scope/selection, exact input
+inventories, public certificate, reviewed sources/entitlements and a fresh private
+output. Before execution, implement/fake-test an adapter that:
+
+1. Readmits immutable inputs, checks named keychain status with interaction disabled
+   and leaves it locked; never queries identities or private keys.
+2. Stages the pinned profile/public certificate as 0600 files in a fresh 0700 root.
+   Requires a bounded DER `signedData` envelope with embedded `data` content before
+   native CMS decoding; rejects encrypted/unknown/nested-CMS/detached content so
+   the decoder cannot select a private key.
+   Uses content decoding without invoking signer trust evaluation;
+   validates the decoded profile policy, public-leaf membership and certificate
+   identity/dates. CMS signer trust/authenticity remains explicitly unestablished.
+3. Checks every admitted Mach-O and the enclosing bundle through static Security
+   APIs with explicit `kSecCSNoNetworkAccess`, strict/all-architecture checks and
+   appropriate nested-code checks. Preserves expected identifier/team, hardened
+   runtime, existing timestamp and entitlement requirements. No code is signed,
+   timestamp requested or runtime executable launched. The daemon's own `check`
+   remains NOT_RUN, with no claim of behavioral equivalence or loaded-child proof.
+4. Uses a monitored worker: 300-second whole-job deadline, 120-second maximum
+   stage, live 2 MiB cap per output stream, input inventories at most 4,096 files /
+   1 GiB and profile/certificate at most 1 MiB each. On timeout, overflow, mutation
+   or cancellation, kill/reap the owned process group, preserve fixed private
+   failure evidence and consume the one-shot request without retry.
+
+No `security cms` CLI, upstream verifier invocation, `codesign` CLI, privileged
+client, daemon/server/supervisor/QEMU, service registration, notarization, trust
+network-fetch opt-in, keychain unlock/import or signing is allowed in this proposed
+adapter. Static offline success does not prove current revocation, Gatekeeper,
+notarization, private-key availability or guest acceptance. The current material
+caller remains unchanged and is **not ready for execution under this stricter
+contract**; changing the frozen daemon or silently reusing its prior request is
+not a substitute. Its future implementation hash and separate approval are still
+required.
+
+**PREPARED / NOT RUN:** exact local source/SDK evidence and the bounded contract
+are retained privately, separate from historical selection/import/gate records.
+No native verifier, daemon, profile/signature/trust API, compiler or signing test
+was run for this source review. Frozen artifacts/pins and product approval remain
+unchanged. The next task is the offline adapter with fake APIs/processes, before
+separate approval for any real inspection.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

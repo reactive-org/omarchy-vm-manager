@@ -3127,3 +3127,30 @@ private-key availability, real compilation/signatures/profile trust/loaded-child
 original-Mac and guest evidence. No actual profile/certificate parser, SDK/CMS,
 keychain, signing, Apple request, SSH/Ansible, install, UI, image or VM operation
 occurs. See the [inspection gate](DevVMMilestone6Runbook.md#named-material-inspection-and-private-staging--4-november-2026).
+
+## Bounded native inspection — source preparation, 4 November 2026
+
+**VERIFIED — source only:** upstream `verify --signature-only` still runs the
+bundled daemon's exact `check` branch. That branch locates its own payloads, checks
+helper access, hashes the server/supervisor and validates the client's pinned
+CDHash before returning. Listener creation, privileged session setup, subprocess
+launch and network changes are in the other branch. The client's XPC `check`
+is a different operation. Native signature validation uses default flags; source
+absence of socket calls does not prove system-wide network silence.
+
+**DESIGN DECISION — proposed:** prepare a distinct offline inspection adapter with
+explicit `kSecCSNoNetworkAccess`, CMS content decoding without signer trust
+evaluation, locked keychain status only, and static runtime signature/metadata
+validation. Keep the daemon unexecuted and all frozen runtime bytes unchanged.
+Bind source/scope/selection/inventories, implementation and private output in a
+new request domain. Require a 300-second job deadline, 120-second stage cap, live
+2 MiB stream caps, bounded inputs and process-group kill/reap on refusal. Current
+runner output checks happen after capture, so they are not a live disk bound.
+
+**TO PROVE / NOT RUN:** implementation/fake API and runner checks, followed by
+separately approved native inspection. Existing caller/request must not be silently
+promoted to this stricter contract. No native verifier/daemon, profile/signature/trust API,
+build, signing, Apple request, SSH/Ansible, install or VM execution occurs in this
+review. Private source evidence/contract stay outside Git; source-only review is
+not signed-binary, revocation, notarization, key-possession or guest proof. See the
+[bounded inspection preparation](DevVMMilestone6Runbook.md#bounded-native-inspection-preparation--source-review-4-november-2026).
