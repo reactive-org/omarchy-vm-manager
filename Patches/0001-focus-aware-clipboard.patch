@@ -1,10 +1,12 @@
 diff --git a/Makefile b/Makefile
-index e768c5e..2ba9dae 100644
+index e768c5e..5b38ade 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -121,6 +121,9 @@ test-contracts:
+@@ -120,7 +120,11 @@ test-contracts:
+ 	@$(ROOT)/macos/Tests/runtime-relocation.test.sh
  
  test-guest:
++	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_managed_home.py"
  	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_package.py"
 +	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_managed_ssh.py"
 +	@PYTHONDONTWRITEBYTECODE=1 python3 "$(ROOT)/guest/package/tests/test_managed_setup.py"
@@ -13,7 +15,7 @@ index e768c5e..2ba9dae 100644
  # The package's contracts with the Omarchy the factory installs today.
  test-upstream:
 diff --git a/docs/architecture.md b/docs/architecture.md
-index 02d9082..f36319a 100644
+index 02d9082..3c964b1 100644
 --- a/docs/architecture.md
 +++ b/docs/architecture.md
 @@ -315,7 +315,7 @@ On the first launch of a factory, the launcher verifies the compressed disk's
@@ -25,7 +27,7 @@ index 02d9082..f36319a 100644
  costs no space. A disposable session clones the same file into its own
  temporary folder.
  
-@@ -418,3 +418,22 @@ strip beside the housing included, and the guest describes the housing to
+@@ -418,3 +418,26 @@ strip beside the housing included, and the guest describes the housing to
  Omarchy's bar through Omarchy's own `display-cutouts.json`, so the bar sits
  beside the camera and windows start below it. See
  [camera notch](camera-notch.md).
@@ -48,6 +50,10 @@ index 02d9082..f36319a 100644
 +The private manager can opt a new UUID root into saved owner setup. Its separate read-only `tryomarchy-managed-setup` share carries a bounded session manifest and temporary password seed. `managed-owner-setup` uses Omarchy's reviewed OEM functions without changing an Omarchy-owned file. It verifies the installed program and helper hashes before sourcing the program without its final `main`, as the upstream desktop CI already does. Answers travel over stdin as NUL-delimited data. Encrypted images and existing owners are refused; a failure reports a fixed code and continues with normal interactive setup.
 +
 +The manager holds reusable passwords in Keychain. Metadata never contains them. The host removes the staging seed after a matching completion report and on exit; the helper also removes it when the manager is gone. A root-owned completion identity lets a later boot acknowledge a setup that finished while its manager was unavailable. This status is separate from runtime readiness and authenticated SSH readiness. Manual guests get the normal Omarchy owner wizard.
++
++## Optional home disk
++
++Run configuration may select a manager-owned home disk by identity and size, with no arbitrary disk path. The helper validates private metadata and the rooted file; the launcher attaches it under the normal storage-root lock. The versioned guest package mounts it after owner setup and before login. Missing, mismatched and unrecognized data is preserved and refused. Host environment overrides cannot select a personal disk. Root replacement is manager orchestration; the runtime does not erase or reset a separate home disk.
 diff --git a/docs/vm-kit.md b/docs/vm-kit.md
 index fac6182..9ab3570 100644
 --- a/docs/vm-kit.md
@@ -75,10 +81,10 @@ index fac6182..9ab3570 100644
 +
 +The private manager kit accepts `launchIntent` (`background` by default, or `foreground`) in the existing configuration. Once QMP is ready, a foreground run additionally reports `display-ready` with the kernel-authenticated QMP peer PID and process birth time. Background runs do not inspect the display process. The embedding manager owns a bounded, single activation request for that exact process after its Cocoa display window appears. Errors and stopping cancel it; readiness, resume and host wake do not request activation again. No QEMU, guest, window placement or clipboard behavior is changed. Protocol 1 alone does not prove this extension; the manager requires its exact source/binary provenance and launch-intent capability version 1.
 diff --git a/guest/package/README.md b/guest/package/README.md
-index 2cc716c..0548647 100644
+index 2cc716c..7d3ece5 100644
 --- a/guest/package/README.md
 +++ b/guest/package/README.md
-@@ -182,3 +182,19 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
+@@ -182,3 +182,23 @@ hides the guest cursor (Cocoa draws the Mac's) and hides it again whenever a
  window closes, since Omarchy's screensaver shows it as it exits. It also keeps
  the mode in sync with the window through EDID, and applies the pinch and Apple
  keyboard input rules.
@@ -98,6 +104,90 @@ index 2cc716c..0548647 100644
 +Managed completion is recorded durably before upstream cleanup removes pending. A matching committed owner can retry interrupted cleanup; another identity is refused. Lean finalization executes the canonical hash-checked program, and SSH waits for a configured owner report from the current seeded VM/session.
 +
 +For a seeded boot the report timer remains active until shutdown. Before reporting configured, the adapter retains a root-private non-secret receipt in /run, bound to the kernel boot ID and a helper-derived report digest in the boot credential. Host completion still immediately removes the password seed, full manifest and launch marker. Later timer invocations revalidate the receipt, committed identity, owner and cleanup against the immutable boot digest; another session or damaged state cannot be acknowledged. A new boot needs fresh host-authorized context. No failed unit is masked or reset.
++
++## Optional persistent home disk
++
++An explicitly rooted manager can attach one private raw disk with serial `omarchy-home` and credential `tryomarchy.home` naming its UUID. After owner provisioning and before graphical/SSH login, `try-omarchy-home.service` verifies that disk, initializes only a manager-created blank header, and mounts its ext4 filesystem over `/home`. A missing or incompatible disk blocks login. Single-disk guests use the existing home unchanged. Reusing a disk requires matching UUID and owner uid/gid/name metadata; existing homes are never copied over. Capacity can grow at a stopped launch. An interrupted initialization is preserved for explicit recovery, not automatically reformatted. Real mount, crash and upgrade behavior requires guest acceptance tests.
+diff --git a/guest/package/build.sh b/guest/package/build.sh
+index d0c73de..56ee972 100755
+--- a/guest/package/build.sh
++++ b/guest/package/build.sh
+@@ -17,10 +17,12 @@ fail() {
+ package_dir=$(cd "$(dirname "$0")" && pwd)
+ repo_dir=$(cd "$package_dir/../.." && pwd)
+ output="$repo_dir/dist/guest/packages"
++native_rendering=0
+ 
+ while (($#)); do
+   case $1 in
+     --output) output=${2:?}; shift 2 ;;
++    --native-rendering) native_rendering=1; shift ;;
+     -h | --help) sed -n '2,8p' "$0"; exit 0 ;;
+     *) fail "unknown option: $1" ;;
+   esac
+@@ -53,6 +55,13 @@ trap 'rm -rf "$recipe"' EXIT
+ )
+ COPYFILE_DISABLE=1 tar -r "${tar_flags[@]}" -f "$recipe/recipe.tar" -C "$repo_dir" LICENSE
+ 
++if ((native_rendering)); then
++  mkdir "$recipe/tree"
++  tar -xf "$recipe/recipe.tar" -C "$recipe/tree"
++  python3 "$package_dir/native-rendering.py" "$recipe/tree"
++  COPYFILE_DISABLE=1 tar -c "${tar_flags[@]}" -C "$recipe/tree" -f "$recipe/recipe.tar" .
++fi
++
+ # makepkg refuses root: build as an unprivileged user from a copy of the recipe.
+ docker run --rm -i --platform linux/arm64 --entrypoint /bin/bash \
+   -v "$output:/output" "$builder_image" -c '
+diff --git a/guest/package/native-rendering.py b/guest/package/native-rendering.py
+new file mode 100644
+index 0000000..39510e0
+--- /dev/null
++++ b/guest/package/native-rendering.py
+@@ -0,0 +1,43 @@
++#!/usr/bin/env python3
++import hashlib
++from pathlib import Path
++import re
++import sys
++
++
++def prepare(recipe):
++    recipe = Path(recipe)
++    files = recipe / 'files'
++    policy = files / 'usr/share/try-omarchy/hyprland.lua'
++    if hashlib.sha256(policy.read_bytes()).hexdigest() != '1e775d3d25f9f201bb17b36a65d695b77500596142a0b1480bb8da863dea7f34':
++        raise ValueError('Unreviewed Hyprland rendering policy')
++    text = policy.read_text()
++    before = 'if host_option("omarchy.qemu_virgl=1") then\n'
++    if text.count(before) != 1:
++        raise ValueError('Rendering policy changed')
++    policy.write_text(text.replace(before, before + '  -- Preserve alpha-capable VirGL DMA-BUF formats on Hyprland 0.57.\n  hl.config({ quirks = { skip_non_kms_dmabuf_formats = false } })\n'))
++    pkgbuild = recipe / 'PKGBUILD'
++    text = pkgbuild.read_text()
++    if len(re.findall(r'^pkgrel=\d+$', text, re.MULTILINE)) != 1:
++        raise ValueError('Unsupported package release')
++    pkgbuild.write_text(re.sub(r'^(pkgrel=\d+)$', r'\1.1', text, flags=re.MULTILINE))
++    environment = files / 'usr/lib/environment.d/90-try-omarchy.conf'
++    text = environment.read_text()
++    if text.count('WLR_RENDERER_ALLOW_SOFTWARE=1\n') != 1:
++        raise ValueError('Software rendering policy changed')
++    environment.write_text(text.replace('WLR_RENDERER_ALLOW_SOFTWARE=1\n', ''))
++    for relative in (
++        'usr/lib/try-omarchy/bin/ghostty', 'usr/lib/try-omarchy/bin/kitty',
++        'usr/lib/systemd/user/app-com.mitchellh.ghostty.service.d/10-try-omarchy-software-gl.conf',
++        'usr/share/try-omarchy/ghostty/com.mitchellh.ghostty.desktop',
++        'usr/share/libalpm/hooks/try-omarchy-ghostty.hook',
++        'usr/share/libalpm/hooks/try-omarchy-ghostty-remove.hook',
++    ):
++        path = files / relative
++        if not path.is_file() or path.is_symlink():
++            raise ValueError('Integration layout changed')
++        path.unlink()
++
++
++if __name__ == '__main__':
++    prepare(sys.argv[1])
 diff --git a/guest/package/tests/fixtures/owner-contracts/LICENSE b/guest/package/tests/fixtures/owner-contracts/LICENSE
 new file mode 100644
 index 0000000..f12cfa7
@@ -405,6 +495,59 @@ index 0000000..b63c486
 +    OMARCHY_LOG_TO_STDOUT=1 \
 +    "$OMARCHY_PATH/bin/omarchy-provision-user" --force --first-install
 +}
+diff --git a/guest/package/tests/test_managed_home.py b/guest/package/tests/test_managed_home.py
+new file mode 100644
+index 0000000..0035828
+--- /dev/null
++++ b/guest/package/tests/test_managed_home.py
+@@ -0,0 +1,47 @@
++import importlib.machinery
++import importlib.util
++import json
++from pathlib import Path
++from types import SimpleNamespace
++import tempfile
++import unittest
++from unittest import mock
++import uuid
++
++SOURCE = Path(__file__).resolve().parents[1] / 'try-omarchy/files/usr/lib/try-omarchy/managed-home'
++loader = importlib.machinery.SourceFileLoader('managed_home', str(SOURCE))
++spec = importlib.util.spec_from_loader(loader.name, loader)
++module = importlib.util.module_from_spec(spec)
++loader.exec_module(module)
++
++class HomeDiskTests(unittest.TestCase):
++    def test_owner_and_disk_identity_must_match(self):
++        disk = str(uuid.uuid4())
++        owner = SimpleNamespace(pw_name='owner', pw_uid=1000, pw_gid=1000)
++        record = dict(schemaVersion=1, id=disk, owner='owner', uid=1000, gid=1000)
++        module.verify_record(record, disk, owner)
++        for key, value in [('id', str(uuid.uuid4())), ('uid', 1001), ('gid', 1001), ('owner', 'other'), ('schemaVersion', 2)]:
++            with self.assertRaises(ValueError): module.verify_record(dict(record, **{key:value}), disk, owner)
++
++    def test_single_disk_boot_is_noop_but_an_unconfigured_device_is_refused(self):
++        with tempfile.TemporaryDirectory() as scratch:
++            device = Path(scratch) / 'device'
++            with mock.patch.object(module, 'DEVICE', device), mock.patch.dict(module.os.environ, {'CREDENTIALS_DIRECTORY': scratch}):
++                module.main()
++                device.touch()
++                with self.assertRaises(ValueError): module.main()
++
++    def test_mount_and_login_order_and_no_automatic_reformat(self):
++        files = SOURCE.parents[1]
++        unit = (files/'systemd/system/try-omarchy-home.service').read_text()
++        self.assertIn('omarchy-provision-owner.service', unit)
++        self.assertIn('Before=display-manager.service', unit)
++        self.assertIn('ImportCredential=tryomarchy.home', unit)
++        source=SOURCE.read_text()
++        self.assertIn('OMARCHY_HOME_FORMATTING_V1', source)
++        self.assertIn('unrecognized-blank-disk', source)
++        self.assertLess(source.index('OMARCHY_HOME_FORMATTING_V1'), source.index("run(['/usr/bin/mkfs.ext4'"))
++        self.assertIn('if fresh:', source)
++        self.assertNotIn('mkfs.ext4\', \'-F', source)
++
++if __name__ == '__main__': unittest.main()
 diff --git a/guest/package/tests/test_managed_setup.py b/guest/package/tests/test_managed_setup.py
 new file mode 100644
 index 0000000..519d66d
@@ -1032,7 +1175,7 @@ index 0000000..d0b9005
 +
 +if __name__=='__main__':unittest.main()
 diff --git a/guest/package/try-omarchy/PKGBUILD b/guest/package/try-omarchy/PKGBUILD
-index 8426f5d..4c2bef6 100644
+index 8426f5d..e9b114c 100644
 --- a/guest/package/try-omarchy/PKGBUILD
 +++ b/guest/package/try-omarchy/PKGBUILD
 @@ -8,7 +8,7 @@
@@ -1040,20 +1183,48 @@ index 8426f5d..4c2bef6 100644
  pkgname=try-omarchy
  pkgver=0.1.0
 -pkgrel=36
-+pkgrel=43
++pkgrel=47
  pkgdesc='Mac host integration for Omarchy running in Try Omarchy'
  arch=('aarch64')
  url='https://github.com/omacom/try-omarchy'
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset b/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
-index 55119a0..fbf9fa5 100644
+index 55119a0..e5ed117 100644
 --- a/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
 +++ b/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
-@@ -8,3 +8,5 @@ enable try-omarchy-locale.service
+@@ -8,3 +8,6 @@ enable try-omarchy-locale.service
  enable try-omarchy-timezone.service
  enable try-omarchy-clock-recovery.timer
  enable try-omarchy-grow-root.service
 +enable try-omarchy-managed-ssh.timer
 +enable try-omarchy-managed-setup.timer
++enable try-omarchy-home.service
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/console-getty.service.d/60-try-omarchy-home.conf b/guest/package/try-omarchy/files/usr/lib/systemd/system/console-getty.service.d/60-try-omarchy-home.conf
+new file mode 100644
+index 0000000..f91eb6b
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/console-getty.service.d/60-try-omarchy-home.conf
+@@ -0,0 +1,3 @@
++[Unit]
++Requires=try-omarchy-home.service
++After=try-omarchy-home.service
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/display-manager.service.d/60-try-omarchy-home.conf b/guest/package/try-omarchy/files/usr/lib/systemd/system/display-manager.service.d/60-try-omarchy-home.conf
+new file mode 100644
+index 0000000..f91eb6b
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/display-manager.service.d/60-try-omarchy-home.conf
+@@ -0,0 +1,3 @@
++[Unit]
++Requires=try-omarchy-home.service
++After=try-omarchy-home.service
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/getty@.service.d/60-try-omarchy-home.conf b/guest/package/try-omarchy/files/usr/lib/systemd/system/getty@.service.d/60-try-omarchy-home.conf
+new file mode 100644
+index 0000000..f91eb6b
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/getty@.service.d/60-try-omarchy-home.conf
+@@ -0,0 +1,3 @@
++[Unit]
++Requires=try-omarchy-home.service
++After=try-omarchy-home.service
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-provision-owner.service.d/20-try-omarchy-managed-setup.conf b/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-provision-owner.service.d/20-try-omarchy-managed-setup.conf
 new file mode 100644
 index 0000000..7497bbb
@@ -1063,6 +1234,44 @@ index 0000000..7497bbb
 +[Service]
 +ExecStart=
 +ExecStart=/usr/lib/try-omarchy/managed-owner-setup
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/serial-getty@.service.d/60-try-omarchy-home.conf b/guest/package/try-omarchy/files/usr/lib/systemd/system/serial-getty@.service.d/60-try-omarchy-home.conf
+new file mode 100644
+index 0000000..f91eb6b
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/serial-getty@.service.d/60-try-omarchy-home.conf
+@@ -0,0 +1,3 @@
++[Unit]
++Requires=try-omarchy-home.service
++After=try-omarchy-home.service
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/sshd.service.d/60-try-omarchy-home.conf b/guest/package/try-omarchy/files/usr/lib/systemd/system/sshd.service.d/60-try-omarchy-home.conf
+new file mode 100644
+index 0000000..f91eb6b
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/sshd.service.d/60-try-omarchy-home.conf
+@@ -0,0 +1,3 @@
++[Unit]
++Requires=try-omarchy-home.service
++After=try-omarchy-home.service
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-home.service b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-home.service
+new file mode 100644
+index 0000000..939562d
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-home.service
+@@ -0,0 +1,14 @@
++[Unit]
++Description=Prepare and mount the opted-in persistent home disk
++After=local-fs.target try-omarchy-package-install.service omarchy-provision-owner.service
++Before=display-manager.service getty@tty1.service serial-getty@hvc0.service console-getty.service sshd.service try-omarchy-managed-ssh.service
++
++[Service]
++Type=oneshot
++RemainAfterExit=yes
++ImportCredential=tryomarchy.home
++ExecStart=/usr/lib/try-omarchy/managed-home
++TimeoutStartSec=30min
++
++[Install]
++WantedBy=multi-user.target
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service
 new file mode 100644
 index 0000000..79bdc69
@@ -1111,6 +1320,15 @@ index 0000000..7f75637
 +Type=oneshot
 +ExecStart=/usr/lib/try-omarchy/managed-ssh
 +TimeoutStartSec=30
+diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service.d/60-try-omarchy-home.conf b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service.d/60-try-omarchy-home.conf
+new file mode 100644
+index 0000000..f91eb6b
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service.d/60-try-omarchy-home.conf
+@@ -0,0 +1,3 @@
++[Unit]
++Requires=try-omarchy-home.service
++After=try-omarchy-home.service
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer b/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer
 new file mode 100644
 index 0000000..1b8f669
@@ -1176,6 +1394,134 @@ index 1ee48ee..6632cdd 100755
 +else
 +  rm -f "$setup"
 +fi
+diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-home b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-home
+new file mode 100755
+index 0000000..74efd7e
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-home
+@@ -0,0 +1,122 @@
++#!/usr/bin/python3 -I
++import json
++import os
++from pathlib import Path
++import pwd
++import stat
++import subprocess
++import sys
++import uuid
++
++DEVICE = Path('/dev/disk/by-id/virtio-omarchy-home')
++HOME = Path('/home')
++STAGING = Path('/run/try-omarchy/home-volume')
++MARKER = '.omarchy-home-disk.json'
++
++
++def run(arguments):
++    return subprocess.run(arguments, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++
++
++def identity(device):
++    result = subprocess.run(['/usr/bin/blkid', '-p', '-o', 'export', str(device)], capture_output=True, text=True)
++    if result.returncode not in (0, 2):
++        raise ValueError('filesystem-inspection')
++    return dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
++
++
++def needs_growth(device):
++    environment = dict(os.environ, LC_ALL='C')
++    output = subprocess.check_output(['/usr/bin/dumpe2fs', '-h', str(device)], text=True,
++                                     stderr=subprocess.DEVNULL, env=environment)
++    fields = dict(line.split(':', 1) for line in output.splitlines() if ':' in line)
++    count, size = int(fields['Block count']), int(fields['Block size'])
++    capacity = int(subprocess.check_output(['/usr/bin/blockdev', '--getsize64', str(device)], text=True))
++    filesystem_bytes = count * size
++    if count <= 0 or size not in (1024, 2048, 4096, 65536) or capacity < filesystem_bytes or capacity % size:
++        raise ValueError('filesystem-capacity')
++    return capacity > filesystem_bytes
++
++
++def verify_record(record, disk_id, owner):
++    if record != {'schemaVersion': 1, 'id': disk_id, 'owner': owner.pw_name, 'uid': owner.pw_uid, 'gid': owner.pw_gid}:
++        raise ValueError('owner-or-disk-mismatch')
++
++
++def main():
++    credential = Path(os.environ.get('CREDENTIALS_DIRECTORY', '/nonexistent')) / 'tryomarchy.home'
++    if not credential.exists():
++        if DEVICE.exists():
++            raise ValueError('missing-home-credential')
++        return
++    disk_id = str(uuid.UUID(credential.read_text().strip()))
++    if not DEVICE.exists() or not stat.S_ISBLK(DEVICE.stat().st_mode):
++        raise ValueError('missing-home-device')
++    if Path('/var/lib/omarchy/provisioning/pending').exists():
++        raise ValueError('owner-setup-incomplete')
++    owner = pwd.getpwuid(1000)
++    if owner.pw_uid != 1000 or owner.pw_gid != 1000 or owner.pw_dir != '/home/' + owner.pw_name:
++        raise ValueError('unsupported-owner')
++    found = identity(DEVICE)
++    fresh = not found.get('TYPE')
++    if fresh:
++        header = ('OMARCHY_HOME_BLANK_V1\n' + disk_id + '\n').encode()
++        with DEVICE.open('rb', buffering=0) as stream:
++            if stream.read(len(header)) != header:
++                raise ValueError('unrecognized-blank-disk')
++        with DEVICE.open('r+b', buffering=0) as stream:
++            stream.write(b'OMARCHY_HOME_FORMATTING_V1\n'.ljust(len(header), b'\0'))
++            os.fsync(stream.fileno())
++        run(['/usr/bin/mkfs.ext4', '-q', '-U', disk_id, '-L', 'omarchy-home', str(DEVICE)])
++        found = identity(DEVICE)
++    if found.get('TYPE') != 'ext4' or found.get('UUID') != disk_id:
++        raise ValueError('filesystem-identity')
++    # findmnt can report the covered Btrfs entry in a stacked /home mount.
++    # Kernel path lookup identifies the filesystem actually visible to users.
++    if HOME.stat().st_dev == DEVICE.stat().st_rdev:
++        verify_record(json.loads((HOME / MARKER).read_text()), disk_id, owner)
++        return
++    grow = needs_growth(DEVICE)
++    check = ['/usr/bin/e2fsck', '-p'] + (['-f'] if grow else []) + [str(DEVICE)]
++    if subprocess.run(check, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode not in (0, 1):
++        raise ValueError('filesystem-check')
++    if grow:
++        run(['/usr/bin/resize2fs', str(DEVICE)])
++    STAGING.mkdir(mode=0o700, parents=True, exist_ok=True)
++    if STAGING.is_symlink() or not stat.S_ISDIR(STAGING.lstat().st_mode):
++        raise ValueError('unsafe-staging')
++    run(['/usr/bin/mount', '-t', 'ext4', '-o', 'rw,nosuid,nodev', str(DEVICE), str(STAGING)])
++    mounted = True
++    try:
++        marker = STAGING / MARKER
++        if fresh:
++            run(['/usr/bin/cp', '-a', '--reflink=never', '/home/.', str(STAGING)])
++            record = {'schemaVersion': 1, 'id': disk_id, 'owner': owner.pw_name, 'uid': owner.pw_uid, 'gid': owner.pw_gid}
++            fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
++            with os.fdopen(fd, 'w') as stream:
++                json.dump(record, stream)
++                stream.flush()
++                os.fsync(stream.fileno())
++        info = marker.lstat()
++        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1 or info.st_mode & 0o077:
++            raise ValueError('unsafe-marker')
++        verify_record(json.loads(marker.read_text()), disk_id, owner)
++        os.sync()
++        # /run is shared on systemd guests: MS_MOVE from it is refused.
++        # Bind the validated filesystem over /home, then release staging.
++        run(['/usr/bin/mount', '--bind', str(STAGING), '/home'])
++        run(['/usr/bin/umount', str(STAGING)])
++        mounted = False
++    finally:
++        if mounted:
++            run(['/usr/bin/umount', str(STAGING)])
++
++
++if __name__ == '__main__':
++    try:
++        main()
++    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
++        if isinstance(error, subprocess.CalledProcessError):
++            print('Managed home command failed: ' + Path(error.cmd[0]).name + ' status=' + str(error.returncode), file=sys.stderr)
++        print('The managed home disk could not be mounted safely. Login remains blocked; existing data was preserved.', file=sys.stderr)
++        sys.exit(1)
 diff --git a/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup b/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup
 new file mode 100755
 index 0000000..12dbd8b
@@ -2554,12 +2900,14 @@ index 0000000..e89d41b
 +  ]
 +}
 diff --git a/guest/package/try-omarchy/try-omarchy.install b/guest/package/try-omarchy/try-omarchy.install
-index 3b5b72d..dd9d95b 100644
+index 3b5b72d..cde143f 100644
 --- a/guest/package/try-omarchy/try-omarchy.install
 +++ b/guest/package/try-omarchy/try-omarchy.install
-@@ -2,7 +2,7 @@
+@@ -1,8 +1,8 @@
+ # Units are enabled through presets on first install; later upgrades keep the
  # administrator's choices. systemd and udev reload through their own pacman hooks.
- _units='try-omarchy-host-config.service try-omarchy-grow-root.service try-omarchy-ssh-access.service try-omarchy-guest-status.service
+-_units='try-omarchy-host-config.service try-omarchy-grow-root.service try-omarchy-ssh-access.service try-omarchy-guest-status.service
++_units='try-omarchy-home.service try-omarchy-host-config.service try-omarchy-grow-root.service try-omarchy-ssh-access.service try-omarchy-guest-status.service
  try-omarchy-package-install.service omarchy-native-battery-bridge.service omarchy-native-mac-share.service
 -try-omarchy-locale.service try-omarchy-timezone.service try-omarchy-clock-recovery.timer'
 +try-omarchy-locale.service try-omarchy-timezone.service try-omarchy-clock-recovery.timer try-omarchy-managed-ssh.timer try-omarchy-managed-setup.timer'
@@ -2574,7 +2922,19 @@ index 3b5b72d..dd9d95b 100644
    _reload_logind
  }
  
-@@ -66,5 +67,14 @@ post_upgrade() {
+@@ -43,6 +44,11 @@ pre_remove() {
+ }
+ 
+ post_upgrade() {
++  if [ "$(vercmp "$2" 0.1.0-47)" -lt 0 ]; then
++    systemctl preset try-omarchy-home.service >/dev/null 2>&1 || true
++    systemctl daemon-reload >/dev/null 2>&1 || true
++    systemctl start --no-block try-omarchy-home.service >/dev/null 2>&1 || true
++  fi
+   # Earlier packages started these in every user manager, including SSH and
+   # owner provisioning, before logind granted the desktop's device access.
+   # Rebuild enabled global links for their new graphical-session target;
+@@ -66,5 +72,14 @@ post_upgrade() {
    if [ "$(vercmp "$2" 0.1.0-28)" -lt 0 ]; then
      systemctl try-restart try-omarchy-host-config.service >/dev/null 2>&1 || true
    fi
@@ -2946,6 +3306,52 @@ index 0000000..d47aa37
 +                throw HelperError.io("The cached Omarchy image is unsafe; it was preserved")
 +            }
 +        }
++    }
++}
+diff --git a/macos/Sources/OmarchyVMHelper/ManagedHomeDiskLaunch.swift b/macos/Sources/OmarchyVMHelper/ManagedHomeDiskLaunch.swift
+new file mode 100644
+index 0000000..197b097
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/ManagedHomeDiskLaunch.swift
+@@ -0,0 +1,40 @@
++import Darwin
++import Foundation
++import TryOmarchyKitClient
++
++struct ManagedHomeDiskLaunch {
++    static func environment(root: URL, configuration: VMHomeDiskConfiguration?, base: [String: String]) throws -> [String: String] {
++        var result = base
++        result.removeValue(forKey: "OMARCHY_MANAGED_HOME_DISK")
++        result.removeValue(forKey: "OMARCHY_MANAGED_HOME_ID")
++        let plan = root.appendingPathComponent(".omarchy-home.json")
++        guard let configuration else {
++            guard !FileManager.default.fileExists(atPath: plan.path) else { throw HelperError.io("Home disk configuration is required") }
++            return result
++        }
++        struct Plan: Decodable { let id: UUID; let sizeGiB: Int }
++        let recorded = try JSONDecoder().decode(Plan.self, from: ManagedSSHLaunch.read(plan))
++        guard recorded.id == configuration.id, recorded.sizeGiB <= configuration.sizeGiB,
++              (16...8192).contains(configuration.sizeGiB), UUID(uuidString: root.lastPathComponent) != nil else { throw HelperError.io("Home disk identity mismatch") }
++        try ManagedSSHLaunch.directory(root)
++        let directory = root.appendingPathComponent("home")
++        try ManagedSSHLaunch.directory(directory)
++        struct State: Decodable { let schemaVersion: Int; let id: UUID; let device: Int64; let inode: UInt64; let sizeGiB: Int }
++        let state = try JSONDecoder().decode(State.self, from: ManagedSSHLaunch.read(directory.appendingPathComponent("state.json")))
++        let image = directory.appendingPathComponent("disk.img")
++        guard let resolved = realpath(image.path, nil) else { throw HelperError.io("Missing home storage") }
++        defer { free(resolved) }
++        guard image.path == String(cString: resolved) else { throw HelperError.io("Linked home storage refused") }
++        let fd = open(image.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
++        guard fd >= 0 else { throw HelperError.io("Home disk is missing") }
++        defer { close(fd) }
++        var info = stat()
++        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_mode & 0o7777 == 0o600,
++              info.st_uid == getuid(), info.st_nlink == 1, state.schemaVersion == 1, state.id == configuration.id,
++              state.device == Int64(info.st_dev), state.inode == info.st_ino, state.sizeGiB == configuration.sizeGiB,
++              info.st_size == Int64(configuration.sizeGiB) * 1_073_741_824 else { throw HelperError.io("Unsafe home disk") }
++        result["OMARCHY_MANAGED_HOME_DISK"] = image.path
++        result["OMARCHY_MANAGED_HOME_ID"] = configuration.id.uuidString.lowercased()
++        return result
 +    }
 +}
 diff --git a/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift b/macos/Sources/OmarchyVMHelper/ManagedSSHLaunch.swift
@@ -3940,7 +4346,7 @@ index b6cb53b..608031f 100644
          }
      }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..5c9c359 100644
+index c959f32..fae6999 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -3984,7 +4390,7 @@ index c959f32..5c9c359 100644
          presentAsProduct()
          let networkLayout = NetworkServiceLayout(bundle: bundle)
          var asksForBridged = false
-@@ -70,15 +77,25 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -70,15 +77,31 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
  
      private func resolveSettings(bridgedNetwork: () -> BridgedNetworkAvailability)
          -> Result<VMRunLaunchSettings, VMRunError> {
@@ -4004,7 +4410,13 @@ index c959f32..5c9c359 100644
 +        case .success(let settings):
 +            do {
 +                let sshEnvironment = try ManagedSSHLaunch.environment(root: settings.stateRoot, mappings: settings.portForwardMappings, base: settings.environment)
-+                let environment = try ManagedSetupLaunch.environment(root: settings.stateRoot, base: sshEnvironment, contract: ownerContract)
++                let setupEnvironment = try ManagedSetupLaunch.environment(root: settings.stateRoot, base: sshEnvironment, contract: ownerContract)
++                var environment = try ManagedHomeDiskLaunch.environment(root: settings.stateRoot, configuration: configuration.homeDisk, base: setupEnvironment)
++                if ownerContract == VMOwnerSetupContract.lean {
++                    let package = bundle.bundleURL.appendingPathComponent("Contents/Resources/guest-packages/try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst")
++                    guard try VMFactorySelection.digest(package) == VMGuestIntegrationContract.runtimeLeanPackageSHA256 else { throw HelperError.io("Unreviewed native-rendering integration") }
++                    environment["OMARCHY_SHELL_INSTALL_PACKAGE"] = package.path
++                }
 +                return .success(VMRunLaunchSettings(environment: environment, stateRoot: settings.stateRoot,
 +                    portForwardMappings: settings.portForwardMappings, bridgedNetwork: settings.bridgedNetwork, notice: settings.notice))
 +            } catch { return .failure(VMRunError(code: .storageUnavailable, message: "Managed guest provisioning is invalid or changed. Its files were preserved.")) }
@@ -4012,7 +4424,7 @@ index c959f32..5c9c359 100644
      }
  
      private func launch(networkLayout: NetworkServiceLayout, bridgedNetwork availability: BridgedNetworkAvailability?) {
-@@ -87,6 +104,9 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -87,6 +110,9 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
          case .success(let resolved): settings = resolved
          case .failure(let error): return fail(error)
          }
@@ -4022,7 +4434,7 @@ index c959f32..5c9c359 100644
          stateRoot = settings.stateRoot
          bridgedNetwork = settings.bridgedNetwork
          if let notice = settings.notice { emit(.notice(notice)) }
-@@ -96,7 +116,8 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -96,7 +122,8 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
              storageUnavailableReason: nil,
              mayCreateFactoryRoot: true
          )
@@ -4032,7 +4444,7 @@ index c959f32..5c9c359 100644
              if networkLayout.registration == .thisApp,
                 context.environment[VMNetworkPolicy.modeKey] == VMNetworkMode.bridged.rawValue {
                  try NetworkService.prepare()
-@@ -134,6 +155,18 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -134,6 +161,18 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
          }
      }
  
@@ -4051,7 +4463,7 @@ index c959f32..5c9c359 100644
      /// A signal: shut down on the first, stop at once on the next.
      func handleTerminationSignal() {
          if shutdownRequested && session.isRunning {
-@@ -151,9 +184,18 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -151,9 +190,18 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
              catalog: CoreAudioHostAudioDeviceProvider().catalog()
          ).environment
          environment = LanguageLaunchConfiguration.make(baseEnvironment: environment).environment
@@ -4070,7 +4482,7 @@ index c959f32..5c9c359 100644
          return environment
      }
  
-@@ -244,9 +286,20 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -244,9 +292,20 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
              if let phase = VMRunPhase(rawValue: progress.phase.rawValue) {
                  emit(.progress(phase, percent: progress.percent))
              }
@@ -4091,7 +4503,7 @@ index c959f32..5c9c359 100644
          case .launchFailed(let error):
              fail(VMRunFailure.error(for: error, productName: configuration.productName))
          case .hostWakeFailed(let error):
-@@ -275,6 +328,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
+@@ -275,6 +334,10 @@ final class VMRunModeController: NSObject, NSApplicationDelegate {
      private func finish(status: Int32) {
          guard !finished else { return }
          finished = true
@@ -4102,7 +4514,7 @@ index c959f32..5c9c359 100644
          emit(.exited(status: min(255, max(0, status))))
          Darwin.exit(status == 0 ? 0 : 1)
      }
-@@ -337,12 +394,14 @@ enum VMRunInput {
+@@ -337,12 +400,14 @@ enum VMRunInput {
          return try VMRunConfiguration.decode(line: Data(line.utf8))
      }
  
@@ -4118,7 +4530,7 @@ index c959f32..5c9c359 100644
                  case .failure:
                      fputs("omarchy-vm-helper: ignoring an unknown run mode command\n", stderr)
                  }
-@@ -407,3 +466,30 @@ enum VMRunFailure {
+@@ -407,3 +472,30 @@ enum VMRunFailure {
          return VMRunError(code: code, message: message)
      }
  }
@@ -4395,7 +4807,7 @@ index f199020..961c03a 100644
          exit(0)
 diff --git a/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 new file mode 100644
-index 0000000..b22e5fb
+index 0000000..c63d08c
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 @@ -0,0 +1,178 @@
@@ -4405,7 +4817,7 @@ index 0000000..b22e5fb
 +
 +public struct VMFactorySelection: Codable, Equatable, Sendable {
 +    public static let capabilityVersion = 1
-+    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-43-aarch64.pkg.tar.zst"
++    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-47-aarch64.pkg.tar.zst"
 +    public let bundlePath: String
 +    public let manifestSHA256: String
 +    public init(bundlePath: String, manifestSHA256: String) {
@@ -4562,7 +4974,7 @@ index 0000000..b22e5fb
 +        guard ownerSetupContractSHA256 != VMOwnerSetupContract.lean || imageIntegrationVersion == VMOwnerSetupContract.leanIntegrationVersion else {
 +            throw VMFactoryCompatibilityError("Lean guest integration package version differs from the reviewed contract.")
 +        }
-+        let required: Set<String> = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy", "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", VMFactorySelection.packagePath]
++        let required: Set<String> = Set(["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy", "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh"] + (format == 1 ? [VMFactorySelection.packagePath] : []))
 +        guard [1, 2].contains(format), architecture == "aarch64", boot == "uefi-limine", customFactoryVersion == 1,
 +              managedSSHVersion == 1, managedSetupVersion == 1, ownerSetupReportVersion == VMOwnerSetupContract.reportVersion,
 +              !name.isEmpty, name.utf8.count <= 128, !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
@@ -4574,7 +4986,7 @@ index 0000000..b22e5fb
 +              runtimeFiles.values.allSatisfy(VMFactorySelection.isDigest),
 +              VMOwnerSetupContract.isSupported(ownerSetupContractSHA256),
 +              ownerSetupContractSHA256 != VMOwnerSetupContract.lean || (ownerSetupEvidence.map({ Self.safeName($0) && provisioning[$0] != nil }) == true && imageBuildEvidence.map({ Self.safeName($0) && provisioning[$0] != nil }) == true && imageIntegrationVersion == VMOwnerSetupContract.leanIntegrationVersion && imageIntegrationSourceCommit?.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil),
-+              runtimeFiles[VMFactorySelection.packagePath] == integrationPackageSHA256 else { throw VMRunProtocolError.invalidConfiguration }
++              (format == 2 ? runtimeFiles.contains(where: { $0.key.hasPrefix("Contents/Resources/guest-packages/try-omarchy-") && $0.key.hasSuffix("-aarch64.pkg.tar.zst") && $0.value == integrationPackageSHA256 }) : runtimeFiles[VMFactorySelection.packagePath] == integrationPackageSHA256) else { throw VMRunProtocolError.invalidConfiguration }
 +    }
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMGuestAuthenticationDiagnostic.swift b/macos/Sources/TryOmarchyKitClient/VMGuestAuthenticationDiagnostic.swift
@@ -4631,10 +5043,10 @@ index 0000000..da7d09d
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
 new file mode 100644
-index 0000000..018da8a
+index 0000000..23d44bf
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,70 @@
 +import Foundation
 +
 +public struct VMFactoryCompatibilityError: LocalizedError, Sendable {
@@ -4658,6 +5070,7 @@ index 0000000..018da8a
 +    public let leanPackageSHA256: String
 +    public let ownerSetupContractSHA256: String
 +
++    public static let runtimeLeanPackageSHA256 = "8263e4db8c888da11ed490f7c09817767d723c2d78f1f63c8e8ca09661f9c740"
 +    public static var current: Self { try! JSONDecoder().decode(Self.self, from: Data(reviewedJSON.utf8)) }
 +
 +    public func verify(_ evidence: VMGuestIntegrationEvidence, manifest: VMFactoryManifest, root: URL, runtimeBundle: URL) throws {
@@ -4697,7 +5110,7 @@ index 0000000..018da8a
 +    "ownerSetupContracts": 1,
 +    "ownerSetupReport": 1
 +  },
-+  "runtimePackageSHA256": "ddef5befc16d2fe7a7ef7bc1e56c3ce5c8e89df83d3b244525ebe6d32fc75c5b",
++  "runtimePackageSHA256": "a2912a97967d315439b4ec387bb6125912dc9db0568aee2408cdb524159fd59b",
 +  "leanPackageVersion": "0.1.0-43.1",
 +  "leanPackageSHA256": "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211",
 +  "ownerSetupContractSHA256": "1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310"
@@ -4750,7 +5163,7 @@ index 81aef76..5eb9717 100644
      /// Omarchy to shut down: unsaved work in Omarchy is lost. The helper reads
      /// a first signal as `shutDown()` and a second as stop now, so this sends
 diff --git a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
-index 4e1af8d..1232fdb 100644
+index 4e1af8d..1b983ca 100644
 --- a/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
 +++ b/macos/Sources/TryOmarchyKitClient/VMRunProtocol.swift
 @@ -8,6 +8,17 @@ public enum VMRunProtocol {
@@ -4771,7 +5184,7 @@ index 4e1af8d..1232fdb 100644
  public enum VMRunBridge: String, CaseIterable, Codable, Sendable {
      case clipboard
      case authentication
-@@ -24,10 +35,17 @@ public enum VMRunNetwork: String, Codable, Sendable {
+@@ -24,10 +35,23 @@ public enum VMRunNetwork: String, Codable, Sendable {
      case bridged
  }
  
@@ -4784,20 +5197,27 @@ index 4e1af8d..1232fdb 100644
  /// What the run mode needs to start the VM. The storage folder here is the
  /// VM. The settings stored for that VM win: memory, CPUs and network here
  /// apply only where the launcher stored nothing (docs/vm-kit.md).
++public struct VMHomeDiskConfiguration: Equatable, Sendable {
++    public let id: UUID
++    public let sizeGiB: Int
++    public init(id: UUID, sizeGiB: Int) { self.id = id; self.sizeGiB = sizeGiB }
++}
++
  public struct VMRunConfiguration: Equatable, Sendable {
 +    public var authenticationScope: VMRunAuthenticationScope? = nil
      /// Names the app in messages, the Touch ID prompt, and the Omarchy
      /// window's Dock entry and menus.
      public var productName: String
-@@ -37,6 +55,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -37,6 +61,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
      /// The VM's storage folder, whatever folder Try Omarchy chose. Nil is the
      /// folder chosen in Try Omarchy, else its default folder.
      public var storageRoot: String?
 +    public var factory: VMFactorySelection? = nil
++    public var homeDisk: VMHomeDiskConfiguration? = nil
      public var bridges: [VMRunBridge]
      /// Used when no resources are stored. Nil leaves the size to the
      /// launcher's automatic choice.
-@@ -45,6 +64,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -45,6 +71,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
      /// Used when no network is stored. A bridged one that cannot start fails
      /// with `bridgedNetworkUnavailable`.
      public var network: VMRunNetwork
@@ -4805,7 +5225,7 @@ index 4e1af8d..1232fdb 100644
  
      public init(
          productName: String,
-@@ -53,7 +73,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -53,7 +80,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
          bridges: [VMRunBridge] = VMRunBridge.allCases,
          memoryMiB: Int? = nil,
          cpus: Int? = nil,
@@ -4815,7 +5235,7 @@ index 4e1af8d..1232fdb 100644
      ) {
          self.productName = productName
          self.iconPath = iconPath
-@@ -62,6 +83,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -62,6 +90,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
          self.memoryMiB = memoryMiB
          self.cpus = cpus
          self.network = network
@@ -4823,26 +5243,27 @@ index 4e1af8d..1232fdb 100644
      }
  
      public func encodedLine() throws -> Data {
-@@ -72,6 +94,9 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -72,6 +101,10 @@ public struct VMRunConfiguration: Equatable, Sendable {
              "bridges": bridges.map(\.rawValue),
              "network": network.rawValue,
          ]
 +        if let scope = authenticationScope { object["authenticationScope"] = ["vmID": scope.vmID.uuidString, "runID": scope.runID.uuidString] }
 +        object["launchIntent"] = launchIntent.rawValue
++        if let homeDisk { object["homeDisk"] = ["id": homeDisk.id.uuidString, "sizeGiB": homeDisk.sizeGiB] }
 +        if let factory { object["factory"] = ["bundlePath": factory.bundlePath, "manifestSHA256": factory.manifestSHA256] }
          if let iconPath { object["iconPath"] = iconPath }
          if let storageRoot { object["storageRoot"] = storageRoot }
          if let memoryMiB { object["memoryMiB"] = memoryMiB }
-@@ -81,7 +106,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -81,7 +114,7 @@ public struct VMRunConfiguration: Equatable, Sendable {
  
      public static func decode(line: Data) throws -> Self {
          let object = try VMRunLine.decode(line)
 -        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network"]
-+        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network", "factory", "launchIntent", "authenticationScope"]
++        let allowed: Set = ["version", "productName", "iconPath", "storageRoot", "bridges", "memoryMiB", "cpus", "network", "factory", "launchIntent", "homeDisk", "authenticationScope"]
          guard Set(object.keys).isSubset(of: allowed),
                VMRunLine.integer(object["version"]) == VMRunProtocol.version,
                let productName = object["productName"] as? String,
-@@ -97,6 +122,10 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -97,6 +130,10 @@ public struct VMRunConfiguration: Equatable, Sendable {
              bridges.append(bridge)
          }
          var configuration = Self(productName: productName, bridges: bridges, network: network)
@@ -4853,7 +5274,7 @@ index 4e1af8d..1232fdb 100644
          if let value = object["iconPath"] {
              guard let path = value as? String else { throw VMRunProtocolError.invalidConfiguration }
              configuration.iconPath = path
-@@ -113,11 +142,25 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -113,11 +150,34 @@ public struct VMRunConfiguration: Equatable, Sendable {
              guard let cpus = VMRunLine.integer(value) else { throw VMRunProtocolError.invalidConfiguration }
              configuration.cpus = cpus
          }
@@ -4866,6 +5287,12 @@ index 4e1af8d..1232fdb 100644
 +                  let vm = UUID(uuidString: fields["vmID"]!), let run = UUID(uuidString: fields["runID"]!) else { throw VMRunProtocolError.invalidConfiguration }
 +            configuration.authenticationScope = VMRunAuthenticationScope(vmID: vm, runID: run)
 +        }
++        if let value = object["homeDisk"] {
++            guard let fields = value as? [String: Any], Set(fields.keys) == ["id", "sizeGiB"],
++                  let text = fields["id"] as? String, let id = UUID(uuidString: text),
++                  let size = VMRunLine.integer(fields["sizeGiB"]) else { throw VMRunProtocolError.invalidConfiguration }
++            configuration.homeDisk = VMHomeDiskConfiguration(id: id, sizeGiB: size)
++        }
          try configuration.validate()
          return configuration
      }
@@ -4876,10 +5303,13 @@ index 4e1af8d..1232fdb 100644
 +            guard bridges.contains(.authentication), let storageRoot,
 +                  URL(fileURLWithPath: storageRoot).lastPathComponent == scope.vmID.uuidString else { throw VMRunProtocolError.invalidConfiguration }
 +        }
++        if let homeDisk {
++            guard storageRoot != nil, (16...8192).contains(homeDisk.sizeGiB) else { throw VMRunProtocolError.invalidConfiguration }
++        }
          guard (1...64).contains(productName.count), productName.utf8.count <= 255,
                productName == productName.trimmingCharacters(in: .whitespaces),
                productName.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
-@@ -144,6 +187,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
+@@ -144,6 +204,8 @@ public struct VMRunConfiguration: Equatable, Sendable {
  public enum VMRunCommand: String, Sendable {
      /// Ask Omarchy to shut down, then stop the VM if it has not within a minute.
      case shutdown
@@ -4888,7 +5318,7 @@ index 4e1af8d..1232fdb 100644
  
      public func encodedLine() throws -> Data {
          try VMRunLine.encode(["version": VMRunProtocol.version, "command": rawValue])
-@@ -213,6 +258,7 @@ public struct VMRunError: Error, Equatable, Sendable, LocalizedError {
+@@ -213,6 +275,7 @@ public struct VMRunError: Error, Equatable, Sendable, LocalizedError {
  /// What the run mode did differently from what was asked, while Omarchy
  /// starts anyway. Codes do not change between versions; messages may.
  public enum VMRunNoticeCode: String, CaseIterable, Sendable {
@@ -4896,7 +5326,7 @@ index 4e1af8d..1232fdb 100644
      /// Bridged networking was chosen but cannot start, so Omarchy starts with
      /// shared networking. An embedding app that registers the kit's
      /// networking daemon can offer to set it up.
-@@ -229,11 +275,28 @@ public struct VMRunNotice: Equatable, Sendable {
+@@ -229,11 +292,28 @@ public struct VMRunNotice: Equatable, Sendable {
      }
  }
  
@@ -4925,7 +5355,7 @@ index 4e1af8d..1232fdb 100644
      case stopping
      case error(VMRunError)
      /// The last event. Status 0 is a clean shutdown.
-@@ -250,6 +313,20 @@ public enum VMRunEvent: Equatable, Sendable {
+@@ -250,6 +330,20 @@ public enum VMRunEvent: Equatable, Sendable {
              object["event"] = "notice"
              object["code"] = notice.code.rawValue
              object["message"] = String(notice.message.prefix(4_096))
@@ -4946,7 +5376,7 @@ index 4e1af8d..1232fdb 100644
          case .ready:
              object["event"] = "ready"
          case .stopping:
-@@ -295,6 +372,28 @@ public enum VMRunEvent: Equatable, Sendable {
+@@ -295,6 +389,28 @@ public enum VMRunEvent: Equatable, Sendable {
              guard let code = VMRunNoticeCode(rawValue: codeName) else { throw VMRunProtocolError.unknownEvent }
              try require(["code", "message"])
              return .notice(VMRunNotice(code: code, message: message))
@@ -5508,6 +5938,59 @@ index 0000000..53100e2
 +        else { try FileManager.default.createSymbolicLink(at: image, withDestinationURL: target) }
 +        #expect(throws: (any Error).self) { try ManagedFactoryCache.validateImageFiles(in: container, identity: identity) }
 +        #expect(try Data(contentsOf: target) == Data("preserved".utf8))
++    }
++}
+diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedHomeDiskTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedHomeDiskTests.swift
+new file mode 100644
+index 0000000..901db7c
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/ManagedHomeDiskTests.swift
+@@ -0,0 +1,47 @@
++import Darwin
++import Foundation
++import Testing
++import TryOmarchyKitClient
++@testable import OmarchyVMHelper
++
++@Suite("Managed separate home disks — no VM")
++struct ManagedHomeDiskTests {
++    @Test("protocol preserves optional disk identity, refuses unrooted and unsupported capacities")
++    func wire() throws {
++        var config = VMRunConfiguration(productName: "Fixture", storageRoot: "/private/tmp/" + UUID().uuidString)
++        config.homeDisk = VMHomeDiskConfiguration(id: UUID(), sizeGiB: 64)
++        #expect(try VMRunConfiguration.decode(line: config.encodedLine()) == config)
++        config.homeDisk = VMHomeDiskConfiguration(id: UUID(), sizeGiB: 1)
++        #expect(throws: (any Error).self) { try config.validate() }
++        config.homeDisk = VMHomeDiskConfiguration(id: UUID(), sizeGiB: 64); config.storageRoot = nil
++        #expect(throws: (any Error).self) { try config.validate() }
++    }
++    @Test("launch ignores external home paths and requires exact private rooted storage")
++    func launch() throws {
++        let root = URL(fileURLWithPath: "/private/tmp/" + UUID().uuidString)
++        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
++        defer { try? FileManager.default.removeItem(at: root) }
++        let base = ["OMARCHY_MANAGED_HOME_DISK": "/unsafe", "OMARCHY_MANAGED_HOME_ID": UUID().uuidString]
++        #expect(try ManagedHomeDiskLaunch.environment(root: root, configuration: nil, base: base).isEmpty)
++        let home = VMHomeDiskConfiguration(id: UUID(), sizeGiB: 16)
++        let plan = root.appendingPathComponent(".omarchy-home.json")
++        try JSONSerialization.data(withJSONObject: ["id": home.id.uuidString, "sizeGiB": home.sizeGiB]).write(to: plan)
++        chmod(plan.path, 0o600)
++        #expect(throws: (any Error).self) { try ManagedHomeDiskLaunch.environment(root: root, configuration: nil, base: [:]) }
++        let directory = root.appendingPathComponent("home")
++        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
++        let image = directory.appendingPathComponent("disk.img")
++        let fd = open(image.path, O_RDWR | O_CREAT | O_EXCL, 0o600)
++        #expect(fd >= 0); defer { close(fd) }
++        #expect(ftruncate(fd, 16 * 1_073_741_824) == 0)
++        var info = stat(); #expect(fstat(fd, &info) == 0)
++        let state = directory.appendingPathComponent("state.json")
++        try JSONSerialization.data(withJSONObject: ["schemaVersion": 1, "id": home.id.uuidString, "device": Int64(info.st_dev), "inode": info.st_ino, "sizeGiB": 16]).write(to: state)
++        chmod(state.path, 0o600)
++        let environment = try ManagedHomeDiskLaunch.environment(root: root, configuration: home, base: base)
++        #expect(environment["OMARCHY_MANAGED_HOME_DISK"] == image.path)
++        #expect(environment["OMARCHY_MANAGED_HOME_ID"] == home.id.uuidString.lowercased())
++        #expect(chmod(image.path, 0o644) == 0)
++        #expect(throws: (any Error).self) { try ManagedHomeDiskLaunch.environment(root: root, configuration: home, base: [:]) }
 +    }
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedSSHLaunchTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedSSHLaunchTests.swift
@@ -6131,7 +6614,7 @@ index ccb3ffa..f67b972 100644
          #expect(VMResetPhase.finishing.title == "Finishing reset")
          #expect(VMProgress(phase: VMLaunchPhase.preparing, percent: 42).caption == "42%")
 diff --git a/macos/Tests/run-mode.test.sh b/macos/Tests/run-mode.test.sh
-index fb2be66..610aea0 100755
+index fb2be66..eece4a6 100755
 --- a/macos/Tests/run-mode.test.sh
 +++ b/macos/Tests/run-mode.test.sh
 @@ -102,7 +102,7 @@ def record(entry):
@@ -6208,7 +6691,7 @@ index fb2be66..610aea0 100755
 +(custom / "factory.json").write_text(json.dumps(factory))
 +(custom / "omarchy.img.zst").write_bytes(image)
 +(custom / "provisioning.json").write_text('{"fixture":"no VM"}')
-+package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-43-aarch64.pkg.tar.zst"
++package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-47-aarch64.pkg.tar.zst"
 +required = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy",
 +            "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", package_path]
 +for name in required:
@@ -6360,10 +6843,26 @@ index b496be7..d93a979 100755
          builder = BUILDER.read_text(encoding="utf-8")
          expected = re.search(r"^identity_patch_sha256=([a-f0-9]{64})$", builder, re.M)
 diff --git a/macos/run-qemu-gpu.sh b/macos/run-qemu-gpu.sh
-index cf3bb8f..e81809f 100755
+index cf3bb8f..8700958 100755
 --- a/macos/run-qemu-gpu.sh
 +++ b/macos/run-qemu-gpu.sh
-@@ -290,6 +290,19 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
+@@ -185,11 +185,14 @@ open_storage() {
+   disk="$vm_dir/disk.img"
+   vars="$vm_dir/efi-vars.fd"
+   metadata="$vm_dir/vm.json"
++  if [[ -e $state_root/.omarchy-home.json || -L $state_root/.omarchy-home.json ]]; then
++    [[ $storage_mode == persistent && $reset_only == 0 && -n ${OMARCHY_MANAGED_HOME_ID:-} ]] || fail "separate home storage requires its configured persistent launch; reset is refused"
++  fi
+   # Another app's newer core may have written a layout this one does not know.
+   # It refuses that VM rather than migrating it.
+   if [[ -f $metadata && ! -L $metadata ]]; then
+     layout=$(/usr/bin/plutil -extract format raw -o - "$metadata" 2>/dev/null) || layout=1
+-    [[ $layout == 1 ]] || fail "this VM uses a storage layout this version does not know; update the app"
++    [[ $layout == 1 || ($layout == 2 && -n ${OMARCHY_MANAGED_HOME_ID:-}) ]] || fail "this VM uses a storage layout this version does not know; update the app"
+   fi
+ }
+ 
+@@ -290,6 +293,19 @@ elif [[ $QEMU_NETWORK_MODE == bridged && ${QEMU_NETWORK_SSH:-0} == 1 ]]; then
    host_options+=" tryomarchy.ssh_access=1 tryomarchy.ssh_from=any"
  fi
  [[ $QEMU_NETWORK_MODE == nat ]] || port_forwarding_summary='inactive in bridged mode'
@@ -6383,7 +6882,29 @@ index cf3bb8f..e81809f 100755
  
  keyboard=$("$native_bridge" --host-keyboard-geometry) || fail "cannot detect the Mac keyboard geometry"
  case $keyboard in ansi | iso | jis) host_options+=" tryomarchy.keyboard=$keyboard" ;; *) fail "invalid keyboard geometry" ;; esac
-@@ -450,8 +463,13 @@ shared_factory=${OMARCHY_QEMU_GPU_FACTORY_CACHE:-}
+@@ -400,6 +416,7 @@ hvf_trace_log=${OMARCHY_QEMU_GPU_HVF_TRACE_LOG:-}
+ # names another archive; an empty value turns the offer off.
+ bundled_package=""
+ for candidate in "$resources_dir"/guest-packages/try-omarchy-*.pkg.tar.zst; do
++  [[ ${candidate##*/} != try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst ]] || continue
+   [[ -f $candidate ]] && bundled_package=$candidate
+ done
+ package_to_install=${OMARCHY_SHELL_INSTALL_PACKAGE-$bundled_package}
+@@ -435,6 +452,13 @@ case ${OMARCHY_QEMU_GPU_IMMERSIVE:-1} in
+ esac
+ 
+ open_storage
++home_disk=${OMARCHY_MANAGED_HOME_DISK:-}
++home_id=${OMARCHY_MANAGED_HOME_ID:-}
++if [[ -n $home_disk ]]; then
++  [[ $storage_mode == persistent && $home_disk == "$state_root/home/disk.img" && -f $home_disk && ! -L $home_disk ]] || fail "invalid persistent home disk"
++  [[ $home_id =~ ^[a-f0-9-]{36}$ ]] || fail "invalid home disk identity"
++fi
++if [[ $storage_mode == reset && -n $home_disk ]]; then fail "home disks require explicit system replacement, not reset"; fi
+ if [[ $storage_mode == reset ]]; then
+   reset_vm
+   storage_mode=persistent
+@@ -450,8 +474,13 @@ shared_factory=${OMARCHY_QEMU_GPU_FACTORY_CACHE:-}
  [[ -z $shared_factory || ($shared_factory == /* && $shared_factory != *$'\n'*) ]] ||
    fail "OMARCHY_QEMU_GPU_FACTORY_CACHE must be an absolute path"
  prepare_factory_disk() {
@@ -6399,7 +6920,7 @@ index cf3bb8f..e81809f 100755
      local shared="$shared_factory/$factory_identity.img"
      if [[ -f $shared && ! -L $shared ]] && cp -c "$shared" "$factory_disk.partial" 2>/dev/null; then
        mv -f "$factory_disk.partial" "$factory_disk"
-@@ -482,8 +500,12 @@ prepare_factory_disk() {
+@@ -482,8 +511,12 @@ prepare_factory_disk() {
      fail "could not decompress the factory disk"
    fi
    [[ $(stat -f %z "$factory_disk.partial") == "$disk_bytes" ]] || fail "the factory disk has the wrong size"
@@ -6413,7 +6934,7 @@ index cf3bb8f..e81809f 100755
    # zstd leaves much of the filesystem's free space allocated on APFS where
    # data and zeros alternate; return those blocks (about half the disk).
    "$native_bridge" --sparsify "$factory_disk.partial" >/dev/null || true
-@@ -595,7 +617,11 @@ make_product_app() { # app
+@@ -595,7 +628,11 @@ make_product_app() { # app
      /usr/bin/plutil -insert CFBundleExecutable -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleName -string "$product_name" "$plist" &&
      /usr/bin/plutil -insert CFBundleDisplayName -string "$product_name" "$plist" &&
@@ -6426,7 +6947,20 @@ index cf3bb8f..e81809f 100755
  }
  qemu_exec=$qemu_bin
  case $product_name in
-@@ -758,6 +784,20 @@ if bridge_enabled settings; then
+@@ -625,8 +662,10 @@ else
+     new_disk "$disk.partial"
+     new_vars "$vars"
+     mv -f "$disk.partial" "$disk"
+-    printf '{"format":1,"kind":"upstream-shell-vm","factory":"%s","created":"%s"}\n' \
+-      "$factory_identity" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$metadata"
++    format=1
++    [[ -z ${OMARCHY_MANAGED_HOME_ID:-} ]] || format=2
++    printf '{"format":%s,"kind":"upstream-shell-vm","factory":"%s","created":"%s"}\n' \
++      "$format" "$factory_identity" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$metadata"
+   fi
+   [[ -f $vars ]] || new_vars "$vars"
+   working_disk=$disk
+@@ -758,6 +797,20 @@ if bridge_enabled settings; then
    )
  fi
  
@@ -6447,6 +6981,28 @@ index cf3bb8f..e81809f 100755
  if [[ -n $package_to_install ]]; then
    qemu_args+=(
      -smbios "type=11,value=$(credential tryomarchy.package "${package_to_install##*/}")"
+@@ -765,6 +818,21 @@ if [[ -n $package_to_install ]]; then
+     -device 'virtio-9p-pci,fsdev=omarchy-packages,mount_tag=tryomarchy-packages,romfile='
+   )
+ fi
++if [[ -n $home_disk ]]; then
++  qemu_args+=(
++    -drive "if=none,id=omarchy-home,file=${home_disk//,/,,},format=raw,media=disk,cache=writeback"
++    -device 'virtio-blk-pci,drive=omarchy-home,serial=omarchy-home'
++    -smbios "type=11,value=$(credential tryomarchy.home "$home_id")"
++  )
++  home_unit="$resources_dir/managed-home.service"
++  home_gate="$resources_dir/managed-home-login.conf"
++  [[ -f $home_unit && ! -L $home_unit && -f $home_gate && ! -L $home_gate ]] || fail "home boot-gate resources are missing"
++  home_unit_content=$(printf '[Unit]\nConditionPathExists=!/etc/initrd-release\n'; cat "$home_unit")
++  qemu_args+=( -smbios "type=11,value=$(credential systemd.extra-unit.try-omarchy-home.service "$home_unit_content")" )
++  for login_unit in display-manager.service getty@.service serial-getty@.service console-getty.service sshd.service try-omarchy-managed-ssh.service; do
++    qemu_args+=( -smbios "type=11,value=$(credential "systemd.unit-dropin.${login_unit}~60-omarchy-home" "$(cat "$home_gate")")" )
++  done
++fi
+ if [[ -n $previous_disk ]]; then
+   qemu_args+=(
+     -drive "if=none,id=omarchy-previous,file=${previous_disk//,/,,},format=raw,media=disk,readonly=on"
 diff --git a/manual/README.md b/manual/README.md
 index 56c4e26..299f796 100644
 --- a/manual/README.md
@@ -6492,3 +7048,23 @@ index 69f7b07..8e7ab60 100644
 +## Omarchy VM Manager downloads
 +
 +When the separate Omarchy VM Manager app creates guests, they reuse a factory download in `~/Downloads/Omarchy VM Manager/Factory Images/`. The current image stays cached; obsolete image downloads are removed after at least seven days without use. You can remove that cache to reclaim space while no guest is being prepared. Existing guests keep their own disks and do not need the download to start.
+diff --git a/tests/kit/check.sh b/tests/kit/check.sh
+index 6deb115..e99dbc3 100755
+--- a/tests/kit/check.sh
++++ b/tests/kit/check.sh
+@@ -91,8 +91,13 @@ done
+ shopt -s nullglob
+ packages=("$resources"/guest-packages/*)
+ shopt -u nullglob
+-((${#packages[@]} == 1)) && [[ ${packages[0]##*/} =~ ^try-omarchy-[0-9][A-Za-z0-9._+-]*-(aarch64|any)\.pkg\.tar\.zst$ ]] ||
+-  fail "the kit must carry exactly one try-omarchy package"
++((${#packages[@]} == 1 || ${#packages[@]} == 2)) || fail "the kit must carry one package or the reviewed standard/native pair"
++for package in "${packages[@]}"; do
++  [[ ${package##*/} =~ ^try-omarchy-[0-9][A-Za-z0-9._+-]*-(aarch64|any)\.pkg\.tar\.zst$ ]] || fail "invalid package name"
++done
++if ((${#packages[@]} == 2)); then
++  [[ -f $resources/guest-packages/try-omarchy-0.1.0-47-aarch64.pkg.tar.zst && -f $resources/guest-packages/try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst ]] || fail "unrecognized package pair"
++fi
+ 
+ # A kit downloads its image: the manifest names the factory's image, and the
+ # image itself is not in the kit.

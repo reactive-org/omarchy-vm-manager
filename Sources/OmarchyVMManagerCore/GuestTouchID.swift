@@ -13,7 +13,7 @@ public struct GuestTouchIDRecord: Codable, Sendable {
 }
 
 public enum GuestTouchIDPolicy {
-    public static let reviewedRuntimePackageSHA256 = "ddef5befc16d2fe7a7ef7bc1e56c3ce5c8e89df83d3b244525ebe6d32fc75c5b"
+    public static let reviewedRuntimePackageSHA256 = "a2912a97967d315439b4ec387bb6125912dc9db0568aee2408cdb524159fd59b"
     public static let reviewedLeanPackageSHA256 = "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211"
     public static func validate(_ profile: VMProfile, lockData: Data) throws {
         guard profile.guestTouchIDEnabled else { return }

@@ -1,5 +1,7 @@
 # Guest command line
 
+New profiles default to separate system/home disks. Use `--system-disk`, `--home-disk`, `--separate-home off`, and creation-only `--reuse-home-from UUID`. Existing `--disk`/`diskGiB` refer to the system disk. Omitted capacities and layout inherit saved disk defaults. See [disk sizing, reuse, JSON and limits](HomeDisks.md#cli). Existing guests retain their layouts.
+
 Build with `make app verify-app`. Run `./bin/omarchy-vm` from this repository, or run the bundled `dist/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm`. Add this repository's `bin` directory to `PATH` to use `omarchy-vm` directly. No global symlink or privileged service is installed.
 
 ```sh

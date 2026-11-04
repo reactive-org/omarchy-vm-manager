@@ -25,7 +25,7 @@ struct ManagerView: View {
         .frame(minWidth: 920, minHeight: 650)
     }
 
-    private var managerContent: some View {
+    private var navigationContent: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 List(selection: $destination) {
@@ -97,9 +97,28 @@ struct ManagerView: View {
         }
         .sheet(isPresented: $importingFactory) { FactoryImportView(model: model) }
         .sheet(item: $editor) { selection in
-            VMEditor(model: model, profile: selection.profile) { id in focusGuest(id); editor = nil }
+            VMEditor(model: model, profile: selection.profile, reuseSource: selection.reuseSource) { id in focusGuest(id); editor = nil }
         }
         .sheet(isPresented: $model.shuttingDown) { ProgressView("Shutting down VMs…").padding(40).interactiveDismissDisabled() }
+    }
+
+    private var backupConfirmationContent: some View {
+        navigationContent
+        .alert("Back up the guest home?", isPresented: Binding(get: { model.homeBackupReview != nil }, set: { if !$0 { model.homeBackupReview = nil } })) {
+            Button("Back Up Home") {
+                if let snapshot = model.homeBackupReview {
+                    model.homeBackupReview = nil
+                    Task { await model.beginHomeBackup(snapshot.id) }
+                }
+            }
+            Button("Cancel", role: .cancel) { model.homeBackupReview = nil }
+        } message: {
+            Text("Save the guest owner’s home, including hidden files and credentials, as an unencrypted home.tgz in a new backup folder inside \(model.homeBackupReview?.profile.sharedFolder?.hostPath ?? "the host share"). Close guest apps first: this is a live file backup, not a VM snapshot. Other mounted filesystems are excluded and symbolic links are stored as links. Unreadable or changing files make the backup fail. Existing backups are preserved.")
+        }
+    }
+
+    private var storageConfirmationContent: some View {
+        backupConfirmationContent
         .alert("Power off this VM?", isPresented: Binding(get: { model.forceStopID != nil }, set: { if !$0 { model.forceStopID = nil } })) {
             Button("Force Stop", role: .destructive) { if let id = model.forceStopID { model.forceStopID = nil; Task { await model.forceStop(id) } } }
             Button("Cancel", role: .cancel) { model.forceStopID = nil }
@@ -114,6 +133,10 @@ struct ManagerView: View {
                 Text(review.identity == nil ? "Remove “\(review.name)”? No storage folder is present at its registered location. Any files already in Trash remain there." : "The entire storage folder for “\(review.name)” will move to the Mac Trash. You can recover its files from there.")
             }
         }
+    }
+
+    private var managerContent: some View {
+        storageConfirmationContent
         .alert(model.experimentalPowerReview?.title ?? "Experimental power action", isPresented: Binding(get: { model.experimentalPowerReview != nil }, set: { if !$0 { model.experimentalPowerReview = nil } })) {
             Button(model.experimentalPowerReview?.button ?? "Continue", role: .destructive) {
                 if let review = model.experimentalPowerReview { model.experimentalPowerReview = nil; Task { await model.experimentalPower(review) } }
@@ -195,6 +218,9 @@ struct ManagerView: View {
             HStack {
                 if !snapshot.profile.isRetainedPOC {
                     Button("Rename or Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
+                    if snapshot.profile.homeDisk != nil {
+                        Button("Replace System…") { editor = EditorSelection(profile: nil, reuseSource: snapshot.profile) }.disabled(!editable(snapshot))
+                    }
                 }
                 Spacer()
                 Button("Delete VM…", role: .destructive) { Task { await model.reviewDeletion(snapshot) } }.disabled(!deletable(snapshot))
@@ -206,10 +232,13 @@ struct ManagerView: View {
         VStack(alignment: .leading, spacing: 22) {
             GuestHomeHero(snapshot: snapshot)
             GuestHibernationPanel(snapshot: snapshot, review: { action in model.experimentalPowerReview = .init(id: snapshot.id, action: action) }, recheck: { Task { await model.recheckExperimentalRecovery(snapshot.id) } })
+            GuestHomeBackupPanel(snapshot: snapshot,
+                                 review: { model.homeBackupReview = snapshot },
+                                 cancel: { Task { await model.cancelHomeBackup(snapshot.id) } })
             OmarchyAttribution()
             Text("Quick Settings").font(.title2.bold())
             GroupedPanel {
-                SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory · " + (snapshot.profile.diskGiB.map { "\($0) GiB disk" } ?? "factory disk capacity"), icon: "cpu", color: .purple) {
+                SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory · " + snapshot.profile.diskSummary, icon: "cpu", color: .purple) {
                     Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
                 Divider().padding(.horizontal, 20)
@@ -228,7 +257,7 @@ struct ManagerView: View {
     private func resources(_ snapshot: VMSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             GroupedPanel {
-                SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory · " + (snapshot.profile.diskGiB.map { "\($0) GiB disk" } ?? "factory disk capacity"), icon: "cpu", color: .purple) {
+                SettingsRow("Resources", subtitle: "\(snapshot.profile.cpus) processor cores · \(snapshot.profile.memoryMiB / 1024) GiB memory · " + snapshot.profile.diskSummary, icon: "cpu", color: .purple) {
                     Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
                 Divider().padding(.horizontal, 20)
@@ -392,7 +421,7 @@ private struct SettingsRow<Action: View>: View {
         }.padding(20)
     }
 }
-private struct EditorSelection: Identifiable { let id = UUID(); let profile: VMProfile? }
+private struct EditorSelection: Identifiable { let id = UUID(); let profile: VMProfile?; var reuseSource: VMProfile? = nil }
 private struct VMEditor: View {
     @ObservedObject var model: AppModel
     let profile: VMProfile?
@@ -403,6 +432,9 @@ private struct VMEditor: View {
     @State private var cpus: Int
     @State private var disk: Int
     @State private var guestTouchID: Bool
+    @State private var separateHome: Bool
+    @State private var homeDisk: Int
+    @State private var reuseHomeFrom: UUID?
     @State private var clipboard: Bool
     @State private var immersive: Bool
     @State private var share: Bool
@@ -414,18 +446,21 @@ private struct VMEditor: View {
     @State private var factory = "official"
     @State private var importingFactory = false
     @State private var useOwnerDefaults: Bool
-    init(model: AppModel, profile: VMProfile?, saved: @escaping (UUID) -> Void) {
+    init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = saved
-        _name = State(initialValue: profile?.name ?? "")
+        _name = State(initialValue: profile?.name ?? reuseSource.map { $0.name + " Replacement" } ?? "")
         _memory = State(initialValue: (profile?.memoryMiB ?? 4096) / 1024)
         _cpus = State(initialValue: profile?.cpus ?? 4)
-        _disk = State(initialValue: profile?.diskGiB ?? 64)
+        _disk = State(initialValue: profile?.diskGiB ?? model.diskDefaults.systemDiskGiB)
+        _separateHome = State(initialValue: profile.map { $0.homeDisk != nil } ?? (reuseSource != nil || model.diskDefaults.separateHome))
+        _homeDisk = State(initialValue: profile?.homeDisk?.sizeGiB ?? reuseSource?.homeDisk?.sizeGiB ?? model.diskDefaults.homeDiskGiB)
+        _reuseHomeFrom = State(initialValue: reuseSource?.id)
         _guestTouchID = State(initialValue: profile?.guestTouchIDEnabled ?? false)
         _clipboard = State(initialValue: profile?.clipboardEnabled ?? true)
         _immersive = State(initialValue: profile?.immersiveMode ?? false)
         _share = State(initialValue: profile?.sharedFolder?.enabled ?? false)
         _sharePath = State(initialValue: profile?.sharedFolder?.hostPath ?? SharedFolderMapping.defaultPath)
-        _useOwnerDefaults = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true)
+        _useOwnerDefaults = State(initialValue: reuseSource.map { $0.ownerSetup != nil } ?? (profile == nil && model.ownerDefaults?.enabled == true))
         _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true ? model.ownerDefaults?.sshPublicKey : nil)
         _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
     }
@@ -449,7 +484,29 @@ private struct VMEditor: View {
                 } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
                 Stepper("Memory: \(memory) GiB", value: $memory, in: 4...maximumMemory)
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
-                Stepper("Disk capacity: \(disk) GiB", value: $disk, in: max(64, profile?.diskGiB ?? 64)...8192, step: 16)
+                Stepper("System disk: \(disk) GiB", value: $disk, in: max(64, profile?.diskGiB ?? 64)...8192, step: 16)
+                Toggle("Separate home disk", isOn: $separateHome).disabled(profile != nil)
+                    .onChange(of: separateHome) { _, value in if !value { reuseHomeFrom = nil } }
+                if separateHome {
+                    Stepper("Home disk: \(homeDisk) GiB", value: $homeDisk, in: max(16, profile?.homeDisk?.sizeGiB ?? 16)...8192, step: 16).disabled(reuseHomeFrom != nil)
+                    if profile == nil {
+                        Picker("Home data", selection: $reuseHomeFrom) {
+                            Text("New empty home disk").tag(UUID?.none)
+                            ForEach(model.snapshots.filter { $0.sessionID == nil && $0.profile.homeDisk != nil }) { source in
+                                Text("Reuse from \(source.profile.name)").tag(Optional(source.id))
+                            }
+                        }.onChange(of: reuseHomeFrom) { _, value in
+                            if let source = model.snapshots.first(where: { $0.id == value }) {
+                                homeDisk = source.profile.homeDisk!.sizeGiB; useOwnerDefaults = source.profile.ownerSetup != nil
+                            } else {
+                                useOwnerDefaults = model.ownerDefaults?.enabled == true
+                            }
+                        }
+                        if reuseHomeFrom != nil {
+                            Text("Creates a replacement VM. On first launch, APFS cloning copies the stopped source’s home without changing it. The source must remain stopped until that copy finishes. Its original owner setup is retained.").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 Toggle("Allow Touch ID inside this VM", isOn: $guestTouchID)
                 Text("Enables the host bridge at next start. Pair sudo explicitly inside the guest; pairing status is checked there. Uses the Linux password if Touch ID is unavailable.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Clipboard integration", isOn: $clipboard)
@@ -462,12 +519,12 @@ private struct VMEditor: View {
                 }
                 if !sshEnabled { Text("Managed SSH is required to verify a shared mount.").font(.caption).foregroundStyle(.secondary) }
                 if profile == nil {
-                    Toggle("Use saved owner setup defaults", isOn: $useOwnerDefaults).disabled(model.ownerDefaults?.enabled != true)
+                    Toggle("Use saved owner setup defaults", isOn: $useOwnerDefaults).disabled(reuseHomeFrom != nil || model.ownerDefaults?.enabled != true)
                         .onChange(of: useOwnerDefaults) { _, value in
                             if value { selectedPublicKey = model.ownerDefaults?.sshPublicKey }
                             else if selectedPublicKey == model.ownerDefaults?.sshPublicKey { selectedPublicKey = nil }
                         }
-                    if useOwnerDefaults, let config = model.ownerDefaults?.configuration {
+                    if useOwnerDefaults, let config = reuseHomeFrom.flatMap({ id in model.snapshots.first(where: { $0.id == id })?.profile.ownerSetup?.configuration }) ?? model.ownerDefaults?.configuration {
                         Text("Automatic setup as \(config.username) · \(config.keyboardID). A unique hostname is assigned.").font(.caption).foregroundStyle(.secondary)
                     } else { Text("Normal Omarchy setup will run on first boot. Configure reusable settings in Guest Defaults.").font(.caption).foregroundStyle(.secondary) }
                 } else if let setup = profile?.ownerSetup {
@@ -497,7 +554,7 @@ private struct VMEditor: View {
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     saving = true
                     Task {
-                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, guestTouchID: guestTouchID, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath) { saved(id) }
+                        if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, guestTouchID: guestTouchID, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, separateHome: separateHome, homeDiskGiB: homeDisk, reuseHomeFrom: reuseHomeFrom) { saved(id) }
                         saving = false
                     }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)

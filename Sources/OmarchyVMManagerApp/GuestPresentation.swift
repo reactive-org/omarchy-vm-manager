@@ -70,7 +70,7 @@ struct GuestLibraryRow<Controls: View>: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(.title3.bold())
                         .lineLimit(1).help(snapshot.profile.name)
-                    let disk = snapshot.profile.diskGiB.map { " · \($0) GiB disk" } ?? ""
+                    let disk = " · " + snapshot.profile.diskSummary
                     let summary = "\(snapshot.state.label) · \(snapshot.profile.cpus) cores · \(snapshot.profile.memoryMiB / 1024) GiB memory" + disk
                     Text(summary).font(.callout).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).help(summary)
                     GuestProgressSlot(state: snapshot.state)
@@ -191,6 +191,7 @@ struct GuestHibernationPanel: View {
     let review: (ExperimentalPowerReview.Action) -> Void
     var recheck: () -> Void = {}
     private var detail: String {
+        if snapshot.profile.homeDisk != nil { return "Experimental hibernation is unavailable for separate-home guests until both disks can be protected and restored together." }
         if snapshot.experimentalPowerBusy && snapshot.suspension == nil { return "Rechecking guest prerequisites and preparing the experimental attempt…" }
         if snapshot.suspensionMetadataUnsafe { return "Saved-session metadata needs manual recovery. Ordinary launch, configuration and deletion are blocked." }
         if snapshot.suspension?.restoreAttempted == true && snapshot.sessionID == nil { return "An earlier restore was unresolved. Another boot is blocked because it could reuse stale memory after filesystem changes. Manual recovery is required." }
@@ -211,7 +212,7 @@ struct GuestHibernationPanel: View {
                 }.frame(width: 34)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Suspend to Disk · Experimental").font(.headline)
-                    Text(snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(.callout).lineLimit(1)
+                    Text(snapshot.profile.homeDisk != nil ? "Separate home disk" : snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(.callout).lineLimit(1)
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3).help(detail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Group {

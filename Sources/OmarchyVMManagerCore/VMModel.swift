@@ -8,6 +8,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public var cpus: Int
     public var diskGiB: Int?
     public var guestTouchIDEnabled: Bool = false
+    public var homeDisk: HomeDisk? = nil
     public var clipboardEnabled: Bool
     public let createdAt: Date
     public var immersiveMode: Bool?
@@ -18,6 +19,10 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public var sharedFolder: SharedFolderMapping? = nil
 
     public var isRetainedPOC: Bool { POCProfiles.ids.contains(id) }
+    public var diskSummary: String {
+        let system = diskGiB.map { "\($0) GiB" } ?? "Factory capacity"
+        return homeDisk.map { system + " system · \($0.sizeGiB) GiB home" } ?? system + " disk (includes home)"
+    }
 
     public init(id: UUID, name: String, memoryMiB: Int = 4096, cpus: Int = 4, diskGiB: Int? = 64,
                 clipboardEnabled: Bool = true, createdAt: Date = Date(), immersiveMode: Bool? = nil) {
@@ -33,7 +38,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, memoryMiB, cpus, diskGiB, clipboardEnabled, createdAt, immersiveMode
-        case settingsFingerprint, ssh, ownerSetup, factory, sharedFolder, guestTouchIDEnabled
+        case settingsFingerprint, ssh, ownerSetup, factory, sharedFolder, homeDisk, guestTouchIDEnabled
     }
 
     public init(from decoder: any Decoder) throws {
@@ -44,6 +49,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
         cpus = try values.decode(Int.self, forKey: .cpus)
         diskGiB = try values.decodeIfPresent(Int.self, forKey: .diskGiB)
         guestTouchIDEnabled = try values.decodeIfPresent(Bool.self, forKey: .guestTouchIDEnabled) ?? false
+        homeDisk = try values.decodeIfPresent(HomeDisk.self, forKey: .homeDisk)
         clipboardEnabled = try values.decode(Bool.self, forKey: .clipboardEnabled)
         createdAt = try values.decode(Date.self, forKey: .createdAt)
         immersiveMode = try values.decodeIfPresent(Bool.self, forKey: .immersiveMode)
@@ -126,20 +132,28 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
     public var suspension: ExperimentalSuspension?
     public var suspensionMetadataUnsafe = false
     public var experimentalPowerBusy = false
+    public var homeBackup: GuestHomeBackupState = .idle
+    public var canBackUpHome: Bool {
+        guard !homeBackup.isBusy, !experimentalPowerBusy, sessionID != nil, state == .running,
+              suspension == nil, !suspensionMetadataUnsafe, profile.sharedFolder?.enabled == true,
+              sharedFolderReadiness == .mounted else { return false }
+        if case .ready = sshReadiness { return true }; return false
+    }
     public var canRestoreExperimentalSuspension: Bool {
-        sessionID == nil && suspension != nil && suspension?.restoreAttempted == false && !suspensionMetadataUnsafe
+        profile.homeDisk == nil && sessionID == nil && suspension != nil && suspension?.restoreAttempted == false && !suspensionMetadataUnsafe
     }
     public var canAttemptExperimentalSuspend: Bool {
-        guard !experimentalPowerBusy, sessionID != nil, state == .running, suspension == nil, !suspensionMetadataUnsafe, hibernation?.canAttempt == true else { return false }
+        guard profile.homeDisk == nil, !homeBackup.isBusy, !experimentalPowerBusy, sessionID != nil, state == .running, suspension == nil, !suspensionMetadataUnsafe, hibernation?.canAttempt == true else { return false }
         if case .ready = sshReadiness { return true }; return false
     }
 
     public init(profile: VMProfile, state: VMState, sessionID: UUID? = nil, lastFailure: VMFailure? = nil,
-                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual, sharedFolderReadiness: SharedFolderReadiness = .disabled, hibernation: GuestHibernationCapability? = nil, suspension: ExperimentalSuspension? = nil, suspensionMetadataUnsafe: Bool = false, experimentalPowerBusy: Bool = false) {
+                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual, sharedFolderReadiness: SharedFolderReadiness = .disabled, hibernation: GuestHibernationCapability? = nil, suspension: ExperimentalSuspension? = nil, suspensionMetadataUnsafe: Bool = false, experimentalPowerBusy: Bool = false, homeBackup: GuestHomeBackupState = .idle) {
         self.profile = profile; self.state = state; self.sessionID = sessionID
         self.lastFailure = lastFailure; self.notice = notice
         self.sshReadiness = sshReadiness; self.ownerSetupReadiness = ownerSetupReadiness
         self.sharedFolderReadiness = sharedFolderReadiness
+        self.homeBackup = homeBackup
         self.hibernation = hibernation; self.suspension = suspension; self.suspensionMetadataUnsafe = suspensionMetadataUnsafe; self.experimentalPowerBusy = experimentalPowerBusy
     }
 }

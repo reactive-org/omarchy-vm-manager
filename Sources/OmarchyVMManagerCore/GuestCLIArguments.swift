@@ -23,11 +23,15 @@ public struct GuestCLIInvocation: Sendable {
       wait ID [--for ssh|running|stopped|paused]
 
     Config: --config FILE.json, --name NAME, --memory 4GiB (or MiB),
-            --memory-mib 4096, --cpus 4, --disk 64GiB, --disk-gib 64,
+            --memory-mib 4096, --cpus 4, --system-disk 64GiB (--disk / --disk-gib remain supported),
+            --home-disk 64GiB, --home-disk-gib 64 (home disks grow only),
             --clipboard on|off, --immersive on|off, --guest-touch-id on|off (default off)
             --share on|off, --share-path PATH (default ~/Shared → /mnt/mac, read-write)
     Creation only: --factory official|MANIFEST_SHA256, --ssh on|off, --owner-defaults on|off, --public-key FILE.pub
+            --separate-home on|off (default on), --reuse-home-from UUID
             --inherit-default-public-key on|off (default on)
+    Reuse copies a stopped guest's home disk on first launch using APFS cloning;
+    the original VM is preserved. Omitted disk capacities use Guest Defaults.
     Use --inherit-default-public-key off to omit the saved personal SSH key;
     managed SSH stays enabled. An explicitly supplied --public-key still applies.
     Owner overrides (create): --username USER, --full-name NAME, --email EMAIL,
@@ -47,7 +51,7 @@ public struct GuestCLIInvocation: Sendable {
         guard let command = GuestCommand(rawValue: aliases[arguments[0]] ?? arguments[0]) else { throw commandFailure("usage", "Unknown command. Run omarchy-vm --help.") }
         var config = GuestConfigurationPatch(), selector: String?, positional: String?
         var values: [String: String] = [:], flags: Set<String> = [], index = 1
-        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--clipboard", "--guest-touch-id", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard", "--share", "--share-path"]
+        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--system-disk", "--home-disk", "--home-disk-gib", "--separate-home", "--reuse-home-from", "--clipboard", "--guest-touch-id", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard", "--share", "--share-path"]
         while index < arguments.count {
             let key = arguments[index]; index += 1
             if key == "--wait" {
@@ -79,6 +83,20 @@ public struct GuestCLIInvocation: Sendable {
         }
         if let value = values["--disk-gib"] { config.diskGiB = try positiveInteger(value) }
         if let value = values["--guest-touch-id"] { config.guestTouchID = try boolean(value) }
+        if let value = values["--system-disk"] {
+            guard values["--disk"] == nil, values["--disk-gib"] == nil else { throw commandFailure("usage", "Specify the system capacity once.") }
+            config.diskGiB = try diskGiB(value)
+        }
+        if let value = values["--home-disk"] {
+            guard values["--home-disk-gib"] == nil else { throw commandFailure("usage", "Choose --home-disk or --home-disk-gib.") }
+            config.homeDiskGiB = try diskGiB(value)
+        }
+        if let value = values["--home-disk-gib"] { config.homeDiskGiB = try positiveInteger(value) }
+        if let value = values["--separate-home"] { config.separateHome = try boolean(value) }
+        if let value = values["--reuse-home-from"] {
+            guard let id = UUID(uuidString: value) else { throw commandFailure("usage", "Use a full source guest UUID with --reuse-home-from.") }
+            config.reuseHomeFrom = id
+        }
         if let value = values["--clipboard"] { config.clipboard = try boolean(value) }
         if let value = values["--immersive"] { config.immersive = try boolean(value) }
         if let value = values["--share"] { config.share = try boolean(value) }
