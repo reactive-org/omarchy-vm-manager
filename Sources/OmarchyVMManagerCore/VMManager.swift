@@ -41,6 +41,14 @@ public actor VMManager {
     private let sshProbe: (any SSHReadinessChecking)?
     private let hibernation: (any GuestHibernating)?
     private let sharingProbe: (any SharedFolderChecking)?
+    private let homeBackup: (any GuestHomeBackingUp)?
+    private struct HomeBackupOperation {
+        let id: UUID
+        let task: Task<Void, Never>
+        let destination: URL
+    }
+    private var homeBackupOperations: [UUID: HomeBackupOperation] = [:]
+    private var homeBackupStates: [UUID: GuestHomeBackupState] = [:]
     private var sharingStates: [UUID: SharedFolderReadiness] = [:]
     private var powerCapabilities: [UUID: GuestHibernationCapability] = [:]
     private var suspensions: [UUID: ExperimentalSuspension] = [:]
@@ -67,7 +75,7 @@ public actor VMManager {
                 hostMemoryMiB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 logicalCPUs: Int = ProcessInfo.processInfo.processorCount,
                 registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil,
-                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService(), sharingProbe: (any SharedFolderChecking)? = nil) {
+                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService(), sharingProbe: (any SharedFolderChecking)? = nil, homeBackup: (any GuestHomeBackingUp)? = nil) {
         self.factoryTrashService = factoryTrashService
         self.runtime = runtime
         self.profiles = profiles
@@ -79,6 +87,7 @@ public actor VMManager {
         self.trashService = trashService
         self.hibernation = hibernation
         self.sharingProbe = sharingProbe
+        self.homeBackup = homeBackup
         self.sshProbe = sshProbe; self.portProbe = portProbe; self.ownerDefaults = ownerDefaults
         for profile in profiles {
             do { suspensions[profile.id] = try ExperimentalSuspendStore(root: ManagerStorage(applicationSupport: applicationSupport).root(for: profile)).load(vmID: profile.id) }
@@ -100,7 +109,7 @@ public actor VMManager {
             try storage.withLock(profile) { try ManagedOwnerStorage(root: storage.root(for: profile)).clearSeed() }
         }
         return VMManager(runtime: runtime, profiles: profiles, applicationSupport: applicationSupport,
-                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation(), sharingProbe: SSHSharedFolderProbe())
+                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation(), sharingProbe: SSHSharedFolderProbe(), homeBackup: SSHGuestHomeBackup())
     }
 
     private var factoryCatalog: FactoryCatalog? = nil
@@ -177,10 +186,11 @@ public actor VMManager {
         if factoryImportOperation?.id == id { factoryImportOperation = nil; factoryLibraryRevision = UUID() }
     }
 
-    public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int = 64,
+    public func create(name: String, memoryMiB: Int, cpus: Int, diskGiB: Int? = nil,
                        clipboardEnabled: Bool, guestTouchIDEnabled: Bool = false, immersiveMode: Bool, sshEnabled: Bool = true,
                        publicKey: String? = nil, useOwnerDefaults: Bool? = nil, inheritDefaultPublicKey: Bool = true, factory: String = "official",
-                       ownerOverrides: GuestOwnerOverrides? = nil, sharedFolder: SharedFolderMapping? = nil) async throws -> UUID {
+                       ownerOverrides: GuestOwnerOverrides? = nil, sharedFolder: SharedFolderMapping? = nil,
+                       separateHome: Bool? = nil, homeDiskGiB: Int? = nil, reuseHomeFrom: UUID? = nil) async throws -> UUID {
         guard !quitting, let registry else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable or the manager is quitting.") }
         if let ownerOverrides {
             guard useOwnerDefaults != false, ownerDefaults != nil else { throw OwnerConfiguration.invalid("Owner overrides require enabled, saved Guest Defaults.") }
@@ -196,9 +206,20 @@ public actor VMManager {
                 if pendingFactoryCreations[factory] == 0 { pendingFactoryCreations[factory] = nil }
             }
         }
-        var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus, diskGiB: diskGiB,
+        let disks = try DiskDefaultsStore(applicationSupport: applicationSupport).load()
+        let systemSize = diskGiB ?? disks.systemDiskGiB
+        let separate = separateHome ?? ((reuseHomeFrom != nil || homeDiskGiB != nil) ? true : disks.separateHome)
+        guard separate || (homeDiskGiB == nil && reuseHomeFrom == nil) else { throw HomeDisk.failure("Home capacity/reuse requires a separate home disk.") }
+        var profile = VMProfile(id: UUID(), name: name, memoryMiB: memoryMiB, cpus: cpus, diskGiB: systemSize,
                                 clipboardEnabled: clipboardEnabled, immersiveMode: immersiveMode)
         profile.guestTouchIDEnabled = guestTouchIDEnabled
+        if separate { profile.homeDisk = HomeDisk(sizeGiB: homeDiskGiB ?? disks.homeDiskGiB) }
+        if let sourceID = reuseHomeFrom {
+            try requireStopped(sourceID)
+            guard let source = profiles.first(where: { $0.id == sourceID }), let home = source.homeDisk,
+                  homeDiskGiB == nil || homeDiskGiB == home.sizeGiB else { throw HomeDisk.failure("Choose a stopped source with a separate home disk; reuse preserves its capacity.") }
+            profile.homeDisk = HomeDisk(id: home.id, sizeGiB: home.sizeGiB, sourceVMID: sourceID)
+        }
         try sharedFolder?.validate()
         if let sharedFolder, sharedFolder.enabled {
             guard sshEnabled else { throw SharedFolderPolicy.failure("Native sharing requires managed SSH to verify the mount.") }
@@ -209,7 +230,7 @@ public actor VMManager {
             guard let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
             profile.factory = try await Task.detached(priority: .utility) {
                 let identity = try factoryCatalog.identity(for: factory)
-                try factoryCatalog.validateCapacity(identity, diskGiB: diskGiB)
+                try factoryCatalog.validateCapacity(identity, diskGiB: systemSize)
                 return identity
             }.value
         }
@@ -217,7 +238,14 @@ public actor VMManager {
         guard !quitting else { throw VMFailure(code: "registry-unavailable", message: "The manager is quitting.") }
         try validateResources(profile)
         var chosenPublicKey = publicKey
-        if useOwnerDefaults != false, let ownerDefaults {
+        if let sourceID = reuseHomeFrom {
+            guard ownerOverrides == nil, let source = profiles.first(where: { $0.id == sourceID }) else { throw HomeDisk.failure("Home reuse keeps the original owner setup; owner overrides are unavailable.") }
+            if let original = source.ownerSetup {
+                guard useOwnerDefaults != false else { throw HomeDisk.failure("This home disk requires its original saved owner setup.") }
+                profile.ownerSetup = OwnerSetupOptions(defaultsRevision: original.defaultsRevision, configuration: original.configuration,
+                    credentialReference: original.credentialReference, hostname: original.configuration.hostnamePrefix + "-" + profile.id.uuidString.prefix(8).lowercased())
+            } else if useOwnerDefaults == true { throw HomeDisk.failure("This source uses manual account setup; recreate the same owner during setup.") }
+        } else if useOwnerDefaults != false, let ownerDefaults {
             let defaults = try ownerDefaults.load()
             if useOwnerDefaults == true, !defaults.enabled { throw OwnerConfiguration.invalid("Enable and save Guest Defaults before choosing unattended setup.") }
             profile.ownerSetup = try ownerDefaults.snapshot(for: profile.id, overrides: ownerOverrides)
@@ -230,6 +258,12 @@ public actor VMManager {
             }
             let fingerprint = try chosenPublicKey.map { try SelectedPublicKeyStore(applicationSupport: applicationSupport).save($0, id: profile.id) }
             profile.ssh = SSHOptions(hostPort: port, publicKeyFingerprint: fingerprint)
+        }
+        if let sourceID = reuseHomeFrom {
+            guard let source = profiles.first(where: { $0.id == sourceID }),
+                  source.ownerSetup?.configuration.username == profile.ownerSetup?.configuration.username else {
+                throw HomeDisk.failure("Reuse requires the same owner username. Select matching owner defaults or use manual setup for both guests.")
+            }
         }
         profile.sharedFolder = sharedFolder
         try validateResources(profile)
@@ -264,6 +298,11 @@ public actor VMManager {
         if let value = configuration.cpus { profile.cpus = value }
         if let value = configuration.diskGiB { profile.diskGiB = value }
         if let value = configuration.guestTouchID { profile.guestTouchIDEnabled = value }
+        guard configuration.separateHome == nil, configuration.reuseHomeFrom == nil else { throw HomeDisk.failure("Home disk layout and source are chosen when creating a guest.") }
+        if let size = configuration.homeDiskGiB {
+            guard profile.homeDisk != nil else { throw HomeDisk.failure("This guest uses a single disk. Existing homes are not migrated automatically.") }
+            profile.homeDisk?.sizeGiB = size
+        }
         if let value = configuration.clipboard { profile.clipboardEnabled = value }
         if let value = configuration.immersive { profile.immersiveMode = value }
         profile.sharedFolder = try configuration.sharing(replacing: profile.sharedFolder)
@@ -278,6 +317,12 @@ public actor VMManager {
         guard profile.factory == profiles[index].factory else { throw FactoryCatalog.invalid("The factory is fixed at creation. Existing disks and recorded identities are preserved.") }
         guard profile.ownerSetup == profiles[index].ownerSetup else { throw OwnerConfiguration.invalid("Owner setup is fixed at guest creation. Existing disks need a separate reviewed migration.") }
         guard profile.ssh == profiles[index].ssh else { throw VMFailure(code: "ssh-migration-required", message: "SSH enrollment is chosen at creation. Changing existing access needs a separate stopped-VM migration.") }
+        var expectedHome = profiles[index].homeDisk
+        if let size = profile.homeDisk?.sizeGiB {
+            guard size >= (expectedHome?.sizeGiB ?? Int.max) else { throw HomeDisk.failure("Home disks can grow but cannot shrink.") }
+            expectedHome?.sizeGiB = size
+        }
+        guard expectedHome == profile.homeDisk else { throw HomeDisk.failure("The home disk identity and layout are fixed at creation.") }
         if let current = profiles[index].diskGiB {
             guard let requested = profile.diskGiB, requested >= current else {
                 throw VMFailure(code: "disk-cannot-shrink", message: "VM disks can grow but cannot shrink. Keep or increase the current capacity.")
@@ -294,7 +339,7 @@ public actor VMManager {
         }
         if PrivateFiles.exists(storage.root(for: edited)) {
             try storage.withLock(edited) {
-                try storage.validate(edited)
+                try storage.validate(profiles[index])
                 if let requested = edited.diskGiB, let currentDisk = try storage.diskCapacityGiB(edited), requested < currentDisk {
                     throw VMFailure(code: "disk-cannot-shrink", message: "The disk is already " + String(currentDisk) + " GiB and cannot shrink to " + String(requested) + " GiB.")
                 }
@@ -304,10 +349,25 @@ public actor VMManager {
         } else { try save() }
     }
 
+    public func diskDefaults() throws -> DiskDefaults { try DiskDefaultsStore(applicationSupport: applicationSupport).load() }
+    public func saveDiskDefaults(_ value: DiskDefaults) throws {
+        guard !quitting, let registry else { throw HomeDisk.failure("Disk defaults are unavailable while quitting.") }
+        try registry.checkRevision()
+        try DiskDefaultsStore(applicationSupport: applicationSupport).save(value)
+    }
+
     public func deletionRequest(_ id: UUID) throws -> TrashRequest? {
         try requireStopped(id)
-        guard let profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.") }
         let storage = ManagerStorage(applicationSupport: applicationSupport)
+        for replacement in profiles where replacement.homeDisk?.sourceVMID == id {
+            do {
+                guard PrivateFiles.exists(storage.homeImage(replacement)) else { throw HomeDisk.failure("Home copy missing.") }
+                try storage.validate(replacement)
+            } catch {
+                throw HomeDisk.failure("A replacement's home copy is missing or incomplete. Finish or recover that copy, or remove the replacement, before deleting its source.")
+            }
+        }
+        guard let profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.") }
         guard PrivateFiles.exists(storage.root(for: profile)) else { return nil }
         return try TrashRequest(profile: profile, expectedIdentity: storage.deletionIdentity(profile))
     }
@@ -315,6 +375,7 @@ public actor VMManager {
     public func delete(_ id: UUID, confirmed: Bool, expectedIdentity: String?) async throws {
         guard confirmed else { throw VMFailure(code: "confirmation-required", message: "Confirm moving this VM to Trash.") }
         try requireStopped(id)
+        _ = try deletionRequest(id)
         guard let registry, let profile = profiles.first(where: { $0.id == id }) else { throw VMFailure(code: "registry-unavailable", message: "The registry is unavailable.") }
         let storage = ManagerStorage(applicationSupport: applicationSupport)
         let exists = PrivateFiles.exists(storage.root(for: profile))
@@ -354,7 +415,7 @@ public actor VMManager {
         if let profile = profiles.first(where: { $0.id == id }) {
             try ManagerStorage(applicationSupport: applicationSupport).requireNoSavedSession(profile)
         }
-        guard !quitting, sessions[id] == nil, !storageTransactions.contains(id),
+        guard !quitting, sessions[id] == nil, homeBackupOperations[id] == nil, !storageTransactions.contains(id),
               (states[id] ?? .stopped).canStart else {
             throw VMFailure(code: "vm-not-editable", message: "Stop the VM before changing or deleting it.")
         }
@@ -372,7 +433,7 @@ public actor VMManager {
             VMSnapshot(profile: $0, state: states[$0.id] ?? .stopped,
                        sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: authenticationNotice($0.id) ?? notices[$0.id],
                        sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped),
-                       ownerSetupReadiness: ownerReadiness($0), sharedFolderReadiness: sharingReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false)
+                       ownerSetupReadiness: ownerReadiness($0), sharedFolderReadiness: sharingReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false, homeBackup: homeBackupStates[$0.id] ?? .idle)
         }
     }
 
@@ -390,7 +451,7 @@ public actor VMManager {
     }
 
     public var activeSessionCount: Int { sessions.count }
-    public var isIdle: Bool { sessions.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil && factoryDeletionOperation == nil }
+    public var isIdle: Bool { sessions.isEmpty && homeBackupOperations.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil && factoryDeletionOperation == nil }
     public var allocatedMemoryMiB: Int {
         profiles.filter { sessions[$0.id] != nil }.reduce(0) { $0 + $1.memoryMiB }
     }
@@ -403,7 +464,7 @@ public actor VMManager {
         }
         try registry?.checkRevision()
         guard !interruptedDeletions.contains(vmID) else { throw VMFailure(code: "interrupted-deletion", message: "Review the interrupted deletion before launching. Missing storage will not be recreated.") }
-        guard !quitting, !storageTransactions.contains(vmID) else { throw VMFailure(code: "transaction-busy", message: "A storage transaction or application shutdown is in progress.") }
+        guard !quitting, homeBackupOperations[vmID] == nil, !storageTransactions.contains(vmID) else { throw VMFailure(code: "transaction-busy", message: "A backup, storage transaction or application shutdown is in progress.") }
         guard let profile = profiles.first(where: { $0.id == vmID }) else {
             throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.")
         }
@@ -531,6 +592,54 @@ public actor VMManager {
         beginSSHProbe(VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id))
     }
 
+    public func beginHomeBackup(_ id: UUID, confirmed: Bool) throws {
+        guard confirmed else { throw VMFailure(code: "backup-confirmation-required", message: "Confirm exporting the guest home, including hidden files and credentials, to the host share.") }
+        guard !quitting, let homeBackup, let session = sessions[id], !session.shutdownRequested, !session.forceRequested,
+              homeBackupOperations[id] == nil, let snapshot = snapshots().first(where: { $0.id == id }), snapshot.canBackUpHome,
+              let share = snapshot.profile.sharedFolder, case .ready(let user, _) = sshStates[id] else {
+            throw VMFailure(code: "backup-not-ready", message: "Home backup requires a running guest, authenticated managed SSH and a verified read-write host folder. Enable sharing while stopped, launch normally and wait for Mounted.")
+        }
+        try registry?.checkRevision()
+        let operationID = UUID()
+        let output = SSHGuestHomeBackup.destination(share, operationID: operationID)
+        let request = VMStartRequest(profile: snapshot.profile, storageRoot: session.root, sessionID: session.id)
+        homeBackupStates[id] = .working(output)
+        let task = Task { [weak self] in
+            let result: Result<Int64, any Error>
+            do {
+                let bytes = try await homeBackup.backup(request, user: user, operationID: operationID)
+                try Task.checkCancellation()
+                result = .success(bytes)
+            } catch { result = .failure(error) }
+            await self?.finishHomeBackup(id, sessionID: session.id, operationID: operationID, result: result)
+        }
+        homeBackupOperations[id] = HomeBackupOperation(id: operationID, task: task, destination: output)
+        record("Home backup requested", vmID: id, sessionID: session.id)
+    }
+
+    public func cancelHomeBackup(_ id: UUID) {
+        guard let operation = homeBackupOperations[id] else { return }
+        homeBackupStates[id] = .cancelling(operation.destination)
+        operation.task.cancel()
+    }
+
+    private func finishHomeBackup(_ id: UUID, sessionID: UUID, operationID: UUID, result: Result<Int64, any Error>) {
+        guard let operation = homeBackupOperations[id], operation.id == operationID else { return }
+        homeBackupOperations[id] = nil
+        if case .success(let bytes) = result, bytes > 0, !operation.task.isCancelled,
+           sessions[id]?.id == sessionID, states[id] == .running,
+           sessions[id]?.shutdownRequested == false, sessions[id]?.forceRequested == false {
+            homeBackupStates[id] = .completed(operation.destination, bytes)
+            record("Home backup verified", vmID: id, sessionID: sessionID)
+        } else {
+            let message = operation.task.isCancelled
+                ? "Backup cancelled or interrupted. Partial or unconfirmed output may remain in this backup’s folder; it has not been marked complete."
+                : SSHGuestHomeBackup.failure().message
+            homeBackupStates[id] = .failed(operation.destination, message)
+            record("Home backup did not complete", vmID: id, sessionID: sessionID)
+        }
+    }
+
     private func sharingReadiness(_ profile: VMProfile) -> SharedFolderReadiness {
         guard profile.sharedFolder?.enabled == true else { return .disabled }
         guard sessions[profile.id] != nil else { return .stopped }
@@ -621,6 +730,7 @@ public actor VMManager {
     }
 
     private func suspendReadiness(_ id: UUID) {
+        cancelHomeBackup(id)
         sessions[id]?.sharingTask?.cancel(); sessions[id]?.sharingTask = nil
         sharingStates[id] = .unverified
         sessions[id]?.powerProbeTask?.cancel(); sessions[id]?.powerProbeTask = nil
@@ -735,6 +845,7 @@ public actor VMManager {
         case .error(let error):
             failures[vmID] = VMFailure(code: error.reportedCode, message: error.message)
         case .exited(let status):
+            cancelHomeBackup(vmID)
             cancelExecutionChange(vmID, code: "guest-exited")
             session.sshTask?.cancel()
             session.sharingTask?.cancel()
@@ -790,7 +901,7 @@ extension VMManager {
     private func beginPowerProbe(_ id: UUID, user: String) {
         guard let hibernation, let session = sessions[id], session.powerProbeTask == nil,
               states[id] == .running, !session.shutdownRequested, !session.forceRequested,
-              let profile = profiles.first(where: { $0.id == id }), suspensions[id] == nil else { return }
+              let profile = profiles.first(where: { $0.id == id }), profile.homeDisk == nil, suspensions[id] == nil else { return }
         let request = VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id)
         let generation = session.sshProbeID
         sessions[id]?.powerProbeTask = Task { [weak self] in
@@ -808,9 +919,10 @@ extension VMManager {
         if case .ready(let user, _) = sshStates[id] { beginSharingProbe(id, user: user) }
     }
     public func experimentalSuspend(_ id: UUID, confirmed: Bool, exitTimeout: Duration = .seconds(180)) async throws {
+        guard profiles.first(where: { $0.id == id })?.homeDisk == nil else { throw HomeDisk.failure("Experimental hibernation is unavailable for separate-home guests until both disks have a verified restore contract.") }
         guard confirmed else { throw VMFailure(code: "experimental-opt-in-required", message: "Confirm the experimental suspension risks before attempting it.") }
         guard let hibernation, let session = sessions[id], states[id] == .running, !session.shutdownRequested, !session.forceRequested,
-              !session.powerBusy, suspensions[id] == nil, !unsafeSuspensions.contains(id),
+              !session.powerBusy, homeBackupOperations[id] == nil, suspensions[id] == nil, !unsafeSuspensions.contains(id),
               let profile = profiles.first(where: { $0.id == id }), case .ready(let user, _) = sshStates[id] else {
             throw VMFailure(code: "suspend-not-ready", message: "Experimental suspension requires a running guest and authenticated managed SSH.")
         }
@@ -875,6 +987,7 @@ extension VMManager {
         } catch { unsafeSuspensions.insert(id); notices[id] = "The stopped suspension disk could not be identified safely. Ordinary launch and edits remain blocked." }
     }
     public func restoreExperimentalSuspension(_ id: UUID, confirmed: Bool, verificationTimeout: Duration = .seconds(180), launchIntent: VMLaunchIntent = .background) async throws {
+        guard profiles.first(where: { $0.id == id })?.homeDisk == nil else { throw HomeDisk.failure("Separate-home hibernation restore has no verified disk-pair contract.") }
         guard confirmed, hibernation != nil, var record = suspensions[id], !unsafeSuspensions.contains(id),
               sessions[id] == nil, let profile = profiles.first(where: { $0.id == id }) else {
             throw VMFailure(code: "restore-not-ready", message: "Confirm recovery of one stopped experimental suspension.")

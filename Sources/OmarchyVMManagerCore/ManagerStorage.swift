@@ -62,9 +62,14 @@ public struct ManagerStorage: Sendable {
             if let factory = profile.factory {
                 try PrivateFiles.write(JSONEncoder().encode(factory), name: ".omarchy-factory.json", in: root, exclusively: true)
             }
+            if let home = profile.homeDisk {
+                try PrivateFiles.write(JSONEncoder().encode(home), name: ".omarchy-home.json", in: root, exclusively: true)
+            }
             created = true
         }
         try validate(profile)
+        if created { try cloneHomeForNewRoot(profile) }
+        try prepareHome(profile, newRoot: created)
         if !profile.isRetainedPOC, profile.diskGiB != nil || profile.immersiveMode != nil || profile.sharedFolder != nil {
             try withLock(profile) {
                 try validate(profile)
@@ -108,6 +113,7 @@ public struct ManagerStorage: Sendable {
         try PrivateFiles.directory(vms)
         let root = root(for: profile)
         try PrivateFiles.directory(root)
+        try validateHome(profile)
         let marker = try JSONDecoder().decode(Marker.self, from: PrivateFiles.read(root.appendingPathComponent(".omarchy-vm-manager.json")))
         guard marker.schemaVersion == 1, marker.id == profile.id,
               try PrivateFiles.read(root.appendingPathComponent(".omarchy-qemu-storage")) == Data("omarchy-qemu-storage-root-v1\n".utf8) else {
@@ -238,7 +244,19 @@ public struct ManagerStorage: Sendable {
             guard lstat(disk.path, &s) == 0 else { throw PrivateFiles.failure("Cannot identify the VM disk.") }
             signature = "\(s.st_dev):\(s.st_ino):\(s.st_size):\(s.st_mtimespec.tv_sec):\(s.st_mtimespec.tv_nsec):\(s.st_ctimespec.tv_sec):\(s.st_ctimespec.tv_nsec)"
         }
-        return try identity(root(for: profile)) + ":" + signature + ":" + settingsFingerprint(profile)
+        var result = try identity(root(for: profile)) + ":" + signature + ":" + settingsFingerprint(profile)
+        if profile.homeDisk != nil {
+            var home = stat()
+            let path = homeImage(profile)
+            let stamp: String
+            if PrivateFiles.exists(path) {
+                guard lstat(path.path, &home) == 0 else { throw HomeDisk.failure("Cannot identify the home disk for deletion review.") }
+                stamp = "\(home.st_dev):\(home.st_ino):\(home.st_size):\(home.st_mtimespec.tv_sec):\(home.st_mtimespec.tv_nsec):\(home.st_ctimespec.tv_sec):\(home.st_ctimespec.tv_nsec)"
+            } else { stamp = "no-home-disk" }
+            let plan = try PrivateFiles.read(root(for: profile).appendingPathComponent(".omarchy-home.json"))
+            result += ":" + KitVerifier.sha256(Data(stamp.utf8) + plan)
+        }
+        return result
     }
 
     private func identity(_ url: URL) throws -> String {

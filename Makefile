@@ -39,7 +39,7 @@ fetch-runtime-kit:
 	python3 Scripts/fetch_runtime_kit.py
 
 patched-kit:
-	Scripts/build-patched-try-omarchy-kit.sh $(if $(REUSE_GUEST_PACKAGE_KIT),--reuse-guest-package-from "$(REUSE_GUEST_PACKAGE_KIT)")
+	Scripts/build-patched-try-omarchy-kit.sh $(if $(REUSE_GUEST_PACKAGE_KIT),--reuse-guest-package-from "$(REUSE_GUEST_PACKAGE_KIT)") $(if $(REVIEWED_GUEST_PACKAGE),--reviewed-guest-package "$(REVIEWED_GUEST_PACKAGE)") $(if $(REVIEWED_LEAN_GUEST_PACKAGE),--reviewed-lean-guest-package "$(REVIEWED_LEAN_GUEST_PACKAGE)")
 
 test-upstream:
 	Scripts/upstream-make.sh test
@@ -66,6 +66,12 @@ run: verify-app
 
 test-ssh:
 	python3 Scripts/test_managed_ssh.py
+
+# Explicit opt-in only: the approval file identifies a private disposable run.
+test-home-disks: prepare-source
+	@test -n "$$OMARCHY_HOME_DISK_ACCEPTANCE" || { echo 'Set OMARCHY_HOME_DISK_ACCEPTANCE to an explicitly approved disposable-run approval.json'; exit 1; }
+	bash Scripts/test_home_mount_propagation.sh
+	swift test --disable-sandbox --no-parallel --filter approvedSeparateHomeAcceptance
 
 icon:
 	python3 Scripts/build_icon.py

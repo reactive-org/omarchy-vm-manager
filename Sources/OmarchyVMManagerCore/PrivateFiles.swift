@@ -58,7 +58,7 @@ public enum PrivateFiles {
 }
 
 public final class RegistryStore: @unchecked Sendable {
-    public static let supportedSchemaVersions = 1...5
+    public static let supportedSchemaVersions = 1...6
     public let directory: URL
     private let lockFD: Int32
     private var revision: Data?
@@ -138,6 +138,18 @@ public final class RegistryStore: @unchecked Sendable {
 
     public func save(_ profiles: [VMProfile]) throws { try access.withLock { try saveLocked(profiles) } }
 
+    static func profileForHomeReuse(in data: Data, id: UUID) throws -> VMProfile {
+        guard data.count <= 1_048_576 else { throw PrivateFiles.failure("The registry is too large.") }
+        let record = try JSONDecoder().decode(Registry.self, from: data)
+        guard supportedSchemaVersions.contains(record.schemaVersion), record.pendingDeletions?.contains(id) != true,
+              record.profiles.filter({ $0.id == id }).count == 1,
+              let profile = record.profiles.first(where: { $0.id == id }), profile.homeDisk != nil else {
+            throw HomeDisk.failure("The source is missing, pending deletion or has no separate home disk.")
+        }
+        try validate(record.profiles)
+        return profile
+    }
+
     /// Shared admission for the separate storage helper. This does not acquire
     /// the manager lock or authorize a filesystem mutation by itself.
     public static func profileForDeletion(in data: Data, id: UUID) throws -> VMProfile {
@@ -163,7 +175,7 @@ public final class RegistryStore: @unchecked Sendable {
         } else if PrivateFiles.exists(file) { throw PrivateFiles.failure("A registry appeared during initialization. It was preserved.") }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let nextPending = pending.intersection(Set(profiles.map(\.id)))
-        let nextSchema = max(profiles.contains(where: { $0.sharedFolder != nil }) ? 5 : schemaVersion, profiles.contains(where: { $0.diskGiB != nil }) ? 4 : (profiles.contains(where: { $0.ownerSetup != nil }) ? 3 : (profiles.contains(where: { $0.ssh != nil }) ? 2 : 1)))
+        let nextSchema = max(profiles.contains(where: { $0.homeDisk != nil }) ? 6 : schemaVersion, profiles.contains(where: { $0.sharedFolder != nil }) ? 5 : (profiles.contains(where: { $0.diskGiB != nil }) ? 4 : (profiles.contains(where: { $0.ownerSetup != nil }) ? 3 : (profiles.contains(where: { $0.ssh != nil }) ? 2 : 1))))
         let data = try encoder.encode(Registry(schemaVersion: nextSchema, profiles: profiles, pendingDeletions: nextPending))
         guard data.count <= 1_048_576 else { throw PrivateFiles.failure("The registry is too large.") }
         try PrivateFiles.write(data, name: "registry.json", in: directory, exclusively: revision == nil)
@@ -182,7 +194,7 @@ public final class RegistryStore: @unchecked Sendable {
     public static func validate(_ profile: VMProfile) throws {
         if let poc = POCProfiles.all.first(where: { $0.id == profile.id }) {
             guard profile.name == poc.name, profile.memoryMiB == poc.memoryMiB, profile.cpus == poc.cpus,
-                  profile.diskGiB == nil, profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil,
+                  profile.diskGiB == nil, profile.homeDisk == nil, profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil,
                   profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil, profile.factory == nil, profile.sharedFolder == nil else {
                 throw PrivateFiles.failure("Retained POC metadata is protected. Restore its original profile; its disk was preserved.")
             }
@@ -196,6 +208,7 @@ public final class RegistryStore: @unchecked Sendable {
                 throw PrivateFiles.failure("Invalid managed SSH endpoint or public-key reference.")
             }
         }
+        try profile.homeDisk?.validate(vmID: profile.id)
         if let fingerprint = profile.settingsFingerprint {
             guard fingerprint.count == 64, fingerprint.allSatisfy({ $0.isHexDigit && !$0.isUppercase }) else { throw PrivateFiles.failure("Invalid settings revision in the registry.") }
         }
