@@ -254,3 +254,11 @@ fake audit/helper cases. The implementation, frozen pins and all 1,170 existing
 artifact entries remain unchanged. The failed attempt stays consumed; both
 inspection outputs are absent and separate fresh approval is required. No native
 inspection or authority is activated.
+
+[Corrected native inspection result](DevVMMilestone6Runbook.md#corrected-native-inspection-result--5-november-2026)
+records a partial, unaccepted attempt: source, locked-keychain and profile checks
+pass; public-certificate parsing fails before runtime validation. No survivors
+match the bounded cleanup snapshot, but the runner's false cleanup flag remains.
+All 1,182 existing artifact entries and pins are preserved; five fake diagnostic
+cases support possible causes only. A consolidated fake-only diagnostics/date/
+cleanup-evidence change and fresh review are next; this request is not retried.

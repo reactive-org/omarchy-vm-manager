@@ -3113,3 +3113,32 @@ remains the visual target for milestone 5.
   signing, private-key access, Apple request, SSH/Ansible, install, UI or VM
   operation occurs. See the
   [corrected review](docs/DevVMMilestone6Runbook.md#corrected-fresh-private-inspection-review--5-november-2026).
+
+## Corrected native inspection partial result — 5 November 2026
+
+- **USER AUTHORIZATION:** execute the corrected review, analyze results, check
+  cleanup and document both worktrees; exclude signing, private-key access, Apple
+  requests, SSH/Ansible, installs and VM launches. No retry is authorized.
+- **VERIFIED — native partial:** exact guard/review/composition and 14-file source
+  bindings match. Both dependency checks, locked keychain status, profile content,
+  policy/expiry and public-leaf membership pass. Five workers run; certificate
+  parsing fails with a generic worker error after about 12 seconds. Its actual
+  native cause is unknown. Runtime signatures and final checks are not reached.
+- **VERIFIED — cleanup limits:** runner cleanup remains false, factory unresolved
+  handles zero. A bounded exact-parent/worker snapshot finds no survivors, with
+  its own process reaped and raw host arguments discarded. The sandbox initially
+  blocks that cleanup-only command; it completes outside the sandbox. This does
+  not retry inspection or repair the failed cleanup receipt.
+- **PRIVATE COUPLING / VERIFIED:** all 1,182 old artifact entries and pins remain
+  unchanged; retained credential content is unopened with stable metadata. Only
+  planned private output/staged public files/failure evidence are added. Five
+  fake cases reproduce possible certificate-type and cleanup-error shapes; SDK
+  source offers typed macOS 15 certificate date getters. No actual failure cause
+  is inferred from those fixtures. Source implementation/product approval stay
+  unchanged and the consumed request is not reused.
+- **TO PROVE / NEXT:** combine fixed worker diagnostics, per-handle cleanup
+  evidence and typed dates into one fake-only change with validation/fresh review;
+  separately approve any later native run. No successful certificate/runtime
+  inspection, signer trust, key possession, signing or guest proof is claimed.
+  No prohibited operation occurs. See the
+  [result record](docs/DevVMMilestone6Runbook.md#corrected-native-inspection-result--5-november-2026).

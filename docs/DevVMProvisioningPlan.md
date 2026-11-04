@@ -3270,3 +3270,29 @@ are false. Separate exact-review approval is next; no inspection, signing,
 private-key access, Apple requests, SSH/Ansible, installs, UI or VM operation
 occurs. Product approval remains nil. See the
 [corrected review](DevVMMilestone6Runbook.md#corrected-fresh-private-inspection-review--5-november-2026).
+
+## Corrected native inspection — partial result, 5 November 2026
+
+The explicitly approved corrected caller runs once against unchanged `ddf5451`
+code/review/guard bindings. Both dependency checks, native locked-state check and
+profile content/policy/public-leaf membership pass. The fifth worker exits at
+public-certificate parsing with a fixed generic error after about 12 seconds;
+its native cause is unknown. Runtime signatures and final checks are not reached.
+No success receipt or trusted certificate/signing result is accepted.
+
+The runner's cleanup flag remains false, with zero factory-held unresolved
+handles. An authorized bounded exact-parent/worker snapshot finds no survivors;
+that observation does not rewrite the failed cleanup receipt or prove every past
+descendant. The sandbox initially blocks only this cleanup snapshot; it completes
+outside the sandbox without retrying inspection. All 1,182 old artifact entries
+and frozen pins are preserved; credential-named content stays unopened. New
+staged profile/public certificate and failure evidence remain private in the
+planned output. Ordinary approval remains nil.
+
+Five fake diagnostic cases reproduce possible certificate type and cleanup-error
+shapes without establishing the actual native cause. Next, combine fixed worker
+diagnostics, per-handle cleanup evidence and typed certificate dates into one
+fake-only implementation/validation/fresh-review chunk. Another native attempt
+requires separate approval. No signing, private-key access, Apple request,
+SSH/Ansible, install, UI or VM operation occurs. See the
+[result and limitations](DevVMMilestone6Runbook.md#corrected-native-inspection-result--5-november-2026).

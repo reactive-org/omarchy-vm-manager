@@ -1042,6 +1042,55 @@ native validation/cleanup remain execution-time checks. No real inspection,
 signing, private-key access, Apple request, SSH/Ansible, install, UI, VM-root
 observation or VM operation occurs. Frozen pins and product approval stay unchanged.
 
+## Corrected native inspection result — 5 November 2026
+
+**AUTHORIZED / PARTIAL / NOT ACCEPTED:** the corrected fresh review was explicitly
+approved together with result analysis, cleanup checks and documentation. Exact
+review/guard/composition hashes and all 14 `ddf5451` implementation files matched
+before the one-shot native caller ran. Five workers were created; the attempt
+stopped after about 12 seconds at `public-certificate` with `offline-worker-failed`.
+The corrected guard blocked no action. The consumed request is not retried.
+
+**VERIFIED — observed native stages:** both pinned dependency HEAD/index/worktree
+checks passed. The selected keychain was observed locked with interaction disabled.
+The guarded profile's native CMS content matched the embedded bytes; profile
+scope/expiry policy and exact public-certificate membership passed. These checks
+do not authenticate the CMS signer or establish trust/private-key availability.
+The certificate worker returned a nonzero exit without a detailed cause. No
+certificate name/date result was accepted, no runtime static-signature check was
+reached, and final source/locked-state checks were not reached. There is no success
+receipt and no claim that the keychain was reobserved after the failure.
+
+**CLEANUP — observed limits:** the runner records `cleanupConfirmed: false`; the
+factory reports zero unresolved handles. A separate bounded exact-parent/worker
+process snapshot finds no matching survivors, and the snapshot process is reaped.
+Raw host command arguments are discarded. The tool sandbox initially denied this
+cleanup snapshot; the same cleanup-only analysis completed outside that sandbox.
+This was not a second inspection attempt. The snapshot is not a retrospective
+audit of every short-lived descendant and does not override the failed cleanup
+receipt. No existing process was signalled by the snapshot.
+
+**VERIFIED — preservation and fake analysis:** all 1,182 preexisting artifact
+entries, including both review packets, retain their noncredential bytes, modes
+and links. The retained credential-named file remains unopened with stable
+metadata, without a fresh content claim. Only the planned private inspection
+output is added; staged profile/public certificate and fixed failure evidence are
+private. Original pins, historical failure/consumption records and product approval
+remain unchanged. Five additional fake cases exercise certificate CFDate/Number/
+String values and two cleanup-error/final-reap paths. They reproduce possible
+failure shapes, not the actual native cause. Generic certificate property values
+are not guaranteed to be CFDate; the installed SDK provides typed certificate date
+getters on macOS 15. This is source evidence, not a new native API observation.
+
+**NEXT / TO PROVE:** one consolidated fake-only change should add fixed worker
+failure diagnostics, per-handle cleanup evidence and typed certificate date
+bindings, validate those together, then prepare a fresh review. The actual
+certificate/cleanup failure causes remain unknown; a new native attempt needs a
+new reviewed implementation/request and separate approval. Runtime signature,
+post-checks, profile signer trust and all signing/guest acceptance remain unproven.
+No signing, private-key access, Apple request, SSH/Ansible, install, UI, VM-root
+observation or VM operation occurs.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without
