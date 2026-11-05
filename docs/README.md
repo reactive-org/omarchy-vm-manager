@@ -341,3 +341,9 @@ finds the selected keychain currently unlocked and staged public certificate/pro
 metadata consistent. A missed prompt fits the elapsed signing deadline. One bounded,
 network/file-write-denied worker cleans up; all 13,565 old entries/pins are intact.
 Private-key/ACL usability and timestamps remain untested; no signing or retry occurs.
+
+[Attended private signing passed](DevVMMilestone6Runbook.md#attended-private-signing-passed--5-november-2026)
+records the signed, timestamped private archive: seventeen commands/46 native
+workers pass, exact staged/archive-roundtrip checks succeed, all 63 owned roots
+clean up and 13,570 earlier entries/pins are preserved. Not notarized or executed;
+original-Mac, loaded-child and disposable-guest acceptance remain separate.

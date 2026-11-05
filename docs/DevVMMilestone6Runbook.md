@@ -1641,6 +1641,50 @@ this fully signing-ready or extend the timeout merely because the prompt was
 missed. Any new attempt needs a new operator plan/output, fresh approval and an
 attended secure prompt. No plan or signing attempt is created/retried here.
 
+## Attended private signing passed — 5 November 2026
+
+**AUTHORIZED / VERIFIED — signed, offline static checks only:** after diagnosis
+docs commits manager `b72eadf` / companion `90e2459`, the user approves the fresh
+attended plan's build/sign/verify run with selected-key use, existing secure key UI
+and Apple timestamps. The maintained CLI receives exact-plan confirmation through
+a real terminal, durably consumes the new plan and uses its default bounded
+backend. All 32 committed snapshot files, engine/operator bindings, source/runtime/
+receipt/material pins and new output match. Prior plans are not replayed.
+
+The run succeeds in 926.436 audited seconds with SIGNED_OFFLINE_STATIC_CHECKS_ONLY.
+All seventeen commands complete: twelve preparation/build/location commands,
+four child signing commands and the outer app signing command. All 46 native
+workers pass, including 23 supplied-runtime static checks and twelve staged/
+roundtrip candidate checks. Native validation establishes the six code identities,
+expected team/IDs, hardened non-ad-hoc flags, entitlements, timestamps and exact
+public leaf. Actual selected-key signing and timestamped output are observed;
+secure UI type/count and Touch ID versus password are not captured.
+
+The post-child-sign distribution digest seal matches the actual executables.
+The admitted 45 resource/wrapper files are unchanged; all 49 frozen reference files
+remain intact. The private 172,869,773-byte SIGNED-NOT-NOTARIZED ZIP matches its
+receipt digest. Extraction preserves the complete app tree and all six code
+identities, and the extracted app independently passes the same offline checks.
+No app/daemon/runtime binary is executed by verification.
+
+**VERIFIED — cleanup/preservation:** all seventeen command roots and 46 native
+workers record group quietness, root reap and closed descriptors, with no unresolved
+handles. A bounded snapshot restricted to all 63 recorded PIDs finds none remaining;
+its process is reaped. All 13,570 prior artifact entries/pins, earlier failed output,
+consumed plans and audits remain unchanged. Retained credential content stays
+unopened with metadata-only preservation. No key export/import/enumeration,
+orchestrator unlock/relock/ACL/search-list change, VM-root observation or pin
+recapture occurs. The selected key is used only by the approved signing commands.
+Keychain lock status is not re-queried after signing. The new plan remains consumed;
+there is no automatic retry, publishing, installation, SSH/Ansible or VM launch.
+
+**TO PROVE / NEXT:** the signed app/archive remain private and not notarized.
+Original-Mac scope validation is PENDING_ORIGINAL_MAC; app diagnostics, daemon
+check, loaded-child admission and guest acceptance are NOT_RUN. Product approval
+is unchanged; milestone 6 guest rows are not completed by this signing result.
+Any next acceptance/native execution or notarization requires its own reviewed
+scope and explicit consent. No such follow-up operation is started here.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

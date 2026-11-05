@@ -3460,3 +3460,27 @@ exact dialog type/timing is not reconstructed. The plan remains consumed.
   SSH/Ansible/install/UI/app/runtime/VM action or retry occurs. A fresh plan and
   explicit attended-run approval remain necessary. See the
   [diagnosis](docs/DevVMMilestone6Runbook.md#read-only-signing-readiness-diagnosis--5-november-2026).
+
+## Attended private candidate signing passed — 5 November 2026
+
+- **USER AUTHORIZATION:** fresh attended plan after `b72eadf` / companion `90e2459`,
+  including selected key, existing secure UI and Apple timestamps. Maintained CLI
+  real-terminal exact-plan confirmation and durable consumption precede its default
+  backend; the 32 committed files and all frozen bindings match.
+- **VERIFIED — signed/offline only:** seventeen commands and 46 native workers pass
+  in 926.436 seconds. Four child/outer signatures and staged/roundtrip checks prove
+  selected public leaf, timestamps, expected IDs/team/entitlements, hardened flags
+  and six code identities. The private 172,869,773-byte ZIP matches its receipt,
+  exact extracted tree/identities, child digest seal and 45-file admitted resource
+  payload; the 49-file frozen reference is intact. UI type/count is not captured.
+- **VERIFIED — preservation:** all 63 roots/workers group-quiet/reaped/closed, no
+  pending handles and no recorded-PID survivors. All 13,570 old artifact entries/pins,
+  failed output/consumed plans/audits remain unchanged. Retained credential-file
+  content stays unopened; only approved selected-key signing occurs. No export/import/enumeration,
+  orchestrator unlock/relock/ACL/search-list change, scope-root/pin recapture or
+  product approval change. No automatic retry; the new plan stays consumed.
+- **TO PROVE:** no notarization, app/daemon/runtime execution, loaded-child check,
+  install, publishing, SSH/Ansible or VM launch. Original-Mac scope is pending,
+  guest acceptance remains unperformed and private artifacts are not distributed.
+  Further real acceptance needs separate reviewed scope and consent. See the
+  [signed result](docs/DevVMMilestone6Runbook.md#attended-private-signing-passed--5-november-2026).

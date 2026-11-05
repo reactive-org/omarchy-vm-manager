@@ -202,3 +202,23 @@ occurs. This proves container/public readiness only; private-key presence, match
 association/ACL, Touch ID and signing/timestamps remain untested. No new plan or
 retry is created; any new run requires a new plan/output, fresh approval and an
 attended prompt. See the [read-only diagnosis](DevVMMilestone6Runbook.md#read-only-signing-readiness-diagnosis--5-november-2026).
+
+### Attended run succeeded — 5 November 2026
+
+A fresh plan after `b72eadf` / companion `90e2459` succeeds through the unmodified
+maintained CLI's real-terminal exact-plan confirmation, durable consumption and
+default backend. All seventeen commands and 46 native workers pass in 926.436
+seconds, including four child/outer selected-key signatures with Apple timestamps
+and offline staged/extracted verification of exact leaf, IDs/team, hardened flags,
+entitlements, timestamps and six code identities. The private 172,869,773-byte ZIP
+matches its receipt digest and complete extracted app tree/identities, child digest
+seal and 45-file resource payload; the 49-file frozen reference is unchanged.
+
+All 63 recorded roots/workers are group-quiet/reaped/closed with no pending handles
+or recorded-PID survivors. All 13,570 old artifact entries/pins and earlier attempts
+are preserved. Plan remains consumed; no auto retry/unlock/import/export/ACL change
+or scope recapture. UI method/count and post-run keychain lock state are not queried.
+No notarization, publish, install, SSH/Ansible or app/daemon/runtime/VM execution.
+Result is SIGNED_OFFLINE_STATIC_CHECKS_ONLY; original-Mac scope, loaded-child and
+guest acceptance remain unperformed and product approval unchanged. See the
+[successful attended run](DevVMMilestone6Runbook.md#attended-private-signing-passed--5-november-2026).

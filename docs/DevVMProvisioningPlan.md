@@ -3559,3 +3559,25 @@ private-key access, Apple request, SSH/Ansible, install, UI or app/runtime/VM ac
 The old plan stays consumed. Next prepare a distinct plan for a separately approved
 attended signing attempt; no timeout change or automatic retry is justified here.
 See the [bounded diagnosis](DevVMMilestone6Runbook.md#read-only-signing-readiness-diagnosis--5-november-2026).
+
+## Attended signing candidate passed — 5 November 2026
+
+The approved fresh attended plan runs after `b72eadf` / companion `90e2459` through
+maintained CLI terminal confirmation and durable consumption. The exact 32-file
+committed snapshot and frozen source/runtime/scope/receipt/material bindings match.
+All seventeen commands and 46 native workers succeed in 926.436 audited seconds.
+Four child signatures and outer app signature use the selected key with Apple
+timestamps; offline native checks verify team/IDs, hardened runtime, entitlements,
+timestamps, exact public leaf and six code identities on staged and extracted apps.
+The 172,869,773-byte private ZIP's digest, complete roundtrip bytes and identities,
+post-child-sign executable seal and 45-file resource payload all match. The
+49-file frozen reference stays unchanged. Result: SIGNED_OFFLINE_STATIC_CHECKS_ONLY.
+
+All 63 owned command/worker roots clean up and are absent in a bounded PID snapshot;
+all 13,570 old artifact entries/pins/failed outputs/audits are preserved. No pending
+handles, automatic retry, orchestrator keychain changes, scope recapture or product
+approval change. The plan stays consumed. No notarization, publishing, SSH/Ansible,
+install, app/daemon/runtime execution or VM launch occurs. UI method/prompt count
+is unrecorded. Original-Mac scope, loaded-child and real guest acceptance remain
+TO PROVE and need separate review/consent. See the
+[signed candidate result](DevVMMilestone6Runbook.md#attended-private-signing-passed--5-november-2026).
