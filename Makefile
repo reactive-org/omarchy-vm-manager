@@ -5,7 +5,7 @@ export CLANG_MODULE_CACHE_PATH := $(CURDIR)/.build/module-cache/clang
 export MACOSX_DEPLOYMENT_TARGET := 15.0
 export RELEASE_TAG
 
-.PHONY: prepare-source help build build-dev build-signed icon test test-dev test-channel-bundles test-build-policies test-ssh app app-dev app-preview verify-app verify-bundle verify-dev verify-preview run run-dev fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
+.PHONY: prepare-source help build build-dev build-signed build-dev-signed release-plan release-build release-publish icon test test-dev test-channel-bundles test-build-policies test-ssh app app-dev app-preview verify-app verify-bundle verify-dev verify-preview run run-dev fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
 	@echo 'make prepare-source | test | test-dev | test-build-policies | test-factories | test-ssh | build | build-dev | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | app-dev | verify-app | verify-bundle | verify-dev | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | layout-preview | verify-layout-preview | run | run-dev | test-upstream'
 
@@ -19,6 +19,10 @@ build: prepare-source
 build-signed: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
 	swift build --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE
+
+build-dev-signed: prepare-source
+	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
+	swift build --disable-sandbox -c release --scratch-path .build/dev -Xswiftc -DSIGNED_PRERELEASE -Xswiftc -DDEVELOPMENT_CHANNEL
 
 build-dev: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
@@ -39,6 +43,7 @@ test-build-policies: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
 	swift test --disable-sandbox -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
 	swift test --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
+	swift test --disable-sandbox -c release --scratch-path .build/dev -Xswiftc -DSIGNED_PRERELEASE -Xswiftc -DDEVELOPMENT_CHANNEL --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
 
 fetch-kit:
 	Scripts/fetch-try-omarchy-kit.sh
@@ -68,6 +73,15 @@ prerelease: build icon
 
 signed-prerelease: fetch-runtime-kit prepare-source icon
 	python3 Scripts/signed_prerelease.py
+
+release-plan:
+	python3 Scripts/branch_release.py plan
+
+release-build: fetch-runtime-kit prepare-source icon
+	python3 Scripts/branch_release.py build
+
+release-publish:
+	python3 Scripts/branch_release.py publish
 
 run: verify-app
 	open "dist/Omarchy VM Manager.app"

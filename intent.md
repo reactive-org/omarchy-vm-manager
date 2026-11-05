@@ -1,5 +1,15 @@
 # Omarchy VM Manager — implementation intent
 
+## Branch releases — user extension, 5 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** merge PR #5 only after its checks pass, then implement branch-driven releases in a separate PR. `main` publishes stable with automatic patch versions; `next` publishes isolated Dev with `dev.N` prereleases. Publication uses the existing CI-only signing/notarization gates. The user chose to supply Dev's separate provisioning profile later; an unset digest/secret must fail clearly without using stable's profile. Leave installed apps and running work VMs untouched. No combined resource management is added.
+
+**DESIGN DECISION:** reserve each version against the exact tested push commit, reuse reservations on retry, serialize both channels and refuse asset overwrites. Reuse exact signed runtime dependencies by source-lock digest without weakening provenance or rewriting historical locks. Update checks remain within each app channel and installation stays manual. [Branch release policy and setup](docs/BranchReleases.md) record required source-kit publication, profile setup, queue/retry semantics and recovery limitations.
+
+**VERIFIED:** PR #5's macOS and isolated SSH checks passed and it merged as `6276e53bfa13e3eb4a9004a6caaa1649d3e909ec`. **TO PROVE:** first real branch release, Dev provisioning/signature, live publication retries and native behavior of newly distributed builds. Implementation changes and no-VM tests do not authorize a local real signing identity, installation or any existing VM operation.
+
+**VERIFIED — no-VM release implementation:** 256 Swift tests in each channel, 99 script tests, both debug builds, three optimized policy modes and optimized signed Dev compilation pass. Isolated ad-hoc stable/Dev assemblies verify generated version/build/tag, bundle layout/inventory/signatures, channel identity and mismatched-app refusal with host preflight/VM launch disabled. Workflow YAML and diff checks pass. [Exact checks and remaining publication/setup limits](docs/BranchReleases.md#no-vm-verification--5-november-2026) distinguish these fixtures from a signed/published release. No installed app, existing VM, real credential, permission or native UI was used or changed.
+
 ## Stable and Dev channels — user extension, 5 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** implement the split in a dedicated worktree. The existing app identity and all existing VMs/configuration remain stable. Add a separate Dev build with an independent bundle identity, data directories, application/registry locks, activation notification, CLI endpoint and executable, defaults, credentials, imported factories, Downloads cache and guest Touch ID keys. Do not add combined resource management or Dev resource caps; the user manages allocation across apps. Existing per-manager admission checks remain.

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 
 from kit_artifacts import ROOT, digest
-from release_metadata import validate_tag, verify_release_info
+from release_metadata import validate_tag, verify_release_info, channel_spec, release_info
 
 
 def package():
@@ -17,22 +17,25 @@ def package():
     parser.add_argument("--signed", action="store_true")
     parser.add_argument("--runtime-lock", type=Path, default=ROOT / "Config/TryOmarchyRuntime.lock.json")
     args = parser.parse_args()
-    info = plistlib.loads((ROOT / "App/Info.plist").read_bytes())
-    tag = validate_tag(os.environ.get("RELEASE_TAG", ""), info["CFBundleShortVersionString"])
+    channel = os.environ.get("RELEASE_CHANNEL")
+    _, app_name, _, archive_name = channel_spec(channel or "stable")
+    info = release_info(plistlib.loads((ROOT / "App/Info.plist").read_bytes()), os.environ.get("RELEASE_TAG", ""),
+                        channel, os.environ.get("RELEASE_VERSION"), os.environ.get("RELEASE_BUILD"))
+    tag = validate_tag(os.environ.get("RELEASE_TAG", ""), info["CFBundleShortVersionString"], channel)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    app = ROOT / "dist/prerelease-staging/Omarchy VM Manager.app"
-    verify_release_info(plistlib.loads((app / "Contents/Info.plist").read_bytes()), tag, info["CFBundleShortVersionString"])
+    app = ROOT / "dist/prerelease-staging" / (app_name + ".app")
+    verify_release_info(plistlib.loads((app / "Contents/Info.plist").read_bytes()), tag, info["CFBundleShortVersionString"], channel)
     folder = ROOT / "dist/prerelease"
     folder.mkdir(parents=True, exist_ok=True)
     flavor = "notarized" if args.signed else "development"
-    archive = folder / f"Omarchy-VM-Manager-{tag}-macOS-arm64-{flavor}.zip"
+    archive = folder / f"{archive_name}-{tag}-macOS-arm64-{flavor}.zip"
     if archive.exists():
         raise ValueError("Existing prerelease archive was preserved; inspect it before retrying")
     subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(archive)], check=True)
     with tempfile.TemporaryDirectory(prefix="prerelease-check-", dir=ROOT / ".build") as temp:
         subprocess.run(["ditto", "-x", "-k", str(archive), temp], check=True)
         extracted = Path(temp) / app.name
-        verify_release_info(plistlib.loads((extracted / "Contents/Info.plist").read_bytes()), tag, info["CFBundleShortVersionString"])
+        verify_release_info(plistlib.loads((extracted / "Contents/Info.plist").read_bytes()), tag, info["CFBundleShortVersionString"], channel)
         subprocess.run([str(ROOT / "Scripts/verify-app.sh"), "--bundle-only", str(extracted), str(args.runtime_lock)], check=True)
         if args.signed:
             subprocess.run(["python3", str(ROOT / "Scripts/verify_signed_app.py"), str(extracted)], check=True)
@@ -45,7 +48,7 @@ def package():
         "This experimental development fork uses ad-hoc signing; it is not Developer ID signed or notarized. "
         "macOS Gatekeeper may block opening a downloaded copy. Trusted distribution remains a separate release milestone.\n\n")
     (folder / "release-notes.md").write_text(
-        f"Development build {tag}, source `{commit}`, macOS 15+ on Apple Silicon.\n\n"
+        f"{app_name} {tag}, source `{commit}`, macOS 15+ on Apple Silicon.\n\n"
         "Download the app ZIP and matching SHA-256 checksum below. The app includes the CLI and storage helper. "
         + distribution +
         ("Guest setup passwords use a provisioned private Keychain item with Touch ID and Mac login password fallback. "

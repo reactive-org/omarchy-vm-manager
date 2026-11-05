@@ -25,7 +25,7 @@ final class UpdateCheckController: ObservableObject {
                     releaseURL = release.url
                 case .upToDate:
                     alert.messageText = "You’re up to date"
-                    alert.informativeText = "You’re running \(tag ?? "an unknown version"). No newer published app release is available, including prereleases."
+                    alert.informativeText = "You’re running \(tag ?? "an unknown version"). No newer published release is available for this app’s \(AppChannel.current == .development ? "Dev" : "stable") channel."
                     alert.addButton(withTitle: "OK")
                 case .noReleases:
                     alert.messageText = "No app releases are available"

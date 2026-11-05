@@ -33,10 +33,13 @@ def assemble():
     args = parser.parse_args()
     development = args.dev or args.preview
     assert not (development and args.layout_preview), "Dev and layout preview are separate builds"
-    assert not (development and args.signed_prerelease), "Dev requires its own reviewed provisioning profile before signed distribution"
     assert args.keychain_profile is None or args.signed_prerelease, "a Keychain profile requires authorized Developer ID signing"
     assert not args.signed_prerelease or args.keychain_profile is not None, "signed prereleases require the pinned Touch ID profile"
-    info = release_info(plistlib.loads((ROOT / "App/Info.plist").read_bytes()), os.environ.get("RELEASE_TAG", ""))
+    channel = "development" if development else "stable"
+    requested_channel = os.environ.get("RELEASE_CHANNEL")
+    assert requested_channel is None or requested_channel == channel, "release channel and compiled app differ"
+    info = release_info(plistlib.loads((ROOT / "App/Info.plist").read_bytes()), os.environ.get("RELEASE_TAG", ""),
+                        requested_channel, os.environ.get("RELEASE_VERSION"), os.environ.get("RELEASE_BUILD"))
     assert not args.signed_prerelease or info.get("OmarchyReleaseTag"), "signed prereleases require RELEASE_TAG"
     lock_path = args.runtime_lock
     lock = json.loads(lock_path.read_bytes())
