@@ -6,6 +6,8 @@ import SwiftUI
 /// the manager window itself is pinned to dark.
 enum Theme {
     static let ground = dynamic(dark: 0x0D0E14, light: 0xF1F2F6)
+    /// Body text: off-white, as in the design. Pure white reads heavier on the dark panes.
+    static let text = dynamic(dark: 0xE6E7EE, light: 0x1D1F2A)
     static let pane = dynamic(dark: 0x161822, light: 0xFFFFFF)
     static let border = dynamic(dark: 0x292B3A, light: 0xD7D9E3)
     static let strongBorder = dynamic(dark: 0x3D4055, light: 0xB9BCCB)

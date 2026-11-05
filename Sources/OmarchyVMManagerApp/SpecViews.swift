@@ -7,9 +7,9 @@ struct QuietActionButtonStyle: ButtonStyle {
         let destructive = configuration.role == .destructive
         configuration.label
             .font(Theme.sans(13, weight: .medium))
-            .foregroundStyle(destructive ? Color.red : Color.primary)
+            .foregroundStyle(destructive ? Color.red : Theme.text)
             .padding(.horizontal, 12).frame(minHeight: 32)
-            .background(configuration.isPressed ? Color.primary.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
+            .background(configuration.isPressed ? Theme.text.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
             .overlay(RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(destructive ? Color.red.opacity(0.5) : Theme.strongBorder))
             .opacity(isEnabled ? 1 : 0.45)
             .contentShape(RoundedRectangle(cornerRadius: Theme.controlRadius))
@@ -24,10 +24,10 @@ struct SidebarRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: Theme.controlRadius)
         configuration.label
-            .font(Theme.body).foregroundStyle(Color.primary)
+            .font(Theme.body).foregroundStyle(Theme.text)
             .padding(.horizontal, 8).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? Theme.green.opacity(focused ? 0.12 : 0.07) : configuration.isPressed || hovering ? Color.primary.opacity(0.06) : .clear, in: shape)
+            .background(selected ? Theme.green.opacity(focused ? 0.12 : 0.07) : configuration.isPressed || hovering ? Theme.text.opacity(0.06) : .clear, in: shape)
             .overlay(shape.strokeBorder(selected ? (focused ? Theme.green : Theme.green.opacity(0.55)) : .clear))
             .contentShape(shape)
             .onHover { hovering = $0 }
@@ -66,9 +66,13 @@ struct SpecLine: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 88, alignment: .leading)
-            Text(value).font(Theme.mono(14)).foregroundStyle(tint ?? Color.primary).textSelection(.enabled)
-            if let note { Text(note).font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-        }.frame(maxWidth: .infinity, alignment: .leading)
+            Text(value).font(Theme.mono(14)).foregroundStyle(tint ?? Theme.text).textSelection(.enabled)
+            // Explanations stay out of the list and appear on hover; the marker makes them discoverable.
+            if note != nil { Image(systemName: "info.circle").font(.system(size: 11)).foregroundStyle(Theme.label).accessibilityHidden(true) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        .help(note ?? "")
+        .accessibilityElement(children: .combine).accessibilityHint(note ?? "")
     }
 }
 

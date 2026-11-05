@@ -45,7 +45,7 @@ struct ManagerView: View {
                             sidebarRow(.library) {
                                 HStack(spacing: 9) {
                                     ManagerArtwork(size: 34)
-                                    Text(AppChannel.current.displayName).font(Theme.sans(17, weight: .medium)).fixedSize(horizontal: false, vertical: true)
+                                    Text(AppChannel.current.displayName).font(Theme.sans(17, weight: .medium)).tracking(-0.17).lineLimit(1).minimumScaleFactor(0.8)
                                 }
                             }
                             sidebarHeader("guests")
@@ -496,7 +496,7 @@ private struct GuestTabs: View {
                 ForEach(GuestPage.allCases, id: \.self) { item in
                     let selected = item == page
                     Button { page = item } label: {
-                        Text(item.rawValue).font(Theme.sans(13, weight: selected ? .medium : .regular)).foregroundStyle(selected ? Color.primary : Color.secondary)
+                        Text(item.rawValue).font(Theme.sans(13, weight: selected ? .medium : .regular)).foregroundStyle(selected ? Theme.text : Color.secondary)
                             .frame(maxWidth: .infinity).frame(height: 32)
                             .background(selected ? Theme.green.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
                             .overlay { if selected { RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(Theme.green) } }

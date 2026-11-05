@@ -46,6 +46,9 @@ struct OmarchyVMManagerApp: App {
     private let instanceLock: ManagerInstanceLock
 
     init() {
+        // Thin, unsmoothed text like the design's antialiased rendering. macOS otherwise thickens
+        // light-on-dark glyph stems, which made the dark manager read as bold. In-process only.
+        UserDefaults.standard.register(defaults: ["AppleFontSmoothing": 0])
         BundledFonts.register()
         #if DEBUG
         if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--accept-setup-screens" {
@@ -98,7 +101,7 @@ struct OmarchyVMManagerApp: App {
     var body: some Scene {
         Window(AppChannel.current.displayName, id: "manager") {
             if AppModel.layoutPreview { LifecycleLayoutPreview() }
-            else { ManagerView(model: model).preferredColorScheme(.dark).tint(Theme.green).task { delegate.model = model; await model.observe() } }
+            else { ManagerView(model: model).preferredColorScheme(.dark).tint(Theme.green).foregroundStyle(Theme.text).task { delegate.model = model; await model.observe() } }
         }
         .defaultSize(width: 1120, height: 780)
         .windowResizability(.contentMinSize)
