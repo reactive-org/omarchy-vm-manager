@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Scripts"))
 import private_provisioning_package as private
 import private_provisioning_signer as signer
 from test_private_provisioning_package import Fixture, FakeSigner, TEAM, PROFILE, put
+from resource_signature_fixtures import SIGNATURE_RECORDS, add_signature_records
 
 MACHO_FIXTURE = b"\xcf\xfa\xed\xfePROCESS_RUNNER_FIXTURE_NOT_EXECUTABLE\n"
 PARSER_REVISION = "1" * 40
@@ -28,7 +29,7 @@ def replace(path, data):
 
 
 class CommandFixture(Fixture):
-    def __init__(self, root):
+    def __init__(self, root, signed_resources=False):
         super().__init__(root)
         self.source_kit["Contents/MacOS/omarchy-vm-helper"] = MACHO_FIXTURE + b"runtime"
         self.runtime["files"] = {n: private.digest(b) for n, b in self.source_kit.items()}
@@ -65,6 +66,8 @@ class CommandFixture(Fixture):
         self.source["overlayFiles"] = [{"path": n, "beforeSHA256": private.digest(self.base[n]) if n in self.base else None,
                                         "afterSHA256": private.digest(b)} for n, b in sorted(self.overlay.items())]
         replace(self.candidate / "source-evidence.json", private.canonical(self.source))
+        if signed_resources:
+            add_signature_records(self.app / "Contents/Resources" / private.package.BUNDLE)
         self.manifest.update(source=self.source, appInventory=private.tree(self.app),
                              runtimeLockSHA256=private.digest(private.canonical(self.runtime)))
         replace(self.candidate / "candidate.json", private.canonical(self.manifest))
@@ -140,8 +143,12 @@ class FakeCommands:
                 scope = "0" * 64 if self.fault == "missing-scope" else fixture.scope["scopeSHA256"]
                 put(destination / name, MACHO_FIXTURE + name.encode() + scope.encode(), True)
             put(self.binaries / "OmarchyVMManager_OmarchyVMManagerCore.bundle/fixture", b"core resource")
-            private.copy_tree(fixture.handoff / "inputs" / private.package.BUNDLE, self.binaries / private.package.BUNDLE,
-                              private.tree(fixture.handoff / "inputs" / private.package.BUNDLE))
+            # A fresh resource build emits payload, not the reference app's
+            # inherited detached signature. No SDK or signer runs here.
+            reference = fixture.handoff / "inputs" / private.package.BUNDLE
+            for name in private.tree(reference):
+                if name not in SIGNATURE_RECORDS:
+                    put(self.binaries / private.package.BUNDLE / name, private.read(reference / name))
         if stage == "locate-built-binaries":
             return signer.Result(stdout=str(fixture.root if self.fault == "foreign-build" else self.binaries).encode())
         if stage == "locate-built-launcher": return signer.Result(stdout=str(self.launcher).encode())
@@ -224,6 +231,18 @@ class SignerAdapterTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(archive.stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(archive.parent.stat().st_mode), 0o700)
         self.assertEqual(private.load_handoff(self.fixture.handoff, self.fixture.expected)["scopeSHA256"], result["scopeSHA256"])
+
+    def test_signed_reference_and_unsigned_fake_build_complete_seal_and_roundtrip(self):
+        root = self.root / "signed-reference"; root.mkdir(mode=0o700)
+        self.fixture = CommandFixture(root, signed_resources=True)
+        before = private.tree(self.fixture.handoff)
+        result = self.run_adapter(output="signed-resources-result")
+        self.assertEqual(result["status"], "FAKE_RUNNER_ONLY")
+        for suffix in ("Private Candidate.app", "roundtrip/Private Candidate.app"):
+            contents = self.root / "signed-resources-result" / suffix / "Contents"
+            private.package.verify(contents, root=self.fixture.handoff / "inputs")
+            self.assertFalse(set(SIGNATURE_RECORDS) & private.tree(contents / "Resources" / private.package.BUNDLE).keys())
+        self.assertEqual(private.tree(self.fixture.handoff), before)
 
     def test_default_system_runner_denies_before_material_or_output(self):
         adapter = signer.Adapter(signer.SystemRunner(), self.fixture.material)

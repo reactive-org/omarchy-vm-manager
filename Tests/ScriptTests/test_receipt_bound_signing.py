@@ -19,6 +19,7 @@ import test_offline_native_process as launch_tests
 from test_offline_native_process import FakeOps, FakeFile, FakePopen
 from test_offline_macos_bindings import FakeFFI
 from test_private_provisioning_inputs import SourceCommands
+from resource_signature_fixtures import SIGNATURE_RECORDS, add_signature_records
 
 
 class Tasks:
@@ -78,7 +79,17 @@ class Factory(bounded.CommandFactory):
 class ReceiptSigningTests(unittest.TestCase):
     def setUp(self):
         self.seed=launch_tests.NativeLaunchTests(methodName='test_full_adapter_through_concrete_launcher_and_bindings_uses_only_fake_primitives')
-        self.seed.setUp();self.addCleanup(self.seed.doCleanups)
+        # Model the observed boundary in every receipt flow: a frozen signed
+        # reference, freshly built unsigned resources and fake signing only.
+        source_fixture = launch_tests.fixture_tests.SourceFixture
+        def signed_reference(root):
+            fixture = source_fixture(root)
+            add_signature_records(fixture.packet / 'inputs' / p.package.BUNDLE)
+            fixture.reseal()
+            return fixture
+        with patch.object(launch_tests.fixture_tests, 'SourceFixture', side_effect=signed_reference):
+            self.seed.setUp()
+        self.addCleanup(self.seed.doCleanups)
         self.fixture=self.seed.fixture;self.root=self.seed.root
         self.receipt=self.seed.caller().run(self.fixture.packet)
         self.historical=self.seed.review
@@ -109,6 +120,33 @@ class ReceiptSigningTests(unittest.TestCase):
         self.assertTrue(all(c.environment['GIT_CEILING_DIRECTORIES']==str(self.review.output) for c in self.ops.commands.commands))
         self.assertTrue(any(s.kind=='candidate-code' for s in self.tasks.specs))
         self.assertEqual(p.tree(self.review.output/'Private Candidate.app'),p.tree(self.review.output/'roundtrip/Private Candidate.app'))
+        reference = self.fixture.packet/'inputs'/p.package.BUNDLE
+        self.assertTrue(set(SIGNATURE_RECORDS) <= p.tree(reference).keys())
+        self.assertFalse(set(SIGNATURE_RECORDS) & p.tree(self.review.output/'Private Candidate.app/Contents/Resources'/p.package.BUNDLE).keys())
+
+    def test_added_built_resource_is_refused_before_any_fake_signing_command(self):
+        caller = self.caller()
+        def inject(command):
+            if command.stage == 'build-scoped-signed-prerelease':
+                p.write(self.ops.commands.binaries / p.package.BUNDLE / 'unexpected', b'unreviewed build output')
+        self.ops.callback = inject
+        with self.assertRaises(p.Refused): caller.run(self.fixture.packet)
+        self.assertFalse(any(c.stage.startswith('sign-') for c in self.ops.commands.commands))
+        self.assertTrue(self.runner.cleanup_confirmed)
+
+    def test_roundtrip_rejects_reintroduced_reference_signature_even_when_both_app_trees_match(self):
+        caller = self.caller(); extract = p.extract_local
+        def inject(archive, destination):
+            extract(archive, destination)
+            if destination.name == 'roundtrip':
+                for app in (self.review.output/'Private Candidate.app', destination/'Private Candidate.app'):
+                    path = app/'Contents/Resources'/p.package.BUNDLE/SIGNATURE_RECORDS[0]
+                    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    p.write(path, b'reintroduced inherited record')
+        with patch.object(p, 'extract_local', side_effect=inject), self.assertRaises(p.Refused):
+            caller.run(self.fixture.packet)
+        self.assertTrue(self.runner.cleanup_confirmed)
+        self.assertFalse((self.review.output/'signer-result.json').exists())
 
     def test_default_and_json_env_authority_deny_before_input_io(self):
         caller=signing.ReceiptBoundCaller(self.fixture.review,self.historical,self.material,self.review)

@@ -318,3 +318,10 @@ frozen signature records are absent from fresh build output. All 42 owned roots
 clean up and 4,002 prior artifact entries/pins are preserved. Signing/key/UI/Apple
 timestamp stages are not reached. The request is consumed; narrow resource
 fixtures/admission and fresh review precede any separately approved attempt.
+
+[Resource payload admission and fresh review](DevVMMilestone6Runbook.md#resource-payload-admission--fake-fixtures-and-fresh-review-5-november-2026)
+fixes assembly with exact payload/wrapper checks and only the four known inherited
+reference signatures excluded. Built/output signatures and unknown changes still
+refuse; generic inventories and final seals remain enforced. Fourteen new cases;
+291 audited passes/five signing skips. A fresh maintained operator plan is prepared
+but unexecuted, with all approvals unset and 8,691 old artifact entries/pins intact.

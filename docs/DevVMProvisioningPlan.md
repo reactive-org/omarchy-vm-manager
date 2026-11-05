@@ -3466,3 +3466,32 @@ and a fresh review; never relax generic inventories or modify frozen inputs.
 Real signing/candidate and guest acceptance remain TO PROVE. Concurrent unrelated
 CLI edits are left intact. See the
 [result and retained-file diagnosis](DevVMMilestone6Runbook.md#fresh-candidate-attempt--compiled-resource-assembly-stop-5-november-2026).
+
+## Resource payload/signature admission — 5 November 2026
+
+After committing result docs (`12247e2`, companion `ff2c82d`), assembly admits the
+exact frozen wrapper/resource payload independently of its complete known inherited
+signature block. Only those four reference records can be excluded; fresh build
+output must contain the exact remaining payload, with no inherited signatures.
+Reference resource bytes also match the package lock. Partial/unknown blocks,
+changed/extra/missing payload or wrapper files and unsafe types refuse. Generic
+inventory checks and frozen pins are unchanged. Exact admitted payload is rechecked
+before outer signing and during staged/roundtrip verification; child digest seal,
+outer seal/static validation and archive equality remain required.
+
+Fourteen new fake/local cases and full audited Python suite pass: 291 passes,
+five signing/PKCS12 skips (296 discovered), Git/Python only, no native-library
+attempts. Signed-reference/unsigned-build fixtures cover the actual boundary;
+retained public bytes compare as 45 exact payload files plus four old signature
+records without copying output or rerunning a build.
+
+Fresh private review binds seventeen engine files, separate operator code and a
+32-file exact uncommitted snapshot against `12247e2`. Maintained operator
+prepare/check emits a new public-input-only plan; candidate output and consumed
+marker are absent, all execution approvals ungranted and old authority untransferred.
+All 8,691 old artifact entries/pins and failed attempts remain intact. No original
+signing material/keychain or VM root is inspected, stat-checked or changed here.
+No real inspection, signing, key access, Apple request, SSH/Ansible, install, UI,
+app/runtime or VM execution occurs. Commit before a separately approved fresh run;
+real resource-seal/signing/candidate/guest evidence remains TO PROVE. See the
+[policy, fixtures and fresh review](DevVMMilestone6Runbook.md#resource-payload-admission--fake-fixtures-and-fresh-review-5-november-2026).

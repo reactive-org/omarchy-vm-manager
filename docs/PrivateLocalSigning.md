@@ -98,6 +98,19 @@ original unresolved handles remain held and the CLI stays alive with a STOP noti
 Do not force-exit it, adopt saved PIDs, clear risk or retry automatically; review the
 private evidence and an explicit recovery procedure first.
 
+## Provisioning resource admission
+
+The frozen resource reference can contain its former detached signature block.
+The engine admits that complete known four-file block (or none), verifies resource
+bytes against the unchanged package lock, and requires every remaining payload and
+wrapper file to match the fresh build exactly. It excludes those records only from
+the reference comparison; built signatures are rejected rather than filtered.
+Generic inventory rules and frozen inputs are unchanged. Before outer signing and
+at staged/archive-roundtrip verification, the resource tree must still match the
+admitted payload. Child digest sealing, outer signature/static checks and exact
+archive comparison remain required. Old signature records provide no new execution
+or cryptographic authority. See the [fake fixtures and fresh review](DevVMMilestone6Runbook.md#resource-payload-admission--fake-fixtures-and-fresh-review-5-november-2026).
+
 ## Results and limitations
 
 `attempt.json` records a fixed result/status and bounded command/native cleanup

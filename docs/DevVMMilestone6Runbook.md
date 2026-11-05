@@ -1464,6 +1464,62 @@ sealed bundle, and prepare a fresh review. Do not weaken general inventory check
 or rewrite frozen pins. Real signing/key/UI/timestamps and candidate/guest
 acceptance remain unproven. Concurrent unrelated CLI worktree edits are preserved.
 
+## Resource payload admission — fake fixtures and fresh review, 5 November 2026
+
+**IMPLEMENTED:** previous result docs are committed as manager `12247e2` and
+companion `ff2c82d`. Assembly now distinguishes the frozen provisioning payload
+from its inherited detached signature records. The full reference is still
+admitted against the unchanged frozen source-input inventory. No old resource,
+signature file, source/runtime pin or failure output is rewritten.
+
+**DESIGN DECISION:** only a complete known reference block of
+`Contents/_CodeSignature/{CodeDirectory,CodeRequirements,CodeResources,CodeSignature}`
+or no signature records is accepted. Partial, unknown and nested signature blocks
+refuse. Resource bytes independently match the package lock. Every remaining file,
+including the bundle wrapper/Info.plist, must match the fresh build exactly. Built
+signatures are rejected rather than filtered; arbitrary extra, missing or changed
+files still fail. Generic `tree` / `copy_tree` inventory checks remain unchanged.
+Reference admission is checked around copying; linked/writable/special entries
+refuse and copy IO errors expose a fixed safe code.
+
+**DESIGN DECISION — final checks:** retain the admitted payload hashes and check
+them before outer signing, during staged verification and after archive roundtrip.
+The post-child-sign distribution digest seal, constrained outer-sign changes,
+no-network static verification and complete archive equality checks remain
+mandatory. A paired original/roundtrip addition cannot redefine the payload.
+Inherited records are historical input bytes, not current cryptographic proof;
+the candidate's new outer seal must establish the final resource chain.
+
+**VERIFIED — fake/local:** fourteen new cases cover signed/unsigned references,
+nested/flat resource layouts, preserved generic refusal, partial/unknown/stale
+signature blocks, payload/wrapper/lock mutation, extra/missing inputs, ambiguity,
+symlinks/writable/FIFO entries, changing references and final/roundtrip tampering.
+Receipt and operator fixtures now model signed references with unsigned fake build
+resources. Fake child/sign/seal/outer/roundtrip flows pass. Focused make targets
+and the full audited Python suite pass: 296 discovered, 291 passed, five signing/
+PKCS12 skips; only local Git/Python processes and no native-library attempts.
+A read-only comparison confirms the retained build's 45 payload files match the
+new policy against its unchanged 49-file frozen reference. No build is rerun.
+
+**PREPARED / NOT AUTHORIZED:** a fresh private review binds seventeen engine files,
+the operator CLI separately, and a 32-file exact source/test/Makefile snapshot
+against `12247e2`. Code is explicitly uncommitted. The maintained operator's
+`prepare` / `check` creates a new plan with CHECKED_PUBLIC_INPUTS_ONLY, new request
+and candidate output, unchanged historical receipt/source/scope/runtime bindings
+and independent engine/operator hashes. It creates no authority/backend, queries
+no native API or keychain metadata, and grants no execution effect. All five
+approvals remain NOT_GRANTED; candidate output and consumed marker are absent.
+
+**VERIFIED — preservation / TO PROVE:** all 8,691 prior artifact entries and pins,
+including both failed attempts and their consumed markers/audits, remain unchanged.
+Retained credential content stays unopened with stable metadata; external signing
+materials/keychain are neither opened nor stat-checked. No root/pin is observed or
+recaptured; product approval remains nil. No real inspection, signing, key access,
+Apple request, SSH/Ansible, install, UI, app/runtime execution or VM operation
+occurs. Commit the reviewed bytes before any separately approved new attempt with
+fresh terminal confirmation. Real final signing/key/UI/timestamp/resource-seal and
+candidate/guest behavior remain unproven; no old approval transfers.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

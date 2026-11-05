@@ -159,6 +159,7 @@ class ReceiptAdapter(Adapter):
 
     def _verify(self, app, stage):
         before=p.tree(app)
+        self._verify_provisioning_resources(app)
         for name in (p.MAIN,'OmarchyVMProvisioningHelper'):
             p.require(self.request['scopeSHA256'].encode() in p.read(app/'Contents/MacOS'/name), 'signed-scope-marker-missing')
         p.package.verify(app/'Contents',root=self.handoff/'inputs')

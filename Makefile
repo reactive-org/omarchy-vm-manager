@@ -91,6 +91,11 @@ test-private-signing-cli:
 test-frozen-provisioning-helper:
 	python3 -m unittest discover -s Tests/ScriptTests -p 'test_frozen_provisioning_helper.py' -v
 
+.PHONY: test-resource-signatures
+# Synthetic resource records and disposable files; no SDK/native/signing work.
+test-resource-signatures:
+	python3 -m unittest discover -s Tests/ScriptTests -p 'test_resource_signatures.py' -v
+
 .PHONY: test-provisioning-package test-provisioning-bundle
 test-provisioning-package: build
 	swift test $(SWIFT_FLAGS) --no-parallel --filter ProvisioningPackage

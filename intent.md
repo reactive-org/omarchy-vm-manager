@@ -3364,3 +3364,32 @@ remains the visual target for milestone 5.
   admission and fresh review, preserving generic inventory checks and frozen pins.
   Real signing/candidate/guest evidence remains unproven. See the
   [result](docs/DevVMMilestone6Runbook.md#fresh-candidate-attempt--compiled-resource-assembly-stop-5-november-2026).
+
+## Resource payload and inherited signature policy — 5 November 2026
+
+- **USER AUTHORIZATION / IMPLEMENTED:** commit result docs in both worktrees
+  (`12247e2`, companion `ff2c82d`), add resource/signature fixtures, fix assembly
+  admission and prepare a fresh review. No real inspection or signing authorized.
+- **DESIGN DECISION:** full frozen reference remains pinned. Derive a payload only
+  by excluding its complete four known inherited detached signature records (or
+  accept an unsigned reference); reject partial/unknown/nested blocks. Resource
+  bytes independently match the package lock, remaining wrapper/resource inventory
+  matches build output exactly, and built/output signatures are never filtered.
+  Generic inventory/copy rules remain unchanged; revalidate around copying.
+- **DESIGN DECISION:** recheck admitted payload before outer signing and during
+  staged/roundtrip verification, retaining child digest seal, outer seal/static
+  checks and archive equality. Inherited signature bytes are not current proof.
+- **VERIFIED — fake/local:** fourteen new tests; 291 full Python passes, five
+  signing/PKCS12 skips, only local Git/Python and no native-library attempt. Receipt/
+  operator flows use signed references and unsigned fake resources. The retained
+  build's 45 payload files compare exactly to the unchanged 49-file frozen bundle.
+- **PREPARED / TO PROVE:** fresh private review binds seventeen engine files plus
+  separate operator code and a 32-file exact uncommitted snapshot. Maintained
+  prepare/check yields a new public-input-only plan; no authority/backend, candidate
+  output or consumed marker, all five effects ungranted. All 8,691 old entries/pins,
+  failed outputs/audits/markers are preserved; credential content unopened, original
+  materials/keychain not opened/stat-checked, no VM-root observation or scope-pin
+  recapture and product approval nil. No real inspection/signing/key/Apple/SSH/
+  Ansible/install/UI/app/runtime/VM action occurs. Commit before a separately
+  approved new run; real final signature/resource-chain/candidate/guest behavior
+  remains unproven. See the [fresh review](docs/DevVMMilestone6Runbook.md#resource-payload-admission--fake-fixtures-and-fresh-review-5-november-2026).

@@ -24,6 +24,33 @@ TOOLS = {"git": "/usr/bin/git", "make": "/usr/bin/make", "swift": "/usr/bin/swif
          "codesign": "/usr/bin/codesign", "security": "/usr/bin/security",
          "python": str(Path(sys.executable).resolve())}
 MACHO = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"}
+# Only these inherited detached records may be absent from a fresh resource
+# build. Never filter signatures from a built/output tree or a generic copy.
+INHERITED_RESOURCE_SIGNATURES = frozenset("Contents/_CodeSignature/" + name for name in
+    ("CodeDirectory", "CodeRequirements", "CodeResources", "CodeSignature"))
+
+
+def provisioning_payload(inputs):
+    """Exact frozen wrapper/resource inventory, without its old signature block.
+
+    The caller admits the full frozen input separately. This is a source/content
+    comparison, not cryptographic validation of an inherited signature.
+    """
+    reference = inputs / private.package.BUNDLE
+    inventory = private.tree(reference)
+    signatures = frozenset(n for n in inventory if "_CodeSignature" in Path(n).parts)
+    private.require(signatures in (frozenset(), INHERITED_RESOURCE_SIGNATURES),
+                    "provisioning-resource-signature-layout")
+    try:
+        _, lock = private.package.read_lock(inputs)
+        resources = private.package.files(private.package.resource_directory(reference))
+        pinned = private.package.resource_files(lock)
+    except (ValueError, KeyError, TypeError, OSError):
+        raise private.Refused("provisioning-resource-contract") from None
+    private.require(resources == pinned, "provisioning-resource-lock-mismatch")
+    return {name: sha for name, sha in inventory.items() if name not in signatures}
+
+
 OLD_INSPECTION = '''        var signatureRefused = false
         do { _ = try ProvisioningHelperLaunchAdmission(layout: layout, policy: .sameApplicationTeam) }
         catch ProvisioningHelperIPCFailure.authentication { signatureRefused = true }
@@ -375,6 +402,22 @@ class Adapter:
             private.require(binary[:4] in MACHO and self.request["scopeSHA256"].encode() in binary,
                             "compiled-scope-marker-missing")
 
+    def _copy_provisioning_resources(self, target):
+        self._revalidate_inputs()
+        expected = provisioning_payload(self.handoff / "inputs")
+        try:
+            private.copy_tree(self.binaries / private.package.BUNDLE, target, expected)
+        except OSError:
+            raise private.Refused("provisioning-resource-copy-refused") from None
+        private.require(provisioning_payload(self.handoff / "inputs") == expected,
+                        "provisioning-resource-reference-changed")
+        self.provisioning_payload_inventory = expected
+        self._revalidate_inputs()
+
+    def _verify_provisioning_resources(self, app):
+        private.require(private.tree(app / "Contents/Resources" / private.package.BUNDLE)
+                        == self.provisioning_payload_inventory, "provisioning-resource-payload-changed")
+
     def _assemble(self):
         self.app = self.work / "Private Candidate.app"
         contents = self.app / "Contents"
@@ -385,8 +428,7 @@ class Adapter:
             private.write(contents / "MacOS" / name, private.read(source), executable=True)
         core = "OmarchyVMManager_OmarchyVMManagerCore.bundle"
         private.copy_tree(self.binaries / core, contents / "Resources" / core, private.tree(self.binaries / core))
-        private.copy_tree(self.binaries / private.package.BUNDLE, contents / "Resources" / private.package.BUNDLE,
-                          private.tree(self.handoff / "inputs" / private.package.BUNDLE))
+        self._copy_provisioning_resources(contents / "Resources" / private.package.BUNDLE)
         private.copy_tree(self.runtime / "TryOmarchyKit.bundle", contents / "Helpers/TryOmarchyKit.bundle", self.runtime_lock["files"])
         for name, data in (("DevVMProvisioning.lock.json", private.read(self.handoff / "inputs/Config/DevVMProvisioning.lock.json")),
                            ("TryOmarchyRuntime.lock.json", self.runtime_raw)):
@@ -416,6 +458,7 @@ class Adapter:
             self._call("sign-child-" + name, "sign-with-timestamp", [*base, "--identifier", identifier, self.app / "Contents/MacOS" / name])
         private.package.seal(self.app / "Contents", root=self.handoff / "inputs")
         self.events.append("seal-post-sign-helper-digests")
+        self._verify_provisioning_resources(self.app)
         before = private.tree(self.app)
         self._call("sign-outer-app", "sign-with-timestamp", [*base, "--identifier", private.BUNDLE_ID,
                    "--entitlements", self.entitlements_path, self.app])
@@ -426,6 +469,7 @@ class Adapter:
 
     def _verify(self, app, stage):
         before = private.tree(app)
+        self._verify_provisioning_resources(app)
         for name in (private.MAIN, "OmarchyVMProvisioningHelper"):
             private.require(self.request["scopeSHA256"].encode() in private.read(app / "Contents/MacOS" / name),
                             "signed-scope-marker-missing")
