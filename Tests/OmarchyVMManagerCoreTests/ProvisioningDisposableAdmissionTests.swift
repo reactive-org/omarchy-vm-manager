@@ -6,8 +6,8 @@ import Testing
 
 /// Only test code observes pins to simulate a reviewed approval. Product code
 /// must use the ORIGINAL approved identity values, never recapture replacements.
-private func fixtureApprovedRoot(_ profile: VMProfile, support: URL) throws -> ProvisioningApprovedDisposableRoot {
-    let storage = ManagerStorage(applicationSupport: support), root = storage.root(for: profile)
+private func fixtureApprovedRoot(_ profile: VMProfile, support: URL, channel: AppChannel = .current) throws -> ProvisioningApprovedDisposableRoot {
+    let storage = ManagerStorage(applicationSupport: support, channel: channel), root = storage.root(for: profile)
     try PrivateFiles.directory(storage.directory, create: true); try PrivateFiles.directory(storage.vms, create: true)
     try PrivateFiles.directory(root, create: true)
     let marker = root.appendingPathComponent(".omarchy-vm-manager.json")
@@ -48,7 +48,7 @@ private final class DisposableFixture: Sendable {
         #expect(!String(reflecting: f.admission).contains(f.root.path))
         #expect(!String(reflecting: f.admission).contains(f.profile.id.uuidString))
     }
-    @Test(arguments: ["empty", "duplicate", "device", "inode", "hash", "retained", "foreign-root"])
+    @Test(arguments: ["empty", "duplicate", "device", "inode", "hash", "retained", "foreign-root", "other-channel"])
     func invalidApprovalRecordsCannotEnableAnything(kind: String) throws {
         let f = try DisposableFixture(), a = f.approved
         var entries = [a]
@@ -59,6 +59,9 @@ private final class DisposableFixture: Sendable {
         if kind == "hash" { entries = [.init(vmID: a.vmID, root: a.root, device: a.device, inode: a.inode, markerSHA256: String(repeating: "0", count: 64))] }
         if kind == "retained" { entries = [.init(vmID: POCProfiles.ids.first!, root: a.root, device: a.device, inode: a.inode, markerSHA256: a.markerSHA256)] }
         if kind == "foreign-root" { entries = [.init(vmID: a.vmID, root: f.support, device: a.device, inode: a.inode, markerSHA256: a.markerSHA256)] }
+        if kind == "other-channel" {
+            entries = [try fixtureApprovedRoot(f.profile, support: f.support, channel: AppChannel.current == .stable ? .development : .stable)]
+        }
         #expect(throws: Error.self) { _ = try ProvisioningDisposableAdmission(approvalID: UUID(), roots: entries) }
     }
     @Test(arguments: ["replacement", "symlink", "ancestor-symlink", "mode", "parent-mode", "marker", "storage-marker", "marker-link"])

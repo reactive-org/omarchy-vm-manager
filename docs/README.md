@@ -10,6 +10,7 @@ Create independent Omarchy guests, configure their resources, and connect from y
 - [Manage your guests](managing-guests.md): change resources, use SSH, assign a Space, shut down and delete guests.
 - [Prepare a factory image](preparing-factory-images.md): customise a lean build, prepare a compatible bundle and select it for a new guest.
 - [Use the CLI](cli-quickstart.md): create with per-VM owner overrides, wait for SSH, inspect, stop and reconfigure from a terminal.
+- [Stable and Dev](DevelopmentChannels.md): build and run an isolated development app while the existing app keeps its work VMs running.
 - [Troubleshooting](troubleshooting.md): Super shortcuts, clipboard, startup and SSH readiness.
 
 ## A quick look
@@ -347,3 +348,5 @@ records the signed, timestamped private archive: seventeen commands/46 native
 workers pass, exact staged/archive-roundtrip checks succeed, all 63 owned roots
 clean up and 13,570 earlier entries/pins are preserved. Not notarized or executed;
 original-Mac, loaded-child and disposable-guest acceptance remain separate.
+
+[Integration with next](DevVMProvisioningPlan.md#integration-with-next--5-november-2026) records combined channel/home/Setup behavior and the historical signed candidate boundary. A merged-source candidate needs a fresh review; private pins are preserved.

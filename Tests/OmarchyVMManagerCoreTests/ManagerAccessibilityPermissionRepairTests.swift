@@ -34,7 +34,9 @@ struct ManagerAccessibilityPermissionRepairTests {
         let fixture = try PermissionRepairFixture(); defer { fixture.cleanup() }
         #expect(ManagerAccessibilityPermissionRepair.resetStaleEntry(
             bundleIdentifier: ManagerAccessibilityPermissionRepair.bundleIdentifier, tccutilURL: fixture.tool))
-        #expect(try String(contentsOf: fixture.arguments, encoding: .utf8) == "reset\nAccessibility\ndev.omarchy.vm-manager\n")
+        #expect(try String(contentsOf: fixture.arguments, encoding: .utf8) == "reset\nAccessibility\n\(AppChannel.current.bundleIdentifier)\n")
+        let other = AppChannel.current == .stable ? AppChannel.development : .stable
+        #expect(!ManagerAccessibilityPermissionRepair.resetStaleEntry(bundleIdentifier: other.bundleIdentifier, tccutilURL: fixture.tool))
     }
 
     @Test("failed or unavailable mock tools cannot report a successful repair")

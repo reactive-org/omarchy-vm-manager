@@ -19,6 +19,7 @@ final class AppModel: ObservableObject {
     var factories: [FactoryIdentity] { factoryLibrary.factories }
     var factorySelectionNotice: String? { factoryLibrary.selectionNotice }
     @Published var ownerDefaults: OwnerDefaults?
+    @Published var diskDefaults = DiskDefaults()
     @Published var defaultsError: String?
     @Published private var passwordUpgrade: (reference: UUID, result: OwnerPasswordUpgradeResult)?
     var passwordUpgradeResult: OwnerPasswordUpgradeResult? {
@@ -36,6 +37,7 @@ final class AppModel: ObservableObject {
     @Published var actionError: String?
     @Published var forceStopID: UUID?
     @Published var experimentalPowerReview: ExperimentalPowerReview?
+    @Published var homeBackupReview: VMSnapshot?
     @Published var configurationError: String?
     @Published var deletionReview: DeletionReview?
     @Published var accessibilityTrusted = false
@@ -174,7 +176,8 @@ final class AppModel: ObservableObject {
     func stopCommandServer() { commandServer?.stop(); commandServer = nil; setupServer?.stop(); setupServer = nil }
 
     func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, diskGiB: Int,
-              clipboard: Bool, guestTouchID: Bool = false, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath, setupConsent: ProvisioningCreationConsent? = nil) async -> UUID? {
+              clipboard: Bool, guestTouchID: Bool = false, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath,
+              separateHome: Bool = true, homeDiskGiB: Int = 64, reuseHomeFrom: UUID? = nil, setupConsent: ProvisioningCreationConsent? = nil) async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
         do {
@@ -183,7 +186,7 @@ final class AppModel: ObservableObject {
                 guard profile == nil, let isolatedSave else { throw ProvisioningReviewFailure.invalid }
                 let config = GuestConfigurationPatch(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
                     clipboard: clipboard, immersive: immersive, guestTouchID: guestTouchID, ssh: sshEnabled, ownerDefaults: useOwnerDefaults,
-                    publicKey: publicKey, factory: factory, inheritDefaultPublicKey: false, share: share, sharePath: sharePath)
+                    publicKey: publicKey, factory: factory, inheritDefaultPublicKey: false, share: share, sharePath: sharePath, separateHome: separateHome, homeDiskGiB: separateHome ? homeDiskGiB : nil, reuseHomeFrom: reuseHomeFrom)
                 let saved = try await isolatedSave(config, setupConsent)
                 if !snapshots.contains(where: { $0.id == saved.id }) { snapshots.append(.init(profile: saved, state: .stopped)) }; return saved.id
             }
@@ -193,6 +196,7 @@ final class AppModel: ObservableObject {
                 guard setupConsent == nil else { throw ProvisioningReviewFailure.invalid }
                 profile.name = name; profile.memoryMiB = memoryGiB * 1024; profile.cpus = cpus; profile.diskGiB = diskGiB
                 profile.guestTouchIDEnabled = guestTouchID
+                if profile.homeDisk != nil { profile.homeDisk?.sizeGiB = homeDiskGiB }
                 profile.clipboardEnabled = clipboard; profile.immersiveMode = immersive
                 if share || profile.sharedFolder != nil { profile.sharedFolder = try SharedFolderPolicy.mapping(path: sharePath, enabled: share) }
                 try await manager.configure(profile); id = profile.id
@@ -200,7 +204,8 @@ final class AppModel: ObservableObject {
                 id = try await manager.create(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
                                               clipboardEnabled: clipboard, guestTouchIDEnabled: guestTouchID, immersiveMode: immersive, sshEnabled: sshEnabled,
                                               publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false, factory: factory,
-                                              sharedFolder: share ? try SharedFolderPolicy.mapping(path: sharePath) : nil, setupConsent: setupConsent)
+                                              sharedFolder: share ? try SharedFolderPolicy.mapping(path: sharePath) : nil,
+                                              separateHome: separateHome, homeDiskGiB: separateHome ? homeDiskGiB : nil, reuseHomeFrom: reuseHomeFrom, setupConsent: setupConsent)
             }
             storageRefreshed = .distantPast
             await update(); return id
@@ -235,8 +240,12 @@ final class AppModel: ObservableObject {
     }
 
     func loadDefaults() async {
-        do { ownerDefaults = try await manager.guestDefaults(); defaultsError = nil }
+        do { diskDefaults = try await manager.diskDefaults(); ownerDefaults = try await manager.guestDefaults(); defaultsError = nil }
         catch { defaultsError = error.localizedDescription }
+    }
+    func saveDiskDefaults(_ value: DiskDefaults) async -> Bool {
+        do { try await manager.saveDiskDefaults(value); diskDefaults = value; defaultsError = nil; return true }
+        catch { defaultsError = error.localizedDescription; return false }
     }
     func saveDefaults(enabled: Bool, configuration: OwnerConfiguration, password: Data?, publicKey: String?) async -> Bool {
         do {
@@ -283,6 +292,12 @@ final class AppModel: ObservableObject {
         await update()
     }
     func retrySSH(_ id: UUID) async { await manager.retrySSH(id); await update() }
+    func beginHomeBackup(_ id: UUID) async {
+        do { try await manager.beginHomeBackup(id, confirmed: true) }
+        catch { actionError = error.localizedDescription }
+        await update()
+    }
+    func cancelHomeBackup(_ id: UUID) async { await manager.cancelHomeBackup(id); await update() }
     func stop(_ id: UUID) async { await manager.shutDown(id); await update() }
     func forceStop(_ id: UUID) async {
         do { try await manager.forceStop(id, confirmed: true) } catch { actionError = error.localizedDescription }
@@ -346,7 +361,7 @@ final class AppModel: ObservableObject {
     }
 
     private func writeReport() throws {
-        let logs = support.appendingPathComponent("Omarchy VM Manager/Logs")
+        let logs = ManagerStorage(applicationSupport: support).directory.appendingPathComponent("Logs")
         if mkdir(logs.path, 0o700) != 0, errno != EEXIST { throw CocoaError(.fileWriteUnknown) }
         try PrivateFiles.directory(logs)
         let object: [String: Any] = [
@@ -385,7 +400,7 @@ final class AppModel: ObservableObject {
         if await manager.prepareToQuitIfIdle() { NSApplication.shared.reply(toApplicationShouldTerminate: true); return }
         let alert = NSAlert()
         alert.messageText = "Shut down the VMs and quit?"
-        alert.informativeText = "The manager will wait for all VM helpers and storage transactions to finish."
+        alert.informativeText = "The manager will cancel backups and wait for all VM helpers, backup workers and storage transactions to finish."
         alert.addButton(withTitle: "Shut Down and Quit"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { NSApplication.shared.reply(toApplicationShouldTerminate: false); return }
         shuttingDown = true; _ = await manager.beginApplicationShutdown()

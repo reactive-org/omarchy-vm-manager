@@ -39,7 +39,7 @@ public struct TryOmarchyRuntime: VMRuntime {
     private let kit: TryOmarchyKit
     private let protocolTestMode: Bool
     private let pocAdmission: POCLaunchAdmission?
-    private let ownerSecrets: any OwnerSecretStoring = KeychainOwnerSecretStore()
+    private var ownerSecrets: any OwnerSecretStoring = KeychainOwnerSecretStore()
     private var managedStorage: ManagerStorage? = nil
     private var testForeground: GuestLaunchForegrounding? = nil
 
@@ -68,6 +68,12 @@ public struct TryOmarchyRuntime: VMRuntime {
         managedStorage = ManagerStorage(applicationSupport: applicationSupport)
     }
 
+    // Internal injection keeps opt-in disposable acceptance runs out of the real Keychain.
+    init(managedKit: TryOmarchyKit, lockData: Data, applicationSupport: URL, ownerSecrets: any OwnerSecretStoring) {
+        self.init(managedKit: managedKit, lockData: lockData, applicationSupport: applicationSupport)
+        self.ownerSecrets = ownerSecrets
+    }
+
     public func preflight() -> VMRunError? { VMRunClient.preflight() }
 
     public func start(_ request: VMStartRequest,
@@ -79,11 +85,13 @@ public struct TryOmarchyRuntime: VMRuntime {
         var factorySelection: VMFactorySelection?
         if let storage = managedStorage, let admission = pocAdmission {
             try admission.validateKit()
+            let execution = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
+            try AppChannel.current.validateRuntimeChannels(execution.managerChannelsVersion)
             try GuestTouchIDPolicy.validate(request.profile, lockData: admission.lockData)
             let catalog = try FactoryCatalog(applicationSupport: storage.applicationSupport, kit: kit, lockData: admission.lockData)
             factorySelection = try catalog.selection(for: request.profile.factory)
             if let factory = request.profile.factory { try catalog.validateCapacity(factory, diskGiB: request.profile.diskGiB ?? 64) }
-            let execution = try JSONDecoder().decode(RuntimeProvenance.self, from: admission.lockData)
+            guard request.profile.homeDisk == nil || execution.homeDiskVersion == 1 else { throw HomeDisk.failure("This runtime has no verified separate-home capability. The guest was not launched.") }
             guard execution.launchIntentVersion == 1 else { throw VMFailure(code: "unproven-launch-intent-runtime", message: "Guest display activation requires the exact reviewed runtime.") }
             guard execution.manualPauseVersion == 1 else { throw VMFailure(code: "unproven-execution-runtime", message: "Manual execution control requires the exact reviewed runtime.") }
             if request.profile.ssh != nil {
@@ -147,13 +155,14 @@ public struct TryOmarchyRuntime: VMRuntime {
         if request.profile.clipboardEnabled { bridges.insert(.clipboard, at: 0) }
         if request.profile.guestTouchIDEnabled { bridges.append(.authentication) }
         var configuration = VMRunConfiguration(
-            productName: request.profile.name, iconPath: guestIcon?.path, storageRoot: request.storageRoot.path,
+            productName: AppChannel.current.guestName(request.profile.name), iconPath: guestIcon?.path, storageRoot: request.storageRoot.path,
             bridges: bridges, memoryMiB: request.profile.memoryMiB, cpus: request.profile.cpus, network: .shared,
             launchIntent: request.launchIntent == .foreground ? .foreground : .background
         )
         if request.profile.guestTouchIDEnabled {
             configuration.authenticationScope = VMRunAuthenticationScope(vmID: request.profile.id, runID: request.sessionID)
         }
+        if let home = request.profile.homeDisk { configuration.homeDisk = VMHomeDiskConfiguration(id: home.id, sizeGiB: home.sizeGiB) }
         try configuration.validate()
         return configuration
     }

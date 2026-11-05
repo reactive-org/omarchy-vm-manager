@@ -134,6 +134,34 @@ struct DevelopmentOwnerSecretTests {
 struct KeychainOwnerSecretTests {
     private let secret = Data("synthetic-owner-password".utf8)
 
+    @Test("both credential modes and explicit upgrades stay inside their app channel")
+    func channelIsolation() throws {
+        let reference = UUID()
+        for channel in AppChannel.allCases {
+            for mode in [OwnerCredentialStorage.loginKeychain, .protectedKeychain] {
+                let keychain = FixtureOwnerKeychain()
+                let store = KeychainOwnerSecretStore(keychain: keychain, storage: mode, channel: channel)
+                try store.save(secret, reference: reference)
+                keychain.replies = [(errSecSuccess, secret as CFData)]
+                _ = try store.read(reference: reference)
+                try store.remove(reference: reference)
+                let expected = mode == .protectedKeychain ? channel.credentialService : channel.legacyCredentialService
+                for query in keychain.additions + keychain.copies + keychain.deletions {
+                    #expect(query[kSecAttrService as String] as? String == expected)
+                    #expect(query[kSecAttrAccount as String] as? String == reference.uuidString)
+                }
+            }
+            let keychain = FixtureOwnerKeychain()
+            keychain.replies = [(errSecItemNotFound, nil), (errSecSuccess, secret as CFData)]
+            let store = KeychainOwnerSecretStore(keychain: keychain, channel: channel)
+            #expect(try store.upgradeLegacyCredential(reference: reference) == .upgraded)
+            #expect(keychain.copies[0][kSecAttrService as String] as? String == channel.credentialService)
+            #expect(keychain.copies[1][kSecAttrService as String] as? String == channel.legacyCredentialService)
+            #expect(keychain.additions[0][kSecAttrService as String] as? String == channel.credentialService)
+            #expect(keychain.deletions.isEmpty)
+        }
+    }
+
     @Test("new secrets require user presence in the local data protection Keychain")
     func protectedSave() throws {
         let keychain = FixtureOwnerKeychain(), reference = UUID()

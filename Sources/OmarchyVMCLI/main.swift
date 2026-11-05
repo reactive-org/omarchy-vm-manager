@@ -8,10 +8,8 @@ func output(_ value: GuestCommandResponse) -> Never {
     exit(value.ok ? 0 : (value.error?.code == "wait-timeout" ? 124 : 1))
 }
 func managerApp() throws -> URL {
-    guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath(), executable.deletingLastPathComponent().lastPathComponent == "MacOS" else {
-        throw VMFailure(code: "app-required", message: "Run the bundled CLI or bin/omarchy-vm after make app.")
-    }
-    let app = executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    guard let executable = Bundle.main.executableURL else { throw VMFailure(code: "app-required", message: "The bundled CLI is required.") }
+    let app = try AppChannel.current.enclosingApp(for: executable)
     guard app.pathExtension == "app", FileManager.default.fileExists(atPath: app.appendingPathComponent("Contents/MacOS/OmarchyVMManager").path) else { throw VMFailure(code: "app-required", message: "The manager app is unavailable.") }
     return app
 }
@@ -20,7 +18,7 @@ var requestID = UUID()
 do {
     if Array(CommandLine.arguments.dropFirst()) == ["--version"] {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
-        let data = try JSONSerialization.data(withJSONObject: ["version": version, "commandProtocol": 1], options: [.sortedKeys])
+        let data = try JSONSerialization.data(withJSONObject: ["version": version, "commandProtocol": 1, "appChannel": AppChannel.current.rawValue], options: [.sortedKeys])
         FileHandle.standardOutput.write(data + Data([10])); exit(0)
     }
     let arguments = Array(CommandLine.arguments.dropFirst())
@@ -98,7 +96,8 @@ do {
         }
     }
     let parsed = try GuestCLIInvocation.parse(Array(CommandLine.arguments.dropFirst()))
-    if parsed.help { FileHandle.standardOutput.write(Data((GuestCLIInvocation.usage + "\n").utf8)); exit(0) }
+    if parsed.help { FileHandle.standardOutput.write(Data((GuestCLIInvocation.usage.replacingOccurrences(of: "omarchy-vm", with: AppChannel.current.cliName) + "\n").utf8)); exit(0) }
+    _ = try managerApp()
     let request = parsed.request!; requestID = request.requestID
     let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
     let client = ManagerCommandClient(endpoint: ManagerCommandEndpoint(applicationSupport: support))

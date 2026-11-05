@@ -12,6 +12,8 @@ struct OwnerDefaultsView: View {
     @State private var saving = false
     @State private var error: String?
     @State private var saved = false
+    @State private var disks = DiskDefaults()
+    @State private var disksSaved = false
     private let protectedPasswordsAvailable = KeychainOwnerSecretStore.supportsProtectedStorage
     private let developmentPasswords = KeychainOwnerSecretStore.usesDevelopmentKeychain
     private var upgradeButtonTitle: String {
@@ -27,6 +29,17 @@ struct OwnerDefaultsView: View {
             Text("Configure owner setup once for new virtual machines. Each new guest keeps its own snapshot; changing defaults leaves existing guests unchanged.").foregroundStyle(.secondary)
             if let failure = model.defaultsError { Text(failure).foregroundStyle(.red) }
             Form {
+                Section("New guest disks") {
+                    Toggle("Use a separate home disk", isOn: $disks.separateHome)
+                    Stepper("System disk: \(disks.systemDiskGiB) GiB", value: $disks.systemDiskGiB, in: 64...8192, step: 16)
+                    Stepper("Home disk: \(disks.homeDiskGiB) GiB", value: $disks.homeDiskGiB, in: 16...8192, step: 16).disabled(!disks.separateHome)
+                    Text("With a separate home disk, a replacement system can reuse its data. Turning this off puts the home on the system disk. Existing guests are unchanged.").font(.caption).foregroundStyle(.secondary)
+                    Button(disksSaved ? "Disk Defaults Saved" : "Save Disk Defaults") {
+                        saving = true; error = nil
+                        Task { disksSaved = await model.saveDiskDefaults(disks); if !disksSaved { error = model.defaultsError }; saving = false }
+                    }
+                    .onChange(of: disks) { disksSaved = false }
+                }
                 Section {
                     Toggle("Set up new guests automatically", isOn: $enabled)
                     Text("You can choose manual setup when creating a guest.").font(.caption).foregroundStyle(.secondary)
@@ -107,7 +120,7 @@ struct OwnerDefaultsView: View {
             Text("Automatic setup supports the reviewed prepared factory image. Disk partitioning, encryption and Tailscale settings from the ISO guide are outside this flow. If the image’s setup scripts change, the guest returns to normal setup and the manager reports why.").font(.callout).foregroundStyle(.secondary)
             Link("Omarchy’s unattended-install guide", destination: URL(string: "https://omarchy.org/manual/unattended-installs/")!)
         }
-        .task { await model.loadDefaults(); if let value = model.ownerDefaults { enabled = value.enabled; configuration = value.configuration; publicKey = value.sshPublicKey } }
+        .task { await model.loadDefaults(); disks = model.diskDefaults; if let value = model.ownerDefaults { enabled = value.enabled; configuration = value.configuration; publicKey = value.sshPublicKey } }
         .onDisappear { password = ""; confirmation = "" }
     }
 }

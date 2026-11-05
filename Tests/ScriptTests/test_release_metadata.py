@@ -6,11 +6,29 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Scripts"))
-from release_metadata import RELEASE_TAG_KEY, release_info, verify_release_info
+from release_metadata import RELEASE_TAG_KEY, release_info, verify_release_info, channel_spec
 import package_prerelease
 
 
 class ReleaseMetadataTests(unittest.TestCase):
+    def test_generated_versions_and_channel_identity_are_verified_before_packaging(self):
+        original = {'CFBundleShortVersionString': '0.11.0', 'CFBundleVersion': '23'}
+        for channel, tag in [('stable', 'v0.11.1'), ('development', 'v0.11.1-dev.3')]:
+            bundle, name, _, _ = channel_spec(channel)
+            info = release_info(original, tag, channel, '0.11.1', '101')
+            info.update(CFBundleIdentifier=bundle, CFBundleDisplayName=name, OmarchyAppChannel=channel)
+            verify_release_info(info, tag, '0.11.1', channel)
+            self.assertEqual(info['CFBundleVersion'], '101')
+            with self.assertRaises(ValueError):
+                verify_release_info(dict(info, CFBundleIdentifier='wrong'), tag, '0.11.1', channel)
+        self.assertEqual(original['CFBundleShortVersionString'], '0.11.0')
+        for channel, tag in [('stable', 'v0.11.1-dev.1'), ('development', 'v0.11.1')]:
+            with self.assertRaises(ValueError):
+                release_info(original, tag, channel, '0.11.1', '101')
+        for version, build in [('0.11.1', None), (None, '101'), ('0.11.1', '0'), ('0.11.1', '1234567890')]:
+            with self.assertRaises(ValueError):
+                release_info(original, 'v0.11.1', 'stable', version, build)
+
     def test_full_tag_survives_plist_round_trip_without_changing_bundle_versions(self):
         original = {"CFBundleShortVersionString": "0.10.0", "CFBundleVersion": "23"}
         for tag in ["v0.10.0-dev.1", "v0.10.0-dev.10"]:

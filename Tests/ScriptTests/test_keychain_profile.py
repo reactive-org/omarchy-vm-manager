@@ -50,9 +50,17 @@ class KeychainProfileTests(unittest.TestCase):
                 keychain_profile.profile_entitlements(dict(self.profile, **changes), self.team, self.bundle, self.now)
 
     def test_profiles_cannot_be_reused_by_cli_or_layout_preview(self):
-        for bundle in [self.bundle + ".cli", self.bundle + ".storage", self.bundle + ".layout-preview"]:
+        for bundle in [self.bundle + ".cli", self.bundle + ".storage", self.bundle + ".layout-preview", self.bundle + ".dev"]:
             with self.subTest(bundle=bundle), self.assertRaises(AssertionError):
                 keychain_profile.profile_entitlements(self.profile, self.team, bundle, self.now)
+
+    def test_dev_profile_requires_its_exact_separate_app_id(self):
+        bundle = self.bundle + '.dev'
+        expected = dict(self.entitlements, **{'com.apple.application-identifier': self.team + '.' + bundle})
+        dev = dict(self.profile, Entitlements=expected)
+        self.assertEqual(keychain_profile.profile_entitlements(dev, self.team, bundle, self.now), expected)
+        with self.assertRaises(AssertionError):
+            keychain_profile.profile_entitlements(dev, self.team, self.bundle, self.now)
 
     def test_profile_is_copied_before_decoding_and_grants_no_shared_groups(self):
         with tempfile.TemporaryDirectory() as temp:

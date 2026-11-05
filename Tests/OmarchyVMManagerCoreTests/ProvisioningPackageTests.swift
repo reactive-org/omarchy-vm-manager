@@ -85,13 +85,13 @@ private final class ProvisioningPackageFixture {
         #expect(a === b && !a.executionEnabled)
         #expect(await a.statuses().isEmpty)
         #expect(runtime.startRequests.isEmpty)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: support.appendingPathComponent("Omarchy VM Manager/Provisioning/control").path).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: AppChannel.current.directory(in: support).appendingPathComponent("Provisioning/control").path).isEmpty)
         try await a.closeForReopen()
     }
     @Test func changedPackageStillLoadsOldRiskBeforeAdmissionFails() async throws {
         let f = try ProvisioningPackageFixture(), vmID = UUID()
         let support = f.root.appendingPathComponent("manager-state")
-        let directory = support.appendingPathComponent("Omarchy VM Manager/Provisioning")
+        let directory = AppChannel.current.directory(in: support).appendingPathComponent("Provisioning")
         try PrivateFiles.directory(support, create: true)
         try PrivateFiles.directory(directory.deletingLastPathComponent(), create: true)
         try PrivateFiles.directory(directory, create: true)

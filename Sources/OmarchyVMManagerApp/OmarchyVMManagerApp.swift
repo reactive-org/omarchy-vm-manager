@@ -56,12 +56,20 @@ struct OmarchyVMManagerApp: App {
             catch { FileHandle.standardError.write(Data("Offscreen setup fixture could not be rendered.\n".utf8)); exit(1) }
         }
         #endif
+        do {
+            try AppChannel.current.validateBundle(identifier: Bundle.main.bundleIdentifier, layoutPreview: AppModel.layoutPreview)
+        } catch {
+            FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8)); exit(1)
+        }
         let bundleOnly = CommandLine.arguments.contains("--verify-bundle-json")
         if bundleOnly || CommandLine.arguments.contains("--diagnostics-json") {
             do {
                 let value = try AppModel.inspect(preflight: { bundleOnly ? nil : VMRunClient.preflight() })
                 let provisioning = try BundledProvisioning.inspect(ProvisioningPackageLayout(contents: Bundle.main.bundleURL.appendingPathComponent("Contents")))
                 let json: [String: Any] = [
+                    "appChannel": AppChannel.current.rawValue,
+                    "bundleIdentifier": AppChannel.current.bundleIdentifier,
+                    "dataDirectoryName": AppChannel.current.displayName,
                     "kitPath": value.kitPath, "version": value.version, "runProtocolVersion": value.runProtocolVersion,
                     "supported": value.supported, "patchCommit": value.patchCommit, "kitSHA256": value.archiveSHA256,
                     "focusAwareClipboard": value.focusAwareClipboard,
@@ -87,7 +95,7 @@ struct OmarchyVMManagerApp: App {
     }
 
     var body: some Scene {
-        Window("Omarchy VM Manager", id: "manager") {
+        Window(AppChannel.current.displayName, id: "manager") {
             if AppModel.layoutPreview { LifecycleLayoutPreview() }
             else { ManagerView(model: model).task { delegate.model = model; await model.observe() } }
         }

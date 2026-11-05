@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import plistlib
+from release_metadata import channel_spec
 
 from kit_artifacts import ROOT
 from ticket_network import run_ticket_checked
@@ -24,6 +26,10 @@ def run(*arguments):
 
 
 def verify(app):
+    info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+    channel = info.get("OmarchyAppChannel", "stable")
+    bundle_id, _, cli_name, _ = channel_spec(channel)
+    assert info["CFBundleIdentifier"] == bundle_id
     lock = json.loads((app / "Contents/Resources/TryOmarchyRuntime.lock.json").read_bytes())
     team = lock.get("signingTeamID", "")
     assert re.fullmatch(r"[A-Z0-9]{10}", team), "missing signed runtime team"
@@ -32,7 +38,7 @@ def verify(app):
     kit = app / "Contents/Helpers/TryOmarchyKit.bundle"
     run("python3", ROOT / "Vendor/try-omarchy/scripts/kit_signature.py", "verify", "--team", team, "--require-notarization", kit)
     provisioning_package.verify(app / "Contents")
-    for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", "omarchy-vm") + provisioning_package.EXECUTABLES:
+    for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", cli_name) + provisioning_package.EXECUTABLES:
         executable = app / "Contents/MacOS" / name
         details = run("codesign", "-dv", "--verbose=4", executable).stderr
         assert "Authority=Developer ID Application: " in details
@@ -42,10 +48,10 @@ def verify(app):
         run("codesign", "--verify", "--strict", "--check-notarization", "-R=notarized", executable)
         if name != "OmarchyVMManager":
             entitlement_data = run("codesign", "-d", "--entitlements", ":-", executable).stdout.strip()
-            import plistlib
             entitlements = plistlib.loads(entitlement_data.encode()) if entitlement_data else {}
             assert not any(key in entitlements for key in ("com.apple.application-identifier", "keychain-access-groups")), "child executable gained Keychain access"
     diagnostics = json.loads(run(app / "Contents/MacOS/OmarchyVMManager", "--verify-bundle-json").stdout)
+    assert diagnostics["appChannel"] == channel
     assert diagnostics["touchIDProtectedStorageAvailable"] is True, "the signed process cannot see its Touch ID entitlement"
     assert diagnostics["developmentKeychainCompatibility"] is False, "a signed release selected the development Keychain store"
     assert diagnostics["hostPreflightPerformed"] is False and diagnostics["vmLaunchEnabled"] is False

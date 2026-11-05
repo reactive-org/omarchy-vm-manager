@@ -1892,3 +1892,20 @@ browser overlap and retained manual resizing. All examples use floating placemen
 the wireframes are illustrations. Confirm reapplication, switching layouts, Keep,
 custom-file selection and managed-layout removal preserve unrelated settings.
 Selecting/reviewing a card alone must never launch apps/VMs or install packages.
+
+## Candidate status after next integration — 5 November 2026
+
+The provisioning branch now integrates `origin/next` at `1258851`, including its
+new runtime pin, home disks/backups and Stable/Dev separation. Offline/fake merge
+validation does not extend the successful attended candidate's approval or evidence
+to this merged code. Keep the signed archive, its consumed plan and frozen source/
+runtime/material/scope pins intact. They still describe the historical candidate
+only. No recapture, runtime substitution or re-signing occurs during integration.
+
+Before a merged-source candidate can be signed or used for real acceptance, prepare
+a fresh exact source/runtime review, choose its compiled channel and matching
+materials, and review the disposable UUID/root scope explicitly. Private signing
+tooling currently models the Stable bundle/root contract; Dev distribution needs
+its own reviewed bindings rather than reusing Stable approvals. The compiled
+disposable admission rejects roots from the other channel even with matching UUIDs.
+The earlier original-Mac, loaded-child and real-guest checks remain TO PROVE.

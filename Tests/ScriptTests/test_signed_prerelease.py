@@ -89,12 +89,29 @@ class SignedProvenanceTests(unittest.TestCase):
                             exercise()
                 self.assertEqual(list(Path(temp).iterdir()), [])
 
-    def test_profile_secret_is_scoped_to_tagged_signing_job(self):
+    def test_profile_secrets_are_scoped_to_tested_branch_signing_job(self):
         workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/test.yml").read_text()
-        unprivileged, release = workflow.split("  prerelease:\n", 1)
+        unprivileged, release = workflow.split("  release:\n", 1)
         self.assertNotIn("MACOS_KEYCHAIN_PROFILE_BASE64", unprivileged)
-        self.assertIn("if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'", release)
+        self.assertNotIn("MACOS_DEV_KEYCHAIN_PROFILE_BASE64", unprivileged)
+        self.assertIn("if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next')", release)
+        self.assertIn("needs: [test, managed-ssh]", release)
+        self.assertIn("queue: max", release)
+        self.assertIn("cancel-in-progress: false", release)
         self.assertEqual(release.count("${{ secrets.MACOS_KEYCHAIN_PROFILE_BASE64 }}"), 1)
+        self.assertEqual(release.count("${{ secrets.MACOS_DEV_KEYCHAIN_PROFILE_BASE64 }}"), 1)
+
+    def test_dev_profile_has_no_stable_secret_fallback(self):
+        with patch.dict(os.environ, dict(GITHUB_ACTIONS="true", RUNNER_TEMP="/tmp", MACOS_KEYCHAIN_PROFILE_BASE64="stable-only"), clear=True):
+            with self.assertRaisesRegex(ValueError, 'MACOS_DEV_KEYCHAIN_PROFILE_BASE64'):
+                with signed_prerelease.provisioning_profile('development'):
+                    self.fail('Dev used a stable profile')
+
+    def test_content_addressed_runtime_tags_bind_to_the_exact_source(self):
+        for tag in ['v0.9.3', 'signed-runtime-' + self.sha]:
+            signed_prerelease.validate_signed_lock(dict(self.lock, artifactTag=tag), self.source, self.sha, self.team)
+        with self.assertRaises(AssertionError):
+            signed_prerelease.validate_signed_lock(dict(self.lock, artifactTag='signed-runtime-' + 'f' * 64), self.source, self.sha, self.team)
 
     def test_errors_redact_credentials(self):
         with patch.object(signed_prerelease, "REDACTIONS", ["synthetic-private-key", "synthetic-password"]):

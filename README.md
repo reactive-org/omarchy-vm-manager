@@ -14,11 +14,13 @@ This project is based heavily on the work of the [Try Omarchy team](https://gith
 
 The native SwiftUI app requires macOS 15 or later. The current private debug build provides a persistent guest library, configuration and safe deletion through macOS Trash. Guests start when you choose **Launch** or issue a CLI start command. The two retained POC profiles keep their original configuration and can be moved to Trash through the normal confirmed deletion flow.
 
-Use **Omarchy VM Manager → Check for Updates…** to check published app releases, including prereleases. An available update offers **View Release** for manual download from GitHub. See [release identity and local-build behavior](docs/Prereleases.md#manual-update-checks).
+Use **Omarchy VM Manager → Check for Updates…** to check published releases for your app's channel: stable downloads for stable, Dev prereleases for Dev. An available update offers **View Release** for manual download from GitHub. See [release identity and local-build behavior](docs/Prereleases.md#manual-update-checks).
 
 **[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [48-second MP4 tour](docs/media/quick-tour.mp4)
 
 ## Build and check
+
+For side-by-side development while your existing work VMs keep running, use `make app-dev verify-dev`, then `make run-dev`. Dev has its own app identity, VMs, defaults, credentials, caches and CLI (`bin/omarchy-vm-dev`). Your existing app and data stay stable. See [Stable and Dev](docs/DevelopmentChannels.md) for paths, build commands and validation limits.
 
 Use Swift 6.2+ (the pinned native terminal requires Swift tools 6.2) and Python 3.10+ on Apple Silicon. Run `make prepare-source` before opening `Package.swift` in Xcode so the client SDK resolves to the reviewed runtime source:
 
@@ -44,11 +46,11 @@ The [build and no-VM workflow](.github/workflows/test.yml) runs on pushes and pu
 
 `make test` runs Swift test cases serially because several fixtures deliberately block synchronous runtime/progress callbacks. Running those cases together can exhaust a small runner's cooperative thread pool. Lifecycle and race tests still run concurrent tasks and independent sessions within each case. Resource-policy fixtures supply synthetic host budgets rather than relying on the runner's CPU/RAM.
 
-Tags matching `vVERSION-dev.N` publish a development-fork `.app` and SHA-256 checksum on [GitHub Releases](https://github.com/reactive-org/omarchy-vm-manager/releases), after both test jobs pass. New tagged jobs use the authorized Developer ID credentials to sign, notarize and staple both the runtime kit and app, then verify Gatekeeper acceptance and the extracted ZIP. The original ad-hoc runtime and development pin are preserved; signed builds use separate exact provenance. Earlier `v0.9.3-dev.3` downloads remain ad-hoc signed. See [development prereleases](docs/Prereleases.md) for setup, compatibility and validation limits.
+Successful pushes to `main` publish stable releases with automatic patch versions; `next` publishes the isolated Dev app with `dev.N` prerelease versions. Both wait for the exact commit's test jobs and use the existing CI-only signing/notarization gates. Tags are reserved automatically; manual tag pushes do not publish. See [branch releases](docs/BranchReleases.md) for versioning, source-kit/profile setup and retry limitations, and [release history](docs/Prereleases.md) for compatibility and validation evidence.
 
 CI downloads no factory image and starts no guest. Real guest, focus, sleep/wake and crash validation remain separate observed checks on a real Mac; GitHub's ARM macOS runners do not support nested virtualization. Standard GitHub-hosted macOS runners are [free for public repositories](https://docs.github.com/en/actions/reference/runners/github-hosted-runners); larger runners have separate billing.
 
-Signing/notarization secrets are available only to the tagged package step, in a temporary CI keychain that is removed afterward. The signed-prerelease compiler mode accepts only its exact compiled signed-fork provenance and source/team pins. Ordinary production release builds still reject the private development kit; a signed prerelease is not an official upstream release or proof of real-VM acceptance.
+Signing/notarization secrets are available only to the trusted branch release signing step, in a temporary CI keychain that is removed afterward. Stable and Dev require separately pinned provisioning profiles. The signed-prerelease compiler mode accepts only its exact compiled signed-fork provenance and source/team pins. Ordinary production release builds still reject the private development kit; a signed release is not an official upstream runtime or proof of real-VM acceptance.
 
 ## Provenance
 
@@ -86,7 +88,7 @@ The real two-VM run passed focused clipboard transfers, background clipboard sup
 
 See `docs/POC.md` for the approval gate and real test matrix, `docs/ClipboardPatch.md` for the upstream-ready change explanation, and `docs/Validation.md` for exact results and remaining evidence gaps.
 
-The manager icon is editable vector artwork in `App/Assets/OmarchyVMManager.svg`, with a 1024-pixel PNG and a complete macOS ICNS family. `make icon` regenerates it using the pinned upstream AppKit renderer and validated icon packer. `make app` includes it in the bundle and the native UI. When the main manager is hosting a guest, `make app-preview verify-preview` prepares a signed sibling bundle without replacing the live app; close the live manager after shutting down its guests before installing the normal build.
+The manager icon is editable vector artwork in `App/Assets/OmarchyVMManager.svg`, with a 1024-pixel PNG and a complete macOS ICNS family. Dev uses the purple `OmarchyVMManagerDev.svg` variant with a DEV badge. `make icon` regenerates them using the pinned upstream AppKit renderer and validated icon packer. `make app-dev verify-dev` prepares the isolated Dev app while stable keeps running. The older `app-preview` and `verify-preview` targets alias Dev. Stop only the target channel's guests before replacing that channel's app.
 
 Guest artwork uses the official Omarchy mark in monochrome, with pending-trademark attribution to the [Omacom Foundation](https://omarchy.org/foundation/). The sidebar credits this manager as a project of [reactive.org enterprises](https://www.reactive.org/). Launch cards reserve progress/message space and draw busy spinners over the artwork so preparation does not move their controls. `make layout-preview verify-layout-preview` builds a separate debug gallery for the lifecycle presentations without accessing the registry, Keychain or real guests.
 

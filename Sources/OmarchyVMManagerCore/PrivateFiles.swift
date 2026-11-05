@@ -58,8 +58,9 @@ public enum PrivateFiles {
 }
 
 public final class RegistryStore: @unchecked Sendable {
-    public static let supportedSchemaVersions = 1...6
+    public static let supportedSchemaVersions = 1...7
     public let directory: URL
+    private let channel: AppChannel
     private let lockFD: Int32
     private var revision: Data?
     private var loaded = false
@@ -68,8 +69,9 @@ public final class RegistryStore: @unchecked Sendable {
     private var pending: Set<UUID> = []
     private let access = NSRecursiveLock()
 
-    public init(applicationSupport: URL) throws {
-        directory = applicationSupport.resolvingSymlinksInPath().appendingPathComponent("Omarchy VM Manager")
+    public init(applicationSupport: URL, channel: AppChannel = .current) throws {
+        self.channel = channel
+        directory = channel.directory(in: applicationSupport)
         try PrivateFiles.directory(directory, create: true)
         let lock = directory.appendingPathComponent(".manager.lock")
         let descriptor = open(lock.path, O_RDWR | O_CREAT | O_EXLOCK | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC, 0o600)
@@ -117,7 +119,7 @@ public final class RegistryStore: @unchecked Sendable {
             return registry.profiles
         }
         loaded = true
-        let storage = ManagerStorage(applicationSupport: directory.deletingLastPathComponent())
+        let storage = ManagerStorage(applicationSupport: directory.deletingLastPathComponent(), channel: channel)
         var retained: [VMProfile] = []
         for profile in POCProfiles.all where PrivateFiles.exists(storage.root(for: profile)) {
             try storage.validate(profile)
@@ -137,6 +139,18 @@ public final class RegistryStore: @unchecked Sendable {
     }
 
     public func save(_ profiles: [VMProfile]) throws { try access.withLock { try saveLocked(profiles) } }
+
+    static func profileForHomeReuse(in data: Data, id: UUID) throws -> VMProfile {
+        guard data.count <= 1_048_576 else { throw PrivateFiles.failure("The registry is too large.") }
+        let record = try JSONDecoder().decode(Registry.self, from: data)
+        guard supportedSchemaVersions.contains(record.schemaVersion), record.pendingDeletions?.contains(id) != true,
+              record.profiles.filter({ $0.id == id }).count == 1,
+              let profile = record.profiles.first(where: { $0.id == id }), profile.homeDisk != nil else {
+            throw HomeDisk.failure("The source is missing, pending deletion or has no separate home disk.")
+        }
+        try validate(record.profiles)
+        return profile
+    }
 
     /// Shared admission for the separate storage helper. This does not acquire
     /// the manager lock or authorize a filesystem mutation by itself.
@@ -163,7 +177,10 @@ public final class RegistryStore: @unchecked Sendable {
         } else if PrivateFiles.exists(file) { throw PrivateFiles.failure("A registry appeared during initialization. It was preserved.") }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let nextPending = pending.intersection(Set(profiles.map(\.id)))
-        let requiredSchema = profiles.contains(where: { $0.developerSetup != nil }) ? 6 :
+        // next used schema 6 for home disks; protect Setup data from its
+        // older readers while retaining both historical schema-6 payloads.
+        let requiredSchema = profiles.contains(where: { $0.developerSetup != nil }) ? 7 :
+            profiles.contains(where: { $0.homeDisk != nil }) ? 6 :
             profiles.contains(where: { $0.sharedFolder != nil }) ? 5 :
             profiles.contains(where: { $0.diskGiB != nil }) ? 4 :
             profiles.contains(where: { $0.ownerSetup != nil }) ? 3 :
@@ -188,7 +205,7 @@ public final class RegistryStore: @unchecked Sendable {
     public static func validate(_ profile: VMProfile) throws {
         if let poc = POCProfiles.all.first(where: { $0.id == profile.id }) {
             guard profile.name == poc.name, profile.memoryMiB == poc.memoryMiB, profile.cpus == poc.cpus,
-                  profile.diskGiB == nil, profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil,
+                  profile.diskGiB == nil, profile.homeDisk == nil, profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil,
                   profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil, profile.factory == nil, profile.sharedFolder == nil, profile.developerSetup == nil else {
                 throw PrivateFiles.failure("Retained POC metadata is protected. Restore its original profile; its disk was preserved.")
             }
@@ -203,6 +220,7 @@ public final class RegistryStore: @unchecked Sendable {
                 throw PrivateFiles.failure("Invalid managed SSH endpoint or public-key reference.")
             }
         }
+        try profile.homeDisk?.validate(vmID: profile.id)
         if let fingerprint = profile.settingsFingerprint {
             guard fingerprint.count == 64, fingerprint.allSatisfy({ $0.isHexDigit && !$0.isUppercase }) else { throw PrivateFiles.failure("Invalid settings revision in the registry.") }
         }

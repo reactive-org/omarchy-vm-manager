@@ -20,13 +20,14 @@ import provisioning_package as package
 
 
 def run_checks(binaries, launcher_binaries):
+    identity = json.loads(subprocess.check_output([str(binaries / "OmarchyVMProvisioningHelper"), "--channel-json"], text=True))
     with tempfile.TemporaryDirectory(prefix="provisioning-package-") as temp:
         root = Path(temp).resolve()
         app = root / "Stage.app"
         contents = app / "Contents"
         (contents / "MacOS").mkdir(parents=True)
         (contents / "Resources").mkdir()
-        (contents / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": "fixture.provisioning", "CFBundleExecutable": "OmarchyVMManager", "CFBundlePackageType": "APPL"}))
+        (contents / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": identity["bundleIdentifier"], "CFBundleExecutable": "OmarchyVMManager", "CFBundlePackageType": "APPL"}))
         package.stage(binaries, launcher_binaries, contents)
         # Seal a fixture container using the built manager as its main code;
         # it is never executed or opened. Only the offline helper runs below.

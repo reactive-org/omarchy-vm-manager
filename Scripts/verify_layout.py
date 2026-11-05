@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 import plistlib
 import sys
+import subprocess
 
 from kit_artifacts import ROOT
 from build_patched_kit import inventory
@@ -29,18 +30,29 @@ lean_contract = contract.with_name("LeanOwnerSetupContract.json")
 assert lean_contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json").read_bytes()
 assert json.loads(lean_contract.read_bytes())["keyboards"] == json.loads(contract.read_bytes())["keyboards"]
 assert (resources / "ReviewedFactories.json").read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/ReviewedFactories.json").read_bytes()
-assert info["CFBundleIdentifier"] == ("dev.omarchy.vm-manager.layout-preview" if info.get("OmarchyLayoutPreview") is True else "dev.omarchy.vm-manager")
+channel = info.get("OmarchyAppChannel", "stable")
+assert channel in ("stable", "development"), "unknown app channel"
+development = channel == "development"
+assert not (development and info.get("OmarchyLayoutPreview") is True)
+assert info["CFBundleIdentifier"] == ("dev.omarchy.vm-manager.layout-preview" if info.get("OmarchyLayoutPreview") is True else ("dev.omarchy.vm-manager.dev" if development else "dev.omarchy.vm-manager"))
+if development:
+    assert info["CFBundleName"] == info["CFBundleDisplayName"] == "Omarchy VM Manager Dev"
 assert info["LSMinimumSystemVersion"] == "15.0"
 assert info["CFBundleIconFile"] == "OmarchyVMManager"
 for stem in ("OmarchyVMManager", "OmarchyGuest"):
     for extension in ("icns", "png"):
         name = stem + "." + extension
-        assert (contents / "Resources" / name).read_bytes() == (ROOT / "App/Assets" / name).read_bytes()
+        source_stem = "OmarchyVMManagerDev" if development and stem == "OmarchyVMManager" else stem
+        assert (contents / "Resources" / name).read_bytes() == (ROOT / "App/Assets" / (source_stem + "." + extension)).read_bytes()
     assert (contents / "Resources" / (stem + ".icns")).read_bytes().startswith(b"icns")
 assert not (contents / "Library/LaunchDaemons").exists(), "NAT-only app must not register networking"
 assert (contents / "Resources/TryOmarchy-THIRD_PARTY_NOTICES.md").is_file()
-for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", "omarchy-vm"):
+cli_name = "omarchy-vm-dev" if development else "omarchy-vm"
+for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", cli_name):
     assert (contents / "MacOS" / name).is_file()
+for name, argument in (("OmarchyVMManager", "--verify-bundle-json"), (cli_name, "--version"), ("OmarchyVMStorageHelper", "--channel-json")):
+    diagnostic = json.loads(subprocess.check_output([str(contents / "MacOS" / name), argument], text=True))
+    assert diagnostic["appChannel"] == channel, "mixed app-channel executables refused"
 lock = json.loads(args.runtime_lock.read_bytes())
 verify_keychain_profile(app, lock.get("signingTeamID", ""))
 embedded_lock = contents / "Resources/TryOmarchyRuntime.lock.json"

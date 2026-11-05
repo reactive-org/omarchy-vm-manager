@@ -96,7 +96,7 @@ public struct FactoryCatalog: Sendable {
                 throw Self.invalid("This legacy import receipt requires its original runtime. Prepare a separate bundle with the reviewed guest package archive and explicitly import it; the disk need not be rebuilt if that evidence is available.")
             }
         case 2:
-            guard receipt.guestIntegrationContractSHA256 == integrationContractSHA256 else {
+            guard receipt.guestIntegrationContractSHA256.map(acceptsReceiptContract) == true else {
                 throw Self.invalid("This import receipt requires an unsupported guest integration contract. Review and prepare a separate supported bundle for explicit import.")
             }
         default:
@@ -119,8 +119,26 @@ public struct FactoryCatalog: Sendable {
         try PrivateFiles.write(JSONEncoder().encode(receipt), name: receiptURL(factory.manifestSHA256).lastPathComponent, in: receipts, exclusively: true)
     }
     var integrationContractSHA256: String {
+        struct GuestContract: Encodable {
+            let schemaVersion: Int
+            let contractVersion: Int
+            let capabilities: [String: Int]
+            let leanPackageVersion: String
+            let leanPackageSHA256: String
+            let ownerSetupContractSHA256: String
+        }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return KitVerifier.sha256(try! encoder.encode(integrationContract))
+        let guest = GuestContract(schemaVersion: integrationContract.schemaVersion, contractVersion: integrationContract.contractVersion,
+            capabilities: integrationContract.capabilities, leanPackageVersion: integrationContract.leanPackageVersion,
+            leanPackageSHA256: integrationContract.leanPackageSHA256, ownerSetupContractSHA256: integrationContract.ownerSetupContractSHA256)
+        return KitVerifier.sha256(try! encoder.encode(guest))
+    }
+    func acceptsReceiptContract(_ digest: String) -> Bool {
+        if digest == integrationContractSHA256 { return true }
+        // Explicit review of the unchanged image/owner contract permits its
+        // former runtime-bound receipt without changing the saved bytes.
+        return integrationContractSHA256 == "c3cbd5eb1b061ada97f3951d91b3d21e1afeb508b8a367f6c308c0e87da56a55" &&
+            digest == "9c430c34e68e720d0a0368983a1cd1bd58ccad6877a42c2d19c8777e0072dade"
     }
     static func invalid(_ message: String) -> VMFailure { VMFailure(code: "factory-verification-failed", message: message) }
 

@@ -62,7 +62,7 @@ final class ProvisioningDisposableAdmission: @unchecked Sendable, CustomStringCo
                   url.path == url.standardizedFileURL.path, url.path == url.resolvingSymlinksInPath().path,
                   url.lastPathComponent == value.vmID.uuidString,
                   url.deletingLastPathComponent().lastPathComponent == "VMs",
-                  url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "Omarchy VM Manager",
+                  url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == AppChannel.current.displayName,
                   value.inode > 0, provisioningDigest(value.markerSHA256) else { throw ProvisioningJobFailure.invalidRequest }
         }
         self.approvalID = approvalID

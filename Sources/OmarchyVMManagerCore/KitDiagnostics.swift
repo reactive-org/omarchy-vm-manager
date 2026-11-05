@@ -36,6 +36,8 @@ public struct RuntimeProvenance: Codable, Equatable, Sendable {
     public var managedSetupVersion: Int? = nil
     public var ownerSetupContractsVersion: Int? = nil
     public var ownerSetupReportVersion: Int? = nil
+    public var homeDiskVersion: Int? = nil
+    public var managerChannelsVersion: Int? = nil
     public var signingTeamID: String? = nil
     public var sourceKitSHA256: String? = nil
     public var sourceLockSHA256: String? = nil
@@ -121,6 +123,13 @@ public enum KitVerifier {
         }
         if let version = lock.factoryCompatibilityVersion, version != 1 {
             throw invalid("Factory guest integration compatibility capability is unknown.")
+        }
+        if let version = lock.homeDiskVersion, version != 1 { throw invalid("Persistent home-disk support is unknown.") }
+        if let version = lock.managerChannelsVersion, version != 1 { throw invalid("Manager channel isolation is unknown.") }
+        if lock.homeDiskVersion == 1 {
+            guard lock.files["Contents/Resources/guest-packages/try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst"] == VMGuestIntegrationContract.runtimeLeanPackageSHA256 else {
+                throw invalid("Native-rendering guest integration is unproven.")
+            }
         }
         if let version = lock.customFactoryVersion, version != VMFactorySelection.capabilityVersion {
             throw invalid("Custom factory selection capability is unknown.")

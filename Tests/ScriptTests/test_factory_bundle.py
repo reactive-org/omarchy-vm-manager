@@ -172,7 +172,7 @@ class GuestPackageReuseTests(unittest.TestCase):
         import sys
         sys.path.insert(0, str(ROOT / 'Scripts'))
         import build_patched_kit
-        for case in ('valid', 'inventory', 'commit', 'dirty', 'package-tree', 'license'):
+        for case in ('valid', 'inventory', 'native-inventory', 'commit', 'dirty', 'package-tree', 'license'):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 source, bundle = root / 'new-source', root / 'previous-kit'
@@ -180,8 +180,11 @@ class GuestPackageReuseTests(unittest.TestCase):
                 package = bundle / module.PACKAGE
                 package.parent.mkdir(parents=True)
                 package.write_bytes(b'synthetic guest package archive')
+                native = package.with_name('try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst')
+                native.write_bytes(b'synthetic native-rendering package archive')
                 lock = {'files': build_patched_kit.inventory(bundle), 'patchCommit': 'e' * 40}
                 if case == 'inventory': package.write_bytes(b'changed archive')
+                if case == 'native-inventory': native.write_bytes(b'changed native archive')
 
                 def git(command, **kwargs):
                     folder, args = Path(command[2]), command[3:]
@@ -195,6 +198,7 @@ class GuestPackageReuseTests(unittest.TestCase):
                     if case == 'valid':
                         build_patched_kit.reuse_guest_package(source, bundle, lock)
                         self.assertEqual((source / 'dist/guest/packages' / package.name).read_bytes(), package.read_bytes())
+                        self.assertEqual((source / 'dist/guest/packages-lean' / native.name).read_bytes(), native.read_bytes())
                     else:
                         with self.assertRaises(AssertionError): build_patched_kit.reuse_guest_package(source, bundle, lock)
                         self.assertFalse((source / 'dist/guest/packages').exists())

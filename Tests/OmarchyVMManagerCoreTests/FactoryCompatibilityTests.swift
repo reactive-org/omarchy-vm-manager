@@ -24,6 +24,28 @@ extension FactoryFixture {
 
 @Suite("Independent factory guest compatibility — no guests")
 struct FactoryCompatibilityTests {
+    @Test("reviewed historical receipts survive runtime package updates without admitting unknown guest policies")
+    func receiptPolicy() throws {
+        let f = try FactoryFixture(); defer { f.cleanup() }
+        let catalog = FactoryCatalog(applicationSupport: f.files.support, kit: f.kit.kit, lockData: try JSONEncoder().encode(f.lock), reviewed: [], integrationContract: .current)
+        #expect(catalog.acceptsReceiptContract("9c430c34e68e720d0a0368983a1cd1bd58ccad6877a42c2d19c8777e0072dade"))
+        #expect(catalog.acceptsReceiptContract(catalog.integrationContractSHA256))
+        #expect(!catalog.acceptsReceiptContract(String(repeating: "f", count: 64)))
+        var synthetic = try FactoryFixture(); defer { synthetic.cleanup() }
+        try synthetic.compatibleLeanEvidence()
+        let other = try synthetic.catalog(reviewed: [])
+        #expect(!other.acceptsReceiptContract("9c430c34e68e720d0a0368983a1cd1bd58ccad6877a42c2d19c8777e0072dade"))
+    }
+    @Test("historical runtime package filenames remain provenance for format-2 factories")
+    func historicalPackageFilename() throws {
+        var f = try FactoryFixture(); defer { f.cleanup() }
+        try f.compatibleLeanEvidence()
+        var files = f.manifest["runtimeFiles"] as! [String: String]
+        files["Contents/Resources/guest-packages/try-omarchy-0.1.0-43-aarch64.pkg.tar.zst"] = files.removeValue(forKey: VMFactorySelection.packagePath)
+        f.manifest["runtimeFiles"] = files
+        _ = try f.write()
+        #expect(try f.catalog(reviewed: []).importBundle(f.source).kind == .custom)
+    }
     @Test("different source and host runtime inventories retain compatible imports without rewriting receipts")
     func sourceAndRuntimeIndependence() throws {
         var f = try FactoryFixture(); defer { f.cleanup() }

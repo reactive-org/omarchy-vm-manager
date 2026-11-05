@@ -34,7 +34,7 @@ struct SourceContractTests {
         let roots = POCProfiles.all.map { POCProfiles.root(for: $0, applicationSupport: support) }
         #expect(Set(roots).count == 2)
         for (index, root) in roots.enumerated() {
-            #expect(root.deletingLastPathComponent().path == "/private/tmp/source-contract/Omarchy VM Manager/VMs")
+            #expect(root.deletingLastPathComponent() == AppChannel.current.directory(in: support).appendingPathComponent("VMs", isDirectory: true))
             #expect(root.lastPathComponent == POCProfiles.all[index].id.uuidString)
         }
     }

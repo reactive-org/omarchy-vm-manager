@@ -38,15 +38,20 @@ def reuse_guest_package(source, bundle, lock):
     for path in ('guest/package', 'LICENSE'):
         assert git(source, 'rev-parse', 'HEAD:' + path) == git(previous_source, 'rev-parse', 'HEAD:' + path), 'guest package sources changed; rebuild instead of reusing'
 
-    package = 'try-omarchy-0.1.0-43-aarch64.pkg.tar.zst'
+    package = 'try-omarchy-0.1.0-47-aarch64.pkg.tar.zst'
     target = source / 'dist/guest/packages'
     assert not target.exists(), 'existing package output preserved'
     target.mkdir(parents=True)
     shutil.copy2(bundle / 'Contents/Resources/guest-packages' / package, target / package)
     assert digest(target / package) == lock['files']['Contents/Resources/guest-packages/' + package], 'guest package changed while copying'
+    lean_name = 'try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst'
+    lean_target = source / 'dist/guest/packages-lean'
+    lean_target.mkdir(parents=True, exist_ok=False)
+    shutil.copy2(bundle / 'Contents/Resources/guest-packages' / lean_name, lean_target / lean_name)
+    assert digest(lean_target / lean_name) == lock['files']['Contents/Resources/guest-packages/' + lean_name]
 
 
-def build(reuse_guest_package_from=None):
+def build(reuse_guest_package_from=None, reviewed_guest_package=None, reviewed_lean_guest_package=None):
     stock = ROOT / "VendorArtifacts/stock-v1.3.0"
     verify_reference(stock)
     source = prepare()
@@ -64,8 +69,34 @@ def build(reuse_guest_package_from=None):
         return
     run("make", "-C", source, "test-swift")
     env = dict(os.environ, MACOSX_DEPLOYMENT_TARGET="15.0")
-    if reuse_guest_package_from is None:
+    if reviewed_guest_package is not None:
+        review = json.loads((ROOT / 'Config/ReviewedGuestPackageSource.json').read_bytes())
+        assert digest(reviewed_guest_package) == review['packageSHA256']
+        assert review['packageSHA256'] == json.loads((ROOT / 'Config/GuestIntegrationCompatibility.json').read_bytes())['runtimePackageSHA256']
+        for path, tree in review['sourceTrees'].items():
+            actual = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD:' + path], text=True).strip()
+            assert actual == tree, 'reviewed package source tree differs'
+        target = source / 'dist/guest/packages'
+        target.mkdir(parents=True, exist_ok=True)
+        archive = target / 'try-omarchy-0.1.0-47-aarch64.pkg.tar.zst'
+        if archive.exists():
+            assert list(target.iterdir()) == [archive] and digest(archive) == review['packageSHA256'], 'existing package output was preserved; inspect it'
+        else:
+            assert not list(target.iterdir()), 'unexpected package output was preserved'
+            shutil.copy2(reviewed_guest_package, archive)
+        assert reviewed_lean_guest_package is not None, 'the reviewed native-rendering variant is required'
+        assert digest(reviewed_lean_guest_package) == review['leanPackageSHA256']
+        lean = source / 'dist/guest/packages-lean'
+        lean.mkdir(parents=True, exist_ok=True)
+        lean_archive = lean / 'try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst'
+        if lean_archive.exists():
+            assert list(lean.iterdir()) == [lean_archive] and digest(lean_archive) == review['leanPackageSHA256']
+        else:
+            assert not list(lean.iterdir())
+            shutil.copy2(reviewed_lean_guest_package, lean_archive)
+    elif reuse_guest_package_from is None:
         run("make", "-C", source, "guest-package", env=env)
+        run(source / 'guest/package/build.sh', '--native-rendering', '--output', source / 'dist/guest/packages-lean', env=env)
     else:
         previous_path = ROOT / 'Config/TryOmarchyRuntime.lock.json'
         assert digest(previous_path) in (ROOT / 'Sources/OmarchyVMManagerCore/RuntimePin.swift').read_text(), 'previous runtime lock must match its compiled pin'
@@ -89,17 +120,25 @@ def build(reuse_guest_package_from=None):
         "lean-e4fffc6": digest(ROOT / "Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json")}}
     (contents / "Resources/owner-setup-provenance.json").write_text(json.dumps(owner_provenance, indent=2, sort_keys=True) + "\n")
     packages = list((source / "dist/guest/packages").glob("try-omarchy-*.pkg.tar.zst"))
-    assert len(packages) == 1 and packages[0].name == "try-omarchy-0.1.0-43-aarch64.pkg.tar.zst"
+    assert len(packages) == 1 and packages[0].name == "try-omarchy-0.1.0-47-aarch64.pkg.tar.zst"
     assert digest(packages[0]) == json.loads((ROOT / 'Config/GuestIntegrationCompatibility.json').read_bytes())['runtimePackageSHA256'], 'runtime guest archive changed; review and support its complete identity before building the compatibility-capable kit'
     for old in (contents / "Resources/guest-packages").iterdir():
         assert old.is_file() and not old.is_symlink()
         old.unlink()
     shutil.copy2(packages[0], contents / "Resources/guest-packages" / packages[0].name)
+    lean_package = source / 'dist/guest/packages-lean/try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst'
+    lean_review = json.loads((ROOT / 'Config/ReviewedGuestPackageSource.json').read_bytes())
+    assert digest(lean_package) == lean_review['leanPackageSHA256']
+    assert lean_review['leanPackageSHA256'] in client_contract, 'compiled native-rendering archive identity differs'
+    shutil.copy2(lean_package, contents / 'Resources/guest-packages' / lean_package.name)
     info = plistlib.loads((source / "macos/Info.plist").read_bytes())
     info["TryOmarchyBuildDescribe"] = "development"
     (contents / "Info.plist").write_bytes(plistlib.dumps(info))
     for name in ("run-qemu-gpu.sh", "qemu-port-forwarding.sh", "qemu-networking.sh", "network-identity.py"):
         shutil.copy2(source / "macos" / name, contents / "Resources/scripts" / name)
+    guest_units = source / 'guest/package/try-omarchy/files/usr/lib/systemd/system'
+    shutil.copy2(guest_units / 'try-omarchy-home.service', contents / 'Resources/managed-home.service')
+    shutil.copy2(guest_units / 'display-manager.service.d/60-try-omarchy-home.conf', contents / 'Resources/managed-home-login.conf')
     run(source / "macos/build-kit.sh", "--app", stage, "--output", destination, "--sign-identity", "-")
     run("make", "-C", source, "test-kit", f"KIT_DIR={destination}")
     value = manifest(destination / "TryOmarchyKit.json", "development")
@@ -110,8 +149,8 @@ def build(reuse_guest_package_from=None):
         "kitSHA256": digest(destination / "TryOmarchyKit.zip"),
         "kitVersion": value["version"], "runProtocolVersion": value["runProtocolVersion"],
         "buildDate": value["buildDate"], "focusAwareClipboard": True, "managedAuthenticationVersion": 1, "managedSSHVersion": 1, "managedSetupVersion": 1, "manualPauseVersion": 1, "launchIntentVersion": 1, "customFactoryVersion": 1, "factoryCompatibilityVersion": 1, "ownerSetupContractsVersion": 1, "ownerSetupReportVersion": 1,
-        "guestPackageVersion": "0.1.0-43",
-        "composition": "Source-built helper with UUID-scoped guest sudo authentication, responsive main-run-loop focus checks, fixed non-secret denial diagnostics and nonblocking prompt lease, and guest adapter with explicit launch intent and exact display-process reporting, reviewed official/lean owner contracts, verified factory selection, manual Pause/Resume and manager Downloads cache, guest integration package 0.1.0-43 and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
+        "guestPackageVersion": "0.1.0-47", "homeDiskVersion": 1, "leanGuestPackageVersion": "0.1.0-47.1", "managerChannelsVersion": 1,
+        "composition": "Source-built helper with UUID-scoped guest sudo authentication, responsive main-run-loop focus checks, fixed non-secret denial diagnostics and nonblocking prompt lease, and guest adapter with explicit launch intent and exact display-process reporting, reviewed official/lean owner contracts, verified factory selection, manual Pause/Resume and manager Downloads cache, guest integration packages 0.1.0-47 and native-rendering 47.1, optional persistent home disks and networking; verified v1.3.0 QEMU, firmware and factory download metadata; upstream build-kit.sh ad-hoc signing",
         "files": inventory(destination / "TryOmarchyKit.bundle")
     }
     lock_path = ROOT / "Config/TryOmarchyRuntime.lock.json"
@@ -127,4 +166,8 @@ def build(reuse_guest_package_from=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reuse-guest-package-from', type=Path, help='Verify a previous complete locked kit and reuse its unchanged guest package without Docker or downloads')
-    build(parser.parse_args().reuse_guest_package_from)
+    parser.add_argument('--reviewed-guest-package', type=Path, help='Use an exact reviewed archive bound to the current guest recipe and license trees')
+    parser.add_argument('--reviewed-lean-guest-package', type=Path, help='Exact reviewed native-rendering variant archive')
+    args = parser.parse_args()
+    assert args.reuse_guest_package_from is None or args.reviewed_guest_package is None
+    build(args.reuse_guest_package_from, args.reviewed_guest_package, args.reviewed_lean_guest_package)

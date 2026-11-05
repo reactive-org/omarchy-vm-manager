@@ -2,6 +2,8 @@
 
 The manager and CLI use the same cache at `~/Downloads/Omarchy VM Manager/Factory Images/`. It is created on the next launch that needs a new disk and an image download. No image is downloaded just by opening the manager or creating metadata.
 
+The separate [Dev channel](DevelopmentChannels.md) uses `~/Downloads/Omarchy VM Manager Dev/Factory Images/`. Guests share downloads only within their channel. Existing stable cache paths and contents are preserved.
+
 Files use the pinned factory identity: `<identity>.img.zst` for a completed verified image, `<identity>.img.zst.download` for resumable partial data. Different guests share the download. The kit's existing exclusive directory lock serializes concurrent downloads, and a new guest verifies the cached image's full checksum before reuse. Corrupt cached bytes are replaced through the normal verified download path. The launcher still verifies the compressed image before decompression.
 
 The current factory image is kept. Successful verified reuse refreshes its modification time. Cleanup runs when preparing a download or receiving VM readiness; it removes only obsolete image downloads unused for at least seven days and skips a locked cache. It preserves unknown files, symbolic links, hard links and unsafe entries. The active image is never removed by startup cleanup, even after a guest is ready. There is no daily forced redownload of an unchanged pinned image.

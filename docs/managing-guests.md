@@ -2,7 +2,13 @@
 
 [User guide](README.md) · [Getting started](getting-started.md) · [CLI quick start](cli-quickstart.md)
 
+## Back up a guest home
+
+Select a running guest and choose **Home → Back Up Home…**. This requires authenticated managed SSH and a mounted read-write host folder. Close guest apps, review the unencrypted export (including hidden files and credentials), then confirm. A unique backup folder receives `home.tgz`; the app reports completion and its host path after checking the archive. Existing backups are preserved. See [backup contents, cancellation and limitations](HomeBackup.md).
+
 ## Change a guest's configuration
+
+New guests can use independent system and home disks, enabled by default. Both capacities appear in Configure. **Replace System…** creates a new VM using a copy of a stopped source's home while preserving the original. See [separate home disks, defaults and CLI](HomeDisks.md).
 
 Shut down the guest and wait for **Stopped**. Select it in the sidebar, open **Virtual Machine**, then click **Configure…**. **Rename or Configure…** opens the same form.
 

@@ -43,14 +43,15 @@ enum OwnerCredentialStorage: Equatable {
 }
 
 public struct KeychainOwnerSecretStore: OwnerSecretStoring {
-    static let service = "dev.omarchy.vm-manager.unattended.biometric.v1"
-    static let legacyService = "dev.omarchy.vm-manager.unattended"
+    static var service: String { AppChannel.current.credentialService }
+    static var legacyService: String { AppChannel.current.legacyCredentialService }
+    private let channel: AppChannel
     private let keychain: any OwnerKeychainAccessing
     private let storage: OwnerCredentialStorage
 
-    public init() { keychain = SystemOwnerKeychain(); storage = .current }
-    init(keychain: any OwnerKeychainAccessing, storage: OwnerCredentialStorage = .protectedKeychain) {
-        self.keychain = keychain; self.storage = storage
+    public init() { keychain = SystemOwnerKeychain(); storage = .current; channel = .current }
+    init(keychain: any OwnerKeychainAccessing, storage: OwnerCredentialStorage = .protectedKeychain, channel: AppChannel = .current) {
+        self.keychain = keychain; self.storage = storage; self.channel = channel
     }
 
     public static var usesDevelopmentKeychain: Bool { OwnerCredentialStorage.current == .loginKeychain }
@@ -59,13 +60,13 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
         guard let task = SecTaskCreateFromSelf(nil),
               let team = SecTaskCopyValueForEntitlement(task, "com.apple.developer.team-identifier" as CFString, nil) as? String,
               let appID = SecTaskCopyValueForEntitlement(task, "com.apple.application-identifier" as CFString, nil) as? String else { return false }
-        return appID == team + ".dev.omarchy.vm-manager"
+        return appID == team + "." + AppChannel.current.bundleIdentifier
     }
 
     private func query(_ reference: UUID, context: LAContext) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecUseDataProtectionKeychain as String: storage == .protectedKeychain,
-         kSecAttrService as String: storage == .protectedKeychain ? Self.service : Self.legacyService,
+         kSecAttrService as String: storage == .protectedKeychain ? channel.credentialService : channel.legacyCredentialService,
          kSecAttrAccount as String: reference.uuidString,
          kSecUseAuthenticationContext as String: context]
     }
@@ -92,11 +93,11 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
             }
             values[kSecAttrAccessControl as String] = access
             values[kSecAttrSynchronizable as String] = false
-            values[kSecAttrLabel as String] = "Omarchy VM Manager guest setup (Touch ID)"
+            values[kSecAttrLabel as String] = channel.displayName + " guest setup (Touch ID)"
         } else {
             // Keep the original service, UUID and login-Keychain access policy.
             // Data-protection attributes must be absent from this file-based query.
-            values[kSecAttrLabel as String] = "Omarchy VM Manager guest setup"
+            values[kSecAttrLabel as String] = channel.displayName + " guest setup"
         }
         values[kSecValueData as String] = value
         let status = keychain.add(values)
@@ -153,7 +154,7 @@ public struct KeychainOwnerSecretStore: OwnerSecretStoring {
         let values: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecUseDataProtectionKeychain as String: false,
-            kSecAttrService as String: Self.legacyService,
+            kSecAttrService as String: channel.legacyCredentialService,
             kSecAttrAccount as String: reference.uuidString,
             kSecUseAuthenticationContext as String: context,
             kSecReturnData as String: true,

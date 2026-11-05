@@ -3581,3 +3581,45 @@ install, app/daemon/runtime execution or VM launch occurs. UI method/prompt coun
 is unrecorded. Original-Mac scope, loaded-child and real guest acceptance remain
 TO PROVE and need separate review/consent. See the
 [signed candidate result](DevVMMilestone6Runbook.md#attended-private-signing-passed--5-november-2026).
+
+## Integration with next — 5 November 2026
+
+The eventual merge target is `next`. This branch integrates fetched `origin/next`
+`1258851`, which was eleven commits ahead of the previous common history; the
+provisioning branch had 52 unique commits. The merge retains its separate-home
+disks, home backup, Stable/Dev isolation and branch-release tooling together with
+Setup, New VM selection and the authenticated live terminal. The companion Swift
+package has no `next` branch and is unchanged.
+
+Setup state/control sockets and disposable-root admission follow the compiled app
+channel. The Swift provisioning helper uses the same channel as manager/CLI/storage
+helper; its inherited ownership endpoint rejects a mismatched enclosing app. Dev
+assembly includes the pinned package/resources and the channel-neutral C launcher.
+Home backup and Setup cannot hold the same guest concurrently. New VM consent
+retry identity includes the home choices and guest Touch ID. Schema 6 existed
+independently on both branches: older records still load, home-only records retain
+schema 6, and saving Setup metadata requires schema 7 so an older next reader fails
+closed instead of silently discarding it. No storage or approval is auto-migrated.
+
+The earlier signed candidate remains historical evidence for its original frozen
+inputs (`7e46241` source and `b72eadf` signing implementation). It is not a signed
+candidate for the merged source or newly pinned runtime. Private artifacts, old
+reviews/consumed plans and all frozen pins remain unchanged. A candidate for the
+merged branch needs fresh source/runtime/channel/material review before any signing
+or real acceptance. This merge grants no further native inspection, key use,
+Apple request, install, SSH/Ansible or VM execution. Product execution stays disabled.
+
+Offline merge validation passes 521 Swift tests in 69 suites in each of Stable
+and Dev, plus 327 script tests with five signing/PKCS12-generation cases explicitly
+excluded. A process/API audit permits only Git, Python and bounded disposable
+shell/recorded-PID fixtures, with no external network or real native inspection.
+Temporary app fixtures verify CLI/storage/provisioning helper channel diagnostics
+and mismatched-app refusal without running the manager. The full signed bundle
+assembly and offscreen app-acceptance targets are not run during this merge.
+Initial sandbox runs fail local socket/authentication-context fixtures; outside
+that sandbox the final fake/local runs pass after correcting schema/channel
+integration. All 18,625 existing private artifact entries match their pre-merge
+content/modes/link targets; credential content remains unopened and metadata is
+unchanged. The historical signed archive retains its exact original digest/size.
+
+`make test-build-policies` also passes both launch/credential policy cases in all three optimized modes: ordinary release, Stable signed-prerelease and Dev signed-prerelease. No signing runs. The first dSYM generation attempt is sandbox-blocked; the outside-sandbox rerun passes. Changed packaging/channel scripts parse and diff whitespace checks pass.

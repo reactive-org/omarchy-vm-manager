@@ -11,11 +11,16 @@ do {
     if args == ["--help"] {
         output(Data("Offline provisioning helper: --verify-package-json | --validate-manifest-json FILE | --plan-json REPOSITORY [MANIFEST]\nExecution is disabled.".utf8))
     }
+    if args == ["--channel-json"] {
+        output(try JSONSerialization.data(withJSONObject: ["appChannel": AppChannel.current.rawValue,
+            "bundleIdentifier": AppChannel.current.bundleIdentifier], options: [.sortedKeys]))
+    }
     guard let executable = Bundle.main.executableURL, executable.deletingLastPathComponent().lastPathComponent == "MacOS" else {
         throw VMFailure(code: "provisioning-package-invalid", message: "Packaged helper required.")
     }
     let layout = ProvisioningPackageLayout(contents: executable.deletingLastPathComponent().deletingLastPathComponent())
     if args.count == 2, args[0] == "--ownership-channel-fd", let fd = Int32(args[1]) {
+        _ = try AppChannel.current.enclosingApp(for: executable)
         try await ProvisioningHelperControl.serveInheritedOwnershipChannel(descriptor: fd, layout: layout)
         exit(0)
     }

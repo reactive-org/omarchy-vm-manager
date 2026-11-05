@@ -31,10 +31,10 @@ final class CreationFixture: Sendable {
     func prepare(_ features: ProvisioningFeatureSelection? = nil, id: UUID = UUID()) async throws -> ProvisioningCreationReview {
         try await service.prepareCreation(id: id, source: .init(directory: source.path, features: features))
     }
-    func create(_ review: ProvisioningCreationReview, name: String = "Manager chosen", memory: Int = 8192, acknowledged: Bool = true) async throws -> UUID {
+    func create(_ review: ProvisioningCreationReview, name: String = "Manager chosen", memory: Int = 8192, acknowledged: Bool = true, separateHome: Bool? = nil, homeDiskGiB: Int? = nil) async throws -> UUID {
         try await manager.create(name: name, memoryMiB: memory, cpus: 4, diskGiB: 128, clipboardEnabled: false,
             immersiveMode: false, sshEnabled: false, useOwnerDefaults: false, factory: "official",
-            setupConsent: .init(reviewID: review.id, reviewIdentity: review.reviewIdentity, acknowledged: acknowledged))
+            separateHome: separateHome, homeDiskGiB: homeDiskGiB, setupConsent: .init(reviewID: review.id, reviewIdentity: review.reviewIdentity, acknowledged: acknowledged))
     }
     func assertInert() async {
         #expect(runtime.startRequests.isEmpty)
@@ -58,6 +58,10 @@ final class CreationFixture: Sendable {
         let profile = try #require(await f.manager.snapshots().first?.profile)
         #expect(profile.guestTouchIDEnabled && profile.developerSetup != nil)
         #expect(try JSONDecoder().decode(VMProfile.self, from: JSONEncoder().encode(profile)) == profile)
+        var changed = decoded
+        changed.config?.guestTouchID = false
+        #expect(await GuestCommandService(manager: f.manager, applicationSupport: f.root).execute(changed).ok == false)
+        #expect(await f.manager.snapshots().count == 1)
         await f.assertInert(); await f.close()
     }
 
@@ -133,13 +137,46 @@ final class CreationFixture: Sendable {
         await #expect(throws: ProvisioningReviewFailure.conflictingConsent) { _ = try await f.create(p, memory: 12288) }
         let file = ManagerStorage(applicationSupport: f.root).directory.appendingPathComponent("registry.json")
         let bytes = try Data(contentsOf: file), object = try JSONSerialization.jsonObject(with: bytes) as! [String: Any]
-        #expect(object["schemaVersion"] as? Int == 6)
+        #expect(object["schemaVersion"] as? Int == 7)
         #expect(!String(decoding: bytes, as: UTF8.self).contains(f.source.path))
         let profile = try #require(await f.manager.snapshots().first?.profile)
         #expect(try JSONDecoder().decode(VMProfile.self, from: helperJSON(profile)) == profile)
         await #expect(throws: ProvisioningServiceFailure.disabled) { _ = try await f.service.prepareApply(p.id) }
         await f.assertInert(); await f.close()
     }
+    @Test func homeChoicesAreBoundToSetupConsentAndSurviveRegistryRoundtrip() async throws {
+        let f = try await CreationFixture(), review = try await f.prepare()
+        let id = try await f.create(review, separateHome: true, homeDiskGiB: 96)
+        #expect(try await f.create(review, separateHome: true, homeDiskGiB: 96) == id)
+        await #expect(throws: ProvisioningReviewFailure.conflictingConsent) {
+            _ = try await f.create(review, separateHome: true, homeDiskGiB: 128)
+        }
+        await #expect(throws: ProvisioningReviewFailure.conflictingConsent) {
+            _ = try await f.create(review, separateHome: false)
+        }
+        let profile = try #require(await f.manager.snapshots().first?.profile)
+        #expect(profile.homeDisk?.sizeGiB == 96 && profile.developerSetup != nil)
+        let decoded = try JSONDecoder().decode(VMProfile.self, from: helperJSON(profile))
+        #expect(decoded == profile)
+        let file = ManagerStorage(applicationSupport: f.root).directory.appendingPathComponent("registry.json")
+        let data = try PrivateFiles.read(file, maximum: 1_048_576)
+        var document = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        #expect(document["schemaVersion"] as? Int == 7)
+        // Both branches previously wrote schema 6. Accept the old payload,
+        // preserving both selections, then protect it from older next readers.
+        let legacySupport = f.root.appendingPathComponent("legacy-support")
+        try PrivateFiles.directory(legacySupport, create: true)
+        let legacy = try RegistryStore(applicationSupport: legacySupport)
+        document["schemaVersion"] = 6
+        try PrivateFiles.write(JSONSerialization.data(withJSONObject: document), name: "registry.json", in: legacy.directory, exclusively: true)
+        let restored = try legacy.load()
+        #expect(restored == [profile])
+        try legacy.save(restored)
+        let upgraded = try JSONSerialization.jsonObject(with: PrivateFiles.read(legacy.directory.appendingPathComponent("registry.json"))) as! [String: Any]
+        #expect(upgraded["schemaVersion"] as? Int == 7)
+        await f.assertInert(); await f.close()
+    }
+
     @Test func noAcknowledgementOrLostReviewCannotCreateMetadata() async throws {
         let f = try await CreationFixture(), p = try await f.prepare()
         await #expect(throws: ProvisioningReviewFailure.consentRequired) { _ = try await f.create(p, acknowledged: false) }

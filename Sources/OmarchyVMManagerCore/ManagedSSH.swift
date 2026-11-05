@@ -90,7 +90,7 @@ private extension Data {
 
 public struct SelectedPublicKeyStore: Sendable {
     let directory: URL
-    public init(applicationSupport: URL) { directory = applicationSupport.resolvingSymlinksInPath().appendingPathComponent("Omarchy VM Manager/PublicKeys") }
+    public init(applicationSupport: URL, channel: AppChannel = .current) { directory = channel.directory(in: applicationSupport).appendingPathComponent("PublicKeys") }
     public func save(_ text: String, id: UUID) throws -> String {
         let canonical = try SSHPublicKey.canonical(text)
         try PrivateFiles.directory(directory, create: true)
@@ -119,7 +119,7 @@ public struct ManagedSSHStorage: Sendable {
     }
     struct Bootstrap: Codable { let schemaVersion: Int; let vmID: UUID; let sessionToken: UUID; let publicKeys: [String] }
 
-    func prepare(profile: VMProfile, sessionID: UUID, applicationSupport: URL, newRoot: Bool) throws {
+    func prepare(profile: VMProfile, sessionID: UUID, applicationSupport: URL, newRoot: Bool, channel: AppChannel = .current) throws {
         guard let options = profile.ssh, !profile.isRetainedPOC else { return }
         if !PrivateFiles.exists(directory) {
             guard newRoot else { throw VMFailure(code: "ssh-credentials-missing", message: "SSH credentials are missing. Existing VM identities will not be regenerated automatically.") }
@@ -130,7 +130,7 @@ public struct ManagedSSHStorage: Sendable {
             try generate(at: stage.appendingPathComponent("client"))
             try generate(at: shared.appendingPathComponent("host_ed25519"))
             if options.publicKeyFingerprint != nil {
-                let key = try SelectedPublicKeyStore(applicationSupport: applicationSupport).read(profile.id)
+                let key = try SelectedPublicKeyStore(applicationSupport: applicationSupport, channel: channel).read(profile.id)
                 guard try SSHPublicKey.fingerprint(key) == options.publicKeyFingerprint else { throw PrivateFiles.failure("The selected public key changed. No credential was replaced.") }
                 try PrivateFiles.write(Data((key + "\n").utf8), name: "owner.pub", in: stage, exclusively: true)
             }

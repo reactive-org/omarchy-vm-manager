@@ -8,8 +8,8 @@ public struct ManagerCommandEndpoint: Sendable {
     public var provisioning: ManagerCommandEndpoint {
         var value = self; value.socketName = "setup-v1.sock"; return value
     }
-    public init(applicationSupport: URL) {
-        let identity = KitVerifier.sha256(Data(applicationSupport.resolvingSymlinksInPath().path.utf8)).prefix(16)
+    public init(applicationSupport: URL, channel: AppChannel = .current) {
+        let identity = KitVerifier.sha256(Data(channel.commandIdentity(in: applicationSupport).utf8)).prefix(16)
         directory = URL(fileURLWithPath: "/private/tmp/omarchy-manager-\(getuid())-\(identity)")
     }
     public init(directory: URL) { self.directory = directory }
