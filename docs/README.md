@@ -354,3 +354,5 @@ original-Mac, loaded-child and disposable-guest acceptance remain separate.
 [Fresh private 4a0f30a candidate review](DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-4a0f30a--5-november-2026) prepares exact merged-source/runtime inputs and a new bounded-inspection request. File-data/fake checks pass; native inspection and signing remain unexecuted and require separate approval.
 
 [Fresh 4a0f30a native inspection passed](DevVMMilestone6Runbook.md#fresh-4a0f30a-native-inspection-passed--5-november-2026): 31 bounded workers and 23 offline static code checks pass; cleanup and preservation verified. The consumed receipt supports a new signing-plan review, without granting signing/key/Apple/guest authority.
+
+[Fresh 4a0f30a attended signing plan](DevVMMilestone6Runbook.md#fresh-4a0f30a-attended-signing-plan--5-november-2026) is prepared/check-only against the new native receipt. All effects remain NOT_GRANTED; artifacts/pins are preserved and exact-plan terminal approval is still required.

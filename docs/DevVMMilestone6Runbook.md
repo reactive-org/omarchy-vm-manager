@@ -2001,3 +2001,52 @@ stays consumed, with no automatic retry. A fresh attended signing plan may now b
 prepared against this new receipt; actual build/signing/selected-key use/secure UI/
 Apple timestamps still require separate exact-plan approval. No signing, private-key
 access, Apple request, SSH/Ansible, install, UI/app/runtime or VM operation occurs.
+
+## Fresh 4a0f30a attended signing plan — 5 November 2026
+
+**PREPARED / NOT AUTHORIZED:** after inspection-result commits manager `28b758c` /
+companion `7b8fcb2`, a new owner-only private attended plan is prepared through the
+maintained operator `prepare` / `check` path. It binds the exact `4a0f30a` source,
+updated runtime and original Stable disposable scope to the **new** successful
+31-worker inspection receipt. Its typed historical inspection request/implementation,
+receipt bytes, staged public profile/certificate, unchanged material selectors,
+seventeen-file engine and independent operator hashes all match. The 32 committed
+tooling files and 173 sealed review files still match current code/frozen data.
+No older inspection/signing plan or authority is reused and no pin is recaptured.
+
+The new plan reports **CHECKED_PUBLIC_INPUTS_ONLY**, `fixture: false`, execution
+unauthorized, key availability NOT_QUERIED and native readiness NOT_CHECKED. Original
+signing material/keychain metadata are not observed, their content is unopened and
+no native API, runner/backend or signing authority is constructed for real inputs.
+The fresh candidate output, consumed marker and attempt record are absent. All five
+proposed effects—build, inspect, selected-key-use, secure-key-ui, apple-timestamp—
+remain NOT_GRANTED. The private packet includes exact bindings, effect status,
+ordered work, attendance notes and a quoted CLI command; it is ignored by Git.
+
+**VERIFIED — data/fake only:** fourteen actual-plan positive/refusal checks pass,
+including old-receipt replacement and protected-output overlap refusal. All 44
+operator/receipt-bound fake API/process tests pass without actual subprocesses or
+native-library attempts. The future CLI command roundtrips through shell argument
+parsing; it is not executed. All 18,916 existing private artifact entries, including
+old/new inspection receipts, signed/failed candidates, consumed plans and frozen
+pins, are unchanged. Only the new private plan is added. Ordinary product approval,
+shared package/code and pins are unchanged; documentation is updated in both
+worktrees without committing this preparation.
+
+**ATTENDED EXECUTION PROPOSAL / NOT GRANTED:** after separate exact-plan approval,
+use the maintained CLI from a real attended terminal and enter its exact `SIGN`
+confirmation. Watch for existing macOS secure-key UI and respond promptly; each
+120-second signing limit includes UI waiting. No timeout is enlarged, automated
+unlock/import/export/ACL/search-list change introduced, or Touch ID method promised.
+The proposed job is bounded to 2,400 seconds, build commands to at most 1,200 seconds,
+signing commands to 120 seconds and each output stream to 2 MiB, with owned-group
+kill/reap/descriptor cleanup and retained failure/consumption evidence. No automatic
+retry, notarization, publication, host install, normal app/runtime/daemon activation,
+SSH/Ansible or VM launch is included. The plan alone grants no permission.
+
+**TO PROVE:** current selected-key availability/ACL/UI, merged-source candidate
+compilation/signatures/Apple timestamps and final static/archive checks remain
+unexecuted. CMS signer authenticity, certificate trust, current revocation/fresh
+notarization/Gatekeeper and original-Mac/loaded-child/guest acceptance are not
+established by plan preparation. No build, signing, private-key access, Apple
+request, SSH/Ansible, install, normal app/UI/runtime action or VM launch occurs.

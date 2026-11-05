@@ -3660,3 +3660,21 @@ receipt can support preparing a fresh attended signing plan; it does not authori
 signing or establish key availability, CMS signer authenticity, certificate trust,
 current revocation/notarization or original-Mac/loaded-child/guest acceptance.
 See the [exact result and limits](DevVMMilestone6Runbook.md#fresh-4a0f30a-native-inspection-passed--5-november-2026).
+
+## Fresh 4a0f30a attended plan prepared — 5 November 2026
+
+The maintained private operator prepares/checks a new attended plan against the
+new successful inspection receipt, exact `4a0f30a` source, updated runtime and
+original Stable disposable scope. Source/runtime/receipt/material/engine/operator
+bindings pass; 32 committed tooling files and 173 sealed review files remain exact.
+The plan is CHECKED_PUBLIC_INPUTS_ONLY, unconsumed and not execution-authorized; all
+five proposed effects remain NOT_GRANTED. No candidate output, authority or backend is created.
+
+Fourteen actual-plan data/refusal checks and 44 fake API/process tests pass. All
+18,916 old private entries/pins remain unchanged; current key state/availability
+and original signing-material metadata/content are unqueried. Private attendance
+notes include quoted real-terminal confirmation, prompt/deadline handling, bounded
+cleanup and no retry. Separate approval must name the new plan and proposed key/UI/
+timestamp effects before execution. No build, native inspection, signing, private-key
+access, Apple request, SSH/Ansible, install, app/runtime or VM launch occurs. See
+the [attended plan and limits](DevVMMilestone6Runbook.md#fresh-4a0f30a-attended-signing-plan--5-november-2026).

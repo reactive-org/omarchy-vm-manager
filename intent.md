@@ -3689,3 +3689,27 @@ loaded-child/original-Mac/guest acceptance. The new receipt permits preparation 
 a fresh attended signing plan, not execution authority. No plan/candidate build,
 signing, private-key access, Apple request, SSH/Ansible, install, UI/app/runtime or
 VM action occurs; no automatic retry. See the fresh inspection result runbook.
+
+## Fresh attended signing plan after native inspection — 5 November 2026
+
+**DESIGN DECISION:** prepare a distinct private attended plan for `4a0f30a`, its
+updated runtime and original Stable disposable scope using the new successful
+inspection receipt. Preserve all prior candidates, reviews, consumed attempts and
+frozen pins; no scope observation/recapture or ordinary product approval change.
+
+**VERIFIED — data/fake only:** maintained `prepare` / `check` returns
+CHECKED_PUBLIC_INPUTS_ONLY with execution unauthorized and current key availability/
+native readiness unqueried. New receipt/source/runtime/material/seventeen-file
+engine/operator bindings, 32 committed tooling files and 173 sealed review files
+match. Fourteen plan/refusal checks and 44 fake API/process tests pass. All 18,916
+prior private entries remain unchanged. No real-input authority, backend, candidate
+output, consumed marker or attempt is created. The private attendance instructions
+include exact terminal confirmation, quoted CLI, existing secure UI, 120-second
+signing limits including UI wait, bounded cleanup and no automatic retry.
+
+**TO PROVE / NOT GRANTED:** all five proposed execution effects remain NOT_GRANTED.
+Current key state/availability/ACL/UI, compilation/signatures/Apple timestamps and
+final candidate checks are not established. No original material/keychain metadata
+or credential content is accessed; no native API, signing, private-key access,
+Apple request, SSH/Ansible, install, app/runtime or VM launch occurs. Private data/
+pins remain out of Git; both worktrees have documentation-only pending updates.
