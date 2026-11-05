@@ -34,6 +34,18 @@ def api(path, optional=False):
     return json.loads(value) if value is not None else None
 
 
+def release_for_tag(tag):
+    # GitHub's by-tag endpoint returns published releases only. Drafts require
+    # an authenticated listing, including drafts beyond the first page.
+    value = api('releases/tags/' + tag, optional=True)
+    if value is not None:
+        return value
+    pages = json.loads(command('gh', 'api', f'repos/{REPOSITORY}/releases?per_page=100', '--paginate', '--slurp'))
+    matches = [release for page in pages for release in page if release['tag_name'] == tag]
+    assert len(matches) <= 1, 'ambiguous release drafts preserved; inspect before continuing'
+    return matches[0] if matches else None
+
+
 def context(environment=None):
     env = os.environ if environment is None else environment
     if env.get('GITHUB_ACTIONS') != 'true' or env.get('GITHUB_EVENT_NAME') != 'push' or env.get('GITHUB_REPOSITORY') != REPOSITORY:
@@ -134,7 +146,7 @@ def plan():
                 subprocess.run(['git', '-c', 'tag.gpgsign=false', 'tag', '-a', tag, sha, '-F', note.name], cwd=ROOT, env=env, check=True)
             command('git', 'push', 'origin', 'refs/tags/' + tag)
     if not value.get('skip'):
-        release = api('releases/tags/' + value['tag'], optional=True)
+        release = release_for_tag(value['tag'])
         if release and not release['draft']:
             expected = f"{channel_spec(channel)[3]}-{value['tag']}-macOS-arm64-notarized.zip"
             assert release['prerelease'] == (channel == 'development')
@@ -173,12 +185,13 @@ def upload_missing(tag, release, folder, expected):
 def publish_files(tag, folder, notes, prerelease, latest=False, target=None):
     context()
     expected = asset_files(folder)
-    release = api('releases/tags/' + tag, optional=True)
+    release = release_for_tag(tag)
     if release is None:
         command('gh', 'release', 'create', tag, '--repo', REPOSITORY, '--draft', '--latest=false',
                 '--prerelease' if prerelease else '--prerelease=false', '--title', tag,
                 '--notes-file', notes, *(['--target', target] if target else ['--verify-tag']))
-        release = api('releases/tags/' + tag)
+        release = release_for_tag(tag)
+        assert release is not None, 'created draft was not found; existing release preserved'
     assert release['tag_name'] == tag and release['prerelease'] == prerelease
     if not release['draft']:
         assert {asset['name'] for asset in release['assets']} == set(expected), 'published release is incomplete'
@@ -186,7 +199,7 @@ def publish_files(tag, folder, notes, prerelease, latest=False, target=None):
             assert asset.get('digest') == 'sha256:' + expected[asset['name']], 'published bytes differ; immutable release preserved'
         return
     upload_missing(tag, release, folder, expected)
-    completed = api('releases/tags/' + tag)
+    completed = release_for_tag(tag)
     assert {asset['name'] for asset in completed['assets']} == set(expected)
     for asset in completed['assets']:
         assert asset.get('digest') == 'sha256:' + expected[asset['name']], 'uploaded asset digest differs'
@@ -217,7 +230,7 @@ def build():
     assert not value.get('skip')
     os.environ.update(RELEASE_CHANNEL=value['channel'], RELEASE_TAG=value['tag'],
                       RELEASE_VERSION=value['version'], RELEASE_BUILD=value['build'])
-    existing = api('releases/tags/' + value['tag'], optional=True)
+    existing = release_for_tag(value['tag'])
     if existing and existing['assets']:
         raise RuntimeError('A draft already has signed assets. Recover its retained verified dist/prerelease artifacts and run release-publish; do not rebuild or overwrite them.')
     import signed_prerelease
