@@ -15,6 +15,15 @@ import branch_release as release
 
 
 class BranchReleaseTests(unittest.TestCase):
+    def test_api_mutations_preserve_json_types_and_literal_notes(self):
+        payload = dict(draft=True, prerelease=False, make_latest='false', body='line 1\n`literal` $(literal)')
+        def command(*args, **kwargs):
+            self.assertEqual(args[:5], ('gh', 'api', 'repos/' + release.REPOSITORY + '/releases', '--method', 'POST'))
+            self.assertEqual(json.loads(Path(args[-1]).read_text()), payload)
+            return '{"id": 123}'
+        with patch.object(release, 'command', side_effect=command):
+            self.assertEqual(release.api('releases', method='POST', payload=payload), dict(id=123))
+
     def test_published_release_lookup_needs_no_draft_listing(self):
         published = dict(tag_name='v0.11.1', draft=False)
         with patch.object(release, 'api', return_value=published), patch.object(release, 'command') as command:
@@ -140,15 +149,17 @@ class BranchReleaseTests(unittest.TestCase):
             (folder / 'app.zip').write_bytes(b'fixture')
             expected = release.asset_files(folder)
             with patch.object(release, 'command') as command:
-                release.upload_missing('v0.11.1', dict(assets=[]), folder, expected)
+                release.upload_missing('v0.11.1', dict(id=123, assets=[]), folder, expected)
                 self.assertNotIn('--clobber', command.call_args.args)
+                self.assertIn('/releases/123/assets?name=app.zip', command.call_args.args[2])
+                self.assertEqual(command.call_args.args[:2], ('gh', 'api'))
                 command.reset_mock()
-                same = dict(assets=[dict(name='app.zip', digest='sha256:' + expected['app.zip'])])
+                same = dict(id=123, assets=[dict(name='app.zip', digest='sha256:' + expected['app.zip'])])
                 release.upload_missing('v0.11.1', same, folder, expected)
                 command.assert_not_called()
                 for assets in [[dict(name='app.zip', digest='sha256:wrong')], [dict(name='other.zip')]]:
                     with self.assertRaises(AssertionError):
-                        release.upload_missing('v0.11.1', dict(assets=assets), folder, expected)
+                        release.upload_missing('v0.11.1', dict(id=123, assets=assets), folder, expected)
                     command.assert_not_called()
 
     def test_incomplete_or_different_uploads_never_finalize_a_draft(self):
@@ -157,38 +168,103 @@ class BranchReleaseTests(unittest.TestCase):
             (folder / 'app.zip').write_bytes(b'fixture')
             for assets in [[], [dict(name='app.zip', digest='sha256:wrong')]]:
                 with patch.dict(os.environ, self.environment(), clear=True), \
-                     patch.object(release, 'api', return_value=dict(tag_name='v0.11.1', draft=True, prerelease=False, assets=assets)), \
+                     patch.object(release, 'api', return_value=dict(id=123, tag_name='v0.11.1', draft=True, prerelease=False, assets=assets)) as api, \
                      patch.object(release, 'upload_missing'), patch.object(release, 'command') as command:
                     with self.assertRaises(AssertionError):
                         release.publish_files('v0.11.1', folder, folder / 'notes.md', False)
                     command.assert_not_called()
+                    self.assertFalse(any(call.kwargs.get('method') == 'PATCH' for call in api.call_args_list))
 
     def test_successful_uploads_finalize_only_after_verification_and_never_mark_dev_latest(self):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
             (folder / 'app.zip').write_bytes(b'fixture')
             expected = release.asset_files(folder)
-            complete = dict(tag_name='v0.11.1-dev.1', draft=True, prerelease=True,
+            complete = dict(id=123, tag_name='v0.11.1-dev.1', draft=True, prerelease=True,
                             assets=[dict(name='app.zip', digest='sha256:' + expected['app.zip'])])
-            with patch.dict(os.environ, self.environment('next'), clear=True), patch.object(release, 'api', return_value=complete), \
+            def api(path, **kwargs):
+                return dict(complete, draft=False) if kwargs.get('method') == 'PATCH' else complete
+            with patch.dict(os.environ, self.environment('next'), clear=True), patch.object(release, 'api', side_effect=api) as calls, \
                  patch.object(release, 'command') as command:
                 release.publish_files('v0.11.1-dev.1', folder, folder / 'notes.md', True)
-                self.assertEqual(command.call_args.args[:3], ('gh', 'release', 'edit'))
-                self.assertIn('--latest=false', command.call_args.args)
+                self.assertEqual(calls.call_args.args, ('releases/123',))
+                self.assertEqual(calls.call_args.kwargs, dict(method='PATCH', payload=dict(draft=False, prerelease=True, make_latest='false')))
+                command.assert_not_called()
 
-    def test_new_draft_is_found_then_uploaded_and_verified_before_publication(self):
+    def test_created_draft_uses_returned_id_even_while_tag_listing_remains_empty(self):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
             (folder / 'app.zip').write_bytes(b'fixture')
             expected = release.asset_files(folder)
-            draft = dict(tag_name='v0.11.1', draft=True, prerelease=False, assets=[])
+            (folder / 'notes.md').write_text('literal notes\nsecond line')
+            draft = dict(id=123, tag_name='v0.11.1', draft=True, prerelease=False, assets=[])
             completed = dict(draft, assets=[dict(name='app.zip', digest='sha256:' + expected['app.zip'])])
+            def api(path, **kwargs):
+                if path == 'git/ref/tags/v0.11.1':
+                    return dict(ref='refs/tags/v0.11.1')
+                if path == 'releases':
+                    self.assertEqual(kwargs['method'], 'POST')
+                    self.assertEqual(kwargs['payload'], dict(tag_name='v0.11.1', name='v0.11.1',
+                        body='literal notes\nsecond line', draft=True, prerelease=False, make_latest='false'))
+                    return draft
+                self.assertEqual(path, 'releases/123')
+                return dict(completed, draft=False) if kwargs.get('method') == 'PATCH' else completed
             with patch.dict(os.environ, self.environment(), clear=True), \
-                 patch.object(release, 'release_for_tag', side_effect=[None, draft, completed]), \
+                 patch.object(release, 'release_for_tag', return_value=None) as lookup, \
+                 patch.object(release, 'api', side_effect=api) as calls, \
                  patch.object(release, 'command') as command:
                 release.publish_files('v0.11.1', folder, folder / 'notes.md', False, latest=True)
-                self.assertEqual([call.args[:3] for call in command.call_args_list],
-                                 [('gh', 'release', 'create'), ('gh', 'release', 'upload'), ('gh', 'release', 'edit')])
+                lookup.assert_called_once_with('v0.11.1')
+                self.assertEqual(command.call_count, 1)  # ID-addressed upload only.
+                self.assertIn('/releases/123/assets?', command.call_args.args[2])
+                self.assertEqual(calls.call_args.kwargs['payload']['make_latest'], 'true')
+
+    def test_changed_release_id_tag_channel_or_uploaded_bytes_prevent_publication(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            (folder / 'app.zip').write_bytes(b'fixture')
+            sha = release.asset_files(folder)['app.zip']
+            draft = dict(id=123, tag_name='v0.11.1-dev.1', draft=True, prerelease=True,
+                         assets=[dict(name='app.zip', digest='sha256:' + sha)])
+            for changes in (dict(id=456), dict(tag_name='other'), dict(prerelease=False),
+                            dict(assets=[]), dict(assets=[dict(name='app.zip', digest='sha256:wrong')])):
+                with self.subTest(changes=changes), patch.dict(os.environ, self.environment('next'), clear=True), \
+                     patch.object(release, 'release_for_tag', return_value=draft), \
+                     patch.object(release, 'api', return_value=dict(draft, **changes)) as api:
+                    with self.assertRaises(AssertionError):
+                        release.publish_files('v0.11.1-dev.1', folder, folder / 'notes.md', True)
+                    self.assertEqual(api.call_count, 1)
+                    self.assertNotIn('method', api.call_args.kwargs)
+
+    def test_invalid_creation_response_never_uploads_or_finalizes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            (folder / 'app.zip').write_bytes(b'fixture')
+            (folder / 'notes.md').write_text('fixture')
+            draft = dict(id=123, tag_name='runtime-kit-test', draft=True, prerelease=True, assets=[])
+            for changes in (dict(id=None), dict(id=True), dict(tag_name='other'), dict(prerelease=False), dict(draft=False)):
+                with self.subTest(changes=changes), patch.dict(os.environ, self.environment('next'), clear=True), \
+                     patch.object(release, 'release_for_tag', return_value=None), \
+                     patch.object(release, 'api', return_value=dict(draft, **changes)) as api, \
+                     patch.object(release, 'upload_missing') as upload:
+                    with self.assertRaises(AssertionError):
+                        release.publish_files('runtime-kit-test', folder, folder / 'notes.md', True, target='a' * 40)
+                    upload.assert_not_called()
+                    self.assertEqual(api.call_count, 1)
+                    self.assertEqual(api.call_args.kwargs['payload']['target_commitish'], 'a' * 40)
+
+    def test_existing_asset_without_server_digest_is_downloaded_by_id(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            (folder / 'app.zip').write_bytes(b'fixture')
+            def download(args, **kwargs):
+                self.assertEqual(args[:3], ['gh', 'api', 'repos/' + release.REPOSITORY + '/releases/assets/456'])
+                self.assertIn('Accept: application/octet-stream', args)
+                kwargs['stdout'].write(b'fixture')
+            with patch.object(release.subprocess, 'run', side_effect=download), patch.object(release, 'command') as command:
+                release.upload_missing('v0.11.1', dict(id=123, assets=[dict(id=456, name='app.zip')]),
+                                       folder, release.asset_files(folder))
+                command.assert_not_called()
 
     def test_build_refuses_to_regenerate_already_uploaded_signed_assets(self):
         with patch.object(release, 'load_plan', return_value=self.record()), \

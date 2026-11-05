@@ -1,5 +1,15 @@
 # Omarchy VM Manager — implementation intent
 
+## Dev draft publication recovery — user authorization, 5 November 2026
+
+**USER AUTHORIZATION:** fix draft lookup in a PR targeting `next`, then recover and publish the exact retained Dev release without rebuilding it. Leave installed apps and all running work VMs untouched. No local signing identity, credential import, notarization submission, permission grant, installation or guest operation is needed.
+
+**VERIFIED — failure:** run `41997334573`, source `3b7fbdd1c070a026cade3f3fb959757a9571c3c7`, passed both test jobs and signing/notarization/package verification for `v0.11.3-dev.1` (118). The publisher created draft `434969897`, but its immediate tag/list lookup returned no match; it stopped before uploading assets. A later authenticated read found the empty draft. Retained artifact `13401208496` has SHA-256 `987cb4fbb2fdb3bbaf9901ec15f78a1afcad874257ef93ef8c4ef783efa59023`. Delayed API visibility remains a hypothesis, not a proven root cause.
+
+**DESIGN DECISION:** consume the release-creation response and retain its numeric ID for uploads, verification and publication. Verify ID/tag/channel and complete asset digests before finalization; preserve immutable reservations, existing bytes and Dev's non-Latest status. Explicit manual recovery validates the original retained artifact and signed package before publishing by ID; ordinary CI-only admission remains unchanged. **TO PROVE:** fixed CI publication and exact retained-release recovery until their results are recorded.
+
+**VERIFIED — recovery and no-VM checks:** `v0.11.3-dev.1` (118) was published from that same draft at `2026-11-05T09:11:18Z`; all nine server asset hashes/sizes match the retained candidate. App ZIP SHA-256 is `e8cb3e17682bc5f5c400ee819ab30d7de068dae7e6ceeedf3dbeeaafb80d9d96`. Original Apple acceptance binds to the submitted archive; only the outer staple ticket was added afterward. Source/reservation/version/build/profile/runtime inventory, signatures, notarization, stapling and Gatekeeper pass. The unchanged layout validator uses identical previously authenticated CI artwork; cross-host Dev icon byte equality remains a cosmetic limitation. Stable `v0.11.2` stays Latest and its assets are unchanged. `make test` passes 256 Swift and 106 script cases, including 20 branch-release cases. No rebuild, local signing, resubmission, installed-app or VM operation occurred. [Recovery receipts and limitations](docs/BranchReleases.md#failures-and-retained-artifacts) distinguish manual success from **TO PROVE** future CI creation/publication and native behavior; the original run remains failed.
+
 ## First Dev publication — user authorization, 5 November 2026
 
 **USER AUTHORIZATION:** create `next` from `main`, validate the supplied separate Dev provisioning profile, configure its CI secret and publish the first Dev release. Leave installed apps, all running work VMs and their data untouched. Use the existing signing/notarization credentials only in CI; no local private signing identity, permission, installation or real guest action is needed.
