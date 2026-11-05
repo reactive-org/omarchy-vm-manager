@@ -31,6 +31,35 @@ import Testing
         #expect(await f.launcher.launches == 1)
         await cli.close(); await f.close()
     }
+    @Test func boundedPreparationOutlivesTheShortFrameTimeoutWithoutReplay() async throws {
+        let f = try await WorkflowFixture()
+        let endpoint = ManagerCommandEndpoint(directory: f.root.appendingPathComponent("slow-review-ipc"))
+        let server = try ProvisioningExternalServer(endpoint: endpoint, service: f.service); defer { server.stop() }
+        let id = UUID(), gate = IPCWorkerGate()
+        _ = try await f.service.preview(id: id, vmID: f.profile.id, source: .init(directory: f.source.path))
+        await f.dependencies.pauseNext(gate)
+        let cli = ProvisioningExternalClient(endpoint: endpoint)
+        let pending = Task { try await cli.request(.prepareApply, previewID: id) }
+        #expect(await eventually { await gate.entered })
+        try await Task.sleep(for: .seconds(4))
+        await gate.release()
+        let result = try await pending.value
+        #expect(result.failure == nil && result.applyReview?.previewID == id)
+        #expect(await f.dependencies.inspections == 1)
+        #expect(await f.launcher.launches == 0)
+        await cli.close(); await f.close()
+    }
+    @Test func requestLeasesRemainBoundedAndIdleAttachmentsStillExpire() {
+        let activity = ProvisioningExternalActivity(), now = ContinuousClock.now
+        activity.begin(.seconds(120), at: now)
+        #expect(!activity.isExpired(at: now + .seconds(16)))
+        #expect(activity.isExpired(at: now + .seconds(121)))
+        activity.finish(at: now)
+        #expect(!activity.isExpired(at: now + .seconds(14)))
+        #expect(activity.isExpired(at: now + .seconds(16)))
+        #expect(ProvisioningExternalRequest(sequence: 1, operation: .prepareApply).responseTimeout == .seconds(120))
+        #expect(ProvisioningExternalRequest(sequence: 1, operation: .input).responseTimeout == .seconds(3))
+    }
     @Test func productEndpointFreezesWithoutProbesAndApplyRemainsDisabled() async throws {
         let f = try await WorkflowFixture(enabled: false)
         let endpoint = ManagerCommandEndpoint(directory: f.root.appendingPathComponent("review-ipc"))

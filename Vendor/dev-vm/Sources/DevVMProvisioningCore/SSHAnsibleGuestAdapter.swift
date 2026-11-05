@@ -61,7 +61,7 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
         """
         try workspace.write("ssh_config", Data((config + "\n").utf8))
         try workspace.write("known_hosts", Data((connection.alias + " ssh-ed25519 " + connection.hostKey.base64EncodedString() + "\n").utf8))
-        let ansible = "[defaults]\ninject_facts_as_vars=false\nretry_files_enabled=false\nroles_path=kit/roles\nlocal_tmp=tmp\n[ssh_connection]\npipelining=false\n"
+        let ansible = "[defaults]\ninject_facts_as_vars=false\nretry_files_enabled=false\nroles_path=kit/roles\nlocal_tmp=tmp\n[ssh_connection]\nssh_args=-o ControlMaster=no -o ControlPersist=no -o ControlPath=none\npipelining=false\n"
         try workspace.write("ansible.cfg", Data(ansible.utf8))
     }
 

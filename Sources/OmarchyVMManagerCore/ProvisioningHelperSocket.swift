@@ -44,7 +44,7 @@ final class ProvisioningHelperSocket: @unchecked Sendable {
         // Idle waiting is interruptible by shutdown; a partially sent frame has
         // an absolute deadline and cannot extend it by trickling more bytes.
         let allowed = wait ?? timeout
-        guard allowed > .zero, allowed <= .seconds(30) else { throw ProvisioningHelperIPCFailure.protocolViolation }
+        guard allowed > .zero, allowed <= .seconds(120) else { throw ProvisioningHelperIPCFailure.protocolViolation }
         let transactionEnd = ContinuousClock.now + allowed
         let first = try Self.readExact(fd, count: 1, deadline: idle ? nil : transactionEnd)
         let end = idle ? ContinuousClock.now + allowed : transactionEnd

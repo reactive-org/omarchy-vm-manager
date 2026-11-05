@@ -65,7 +65,7 @@ extension ProvisioningService {
         } else if source.bundled == true {
             guard let url = Bundle.module.url(forResource: "SetupProfiles", withExtension: "json") else { throw ProvisioningReviewFailure.unavailable }
             directory = url.deletingLastPathComponent(); manifest = url.lastPathComponent
-        } else { directory = URL(fileURLWithPath: source.directory!); manifest = "vm.yml" }
+        } else { directory = URL(fileURLWithPath: source.directory!); manifest = source.manifest ?? "vm.yml" }
         let proposed = try SetupPlanner.plan(repository: directory, manifest: manifest)
         guard try ProvisioningCoordinator.engineIdentity(proposed) == environment.engineDigest else { throw ProvisioningReviewFailure.changed }
         let archive = try FrozenInputsArchive(privateArchive: proposed.snapshot.privateArchive(), expectedIdentity: proposed.snapshot.identity)

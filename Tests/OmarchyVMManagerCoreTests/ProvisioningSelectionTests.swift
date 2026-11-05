@@ -222,6 +222,28 @@ final class CreationFixture: Sendable {
         await #expect(throws: ProvisioningServiceFailure.disabled) { _ = try await next.prepareApply(p.id) }
         try await next.closeForReopen(); await f.assertInert(); await f.close()
     }
+    @Test func explicitRelativeManifestPreservesFrozenBytesWithoutDefaultFallback() async throws {
+        let f = try await CreationFixture()
+        let value = try PlainDataParser.read(f.source.appendingPathComponent("vm.yml"))
+        let file = f.source.appendingPathComponent("retained-inputs.json")
+        try helperJSON(value).write(to: file)
+        try Data("invalid edited default".utf8).write(to: f.source.appendingPathComponent("vm.yml"))
+        let selection = ProvisioningSetupSource(directory: f.source.path, manifest: "retained-inputs.json")
+        let review = try await f.service.prepareCreation(id: UUID(), source: selection)
+        let plan = try SetupPlanner.plan(repository: f.source, manifest: "retained-inputs.json")
+        #expect(review.planDigest == plan.identity && review.inputDigest == plan.snapshot.identity)
+        let vm = UUID(), id = UUID()
+        if case .createPreview(let target, let token, let parsed) = try ProvisioningSetupCLI.parse(["setup", "preview", vm.uuidString,
+            "--from", f.source.path, "--manifest", "retained-inputs.json", "--preview-id", id.uuidString]) {
+            #expect(target == vm && token == id && parsed == selection)
+        } else { Issue.record("Explicit manifest not routed") }
+        for path in ["/private/tmp/file.json", "../file.json", "nested/../file.json", "", "./file.json", "dir//file.json", "file.sh", "bad\nfile.json"] {
+            #expect(throws: ProvisioningReviewFailure.self) { try ProvisioningSetupSource(directory: f.source.path, manifest: path).validate() }
+        }
+        #expect(throws: VMFailure.self) { _ = try ProvisioningSetupCLI.parse(["setup", "preview", vm.uuidString,
+            "--preset", "developer", "--manifest", "retained-inputs.json", "--preview-id", id.uuidString]) }
+        await f.assertInert(); await f.close()
+    }
     @Test(arguments: ["changed-bytes", "changed-mode", "missing", "other-receipt", "changed-engine"])
     func restartedSavedSelectionRefusesChangedOrMissingInputs(kind: String) async throws {
         let f = try await CreationFixture(), p = try await f.prepare(), _ = try await f.create(p)

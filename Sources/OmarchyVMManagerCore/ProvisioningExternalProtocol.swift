@@ -29,6 +29,14 @@ public struct ProvisioningExternalRequest: Codable, Sendable, CustomStringConver
     public init(sequence: UInt64, operation: ProvisioningExternalOperation, workflowID: UUID? = nil) {
         version = 1; requestID = UUID(); self.sequence = sequence; self.operation = operation; self.workflowID = workflowID
     }
+    /// Preparation may run bounded tool/SSH probes. Transport framing remains
+    /// short by default; only these owned operations receive a longer reply lease.
+    var responseTimeout: Duration {
+        switch operation {
+        case .prepareCreation, .creation, .previewCreate, .preview, .prepareApply, .apply, .prepareAction, .performAction, .cancel: .seconds(120)
+        default: .seconds(3)
+        }
+    }
     public var description: String { "ProvisioningExternalRequest(redacted)" }
     public var debugDescription: String { description }
     static func decode(_ data: Data) throws -> Self {

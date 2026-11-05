@@ -3854,3 +3854,24 @@ acceptance, notarization/fresh online checks and CMS signer trust. The signed ap
 and ZIP are private user-test artifacts, not installed or published. No SSH/Ansible,
 host install, normal app/runtime or VM launch, key export/import/enumeration,
 orchestrator unlock/ACL change or automatic signing retry occurs.
+
+
+## Disposable Dev saved-setup acceptance — 6 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** attended signing and saved Developer setup
+execution were explicitly approved for one private disposable Dev UUID/root.
+The corrected candidate completes the real apply, verifies inactive admin grant
+and removed payload, and demonstrates the selected four-terminal layout after
+normal restart. The test guest is then stopped with no runtime children or open
+disk handles; Main's persistent processes/configuration hashes match baseline.
+
+**DESIGN DECISION / PRIVATE COUPLING:** ordinary execution stays disabled and
+same-team helper authentication is preserved. Only the private candidate embeds
+the approved root. Ansible multiplexing is disabled in both config and overriding
+connection variables; a changed engine receives a fresh explicit review of the
+same saved input bytes. Historical receipts and private frozen pins stay intact.
+
+**VERIFIED — fake/local:** 86 shared Swift tests, 239 Python tests (one skip),
+74 focused manager tests and 130 UI checks pass. **TO PROVE:** unrestricted/fresh
+creation and factory-matrix acceptance, other options and prior native lifecycle
+limits. See the [bounded acceptance record](docs/DevVMMilestone6Runbook.md#disposable-dev-saved-setup-acceptance--6-november-2026).

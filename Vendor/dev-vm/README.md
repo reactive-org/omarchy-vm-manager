@@ -2366,3 +2366,117 @@ or expanded Swift layout catalogue requires a separate change.
 No signing, key access, native inspection, Apple request, real SSH/Ansible, install,
 container/image build, normal app/runtime action or VM launch occurs. This record
 establishes offline/fake validation only, not guest or signed-candidate acceptance.
+
+### Fresh manager 007bc66 private review prepared — 5 November 2026
+
+The manager pins this branch's merged `5770d0f` export in `007bc66`, then prepares
+a fresh private candidate review with the unchanged matching local signed runtime.
+The original Stable disposable scope JSON, preparation receipt and Swift definition
+are copied verbatim; no UUID/root is observed or pin recaptured. Historical signed/
+failed outputs, reviews, consumed plans and frozen pins remain unchanged.
+
+Source-only admission, independent six-file private-overlay reconstruction and all
+25 actual-packet positive/refusal checks pass, as do 170 fake API/process tests.
+The owner-only packet seals 173 files and binds 32 committed manager tooling files,
+seventeen engine files, operator, corrected guard and staged public materials.
+Source/request/implementation bindings are fresh; old or relabeled native receipts
+cannot transfer. All 23,951 prior private entries and four manager pin files remain
+unchanged. Shared package sources/resources and pins are unchanged by this review.
+
+Native inspection is prepared, not run; keychain metadata/state and key availability
+are unqueried. All effects remain NOT_GRANTED. No authority, inspection output,
+signing operator plan, candidate build/output, signing, key access, Apple request,
+real SSH/Ansible, install, normal app/runtime action or VM launch occurs. A fresh
+successful exact-input inspection receipt is required before an attended signing
+plan can be prepared. See the manager runbook's Fresh private candidate review for
+007bc66 section. Private packets, raw materials, paths and pins stay out of Git.
+
+### Fresh 007bc66 native inspection passed — 5 November 2026
+
+Preparation docs commit as manager `467f979` / companion `8cf7f8d`, then the user
+approves the exact new review's bounded read-only native inspection. The 173 sealed
+files, corrected guard/composition, 32 committed tooling files and seventeen-file
+engine match. Exact typed in-memory inspection authority consumes the request once;
+prepared review files and old receipts/plans remain unchanged.
+
+All 31 workers pass in 76.504 seconds: pinned dependency checks before/after,
+interaction-disabled named-keychain locked status before/after with unchanged
+metadata, public profile/certificate policy and 23 no-network static checks over
+22 runtime Mach-O files plus the bundle. Every group is quiet before root reaping,
+descriptors close and no handles remain unresolved. A bounded PID-only snapshot
+finds all 31 recorded roots absent. All 24,204 pre-run private entries, 173 sealed
+review hashes and four manager pin files remain unchanged. Source admission and
+frozen overlay reconstruction pass again; the original disposable scope/root is
+neither observed nor recaptured. Shared package sources/resources/pins are unchanged.
+
+Result is OFFLINE_STATIC_INSPECTION_ONLY. CMS signer authenticity, certificate
+trust, online revocation/fresh notarization/Gatekeeper, private-key availability
+and original-Mac/loaded-child/guest acceptance remain unestablished. A fresh
+attended signing plan may now be prepared from the exact new receipt, but no plan,
+candidate build/output, signing, private-key access, Apple request, real SSH/Ansible,
+install, normal app/runtime action or VM launch occurs. The request stays consumed
+without retry. See the manager runbook's Fresh 007bc66 native inspection passed
+section. Raw receipts, selectors, paths, inventories and evidence remain private.
+
+### Signed manager 007bc66 test build — 5 November 2026
+
+Inspection-result docs commit as manager `96319b0` / companion `79399ae`. The user
+requests a test build and explicitly approves selected-key use, secure-key UI and
+Apple timestamps. A fresh exact-receipt plan passes fourteen checks and 44 fake
+tests before real-terminal confirmation and durable one-shot consumption.
+
+The private build/sign/verify run passes all 17 command roots and 46 native workers
+in 903.341 seconds: five timestamp signatures, 23 runtime static checks and twelve
+staged/extracted candidate checks. Six code identities, full app inventory and
+post-sign helper/resource seals match across ZIP roundtrip. All 63 roots are
+quiet/reaped/closed and absent in a bounded PID-only snapshot. Prior artifacts,
+173 review hashes, ten plan hashes and four manager pins remain unchanged.
+Package `5770d0f` and the original Stable disposable scope are preserved.
+
+The signed app and 176,350,211-byte ZIP remain private and ready for user testing.
+No install, notarization, SSH/Ansible, ordinary app/runtime or VM launch occurs.
+Native UI, daemon/loaded-child/original-Mac and guest acceptance remain TO PROVE.
+The plan is consumed with no automatic retry; raw materials, paths, pins and hashes
+stay out of Git. See the manager runbook's Signed 007bc66 test build section.
+
+### Manager Dev UI test build — 5 November 2026
+
+After the user clarifies that Stable must stay running, the manager builds its
+existing isolated Dev/debug target with package `5770d0f` and the unchanged runtime.
+The separate app uses `dev.omarchy.vm-manager.dev`, Dev data/locks and
+`omarchy-vm-dev`, with local ad-hoc signing. Bundle-only checks, packaged channel
+guards and ZIP roundtrip pass. All 29,481 prior private entries and four manager
+pins are unchanged; no installed/running manager, VM, real key or Apple service
+is touched. The earlier signed Stable candidate and original M6 disposable scope
+stay frozen. This Dev build enables UI testing; protected Touch ID and provisioning
+execution remain gated. Shared package sources/resources/pins are unchanged.
+
+The manager's New VM flow now uses **selections → Create VM**, removing the
+separate review action and selection-confirmation checkbox. Create VM freezes the
+pressed form selections internally and acknowledges only their metadata; separate
+task trust and execution permissions stay unchanged. Draft edits call no backend.
+Native fake acceptance passes 118 checks/24 offscreen screenshots plus 36 focused
+core tests, including Bundled/Local creation, held preparation, identical retries
+and safe preparation failures. A fresh isolated ad-hoc Dev app is rebuilt without
+touching main, real VMs, shared sources/resources or frozen pins. Existing guest
+Setup review/preview actions and shared core/API consent validation are unchanged.
+
+The manager also removes the global account-defaults enable checkbox. Saved
+account/password references now apply automatically to new profiles even when
+legacy metadata's old flag was off; an explicit per-VM manual choice remains.
+Existing profiles and credential authorization are unchanged. Synthetic/local
+coverage passes 75 core tests and 130 offscreen UI checks/27 screenshots; no real
+Keychain, SSH/Ansible or VM is used. Shared package sources/resources and frozen
+pins remain unchanged; real first boot of the revised flow remains TO PROVE.
+
+### Disposable Dev execution preparation — 5 November 2026
+
+The manager fixes setup CLI routing and restores a saved New VM preview after
+restart only from retained private inputs matching the profile's plan/input/engine
+receipts. It restores no consent or execution authority. Seventy-one fake/local
+core tests and 130 offscreen UI checks pass. A separate private Dev candidate binds
+one explicitly approved disposable root in manager/helper; exact read-only scope
+checks pass and same-team signing admission correctly refuses the ad-hoc build.
+Real identity authorization and the actual guest apply remain pending. No shared
+package/resource/pin, historical frozen artifact, Main or guest is changed by this
+preparation; private scope and review material stay outside Git.

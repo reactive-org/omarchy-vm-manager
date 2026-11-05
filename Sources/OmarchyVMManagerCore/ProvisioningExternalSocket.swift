@@ -76,11 +76,12 @@ public final class ProvisioningExternalServer: @unchecked Sendable {
                     while !Task.isCancelled {
                         let data = try await helperBlocking { try socket.receive(idle: true) }
                         let request = try ProvisioningExternalRequest.decode(data)
-                        activity.touch()
+                        activity.begin(request.responseTimeout)
                         let response = try await session.handle(request)
                         let bytes = try helperJSON(response)
                         guard bytes.count <= 128 * 1024 else { throw ProvisioningTerminalDenial.bounds }
                         try await helperBlocking { try socket.send(bytes) }
+                        activity.finish()
                     }
                 } catch { /* Fixed public failures only; no packets/bytes logged. */ }
                 monitor.cancel(); socket.stop(); await session.close()
@@ -89,11 +90,17 @@ public final class ProvisioningExternalServer: @unchecked Sendable {
         }
     }
 }
-private final class ProvisioningExternalActivity: @unchecked Sendable {
+final class ProvisioningExternalActivity: @unchecked Sendable {
     private let lock = NSLock()
     private var time = ContinuousClock.now
-    var expired: Bool { lock.withLock { ContinuousClock.now - time > .seconds(15) } }
-    func touch() { lock.withLock { time = .now } }
+    private var requestDeadline: ContinuousClock.Instant?
+    var expired: Bool { isExpired(at: .now) }
+    func isExpired(at now: ContinuousClock.Instant) -> Bool { lock.withLock {
+        if let requestDeadline { return now > requestDeadline }
+        return now - time > .seconds(15)
+    } }
+    func begin(_ timeout: Duration, at now: ContinuousClock.Instant = .now) { lock.withLock { requestDeadline = now + timeout; time = now } }
+    func finish(at now: ContinuousClock.Instant = .now) { lock.withLock { requestDeadline = nil; time = now } }
 }
 
 /// A lost reply poisons this connection. No reconnect or mutation replay. The
@@ -134,8 +141,8 @@ public actor ProvisioningExternalClient {
                 guard !closed else { value.stop(); throw ProvisioningTerminalDenial.unavailable }
                 socket = value
             }
-            let socket = socket!
-            let response = try await helperBlocking { try socket.send(payload); return try socket.receive() }
+            let socket = socket!, responseTimeout = request.responseTimeout
+            let response = try await helperBlocking { try socket.send(payload); return try socket.receive(wait: responseTimeout) }
             guard !closed else { throw ProvisioningTerminalDenial.unavailable }
             return try .decode(response, request: request)
         } catch { close(); throw ProvisioningTerminalDenial.unavailable }

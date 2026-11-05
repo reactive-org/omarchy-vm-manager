@@ -83,7 +83,7 @@ struct DeveloperSetupView: View {
                     if source != "none" { ProvisioningAppearanceSelectionView(draft: $appearance).disabled(planning || preparingApply || submitting || applyReview != nil) }
                     if let folder, source == "local" { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
                     Text("Preview software, removals, update policy, dotfiles and restart requirements before applying. Custom tasks require separate trust tied to the frozen inputs.").font(.callout).foregroundStyle(.secondary)
-                    Text("Setup execution is disabled pending guest acceptance. A preview does not change this VM or its resource settings.").font(.callout).foregroundStyle(.secondary)
+                    Text(executionEnabled ? "Applying setup requires a target review and the permissions shown below. A preview does not change this VM." : "Setup execution is disabled in this build. A preview does not change this VM or its resource settings.").font(.callout).foregroundStyle(.secondary)
                     DisclosureGroup("Details") {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -133,7 +133,11 @@ struct DeveloperSetupView: View {
                         Label(phase.rawValue, systemImage: currentPhase(workflow) == phase ? "circle.inset.filled" : "circle").foregroundStyle(currentPhase(workflow) == phase ? Color.accentColor : Color.secondary)
                     }
                 }.accessibilityLabel("Setup stages. Current workflow: " + workflow.title)
-                if workflow.cleanupRequired { Label("Cleanup has not been confirmed. Recovery must verify the original guest and authorization state.", systemImage: "exclamationmark.shield").foregroundStyle(.orange) }
+                if workflow.cleanupRequired {
+                    if workflow.stage == .running || workflow.stage == .checking {
+                        Text("Setup tracks temporary admin access and will verify its removal during cleanup.").font(.caption).foregroundStyle(.secondary)
+                    } else { Label("Cleanup has not been confirmed. Recovery must verify the original guest and authorization state.", systemImage: "exclamationmark.shield").foregroundStyle(.orange) }
+                }
                 workflowActions(workflow)
                 terminal(height: expanded ? 640 : 360)
                 HStack {
@@ -177,8 +181,12 @@ struct DeveloperSetupView: View {
         .confirmationDialog("Cancel setup and perform its cleanup?", isPresented: cancelPresentation) {
             Button("Cancel Setup", role: .destructive) { cancelConfirmed() }
         } message: { Text("Cleanup may still need verification. Closing this page only detaches the terminal.") }
-        .task(id: workflow?.id) {
-            if let workflow, let service = model.setupService { await screen.attach(service: service, workflowID: workflow.id) }
+        .task(id: terminalAttachmentID) {
+            // Publish/prepare precedes helper activation. Wait for an admitted
+            // job before initial attachment; never auto-reclaim input on loss.
+            if terminalAttachmentID != nil, let workflow, let service = model.setupService {
+                await screen.attach(service: service, workflowID: workflow.id)
+            }
         }
         .task(id: snapshot.id.uuidString + String(model.setupService != nil)) {
             guard let receipt = snapshot.profile.developerSetup, frozen == nil, source == "none" else { return }
@@ -321,6 +329,10 @@ struct DeveloperSetupView: View {
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary)).clipShape(RoundedRectangle(cornerRadius: 10))
     }
     private var reviewingService: (any ProvisioningReviewing)? { model.setupService as? any ProvisioningReviewing }
+    private var terminalAttachmentID: String? {
+        guard let workflow, let job = model.setupJobs[workflow.id], job.state != .queued else { return nil }
+        return workflow.id.uuidString + ":" + job.jobID.uuidString
+    }
     private var executionEnabled: Bool { reviewingService?.executionEnabled == true }
     private func invalidatePreview() {
         planRevision = UUID(); captureID = nil; frozen = nil; preview = nil; applyReview = nil

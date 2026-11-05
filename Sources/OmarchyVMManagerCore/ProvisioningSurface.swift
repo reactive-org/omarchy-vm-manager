@@ -77,7 +77,7 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
             var values: [String: String] = [:], flags = Set<String>(), index = 3
             let isSource = ["preview", "prepare-create"].contains(args[1])
             var features = ProvisioningFeatureSelection()
-            let options: Set<String> = isSource ? ["--from", "--preset", "--preview-id", "--theme", "--theme-min-stars", "--layout-file", "--layout-example"] : ["--review", "--trust-tasks"]
+            let options: Set<String> = isSource ? ["--from", "--manifest", "--preset", "--preview-id", "--theme", "--theme-min-stars", "--layout-file", "--layout-example"] : ["--review", "--trust-tasks"]
             while index < args.count {
                 let option = args[index]; index += 1
                 if isSource, ["--enable", "--disable"].contains(option) {
@@ -90,14 +90,15 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
                 values[option] = args[index]; index += 1
             }
             if isSource, (values["--from"] == nil) != (values["--preset"] == nil) {
-                guard values["--theme-min-stars"] == nil || values["--theme"] != nil,
+                guard values["--manifest"] == nil || values["--from"] != nil,
+                      values["--theme-min-stars"] == nil || values["--theme"] != nil,
                       let stars = Int(values["--theme-min-stars"] ?? "10"), stars >= 0 else { throw commandFailure("usage", "Theme minimum stars must be a non-negative integer with --theme.") }
                 let example = values["--layout-example"].flatMap(ProvisioningLayoutExampleID.init(rawValue:))
                 guard values["--layout-example"] == nil || example != nil else { throw commandFailure("usage", "Choose a bundled dev-vm layout example.") }
                 let appearance = ProvisioningAppearanceSelection(theme: values["--theme"], minimumStars: stars,
                     layoutFile: values["--layout-file"], removeLayout: flags.contains("--remove-layout"), layoutExample: example)
                 let selection: ProvisioningFeatureSelection? = features.isEmpty ? nil : features
-                let source = values["--from"].map { ProvisioningSetupSource(directory: $0, features: selection, appearance: appearance.isEmpty ? nil : appearance) } ?? .init(preset: values["--preset"]!, features: selection, appearance: appearance.isEmpty ? nil : appearance)
+                let source = values["--from"].map { ProvisioningSetupSource(directory: $0, manifest: values["--manifest"], features: selection, appearance: appearance.isEmpty ? nil : appearance) } ?? .init(preset: values["--preset"]!, features: selection, appearance: appearance.isEmpty ? nil : appearance)
                 do { try source.validate() } catch { throw commandFailure("usage", "Choose a bundled preset or an absolute setup folder, a GitHub theme URL/random/most-starred, and an absolute layout file or --remove-layout.") }
                 if args[1] == "prepare-create", values["--preview-id"] == nil { return .prepareCreation(id, source) }
                 if args[1] == "preview", let token = values["--preview-id"], let previewID = UUID(uuidString: token) { return .createPreview(id, previewID, source) }

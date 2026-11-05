@@ -2327,3 +2327,66 @@ saved-plan application, guest validation and cleanup. AGENTS.md requires separat
 approval before a real signing identity is used; the concrete private review is
 prepared and that authorization is requested. No real signing/key access, guest
 mutation or Main operation has occurred in this preparation.
+
+## Disposable Dev saved-setup acceptance — 6 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** the user approves attended selected-key signing,
+secure-key UI/Apple timestamps, Dev-only restart and application of the saved
+Developer selection to one privately pinned disposable Dev UUID/root. Main and
+all other guests are excluded. The ordinary product execution gate remains nil;
+the separate private candidate embeds the same exact root admission in its
+manager and helper and preserves same-application-team authentication.
+
+**FIX / VERIFIED — fake and local:** preparation replies now have bounded
+120-second operation leases while ordinary framing remains short and idle
+connections expire. The UI waits for an admitted job before its initial live
+terminal attachment and describes active cleanup tracking accurately. An explicit
+safe relative `--manifest` with `--from` allows a fresh review of retained JSON
+inputs without changing their bytes. A changed engine requires a new review;
+old saved receipts are neither relabeled nor silently migrated.
+
+Ansible's connection extra-vars override `ansible.cfg`. The shared transport now
+sets `ControlMaster=no`, `ControlPersist=no` **and `ControlPath=none`** at both
+effective layers. Two earlier attempts failed at Gathering Facts because the
+SSH plugin synthesized an overlong Unix socket path; both verified cleanup and
+left no outstanding worker. A real local Ansible plugin probe with fake SSH
+reproduces the override and confirms the correction with 185-byte HOME and
+152-byte TMP paths, without any guest connection. Package revision `6397eea`
+and its generated engine inventory are exported/pinned; historical private
+candidate pins, inputs, approvals and artifacts remain unchanged.
+
+**VERIFIED — tests:** 86 shared Swift tests, 239 Python/local Ansible tests
+(one skip), 74 focused manager tests across seven suites and 130 fake-service
+UI checks/27 offscreen screenshots pass. Disposable PTY/socket fixtures require
+an unsandboxed rerun when the tool sandbox denies local resources. Read-only
+code-signature verification likewise passes outside the tool sandbox; an
+in-sandbox refusal is not accepted as the candidate's signature result.
+
+**VERIFIED — native, approved disposable guest only:** fresh manager/helper scope
+checks agree, admit the original root and reject an unrelated UUID. Five
+Developer ID timestamp signatures and all twenty bounded sign/verify workers
+pass with confirmed process/descriptor cleanup. The corrected saved-input apply
+reports `applied` / Setup complete; cleanupRequired and workerOutstanding are
+false with no cleanup failures. Pinned guest observations confirm all selected
+packages, exact setup provenance, byte-identical four-terminal layout and its
+Hyprland include, inactive passwordless sudo and removed job payload. A normal
+restart confirms all four selected terminal classes on workspace 1 in distinct
+positions. No Docker membership, custom tasks or removals were selected.
+
+Normal shutdown then confirms no active session, no Dev runtime children and no
+open test-disk handles; the approved root identity is retained. Main's nineteen
+persistent baseline process identities and four configuration/app hashes still
+match; two captured transient shell processes expired. No Main or other guest
+command was sent. The private signed Dev app remains open for testing, and its
+private ZIP roundtrip has identical file inventory, strict deep signatures and
+package seals. Nothing is installed, published or notarized.
+
+**TO PROVE / LIMITS:** this validates the saved selection on the one approved
+existing disposable Dev VM, not unrestricted provisioning or a fresh unattended
+creation across both factory variants. Ordinary builds stay disabled; historical
+receipts require fresh explicit review after an engine change. Other profiles,
+themes, trimming, Docker/custom-task consent, protected Touch ID, focus,
+sleep/wake and crash/recovery cases retain their earlier acceptance limits.
+Live-terminal bytes and user input were observed; output wrapping and completed
+job messaging still need polish. Private root selectors, signing selectors,
+review packets, receipts, binaries and hashes remain outside Git.

@@ -100,7 +100,7 @@ enum AnsibleVariables {
             "ansible_host": .string(connection.alias), "ansible_user": .string(connection.binding.owner),
             "ansible_port": .integer(Int64(connection.port)), "ansible_connection": .string("ssh"),
             "ansible_ssh_executable": .string(ssh), "ansible_scp_executable": .string(scp), "ansible_sftp_executable": .string(sftp),
-            "ansible_ssh_args": .string("-C -o ControlMaster=no -o ControlPersist=no -o StrictHostKeyChecking=yes -o BatchMode=yes"),
+            "ansible_ssh_args": .string("-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none -o StrictHostKeyChecking=yes -o BatchMode=yes"),
             "ansible_ssh_common_args": .string(shellJoin(["-F", workspace.url("ssh_config").path])),
             "ansible_ssh_extra_args": .string(""), "ansible_scp_extra_args": .string(""), "ansible_sftp_extra_args": .string(""),
             "ansible_host_key_checking": .bool(true), "ansible_ssh_host_key_checking": .bool(true),
