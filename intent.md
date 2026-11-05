@@ -29,7 +29,11 @@ hosted CI is in progress; branch release jobs remain skipped. CI exposed the
 preinstalled Swift 6.1 / bundled SwiftTerm 6.2 minimum mismatch, then a Swift 6.2
 helper C-string inference issue; the toolchain selection and explicit conversions
 are corrected. Companion process fixtures run serially without changing deadlines.
-Hosted results are tracked separately from the completed local checks.
+Hosted results are tracked separately from the completed local checks. The
+companion hosted pass is green. The next manager pass exposes terminal attach
+contention and a CLI fixture delivery race; bounded pre-dispatch-busy waiting and
+observed-output synchronization address them, with fifteen focused local tests
+passing. The full hosted rerun is pending; process/lease limits stay unchanged.
 
 ## Dev draft publication recovery — user authorization, 5 November 2026
 

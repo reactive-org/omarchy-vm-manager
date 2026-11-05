@@ -260,7 +260,7 @@ struct DeveloperSetupView: View {
                             .disabled(actingService?.executionEnabled != true || !actionAcknowledged || actionBusy || actionAttempted)
                     }
                     if actionAttempted { Text("Action submission was attempted. Inspect the workflow state. A new attempt needs a fresh explicit review.").font(.caption).foregroundStyle(.secondary) }
-                    if actingService?.executionEnabled != true { Text("Workflow execution is disabled pending guest acceptance.").font(.caption).foregroundStyle(.secondary) }
+                    if actingService?.executionEnabled != true { Text("Workflow execution is unavailable in this build or service.").font(.caption).foregroundStyle(.secondary) }
                 }.padding(20)
             }
         }

@@ -72,7 +72,7 @@ import SwiftTerm
         let generation = UUID(); self.generation = generation
         follow = true; resetScreen()
         do {
-            let value = try await service.attachTerminal(workflowID)
+            let value = try await beforeDispatchBusy { try await service.attachTerminal(workflowID) }
             guard self.generation == generation, !Task.isCancelled else { await value.detach(); return }
             attachment = value; connected = true; message = "Click in the terminal to type."
             polling = Task { [weak self] in
@@ -177,7 +177,7 @@ import SwiftTerm
         let generation = generation
         guard await idle(generation) else { await attachment.detach(); return }
         operation = true; defer { operation = false }
-        do { try await attachment.releaseInput(); message = "Click in the terminal to type." } catch { await attachment.detach() }
+        do { try await beforeDispatchBusy { try await attachment.releaseInput() }; message = "Click in the terminal to type." } catch { await attachment.detach() }
     }
     public func jumpToLatest() { follow = true; view.scroll(toPosition: 1) }
     /// Literal, bounded, in-memory search. Never evaluates patterns or opens URLs.

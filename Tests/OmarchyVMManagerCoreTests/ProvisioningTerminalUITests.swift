@@ -6,15 +6,24 @@ import OmarchyProvisioningTerminalUI
 @testable import OmarchyVMManagerCore
 import Testing
 
-private struct TerminalUIFixtureService: ProvisioningObserving {
+private actor TerminalUIFixtureService: ProvisioningObserving {
     let client: ProvisioningTerminalClient
-    var executionEnabled: Bool { false }
+    nonisolated let executionEnabled = false
+    private var busyAttachments: Int
+    private let failed: Bool
+    private(set) var attachCalls = 0
+    init(client: ProvisioningTerminalClient, busyAttachments: Int = 0, failed: Bool = false) {
+        self.client = client; self.busyAttachments = busyAttachments; self.failed = failed
+    }
     func statuses() async -> [ProvisioningWorkflowSnapshot] { [] }
     func status(_ id: UUID) async -> ProvisioningWorkflowSnapshot? { nil }
     func jobStatus(_ id: UUID) async -> ProvisioningJobSnapshot? { nil }
     func cancel(_ id: UUID) async throws { throw ProvisioningServiceFailure.disabled }
     func attachTerminal(_ id: UUID) async throws -> ProvisioningTerminalAttachment {
-        try await .attach(client: client)
+        attachCalls += 1
+        if failed { throw ProvisioningTerminalDenial.unavailable }
+        if busyAttachments > 0 { busyAttachments -= 1; throw ProvisioningTerminalDenial.busy }
+        return try await .attach(client: client)
     }
 }
 
@@ -43,7 +52,7 @@ private struct TerminalUIFixtureService: ProvisioningObserving {
         let serving = Task { await server.serve() }
         let client = ProvisioningTerminalClient(socket: parent, credentials: credentials, jobID: f.request.jobID)
         defer { client.disconnect(); serving.cancel() }
-        let service = TerminalUIFixtureService(client: client)
+        let service = TerminalUIFixtureService(client: client, busyAttachments: 1)
         let invocation = try f.invocation() // Never executed: the fake terminal only exposes its typed state.
         let initial = try f.terminal.begin(invocation)
         #expect(initial.rows == 30 && initial.columns == 120)
@@ -82,5 +91,16 @@ private struct TerminalUIFixtureService: ProvisioningObserving {
         #expect(!f.terminal.snapshot().acceptsInput)
         f.terminal.end(invocation.id)
         client.disconnect(); await serving.value
+    }
+    @Test func unavailableAttachmentIsNotRetried() async throws {
+        _ = NSApplication.shared
+        let credentials = try terminalCredentials(), (parent, child) = try sessionFixtureSockets()
+        let client = ProvisioningTerminalClient(socket: parent, credentials: credentials, jobID: UUID())
+        defer { client.disconnect(); child.stop() }
+        let service = TerminalUIFixtureService(client: client, failed: true)
+        let screen = ProvisioningTerminalScreen()
+        await screen.attach(service: service, workflowID: client.jobID)
+        #expect(!screen.connected && !screen.ownsInput)
+        #expect(await service.attachCalls == 1)
     }
 }

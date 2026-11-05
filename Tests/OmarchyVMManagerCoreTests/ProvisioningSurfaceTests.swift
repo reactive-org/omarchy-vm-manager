@@ -271,7 +271,21 @@ private final class SurfaceFixture {
         let secret = Data("synthetic-local-typing-canary".utf8)
         _ = secret.withUnsafeBytes { Darwin.write(master, $0.baseAddress, $0.count) }
         f.f.terminal.publish(invocation.id, channel: .pty, bytes: Data("actual-colour-output\u{1b}[32m €\u{1b}[0m".utf8))
-        try await Task.sleep(for: .milliseconds(100))
+        var output = Data(), buffer = [UInt8](repeating: 0, count: 4096)
+        func drain() {
+            for _ in 0..<16 {
+                let count = Darwin.read(master, &buffer, buffer.count)
+                if count <= 0 { break }; output.append(contentsOf: buffer.prefix(count))
+            }
+        }
+        // Observe delivery before disconnecting; a fixed delay can stop the
+        // server before a slower runner has sent the published output.
+        let deliveryDeadline = ContinuousClock.now + .seconds(3)
+        while !output.contains(Data("actual-colour-output".utf8)), ContinuousClock.now < deliveryDeadline {
+            drain()
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(output.contains(Data("actual-colour-output".utf8)))
         if kind == "disconnect" { server.stop() }
         else if kind == "cancel-task" { task.cancel() }
         else { var key: UInt8 = 29; _ = Darwin.write(master, &key, 1) }
@@ -288,11 +302,7 @@ private final class SurfaceFixture {
         #expect(before.c_iflag == after.c_iflag && before.c_oflag == after.c_oflag && before.c_cflag == after.c_cflag)
         #expect(before.c_lflag & ~tcflag_t(PENDIN) == after.c_lflag & ~tcflag_t(PENDIN))
         #expect(withUnsafeBytes(of: before.c_cc) { Data($0) } == withUnsafeBytes(of: after.c_cc) { Data($0) })
-        var output = Data(), buffer = [UInt8](repeating: 0, count: 4096)
-        for _ in 0..<16 {
-            let count = Darwin.read(master, &buffer, buffer.count)
-            if count <= 0 { break }; output.append(contentsOf: buffer.prefix(count))
-        }
+        drain()
         #expect(!output.contains(secret))
         #expect(output.contains(Data("actual-colour-output".utf8)))
         #expect(await f.service.cancellations == 0)

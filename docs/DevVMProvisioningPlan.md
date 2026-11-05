@@ -4040,3 +4040,21 @@ scoped C-string duplication preserve the same arguments, private environment and
 descriptor inheritance while supporting the declared compiler minimum. Existing
 local inherited-helper fixtures pass; hosted compilation remains pending for
 this correction.
+
+The next hosted manager pass compiles successfully with Swift 6.2 and exposes two
+terminal failures: a second UI attachment can collide with another viewer's
+poll, and the CLI disconnect fixture can close before output is delivered. UI
+attach/release now use the existing bounded pre-dispatch-busy wait; unavailable
+or uncertain results are never retried. Fake services force both the busy and
+unavailable paths. The disposable CLI TTY fixture observes output before forcing
+its exit instead of assuming delivery within 100 ms; restoration, no input echo
+and ownership cleanup assertions remain. Hosted Stable Swift tests take 306.739
+seconds versus 138.704 locally. The expanded two-channel/three-configuration job
+has a 40-minute overall budget; individual process, socket and ownership limits
+are unchanged. The corrected full hosted pass is pending in manager PR #10;
+companion PR #8 is green, including 86 Swift tests, 239 Python tests (one skip),
+18 plain-data oracle fixtures and 66 complete planning/error oracle fixtures.
+
+All fifteen focused UI/CLI terminal tests pass locally after these changes,
+including the forced pre-dispatch-busy case and unavailable-without-retry case.
+No real guest, SSH/Ansible, real signing or Main operation is involved.
