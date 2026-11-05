@@ -1,5 +1,17 @@
 # Omarchy VM Manager — implementation intent
 
+## First Dev publication — user authorization, 5 November 2026
+
+**USER AUTHORIZATION:** create `next` from `main`, validate the supplied separate Dev provisioning profile, configure its CI secret and publish the first Dev release. Leave installed apps, all running work VMs and their data untouched. Use the existing signing/notarization credentials only in CI; no local private signing identity, permission, installation or real guest action is needed.
+
+**VERIFIED — profile and configuration:** the supplied profile has SHA-256 `72f28fde740d74483648ce7027d45d70d325627629c7e4141f4282a40abaa83c`, exact Dev App ID/team/macOS Developer ID distribution scope, expiry `2044-10-31T04:26:29Z`, and authorizes the existing CI signing certificate (`d4964c47ed12f244ab4302d324d1e7903451c15239243d0749794f661965e1b3`). Its CMS signature verifies, its Apple profile signer exactly matches stable's, and local basic certificate trust passes. This is not an independent fresh revocation check. Pin only its digest for `dev.omarchy.vm-manager.dev`; its exact bytes were supplied through stdin to `MACOS_DEV_KEYCHAIN_PROFILE_BASE64` without printing or committing them. Stable's profile pin and CI secret are unchanged. `next` was created from main `671b50238bf497ee64b58331c75582e9567004f3`; its initial profile-less run was cancelled before signing.
+
+**VERIFIED — prior stable baseline:** stable `v0.11.1` (112) was published as Latest by CI run `41959356022` from that exact main commit. All ten downloaded asset hashes, complete source/runtime provenance, profile/certificate/entitlement checks, signatures, notarization, stapling and Gatekeeper pass independently, with host preflight and VM launch disabled. Apple acceptance logs bind to the exact retained original runtime/app archives; only the independently validated outer staple tickets differ from publication. Public app ZIP SHA-256 is `1ebbc5be68c87adce6d49e774e6b48cae6a3d8201c7b82a3b2d4db3432679ae9`; reusable signed runtime is `ea2ec7241af45c4e31d452fb398ab31234dedf0d7e1349f2e576f3e6ba542a23`. Exact successful Actions artifact `13384963226` and evidence remain under ignored `VendorArtifacts/signed-candidates/v0.11.1/`. No installed app or running VM was changed.
+
+**VERIFIED — no-VM configuration checks:** `make test test-dev` passes 256 Swift tests in each channel and 102 script tests. The new pin validates the exact supplied Dev bytes; stable's original profile pin remains unchanged. Diff checks pass. Only the digest and scoped documentation are committed; the raw profile is not stored in Git.
+
+**TO PROVE:** first Dev CI publication, provisioned Dev download verification and native behavior of the distributed Dev app. The new profile and no-VM checks do not prove authentication UI, guest behavior or focus/sleep/wake/crash cases. Reuse the exact verified signed runtime; do not rebuild/re-pin or alter stable's Latest release.
+
 ## Stable branch publication — user authorization, 5 November 2026
 
 **USER AUTHORIZATION:** upload the exact pinned source kit and publish the stable release through the existing CI-only signing/notarization path. Leave installed apps and all running work VMs untouched. Dev provisioning remains deferred. No local real signing identity, permission, installation, guest launch or existing-VM operation is authorized or needed.
