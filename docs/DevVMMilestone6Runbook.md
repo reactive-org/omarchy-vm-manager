@@ -2115,3 +2115,13 @@ selected-key use, keychain unlock/ACL outcome, a timestamp request/result or the
 timeout cause. The automated timeout/unchanged-helper evidence is retained as-is.
 No retry, new plan, keychain-state change or native/key/network diagnosis follows;
 the plan remains consumed. This updates the earlier pending-observation wording.
+
+## Product package pin after dev-vm main merge — 5 November 2026
+
+The ordinary manager source now consumes the exact dev-vm `5770d0f` package export;
+its four former integration patches are incorporated in that upstream commit.
+The package code/resources/engine are unchanged. Historical private candidates,
+reviews, scope receipts, successful/failed outputs and consumed plans retain their
+original frozen pins and source bindings. This product-source update neither
+refreshes those inputs nor grants another inspection/signing/guest run. See the
+[package update and offline evidence](DevVMProvisioningPlan.md#manager-pin-follows-merged-dev-vm--5-november-2026).

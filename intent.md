@@ -3746,3 +3746,27 @@ completion time relative to the 120-second signing limit remain unrecorded. This
 does not establish selected-key use, keychain/ACL or timestamp outcome, or the
 timeout cause. Automated failure evidence stays unchanged; the plan stays consumed
 without retry, state change or additional native/key/network operation.
+
+## Manager dev-vm source pin follows main merge — 5 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** refresh only the ordinary manager's
+provisioning package to merged dev-vm `5770d0fde0355be6dade6b306d03661a5b8e616a`.
+Preserve all historical private artifacts, reviews and frozen candidate pins;
+this is not a new native inspection, signing plan or guest approval.
+
+**VERIFIED — source/offline/fake:** all 95 export files match that exact commit,
+which incorporates the four former integration patches. The effective code,
+engine and resources are unchanged; only the exported README differs. The active
+patch list is empty, the base equals the export, and generated admission pins
+match the new lock. Historical patch files/frozen helper bytes remain unchanged.
+Stable and Dev each pass 518 selected Swift tests in 67 suites. The guarded Python
+suite passes 328 tests, skipping five signing/key-generation cases. Real SSH/home-
+disk suites, `ssh -G` and signed bundle fixtures are excluded. Source preparation,
+Python syntax and whitespace checks pass. All 23,951 captured private entries and
+the runtime lock/generated pin remain unchanged, including historical candidate
+source/package bindings. See the [package update record](docs/DevVMProvisioningPlan.md#manager-pin-follows-merged-dev-vm--5-november-2026).
+
+**TO PROVE / NOT GRANTED:** any fresh candidate review, signed distribution and
+native/guest acceptance from the updated manager source. No signing, key access,
+native inspection, Apple request, real SSH/Ansible, install, normal app/runtime
+action or VM launch occurs. No historical receipt or consumed plan is rebound.

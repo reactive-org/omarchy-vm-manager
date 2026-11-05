@@ -9,6 +9,7 @@ from unittest.mock import patch
 SCRIPTS = Path(__file__).resolve().parents[2] / "Scripts"
 sys.path.insert(0, str(SCRIPTS))
 import provisioning_package as package
+from Fixtures.provisioning_patch import add_patch_fixture
 
 
 class ProvisioningPackageTests(unittest.TestCase):
@@ -27,7 +28,9 @@ class ProvisioningPackageTests(unittest.TestCase):
 
     def test_source_export_pin_and_generated_swift_match(self):
         raw, lock = package.read_lock()
-        self.assertEqual(lock["revision"], "bb3fae22be45b38035fac52aefa0eb270a9d0fea")
+        self.assertEqual(lock["revision"], "5770d0fde0355be6dade6b306d03661a5b8e616a")
+        self.assertEqual(lock["integrationPatches"], [])
+        self.assertEqual(lock["baseFiles"], lock["files"])
         self.assertEqual(package.files(package.ROOT / lock["package"]), lock["files"])
         self.assertEqual((package.ROOT / "Sources/OmarchyVMManagerCore/ProvisioningPackagePin.swift").read_text(), package.pin_source(raw, lock))
         resolved = json.loads((package.ROOT / "Package.resolved").read_bytes())
@@ -80,18 +83,32 @@ class ProvisioningPackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Unexpected launcher"): package.prepare(root)
 
     def test_patched_snapshot_requires_exact_patch_and_reconstructed_base(self):
-        for kind in ("patch", "base", "snapshot", "missing-patch"):
+        for kind in ("valid", "patch", "base", "snapshot", "missing-patch"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 (root / "Config").mkdir()
                 (root / "Sources/OmarchyVMManagerCore").mkdir(parents=True)
                 shutil.copytree(package.ROOT / "Vendor/dev-vm", root / "Vendor/dev-vm")
                 shutil.copytree(package.ROOT / "Patches", root / "Patches")
-                raw, lock = package.read_lock()
+                shutil.copy2(package.ROOT / package.LOCK, root / package.LOCK)
+                lock = add_patch_fixture(root, package)
                 patch_file = root / lock["integrationPatches"][0]["path"]
                 if kind == "patch": patch_file.write_text("changed fixture")
                 elif kind == "missing-patch": patch_file.unlink()
                 elif kind == "base": lock["baseFiles"]["Package.swift"] = "a" * 64
-                else: lock["sourceSnapshotSHA256"] = "b" * 64
+                elif kind == "snapshot": lock["sourceSnapshotSHA256"] = "b" * 64
                 (root / package.LOCK).write_text(json.dumps(lock))
-                with self.assertRaises(ValueError): package.prepare(root)
+                if kind == "valid": package.prepare(root)
+                else:
+                    with self.assertRaises(ValueError): package.prepare(root)
+
+    def test_unpatched_export_requires_identical_base_inventory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "Config").mkdir()
+            shutil.copytree(package.ROOT / "Vendor/dev-vm", root / "Vendor/dev-vm")
+            _, lock = package.read_lock()
+            lock["baseFiles"]["README.md"] = "a" * 64
+            (root / package.LOCK).write_text(json.dumps(lock))
+            with self.assertRaisesRegex(ValueError, "Unpatched provisioning base differs"):
+                package.verify_source(root)

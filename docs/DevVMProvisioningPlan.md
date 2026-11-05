@@ -106,7 +106,7 @@ Do not forward the manager's inherited environment wholesale. Keep a controlled 
 
 ## Shared Swift package and resource packaging
 
-Maintain a SwiftPM package at the dev-vm repository's root `Package.swift`, with a `DevVMProvisioningCore` library and a standalone `dev-vm` executable consuming that library. These products now exist in the milestone-2 foundation branch; the executable supports offline validation and planning only. The manager now consumes the immutable `bb3fae2` source export under `Vendor/dev-vm`, verified by `Config/DevVMProvisioning.lock.json`, and links the same library into manager core and an offline-only provisioning helper. Keep Swift 6 and macOS 15+ compatibility and a make-based build/test entry point.
+Maintain a SwiftPM package at the dev-vm repository's root `Package.swift`, with a `DevVMProvisioningCore` library and a standalone `dev-vm` executable consuming that library. These products now exist in the milestone-2 foundation branch; the executable supports offline validation and planning only. The manager consumes the immutable `5770d0f` source export under `Vendor/dev-vm`, verified by `Config/DevVMProvisioning.lock.json`, and links the same library into manager core and an offline-only provisioning helper. This merged revision incorporates the four earlier manager integration patches; historical candidate copies retain their original `bb3fae2` base-plus-patch pins. Keep Swift 6 and macOS 15+ compatibility and a make-based build/test entry point.
 
 Move host-side manifest parsing, feature/profile resolution, plan generation, input freezing/hashing, source validation, inventory/argument generation, guest payload staging, native-command sequencing and authorization cleanup coordination into this package. Manager-specific transports and lifecycle actions are injected adapters; the package must not import the manager or create dependency cycles. In the app, all lifecycle actions still pass through VMManager. The standalone executable calls the same package and uses the manager's public CLI for authorized VM lifecycle operations.
 
@@ -3704,3 +3704,55 @@ type and completion time relative to the timeout are unknown; key use/timestamp
 outcome and timeout cause remain unestablished. Preserve the stopped/consumed plan
 and automated evidence; no retry or new native/key/network operation occurs. See
 the runbook's Operator observation after the 4a0f30a timeout.
+
+## Manager pin follows merged dev-vm — 5 November 2026
+
+**DESIGN DECISION:** consume the exact 95-file package export from dev-vm
+`5770d0fde0355be6dade6b306d03661a5b8e616a`, the merge of `main` at `c30f213`
+into `codex/swift-provisioning-package`. This replaces the active `bb3fae2`
+base-plus-four-patches provenance. All four integrations are already committed in
+the new source revision; active `integrationPatches` is empty and `baseFiles`
+equals the exported inventory. Retain the historical patch files unchanged.
+
+**VERIFIED — source data:** all 95 exported files independently match that Git
+commit. Only the package README differs from the previous effective export;
+Swift code, launcher, parser dependencies, engine identity, provisioning resources
+and the four bundled layout cards are byte-identical. The lock, source snapshot
+and generated Swift admission pin change together. The newer repository-only
+factory controller and Lua examples are outside this package export; this update
+does not add native layout cards or invoke those controllers.
+
+**IMPLEMENTED:** unpatched source admission also requires an identical base
+inventory. Package admission tests expect the new revision. Historical reverse-
+patch and frozen-helper tests use disposable synthetic patches, independently of
+the product's current pin, and retain the exact frozen helper bytes. The added-file
+fixture continues to reproduce the ignored-parent Git failure and its private
+ceiling workaround; the initial edit-only fixture did not reproduce that case.
+
+**PRIVATE CANDIDATES:** the product pin update does not rebind any existing review,
+scope, receipt, candidate, consumed signing plan or artifact. Their original
+frozen source/package/runtime pins remain authoritative for those historical
+inputs. No new private candidate or native/signing review is prepared, and ordinary
+product execution approval remains unchanged. Any future candidate from the new
+source needs its own review rather than reusing an old receipt.
+
+**VERIFIED — offline/fake:** make-based serial Swift coverage passes all 518
+selected tests in 67 suites in each of Stable and Dev. Exclude the real managed
+SSH and home-disk acceptance suites and the test invoking `ssh -G`; no acceptance
+environment variable is supplied. The guarded script suite discovers 333 tests:
+328 pass and five software-signing/key-generation/PKCS12 cases skip. Its process,
+native-library, credential-path and external-network guards report no prohibited
+attempts. Focused package/frozen-helper checks pass after correcting the synthetic
+fixture. `make prepare-source`, independent exact-commit export comparison, all
+five edited/new Python syntax checks and Git whitespace checks pass. SwiftPM
+updates and automatic dependency resolution are disabled; dependencies already
+exist locally. Signed/relocated bundle fixtures are not run under this scope.
+
+**VERIFIED — preservation / limits:** all 23,951 entries in the captured private
+inventory remain unchanged, as do the runtime lock and generated runtime pin.
+Credential/disk-image contents are not opened by the inventory. Existing frozen
+candidate copies and pins remain unchanged; only the current product's provisioning
+lock/generated pin are refreshed. The companion worktree is unchanged and clean.
+No signing, key access, native inspection, Apple request, real SSH/Ansible, install,
+normal app/runtime action or VM launch occurs. Signed distribution, native UI and
+real guest acceptance remain **TO PROVE** for any future candidate from this source.

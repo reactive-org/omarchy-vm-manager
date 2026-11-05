@@ -91,6 +91,8 @@ def verify_source(root=ROOT):
                 result = subprocess.run(["/usr/bin/git", "apply", "--reverse", str(path.resolve())], cwd=checkout, capture_output=True)
                 require(result.returncode == 0, "Provisioning integration patch cannot be verified")
             require(files(checkout) == lock["baseFiles"], "Provisioning patch base differs")
+    else:
+        require(lock["files"] == lock["baseFiles"], "Unpatched provisioning base differs")
     require(lock["engineSHA256"] == lock["files"]["Sources/DevVMProvisioningCore/Resources/engine-identity.json"])
     return raw, lock
 

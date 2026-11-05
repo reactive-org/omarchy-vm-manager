@@ -119,7 +119,7 @@ def run_checks(binaries, launcher_binaries):
 
         try:
             status = invoke("--verify-package-json")
-            package.require(status["sourceRevision"] == "bb3fae22be45b38035fac52aefa0eb270a9d0fea" and status["executionEnabled"] is False)
+            package.require(status["sourceRevision"] == package.read_lock()[1]["revision"] and status["executionEnabled"] is False)
             validated = invoke("--validate-manifest-json", source / "vm.yml")
             package.require(validated["structure_valid"] is True and validated["execution_available"] is False)
             plan = invoke("--plan-json", source)

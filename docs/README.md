@@ -358,3 +358,7 @@ original-Mac, loaded-child and disposable-guest acceptance remain separate.
 [Fresh 4a0f30a attended signing plan](DevVMMilestone6Runbook.md#fresh-4a0f30a-attended-signing-plan--5-november-2026) is prepared/check-only against the new native receipt. All effects remain NOT_GRANTED; artifacts/pins are preserved and exact-plan terminal approval is still required.
 
 [Attended 4a0f30a attempt stopped at first signature](DevVMMilestone6Runbook.md#attended-4a0f30a-run--first-signing-timeout-5-november-2026): build and 30 native checks pass, then the signing deadline stops the consumed plan. All 43 roots clean up and prior artifacts/pins are preserved; prompt/key/timestamp cause remains undetermined.
+
+[Manager package pin follows merged dev-vm](DevVMProvisioningPlan.md#manager-pin-follows-merged-dev-vm--5-november-2026)
+records the exact `5770d0f` export with its former integration patches incorporated,
+unchanged engine/resources and preservation of historical private candidate pins.

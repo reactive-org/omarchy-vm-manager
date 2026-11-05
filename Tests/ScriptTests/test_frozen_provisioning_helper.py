@@ -17,6 +17,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'Scripts'))
 import provisioning_package as package
 from private_provisioning_signer import Command
 from command_failure_diagnostics import classify_failure
+from Fixtures.provisioning_patch import add_patch_fixture
 
 FROZEN=Path(__file__).parent/'Fixtures/frozen_provisioning_package.py'
 FROZEN_SHA='d8dd52279c990c29925ac98761f4b8ad1f5ec6db88dd13cee15c7c15138df13f'
@@ -37,6 +38,7 @@ class FrozenHelperTests(unittest.TestCase):
             path=self.root/patch['path'];path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
             shutil.copy2(package.ROOT/patch['path'],path)
         shutil.copy2(package.ROOT/'Sources/OmarchyVMManagerCore/ProvisioningPackagePin.swift',self.root/'Sources/OmarchyVMManagerCore/ProvisioningPackagePin.swift')
+        self.lock=add_patch_fixture(self.root,package)
         (self.candidate/'home').mkdir(mode=0o700)
         self.environment={'PATH':'/usr/bin:/bin:/usr/sbin:/sbin','HOME':str(self.candidate/'home'),'TMPDIR':str(self.candidate),
             'LC_ALL':'C','LANG':'C','MACOSX_DEPLOYMENT_TARGET':'15.0','GIT_CONFIG_NOSYSTEM':'1','GIT_CONFIG_GLOBAL':'/dev/null',

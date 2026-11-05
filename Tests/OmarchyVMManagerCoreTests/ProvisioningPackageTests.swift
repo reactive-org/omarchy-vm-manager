@@ -33,7 +33,7 @@ private final class ProvisioningPackageFixture {
     @Test(arguments: [false, true]) func exactResourceLayouts(nested: Bool) throws {
         let fixture = try ProvisioningPackageFixture(nested: nested)
         let status = try BundledProvisioning.inspect(fixture.layout)
-        #expect(status.sourceRevision == "bb3fae22be45b38035fac52aefa0eb270a9d0fea")
+        #expect(status.sourceRevision == "5770d0fde0355be6dade6b306d03661a5b8e616a")
         #expect(status.sourceSnapshotSHA256 == ProvisioningPackagePin.sourceSnapshotSHA256)
         #expect(status.setupAPI == 1 && status.offlinePlanningIntegrated && !status.executionEnabled)
         #expect(status.resourceCount == ProvisioningPackagePin.resources.count)
