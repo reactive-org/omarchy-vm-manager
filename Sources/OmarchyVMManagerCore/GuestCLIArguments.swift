@@ -10,6 +10,7 @@ public struct GuestCLIInvocation: Sendable {
       factories                    List verified imported factories and official
       factory-import PATH          Verify and import a prepared factory bundle
       factory-delete SHA256        Move an unused imported factory to Trash
+      factory-build --help         Plan, build, follow output and clean up in Dev
       setup tools [--tool TOOL=/absolute/path]
                                    Check host provisioning dependencies locally
       setup presets                List bundled offline setup presets

@@ -2535,3 +2535,93 @@ only disposable local fixtures run. No real SSH/Ansible, host install or guest
 operation occurs. Historical candidate artifacts and frozen pins stay private
 and unchanged. The manager provides an 11-point responsive live display, click
 to claim typing, Follow output enabled by default and no expand control.
+
+
+Manager validation for these defaults also passes fifteen terminal/UI tests and
+140 offscreen screen checks/27 screenshots. A synthetic click acquires the
+existing single-writer lease and delivers a character through a disposable PTY;
+a second viewer cannot steal input and needs a fresh click after release.
+Layout/output scroll callbacks preserve Follow output, and the expand control
+is removed. The separate private signed Dev candidate passes scope, signature,
+resource-seal and archive-roundtrip checks; only its idle manager is reopened.
+No guest job or lifecycle action, real SSH/Ansible, host install or Main operation
+occurs. Actual typing/sizing in a future live guest prompt remains TO PROVE.
+Private artifacts, target/signing selectors and frozen candidate pins stay out
+of Git. The manager's immutable code export remains at `99a8b55`; this later
+documentation does not require repinning or replacing that tested candidate.
+
+
+### Normal Dev manager integration — 6 November 2026
+
+The manager integrates current next and prepares ordinary Dev-only provisioning
+eligibility for verified manager-owned Dev UUID roots. Stable execution stays
+disabled, and private acceptance overlays retain their original narrower scope.
+The helper resolves its account home independently of isolated HOME. Frozen
+review and separate permissions, session/host-key/UID checks, pinned package and
+transport, same-team helper and cleanup/replay rules remain mandatory. A ready
+dependency report is not consent. No real guest operation or signing occurs in
+this source/integration pass. Signed normal-Dev and fresh guest acceptance remain
+TO PROVE. This companion package's tested implementation remains `99a8b55`; no
+shared source/resource or frozen candidate pin is changed. Publishing this branch
+for CI/review is pending explicit permission after automatic review rejected the
+push; no rejected publication is retried.
+
+
+The manager's consolidated local pass now succeeds: 531 Swift tests per channel,
+337 script cases, 140 UI checks, all three optimized policy modes and fresh
+ad-hoc Stable/Dev bundle/channel checks. The pinned upstream's 566 Swift tests
+and no-VM contracts/shell/package checks pass on TEST_JOBS=1 after one concurrent
+lease assertion failure; its exact cause remains unproven. Isolated SSH-container
+checks pass on the already running Docker daemon; no new VM is started. All
+86,034 prior private artifact entries and six pins match baseline. Hosted CI
+remains PENDING PUBLICATION APPROVAL, not a reported test pass. No rejected push
+is retried, Main operation performed, real signing identity used or product
+guest launched. Signed normal-Dev and live guest acceptance remain TO PROVE.
+
+
+After the user approves source publication, draft PR #8 starts hosted no-VM CI.
+The first package run times out in parallel local PTY fixtures. The package test
+recipe now uses --no-parallel, matching its successful local run; explicit
+concurrency, cancellation, resize, echo and deadline checks inside tests remain.
+No production code/resource, manager pin, private artifact or timeout is changed.
+Hosted results are tracked in the draft PR; no real signing or VM is authorized.
+
+## Shared Swift factory builder — 6 November 2026
+
+The factory-builder integration lives on `codex/swift-factory-builder`, following
+its tested shared provisioning dependency. `FactoryBuildPlan`, the pinned
+`FactoryRecipe`, typed Docker admission and `FactoryBuildEngine` provide a
+Mac-Python-free host path. `LocalFactoryBuildProcess` reuses the existing C
+session/group bridge with closed input, bounded capture/streaming, deadlines,
+cancellation and retained cleanup ownership. It creates no guest/session identity.
+
+`scripts/sync_swift_factory_resources.py` performs **offline release preparation**
+using the maintained Python staging oracle: it exports the exact reviewed guest
+source, transformed recipe and Linux checks into a deterministic archive and
+compiled digest. It never downloads sources, builds packages/images or starts
+Docker. The installed Swift controller verifies the archive and all 162 staged
+files; Bash/Python package/image checks run only inside the Linux builder.
+Use `--check` to compare committed resources with the original staging contract.
+
+Docker must already be installed/running. Only explicit local Unix-socket ARM64
+Linux engines are accepted; the engine and CLI identities are rechecked. New
+UUID-derived containers/volumes carry an ownership label. Containers are created
+stopped, then started by immutable ID only after acknowledgement. Cleanup finds
+the labeled container even after a rename, rechecks its ID/label and removes only
+that ID and the owned volume; it never prunes unrelated resources. A lost create
+acknowledgement stays cleanup-required and never triggers a speculative start. Image creation requires a deliberate
+caller action and a privileged container. Archives are checksum-bound; Arch
+repositories remain live, so this does not promise byte-identical rebuilds.
+The existing Python entry points remain migration oracles until an explicit
+standalone cutover; the app never falls back to host Python.
+
+**VERIFIED — fake/local:** 92 Swift tests pass, including offline inputs/plans,
+remote/wrong-architecture/changed-engine refusal, successful/failed fake builds,
+lost-create acknowledgement and renamed-container reconciliation, foreign-resource
+refusal, bounded output and disposable local tar/process fixtures. The offline
+resource check matches all 162 staged inputs against the Python oracle. CI checks
+this parity before the Swift suite. **TO PROVE:**
+real Docker, privileged mount/loop behavior, downloads, full image creation,
+independent manager import and later disposable-guest boot/graphics acceptance.
+No real build, download, host install, signing, Apple request or VM launch is
+performed by this implementation pass. Existing artifacts/pins are preserved.

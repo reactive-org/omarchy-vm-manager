@@ -8,7 +8,7 @@ SWIFT_FLAGS := --disable-sandbox --skip-update --cache-path "$(CURDIR)/.build/sw
 
 .PHONY: prepare-source help build build-dev build-signed build-dev-signed release-plan release-build release-publish icon test test-dev test-channel-bundles test-build-policies test-ssh app app-dev app-preview verify-app verify-bundle verify-dev verify-preview run run-dev fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-dev | test-provisioning-tools | test-provisioning-terminal | test-provisioning-ui-cli | test-provisioning-review | test-provisioning-actions | test-provisioning-selection | test-provisioning-appearance | test-provisioning-identity | test-provisioning-admission | provisioning-preflight | test-provisioning-preflight | test-private-provisioning-package | test-private-provisioning-signer | test-private-provisioning-inputs | test-private-provisioning-materials | test-private-provisioning-offline | test-private-provisioning-native | test-receipt-bound-signing | private-provisioning-handoff | test-provisioning-screens | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-dev | build-signed | build-dev-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | app-dev | verify-dev | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | run-dev | test-upstream'
+	@echo 'make prepare-source | test | test-dev | test-provisioning-tools | test-provisioning-terminal | test-provisioning-ui-cli | test-provisioning-review | test-provisioning-actions | test-provisioning-selection | test-provisioning-appearance | test-provisioning-identity | test-provisioning-admission | provisioning-preflight | test-provisioning-preflight | test-private-provisioning-package | test-private-provisioning-signer | test-private-provisioning-inputs | test-private-provisioning-materials | test-private-provisioning-offline | test-private-provisioning-native | test-receipt-bound-signing | private-provisioning-handoff | test-provisioning-screens | test-factory-build | test-factory-screens | test-provisioning-package | test-build-policies | test-factories | test-ssh | build | build-dev | build-signed | build-dev-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | app-dev | verify-dev | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | run-dev | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -125,9 +125,9 @@ test-provisioning-bundle-dev: build-dev
 
 test-build-policies: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift test $(SWIFT_FLAGS) -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy'
-	swift test $(SWIFT_FLAGS) -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy'
-	swift test $(SWIFT_FLAGS) -c release --scratch-path .build/dev -Xswiftc -DSIGNED_PRERELEASE -Xswiftc -DDEVELOPMENT_CHANNEL --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy'
+	swift test $(SWIFT_FLAGS) -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
+	swift test $(SWIFT_FLAGS) -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
+	swift test $(SWIFT_FLAGS) -c release --scratch-path .build/dev -Xswiftc -DSIGNED_PRERELEASE -Xswiftc -DDEVELOPMENT_CHANNEL --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
 
 fetch-kit:
 	Scripts/fetch-try-omarchy-kit.sh
@@ -250,3 +250,12 @@ test-provisioning-admission: build
 .PHONY: test-provisioning-appearance
 test-provisioning-appearance: build
 	swift test $(SWIFT_FLAGS) --no-parallel --filter 'ProvisioningSelectionAppearance|ProvisioningThemeNetwork'
+
+# Offscreen SwiftUI with fake controller only; no installed app, Docker or VM.
+.PHONY: test-factory-screens
+test-factory-screens: build-dev
+	python3 Scripts/test_factory_screens.py --binary "$(CURDIR)/.build/dev/debug/OmarchyVMManager"
+
+.PHONY: test-factory-build
+test-factory-build: build-dev
+	swift test $(SWIFT_FLAGS) --scratch-path .build/dev -Xswiftc -DDEVELOPMENT_CHANNEL --no-parallel --filter 'FactoryBuild|ProvisioningTools'

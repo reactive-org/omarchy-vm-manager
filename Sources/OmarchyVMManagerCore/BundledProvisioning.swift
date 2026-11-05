@@ -145,8 +145,8 @@ public enum BundledProvisioning {
                 guard lstat(url.path, &info) == 0, info.st_mode & 0o022 == 0 else { throw invalid() }
                 if info.st_mode & S_IFMT == S_IFDIR { pending.append((url, relative + "/")) }
                 else {
-                    let bytes = try read(url, maximum: 1024 * 1024); total += bytes.count
-                    guard total <= 4 * 1024 * 1024 else { throw invalid() }
+                    let bytes = try read(url, maximum: 8 * 1024 * 1024); total += bytes.count
+                    guard total <= 8 * 1024 * 1024 else { throw invalid() }
                     files[relative] = KitVerifier.sha256(bytes)
                 }
             }

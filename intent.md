@@ -1,5 +1,29 @@
 # Omarchy VM Manager — implementation intent
 
+## Native lean factory builder — approved prototype, 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** implement the approved native Factory
+images library, build sheet, progress terminal and New VM handoff in Dev. Reuse
+upstream Linux image/package logic through the shared Swift package; do not
+reimplement the guest/hypervisor. Readiness uses existing local Docker only.
+The Build action authorizes downloads and one owned privileged build container;
+readiness, navigation and field edits never imply execution. Stable remains gated.
+
+**PRIVATE COUPLING:** consume a compiled checksum-pinned export of dev-vm's
+maintained staging recipe; preserve the original reviewed guest integration
+archive and independently import through the existing format-2 catalog. The
+active public package pin advances on follow-on local feature branches. Preserved
+private candidate artifacts and frozen pins retain their original identities.
+
+**VERIFIED / TO PROVE:** [Factory builder evidence and limits](docs/FactoryBuilding.md)
+records passing offline staging parity, 92 shared Swift tests, full manager
+regressions, 27 final focused Dev tests, relocated bundles, 140 Setup/New VM and
+32 factory UI checks, plus all three optimized policy modes. The preservation
+audit matches all 86,034 old private artifact entries and five unchanged other
+pins. Real Docker/download, privileged-container and disposable-guest acceptance
+remain **TO PROVE**. This pass authorizes no
+real build, download, signing, install, VM launch or Main operation.
+
 ## Normal Dev provisioning — user authorization, 6 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** merge latest next and enable normal Dev

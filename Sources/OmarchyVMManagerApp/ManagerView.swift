@@ -2,7 +2,7 @@ import AppKit
 import OmarchyVMManagerCore
 import SwiftUI
 
-private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults, provisioningTools }
+private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults, provisioningTools, factoryImages }
 private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces", setup = "Setup" }
 
 struct ManagerView: View {
@@ -52,6 +52,7 @@ struct ManagerView: View {
                     }
                     Section("Manager") {
                         Label("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark").tag(Destination.defaults)
+                        Label("Factory images", systemImage: "square.3.layers.3d").tag(Destination.factoryImages)
                         Label("Permissions", systemImage: "hand.raised.fill").tag(Destination.permissions)
                         Label("Runtime", systemImage: "checkmark.shield").tag(Destination.runtime)
                         Label("Provisioning tools", systemImage: "wrench.and.screwdriver").tag(Destination.provisioningTools)
@@ -80,6 +81,10 @@ struct ManagerView: View {
                     case .permissions: permissions
                     case .runtime: runtime
                     case .provisioningTools: ProvisioningToolsView()
+                    case .factoryImages: FactoryImagesView(model: model) { factory in
+                        model.builtFactoryAvailable(factory)
+                        editor = EditorSelection(profile: nil, initialFactory: factory.selector)
+                    }
                     default: library
                     }
                 }.padding(28).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
@@ -105,7 +110,7 @@ struct ManagerView: View {
         }
         .sheet(isPresented: $importingFactory) { FactoryImportView(model: model) }
         .sheet(item: $editor) { selection in
-            VMEditor(model: model, profile: selection.profile, reuseSource: selection.reuseSource) { id in
+            VMEditor(model: model, profile: selection.profile, reuseSource: selection.reuseSource, initialFactory: selection.initialFactory) { id in
                 focusGuest(id)
                 if selection.profile == nil, model.snapshots.first(where: { $0.id == id })?.profile.developerSetup != nil { page = .setup }
                 editor = nil
@@ -437,7 +442,7 @@ private struct SettingsRow<Action: View>: View {
         }.padding(20)
     }
 }
-private struct EditorSelection: Identifiable { let id = UUID(); let profile: VMProfile?; var reuseSource: VMProfile? = nil }
+private struct EditorSelection: Identifiable { let id = UUID(); let profile: VMProfile?; var reuseSource: VMProfile? = nil; var initialFactory: String? = nil }
 struct VMEditor: View {
     #if DEBUG
     @Environment(\.setupAcceptance) private var acceptance
@@ -464,6 +469,7 @@ struct VMEditor: View {
     @State private var keyError: String?
     @State private var factory = "official"
     @State private var importingFactory = false
+    @State private var buildingFactory = false
     @State private var useOwnerDefaults: Bool
     @State private var setupSource: ProvisioningSetupSource?
     @State private var creationAttempt: CreationAttempt?
@@ -473,7 +479,7 @@ struct VMEditor: View {
         let source: ProvisioningSetupSource?
     }
     @State private var setupBlocker: NewVMSetupBlocker?
-    init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, saved: @escaping (UUID) -> Void) {
+    init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, initialFactory: String? = nil, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = saved
         _name = State(initialValue: profile?.name ?? reuseSource.map { $0.name + " Replacement" } ?? "")
         _memory = State(initialValue: (profile?.memoryMiB ?? 4096) / 1024)
@@ -490,6 +496,7 @@ struct VMEditor: View {
         _useOwnerDefaults = State(initialValue: reuseSource.map { $0.ownerSetup != nil } ?? (profile == nil && model.ownerDefaults?.isConfigured == true))
         _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.isConfigured == true ? model.ownerDefaults?.sshPublicKey : nil)
         _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
+        _factory = State(initialValue: initialFactory ?? "official")
     }
     private var saveBlocker: String? {
         if saving { return profile == nil ? (setupSource == nil ? "Creating VM…" : "Preparing setup and creating VM…") : "Saving changes…" }
@@ -515,6 +522,9 @@ struct VMEditor: View {
                     NewVMSetupSelectionView(model: model, factory: $factory, selection: $setupSource, blocker: $setupBlocker).disabled(saving)
                     Button("Import Factory…") { importingFactory = true }
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
+                    Button("Build lean factory…", systemImage: "hammer") { buildingFactory = true }
+                        .disabled(saving || !model.factoryBuilder.service.enabled || model.registryError != nil)
+                        .accessibilityIdentifier("newvm.buildFactory")
                 } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
                 Stepper("Memory: \(memory) GiB", value: $memory, in: 4...maximumMemory)
                 Stepper("Processor cores: \(cpus)", value: $cpus, in: 4...max(4, ProcessInfo.processInfo.processorCount))
@@ -600,6 +610,14 @@ struct VMEditor: View {
         .sheet(isPresented: $importingFactory) {
             FactoryImportView(model: model) { identity in factory = identity.selector }
         }
+        .sheet(isPresented: $buildingFactory) {
+            VStack(alignment: .trailing) {
+                Button("Done") { buildingFactory = false }.padding([.top, .trailing], 16)
+                ScrollView { FactoryImagesView(model: model) { identity in
+                    model.builtFactoryAvailable(identity); factory = identity.selector; buildingFactory = false
+                }.padding(24) }
+            }.frame(width: 900, height: 730)
+        }
         .background {
             #if DEBUG
             if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
@@ -612,7 +630,7 @@ struct VMEditor: View {
                     case .save: save()
                     default: break
                     }
-                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "ready": String(setupBlocker == nil), "ownerDefaults": String(useOwnerDefaults), "hasSetup": String(setupSource != nil), "failure": model.configurationError ?? "", "saving": String(saving), "canSave": String(canSave), "validation": saveBlocker ?? ""] })
+                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "factory": factory, "ready": String(setupBlocker == nil), "ownerDefaults": String(useOwnerDefaults), "hasSetup": String(setupSource != nil), "failure": model.configurationError ?? "", "saving": String(saving), "canSave": String(canSave), "validation": saveBlocker ?? ""] })
             } }
             #endif
         }

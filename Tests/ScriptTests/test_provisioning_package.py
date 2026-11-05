@@ -28,7 +28,7 @@ class ProvisioningPackageTests(unittest.TestCase):
 
     def test_source_export_pin_and_generated_swift_match(self):
         raw, lock = package.read_lock()
-        self.assertEqual(lock["revision"], "99a8b5546c45dc044049c0c8faf6f4096a6ca829")
+        self.assertEqual(lock["revision"], "df5e2c8b68a31569181a5536b95299134c722820")
         self.assertEqual(lock["integrationPatches"], [])
         self.assertEqual(lock["baseFiles"], lock["files"])
         self.assertEqual(package.files(package.ROOT / lock["package"]), lock["files"])

@@ -49,12 +49,30 @@ final class AppModel: ObservableObject {
     private var commandServer: ManagerCommandServer?
     private var provisioningService: ProvisioningService?
     private var setupServer: ProvisioningExternalServer?
+    private var factoryBuildModel: FactoryBuildModel?
+    var factoryBuilder: FactoryBuildModel {
+        if let factoryBuildModel { return factoryBuildModel }
+        let environment = LocalFactoryBuildEnvironment(kit: .embedded(), lockData: (try? Data(contentsOf: Self.lockURL)) ?? Data()) { [manager] bundle in try await manager.importFactory(bundle) }
+        let service: any FactoryBuildControlling
+        #if DEBUG
+        if isolated, let isolatedFactoryBuildService { service = isolatedFactoryBuildService }
+        else { service = FactoryBuildService(applicationSupport: support, environment: environment) }
+        #else
+        service = FactoryBuildService(applicationSupport: support, environment: environment)
+        #endif
+        let value = FactoryBuildModel(service: service); factoryBuildModel = value; return value
+    }
+    func builtFactoryAvailable(_ identity: FactoryIdentity) {
+        guard identity.kind == .custom else { return }
+        factoryLibrary.imported(identity)
+    }
     @Published var setupWorkflows: [ProvisioningWorkflowSnapshot] = []
     @Published var setupJobs: [UUID: ProvisioningJobSnapshot] = [:]
     #if DEBUG
     private var isolatedService: (any ProvisioningObserving)?
     private var isolatedSave: (@MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile)?
     private var isolated = false
+    var isolatedFactoryBuildService: (any FactoryBuildControlling)?
     init(isolatedManager: VMManager, support: URL, snapshots: [VMSnapshot], service: (any ProvisioningObserving)?,
          save: @escaping @MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile) {
         manager = isolatedManager; self.support = support; self.snapshots = snapshots
@@ -174,7 +192,7 @@ final class AppModel: ObservableObject {
 
     private func startCommandServer() {
         guard !Self.layoutPreview, registryError == nil, commandServer == nil else { return }
-        let service = GuestCommandService(manager: manager, applicationSupport: support)
+        let service = GuestCommandService(manager: manager, applicationSupport: support, factoryBuilds: factoryBuilder.service)
         do {
             commandServer = try ManagerCommandServer(endpoint: ManagerCommandEndpoint(applicationSupport: support)) { request in
                 await service.execute(request)
@@ -422,6 +440,14 @@ final class AppModel: ObservableObject {
     }
 
     func requestQuit() async {
+        if let factoryBuildModel, (try? await factoryBuildModel.service.jobs().contains(where: \.active)) == true {
+            let alert = NSAlert()
+            alert.messageText = "Cancel the factory build and quit?"
+            alert.informativeText = "The owned build container will stop and its work volume will be cleaned up. Existing factory images are preserved."
+            alert.addButton(withTitle: "Cancel Build and Quit"); alert.addButton(withTitle: "Keep Building")
+            guard alert.runModal() == .alertFirstButtonReturn else { NSApplication.shared.reply(toApplicationShouldTerminate: false); return }
+            await factoryBuildModel.service.cancelAndWait()
+        }
         await manager.cancelFactoryImportAndWait()
         await manager.waitForFactoryDeletion()
         if await manager.hasActiveSuspensionTransition {

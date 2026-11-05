@@ -190,6 +190,11 @@ SHA-256 checksums. Every guest receives an independent writable disk.
 
 ### Custom factories
 
+Dev includes a native **Factory images → Build factory…** flow for the reviewed
+lean foundation, with Docker readiness, background progress and a live terminal.
+See [Build a lean factory in Dev](docs/FactoryBuilding.md) for requirements, CLI
+commands and the distinction between build verification and guest boot testing.
+
 Use **Import Factory** in the toolbar or **New VM** to select a prepared custom
 factory bundle. The manager verifies the bundle, copies it into its private
 library and records the import. Imported images remain selectable after reopening
