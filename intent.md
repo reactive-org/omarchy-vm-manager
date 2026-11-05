@@ -3713,3 +3713,29 @@ final candidate checks are not established. No original material/keychain metada
 or credential content is accessed; no native API, signing, private-key access,
 Apple request, SSH/Ansible, install, app/runtime or VM launch occurs. Private data/
 pins remain out of Git; both worktrees have documentation-only pending updates.
+
+## Attended merged-source signing attempt — 5 November 2026
+
+**USER AUTHORIZATION / ATTEMPTED:** preparation docs commit as manager `5a902cd` /
+companion `292da85`. The user approves the fresh attended `4a0f30a` plan including
+selected-key use, existing secure-key UI and Apple timestamps. Exact review/plan/
+receipt/code bindings match; maintained CLI real-terminal confirmation and durable
+consumption precede the bounded default backend. No approval-file loader is used.
+
+**VERIFIED — build, partial signing attempt:** twelve preparation/build/location
+commands and thirty pre-sign native workers pass. The 45-file resource payload
+matches. The first storage-helper signing command reaches its 120-second deadline
+and is killed/reaped/closed; elapsed is 752.079 seconds, CLI exit 1. Its 248-byte
+incomplete stderr has only a fixed sign/incomplete-output diagnostic; staged bytes
+remain equal to compiled input. No later signing/final archive or success receipt
+is produced. All 43 owned roots are quiet/reaped/closed and absent in a bounded
+PID-only snapshot, with zero unresolved handles. All 18,928 prior private entries
+and frozen pins are preserved. Only approved new output/attempt/consumption is added.
+
+**TO PROVE / NEXT:** actual key use, secure UI observation/response, timestamp
+outcome and timeout cause are unestablished; ask for the operator's prompt
+observation before any bounded diagnosis or fresh plan. The plan is consumed,
+without retry or orchestrator keychain state query/change. No scope pin is observed/recaptured;
+ordinary approval/shared code/pins stay unchanged. No notarization, SSH/Ansible,
+install, publication, normal app/UI/runtime or VM action occurs. Signing completion
+and original-Mac/loaded-child/guest acceptance remain TO PROVE.

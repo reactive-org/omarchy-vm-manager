@@ -3678,3 +3678,23 @@ cleanup and no retry. Separate approval must name the new plan and proposed key/
 timestamp effects before execution. No build, native inspection, signing, private-key
 access, Apple request, SSH/Ansible, install, app/runtime or VM launch occurs. See
 the [attended plan and limits](DevVMMilestone6Runbook.md#fresh-4a0f30a-attended-signing-plan--5-november-2026).
+
+## Attended 4a0f30a attempt stopped at signing — 5 November 2026
+
+After preparation commits `5a902cd` / companion `292da85`, the explicitly approved
+new plan runs through maintained real-terminal exact-plan confirmation and durable
+consumption. Its sealed review/plan, fresh receipt and 32 committed tooling files
+match. All twelve preparation/build/location commands and thirty pre-sign native
+workers pass; the 45-file resource payload matches. The first child signing command
+reaches its 120-second deadline, is killed/reaped with confirmed cleanup and produces
+no completed signed-candidate/archive/success receipt. Total audited elapsed is
+752.079 seconds, CLI exit 1. Staged storage-helper bytes equal compiled input.
+
+Incomplete 248-byte stderr permits only a fixed sign/incomplete-output diagnosis;
+key/UI/timestamp wait cause is undetermined and prompt observation is pending.
+No automatic retry, keychain/native/network diagnosis or new plan is performed.
+All 43 owned roots are quiet/reaped/closed, zero handles remain and a bounded PID
+snapshot finds them absent. All 18,928 prior private entries/reviews/plans/pins are
+unchanged. The plan remains consumed; the ordinary product and shared package are
+unchanged. No notarization, SSH/Ansible, installs, normal app/runtime or VM launch
+occurs. See the [attempt, cleanup and limits](DevVMMilestone6Runbook.md#attended-4a0f30a-run--first-signing-timeout-5-november-2026).

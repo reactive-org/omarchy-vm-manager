@@ -2050,3 +2050,57 @@ unexecuted. CMS signer authenticity, certificate trust, current revocation/fresh
 notarization/Gatekeeper and original-Mac/loaded-child/guest acceptance are not
 established by plan preparation. No build, signing, private-key access, Apple
 request, SSH/Ansible, install, normal app/UI/runtime action or VM launch occurs.
+
+## Attended 4a0f30a run — first-signing timeout, 5 November 2026
+
+**USER AUTHORIZATION / ATTEMPTED:** preparation docs are committed as manager
+`5a902cd` / companion `292da85`. The user approves this exact fresh attended plan
+with selected-key use, existing secure-key UI and Apple timestamps and says they
+will watch for the prompt. The 173-file source review and ten-file plan seals,
+new receipt/bindings, engine/operator hashes and 32 committed tooling files match
+`4a0f30a`, the documentation execution commit and working tree. The unmodified
+maintained CLI receives its exact-plan confirmation through a real terminal and
+durably consumes the plan before constructing the approved bounded backend.
+
+**VERIFIED — preparation/build:** all twelve source preparation, local dependency
+copy/checkout, optimized build and binary-location commands complete. All thirty
+pre-sign native workers pass, including public-certificate/dependency checks and
+the 23 no-network static runtime checks. The private overlay reconstructs exactly,
+current resource payload admission passes, and all 45 staged provisioning payload
+files match. No app/runtime/daemon binary or VM is launched.
+
+**STOPPED / NOT SIGNED-SUCCESS:** command thirteen, the first child signature
+(`OmarchyVMStorageHelper`), reaches its reviewed 120-second stage deadline. The
+supervisor records `offline-stage-timeout`, kills/reaps the owned signing group
+(exit -9), drains/closes its descriptors and preserves the failed attempt. Total
+audited elapsed time is 752.079 seconds; CLI exit 1. Its 248 stderr bytes are
+incomplete and exposed only as the fixed `sign/command-output-incomplete` code.
+Raw errors/paths are not persisted as diagnostics. The staged storage helper is
+byte-identical to compiled input. No completed timestamped signature, further child/
+outer signing, final candidate validation/seal/archive or success receipt is reached.
+
+**CAUSE UNDETERMINED:** the recorded deadline includes key access, secure UI and
+timestamp waiting. The evidence does not establish actual selected-key use, secure
+UI display/completion, or an Apple timestamp request/result. A current-chat question
+requests the operator's prompt observation; no response is recorded at this result.
+Do not relabel the cause as a missed prompt or Apple failure. No native/keychain/
+private-key or network diagnosis, unlock/relock, retry or new plan is performed.
+
+**VERIFIED — cleanup/preservation:** all thirteen command and thirty native roots
+have quiet groups, matching reap/closed-descriptor evidence and zero unresolved
+handles. A separate five-second PID-only snapshot finds all 43 recorded roots
+absent. All 18,928 prior private entries, including the prior signed ZIP, fresh
+inspection receipt, sealed review/plan, failed attempts, consumed records and pins,
+compare unchanged. Only the approved candidate output and new consumed/attempt
+records are added; evidence stays private. Credential-named content remains unopened
+with stable retained metadata; the selected key is addressed only by the approved
+codesign command. No orchestrator key export/import/enumeration, automated unlock/
+relock/ACL/search-list change or scope observation/recapture occurs. The ordinary
+product approval, shared package/code and pins remain unchanged.
+
+**NEXT / TO PROVE:** collect the operator's prompt observation before choosing
+bounded read-only diagnosis or a distinct fresh attended plan. This plan remains
+consumed and cannot be retried. Merged-source signed-candidate completion, actual
+key/UI/timestamps, original-Mac scope, loaded-child and guest acceptance remain
+unproven. No notarization, SSH/Ansible, install, publication, normal app/UI/runtime
+execution or VM operation occurs.
