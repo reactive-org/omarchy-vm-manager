@@ -48,7 +48,7 @@ waits for process/resource cleanup before continuing.
 ## Ownership, interruption and library admission
 
 On `codex/factory-image-builder`, the active package is pinned to companion
-`codex/swift-factory-builder` revision `df5e2c8`. These follow the previously tested
+`codex/swift-factory-builder` revision `5d0abc3`. These follow the previously tested
 provisioning branches. Draft publication runs only the bounded test paths below.
 
 One shared service serializes UI and CLI work with a private filesystem lock.
@@ -156,6 +156,33 @@ The companion `codex/swift-factory-builder` branch runs Swift tests and offline
 recipe parity using preinstalled Swift/Python. Its ordinary Ansible-install and
 legacy validation job is skipped. Checkout and pinned source dependencies are
 normal hosted test inputs; factory downloads/builds, software installation, real
-signing and VM operations are outside these factory-branch runs. The source pin
-remains `df5e2c8`: the publication follow-up changes only CI and documentation.
+signing and VM operations are outside these factory-branch runs. Initial publication kept source pin `df5e2c8`. The shared resource lookup repair
+advances the active public source pin to `5d0abc3`, with shipped recipe bytes and
+all private candidate pins unchanged.
 Full SSH-container and legacy Ansible validation are not claimed by this CI pass.
+
+### Hosted CI repairs — 6 November 2026
+
+Both first complete factory runs reached their Swift suites, then failed factory
+recipe lookup because CI's resourceURL already included a Resources directory.
+The shared reader now uses Foundation's named-resource API, consistent with the
+existing provisioning readers. Local tests cover flat/Contents bundle layouts,
+missing metadata and damaged archives; all 93 shared Swift tests pass. The manager
+consumes that exact source through its public pin. Recipe/archive checksums and
+historical private candidate pins are unchanged.
+
+Manager CI also exposed a terminal control race: a read dispatched before input
+release could publish its older ownership state while release waited for the
+read to finish. Release now clears local input state after the read becomes idle
+and before sending the release command, with further polls/sends fenced. A
+controlled read barrier reproduces the failure without the fix and passes with
+the fix. It preserves strict immediate assertions and existing time/lease bounds;
+it does not retry delivered input or cancel the setup job.
+
+Local checks passed: 15 terminal/UI/CLI tests, 27 factory/dependency tests, and
+8 package-export script tests. Hosted rerun results are tracked in the draft
+[manager PR](https://github.com/reactive-org/omarchy-vm-manager/pull/11) and
+[companion PR](https://github.com/reactive-org/dev-vm/pull/9). All tests use fake runtimes,
+authenticated local terminal fixtures and disposable filesystem/process inputs.
+The branch guards continue excluding Docker fixtures, installers and release/
+signing jobs. Real factory and guest acceptance remain TO PROVE.

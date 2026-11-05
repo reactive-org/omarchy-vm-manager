@@ -24,6 +24,23 @@ pins. Real Docker/download, privileged-container and disposable-guest acceptance
 remain **TO PROVE**. This pass authorizes no
 real build, download, signing, install, VM launch or Main operation.
 
+## Factory CI portability and terminal input release — 6 November 2026
+
+**VERIFIED — failures:** both factory PRs fail resource lookup under hosted
+SwiftPM's resource layout. Manager CI also observes stale UI input ownership
+when an already-dispatched poll finishes while release waits for idle.
+
+**DESIGN DECISION:** use Foundation named bundle resources with unchanged
+recipe/archive checksums; advance only the active public shared package pin.
+After waiting for an in-flight read, input release clears local input state
+again before the serialized release command. A deterministic local read barrier
+reproduces the old failure and verifies the correction; no authority, command
+replay, deadlines or lease limits change. **TO PROVE:** fresh hosted CI results
+until recorded in [factory build validation](docs/FactoryBuilding.md).
+Private artifacts and frozen candidate pins remain preserved. Main and its VMs
+are untouched; real Docker, downloads, signing credentials, installs and guest
+launches remain outside this repair.
+
 ## Normal Dev provisioning — user authorization, 6 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** merge latest next and enable normal Dev

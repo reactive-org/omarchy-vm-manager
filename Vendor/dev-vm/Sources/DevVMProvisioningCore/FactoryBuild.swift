@@ -79,10 +79,15 @@ public struct FactoryRecipe: Sendable {
     public let archive: URL
     let provenance: [String: ManifestValue]
     public var downloads: [Download] { manifest.downloads }
-    public init() throws {
-        let root = Bundle.module.resourceURL!.appendingPathComponent("Resources/FactoryBuild")
-        let data = try Data(contentsOf: root.appendingPathComponent("recipe.json"))
-        try self.init(archive: root.appendingPathComponent("template.tar.gz"), data: data, expected: FactoryRecipePin.sha256)
+    public init() throws { try self.init(bundle: .module) }
+    init(bundle: Bundle) throws {
+        // Foundation resolves both flat SwiftPM bundles and macOS Contents/
+        // Resources bundles. resourceURL already includes a Resources directory
+        // under some toolchains, so appending that path manually is incorrect.
+        guard let recipe = bundle.url(forResource: "recipe", withExtension: "json", subdirectory: "Resources/FactoryBuild"),
+              let archive = bundle.url(forResource: "template", withExtension: "tar.gz", subdirectory: "Resources/FactoryBuild")
+        else { throw FactoryBuildFailure.inputsChanged }
+        try self.init(archive: archive, data: Data(contentsOf: recipe), expected: FactoryRecipePin.sha256)
     }
     init(archive: URL, data: Data, expected: String) throws {
         self.archive = archive; identity = expected

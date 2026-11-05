@@ -2625,3 +2625,15 @@ real Docker, privileged mount/loop behavior, downloads, full image creation,
 independent manager import and later disposable-guest boot/graphics acceptance.
 No real build, download, host install, signing, Apple request or VM launch is
 performed by this implementation pass. Existing artifacts/pins are preserved.
+
+### Factory CI resource lookup repair
+
+Hosted SwiftPM resolves bundle resources differently from the local Xcode build.
+Factory recipe lookup now uses Foundation's named-resource API, matching the
+existing provisioning resource readers, rather than appending a second Resources
+component to resourceURL. The archive checksum and compiled recipe pin remain
+mandatory. Tests cover flat and Contents/Resources bundle layouts, missing
+metadata and damaged archives. All 93 shared Swift tests pass locally using
+fake Docker and disposable process/filesystem fixtures; the hosted rerun remains
+pending until separately recorded. No shipped archive/recipe bytes or frozen
+private candidate pin is regenerated.

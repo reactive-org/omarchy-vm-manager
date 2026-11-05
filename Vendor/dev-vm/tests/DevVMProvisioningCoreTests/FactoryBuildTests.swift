@@ -35,6 +35,32 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
     func download(_ input: FactoryRecipe.Download, to destination: URL) async throws { try Data("fixture".utf8).write(to: destination); chmod(destination.path, 0o600) }
 }
 @Suite("Factory builder — fake Docker and disposable local files", .serialized) struct FactoryBuildTests {
+    @Test(arguments: ["flat", "contents", "missing", "tampered"])
+    func recipeBundleLayoutsRetainExactPins(_ layout: String) throws {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-bundle-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bundleURL = root.appendingPathComponent("Fixture.bundle")
+        let contents = layout == "contents" ? bundleURL.appendingPathComponent("Contents") : bundleURL
+        let files = contents.appendingPathComponent("Resources/Resources/FactoryBuild")
+        // Flat SwiftPM bundles copy the logical Resources folder at the root.
+        let destination = layout == "contents" ? files : bundleURL.appendingPathComponent("Resources/FactoryBuild")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let info: [String: String] = ["CFBundleIdentifier": "dev.omarchy.factory-fixture", "CFBundlePackageType": "BNDL"]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: contents.appendingPathComponent("Info.plist"))
+        let original = try FactoryRecipe().archive.deletingLastPathComponent()
+        if layout != "missing" { try FileManager.default.copyItem(at: original.appendingPathComponent("recipe.json"), to: destination.appendingPathComponent("recipe.json")) }
+        try FileManager.default.copyItem(at: original.appendingPathComponent("template.tar.gz"), to: destination.appendingPathComponent("template.tar.gz"))
+        if layout == "tampered" { try Data("damaged fixture".utf8).write(to: destination.appendingPathComponent("template.tar.gz")) }
+        let bundle = try #require(Bundle(url: bundleURL))
+        if layout == "missing" || layout == "tampered" {
+            #expect(throws: FactoryBuildFailure.inputsChanged) { _ = try FactoryRecipe(bundle: bundle) }
+        } else {
+            let recipe = try FactoryRecipe(bundle: bundle)
+            try recipe.verify()
+            #expect(recipe.downloads.count == 3)
+        }
+    }
     @Test func bundledRecipeAndPlanAreOfflineAndPinned() throws {
         let recipe = try FactoryRecipe(), plan = try FactoryBuildPlan()
         try recipe.verify()
