@@ -15,6 +15,17 @@ No VM launch, real signing, host installation, Main app or Main VM operation is
 authorized. **TO PROVE:** fresh signed normal-Dev and real-guest acceptance after
 this change. Existing frozen artifacts/pins are preserved, not refreshed.
 
+**VERIFIED — local integration:** 531 Swift tests per channel, 337 script tests,
+140 UI checks, three optimized policy modes, fresh ad-hoc bundle/channel checks,
+566 pinned-upstream Swift tests plus its no-VM contracts/shell/guest-package
+checks, and isolated SSH-container tests pass. The upstream authentication-lease
+assertion failed once under concurrent jobs and passed unchanged on TEST_JOBS=1;
+its exact cause is unproven, and CI uses the verified serialized job setting.
+All 86,034 prior private artifact entries and six pin hashes match baseline.
+No Main operation, product VM launch or real signing occurs. Hosted CI is pending
+explicit GitHub source-publication permission after automatic review rejected
+the companion push; that is not a failed or successful hosted test result.
+
 ## Dev draft publication recovery — user authorization, 5 November 2026
 
 **USER AUTHORIZATION:** fix draft lookup in a PR targeting `next`, then recover and publish the exact retained Dev release without rebuilding it. Leave installed apps and all running work VMs untouched. No local signing identity, credential import, notarization submission, permission grant, installation or guest operation is needed.

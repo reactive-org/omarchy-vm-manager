@@ -1,6 +1,6 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: milestones 1–5 are implemented. Ordinary Dev provisioning eligibility is now enabled for verified manager-owned Dev roots; Stable remains disabled. Latest `next` (`2c18193`) is merged. The existing disposable saved-setup happy path is verified on its earlier private candidate; fresh normal-Dev creation, revised live terminal input and remaining real-guest failure/recovery acceptance are TO PROVE. Consolidated integration checks and PR CI are in progress.
+Status: milestones 1–5 are implemented. Ordinary Dev provisioning eligibility is now enabled for verified manager-owned Dev roots; Stable remains disabled. Latest `next` (`2c18193`) is merged. The existing disposable saved-setup happy path is verified on its earlier private candidate; fresh normal-Dev creation, revised live terminal input and remaining real-guest failure/recovery acceptance are TO PROVE. Consolidated local integration checks pass; hosted CI awaits publication approval.
 
 Historical entries below retain the exact authorization, evidence and limitations at the time of each run; they do not grant new runtime authority.
 
@@ -3985,3 +3985,37 @@ fake runtimes/local fixtures and no-VM CI.
 
 **TO PROVE:** signed normal-Dev runtime and fresh disposable-guest acceptance.
 Existing private candidate evidence is not transferred to the changed source.
+
+
+**VERIFIED — consolidated local integration:** Stable and Dev each pass 531 Swift
+tests in 70 suites. All 337 script tests, 140 offscreen screen checks/27 PNGs,
+relocated/read-only bundle and inherited-helper fixtures pass. An explicit Dev
+bundle target also proves compiled policy and account-home resolution under an
+isolated HOME. All three optimized configurations pass compiled launch,
+credential-storage and provisioning-policy checks (three tests per mode).
+Fresh ad-hoc Stable/Dev apps pass exact runtime/package inventory, signatures,
+layout, executable identity and mixed-channel refusal with VM launch/preflight
+disabled. Native icon generation/validation passes.
+
+The pinned upstream passes all 566 Swift tests in 113 suites plus contracts,
+guest-package and shell fixtures. Its first concurrent run had one authentication
+lease assertion failure; the unchanged suite passes when rerun with TEST_JOBS=1.
+CI now uses that verified job setting; the exact failure cause remains unproven.
+Initial manager runs exposed stale former-package-pin, font and disabled-feature
+assertions plus an unseeded fake ownership marker; these are corrected and the
+full suites rerun successfully. The package pin itself is unchanged.
+
+The existing Docker daemon runs disposable SSH containers with synthetic keys;
+owner enrollment, loopback endpoints, cross-VM credential refusal and changed
+host-key refusal pass, followed by owned-container cleanup. No new Docker VM,
+real manager guest or personal credential is used. All 86,034 pre-existing private
+artifact entries and six tracked pin files match the preservation baseline.
+No installed app is replaced/opened and no Main app/VM command is sent.
+
+**HOSTED CI — PENDING PUBLICATION APPROVAL:** automatic review rejected pushing
+the companion feature branch because explicit authorization to publish the source
+to GitHub was missing. No workaround/retry, push to next/main, hosted release or
+real signing occurs. Both feature branches and draft PRs must be published with
+explicit consent before GitHub checks can run on these commits. Local checks are
+not reported as a hosted CI result. Signed normal-Dev and real guest acceptance
+remain TO PROVE and require their own authorization.
