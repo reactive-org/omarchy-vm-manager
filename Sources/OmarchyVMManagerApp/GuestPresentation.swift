@@ -129,13 +129,13 @@ struct GuestControls: View {
             Group {
                 if snapshot.sessionID == nil && snapshot.suspension != nil {
                     Button { restoreSuspension() } label: { Text("Restore…").frame(width: 96) }
-                        .buttonStyle(.borderedProminent).disabled(!launchEnabled || !snapshot.canRestoreExperimentalSuspension)
+                        .buttonStyle(.primaryAction).disabled(!launchEnabled || !snapshot.canRestoreExperimentalSuspension)
                 } else if snapshot.state.canStart {
                     Button { start() } label: { Label("Launch", systemImage: "play.fill").frame(width: 96) }
-                        .buttonStyle(.borderedProminent).disabled(!launchEnabled || snapshot.suspensionMetadataUnsafe)
+                        .buttonStyle(.primaryAction).disabled(!launchEnabled || snapshot.suspensionMetadataUnsafe)
                 } else if snapshot.state == .paused {
                     Button { resume() } label: { Label("Resume", systemImage: "play.fill").frame(width: 96) }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.primaryAction)
                 } else if snapshot.sessionID != nil {
                     Button { stop() } label: { Text("Shut Down").frame(width: 96) }
                         .disabled(snapshot.state == .stopping)

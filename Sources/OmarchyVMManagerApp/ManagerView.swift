@@ -36,37 +36,40 @@ struct ManagerView: View {
             VStack(spacing: 0) {
                 List(selection: $destination) {
                     HStack(spacing: 9) {
-                        ManagerArtwork(size: 26)
-                        Text(AppChannel.current.displayName).fixedSize(horizontal: false, vertical: true)
+                        ManagerArtwork(size: 34)
+                        Text(AppChannel.current.displayName).font(.system(size: 17, weight: .medium)).fixedSize(horizontal: false, vertical: true)
                     }.padding(.vertical, 5).tag(Destination.library)
-                    Section("Guests") {
+                    Section {
                         ForEach(model.snapshots) { snapshot in
                             HStack(spacing: 9) {
                                 GuestArtwork(size: 26, state: snapshot.state)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(snapshot.profile.name).lineLimit(1)
-                                    Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    HStack(spacing: 6) {
+                                        GuestStatusMarker(active: snapshot.sessionID != nil)
+                                        Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(.caption).foregroundStyle(snapshot.sessionID == nil ? Color.secondary : Theme.green).lineLimit(1)
+                                    }
                                 }
                             }.padding(.vertical, 5).tag(Destination.guest(snapshot.id))
                         }
-                    }
-                    Section("Manager") {
+                    } header: { sidebarHeader("guests") }
+                    Section {
                         Label("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark").tag(Destination.defaults)
                         Label("Permissions", systemImage: "hand.raised.fill").tag(Destination.permissions)
                         Label("Runtime", systemImage: "checkmark.shield").tag(Destination.runtime)
                         Label("Provisioning tools", systemImage: "wrench.and.screwdriver").tag(Destination.provisioningTools)
-                    }
-                }.listStyle(.sidebar)
+                    } header: { sidebarHeader("manager") }
+                }.listStyle(.sidebar).scrollContentBackground(.hidden)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(AppChannel.current.displayName + " " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")")
                         .bold()
                     Text("A project of [reactive.org enterprises](https://www.reactive.org/)").foregroundStyle(.secondary)
                 }.font(.caption).lineLimit(1).minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(18)
-            }.navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
+            }.background(Theme.pane).navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
         } detail: {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: Theme.gap) {
                     if let error = model.registryError {
                         GroupedPanel {
                             SettingsRow("Registry unavailable", subtitle: error + " The original data has been preserved. Quit the other manager or repair the registry before reopening.", icon: "exclamationmark.triangle.fill", color: .orange) { EmptyView() }
@@ -82,8 +85,8 @@ struct ManagerView: View {
                     case .provisioningTools: ProvisioningToolsView()
                     default: library
                     }
-                }.padding(28).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
-            }.id(detailPresentation).background(Color(nsColor: .windowBackgroundColor))
+                }.padding(Theme.gap).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
+            }.id(detailPresentation).background(Theme.ground)
         }
         .navigationTitle(AppChannel.current.displayName)
         .toolbar {
@@ -112,6 +115,10 @@ struct ManagerView: View {
             }
         }
         .sheet(isPresented: $model.shuttingDown) { ProgressView("Shutting down VMs…").padding(40).interactiveDismissDisabled() }
+    }
+
+    private func sidebarHeader(_ title: String) -> some View {
+        Text(title).font(Theme.mono(11)).foregroundStyle(Theme.label).textCase(nil)
     }
 
     private var backupConfirmationContent: some View {
@@ -181,7 +188,7 @@ struct ManagerView: View {
                 ContentUnavailableView {
                     Label("Your Omarchy machines", systemImage: "desktopcomputer")
                 } description: { Text("Create an independent guest with its own disk, settings and clipboard.") }
-                actions: { Button("New VM") { editor = EditorSelection(profile: nil) }.buttonStyle(.borderedProminent) }
+                actions: { Button("New VM") { editor = EditorSelection(profile: nil) }.buttonStyle(.primaryAction) }
             }
             ForEach(model.snapshots) { snapshot in
                 GuestLibraryRow(snapshot: snapshot, open: { focusGuest(snapshot.id) }) { controls(snapshot) }
@@ -337,7 +344,7 @@ struct ManagerView: View {
             }
             if case .ready(let user, let command) = snapshot.sshReadiness {
                 Text("Authenticated as \(user). The guest’s host identity is pinned.").foregroundStyle(.secondary)
-                Button("Copy SSH Command") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string) }.buttonStyle(.borderedProminent)
+                Button("Copy SSH Command") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string) }.buttonStyle(.primaryAction)
             } else if snapshot.profile.ssh != nil {
                 Text("Complete the guest’s normal owner-account setup. The manager then verifies key-based SSH independently of its desktop and clipboard. Guest host keys are provisioned once and checked on every connection.").foregroundStyle(.secondary)
                 if snapshot.sessionID != nil {
@@ -423,7 +430,11 @@ private struct TileIcon: View {
 }
 struct GroupedPanel<Content: View>: View {
     @ViewBuilder let content: Content
-    var body: some View { VStack(spacing: 0) { content }.frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)) }
+    var body: some View {
+        VStack(spacing: 0) { content }.frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.pane, in: RoundedRectangle(cornerRadius: Theme.paneRadius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.paneRadius).strokeBorder(Theme.border))
+    }
 }
 private struct SettingsRow<Action: View>: View {
     let title: String; let subtitle: String; let icon: String; let color: Color
@@ -594,7 +605,7 @@ struct VMEditor: View {
                 Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     save()
-                }.accessibilityIdentifier("new-vm.create").buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!canSave)
+                }.accessibilityIdentifier("new-vm.create").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
             }
         }.padding(26).frame(width: 600, height: 760).interactiveDismissDisabled(saving).onAppear { model.configurationError = nil }.task { await model.loadFactories() }
         .sheet(isPresented: $importingFactory) {

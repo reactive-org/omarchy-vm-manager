@@ -110,7 +110,7 @@ struct OwnerDefaultsView: View {
                         } else { error = model.defaultsError }
                         saving = false
                     }
-                }.buttonStyle(.borderedProminent).disabled(saving || model.registryError != nil)
+                }.buttonStyle(.primaryAction).disabled(saving || model.registryError != nil)
             }
             Text("Automatic setup supports the reviewed prepared factory image. Disk partitioning, encryption and Tailscale settings from the ISO guide are outside this flow. If the image’s setup scripts change, the guest returns to normal setup and the manager reports why.").font(.callout).foregroundStyle(.secondary)
             Link("Omarchy’s unattended-install guide", destination: URL(string: "https://omarchy.org/manual/unattended-installs/")!)
