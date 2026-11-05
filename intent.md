@@ -1,5 +1,13 @@
 # Omarchy VM Manager — implementation intent
 
+## Stable branch publication — user authorization, 5 November 2026
+
+**USER AUTHORIZATION:** upload the exact pinned source kit and publish the stable release through the existing CI-only signing/notarization path. Leave installed apps and all running work VMs untouched. Dev provisioning remains deferred. No local real signing identity, permission, installation, guest launch or existing-VM operation is authorized or needed.
+
+**VERIFIED:** source-kit dependency `runtime-kit-5b30b9b3a82a80eac5c32e96302a8abe5d8a50c9a05853b876f0603a63839839` is published as a non-Latest prerelease. All four server digests/sizes match the reviewed originals; anonymous downloads match every byte, and the downloaded archive inventory/manifest pass. Source lock SHA-256 is `2e7fc6a4c5acf20330d4f05e30e69a7163d595133b99adffa77fbf3a7a481991`. No runtime rebuild or re-pin occurred.
+
+**VERIFIED / FIX:** live dependency upload exposed that GitHub's by-tag endpoint omits unpublished drafts. The publisher now falls back to the authenticated paginated release listing, refuses ambiguous drafts and preserves exact-byte upload/finalization gates. Local `make test` passes 256 Swift and 102 script tests, including new draft lookup and create/upload/verify/publish regression cases. The original main run was cancelled before signing to apply this fix. **TO PROVE:** corrected CI publication and independent validation of the signed stable download.
+
 ## Branch releases — user extension, 5 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** merge PR #5 only after its checks pass, then implement branch-driven releases in a separate PR. `main` publishes stable with automatic patch versions; `next` publishes isolated Dev with `dev.N` prereleases. Publication uses the existing CI-only signing/notarization gates. The user chose to supply Dev's separate provisioning profile later; an unset digest/secret must fail clearly without using stable's profile. Leave installed apps and running work VMs untouched. No combined resource management is added.

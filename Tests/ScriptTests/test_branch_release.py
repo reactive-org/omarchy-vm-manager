@@ -15,6 +15,24 @@ import branch_release as release
 
 
 class BranchReleaseTests(unittest.TestCase):
+    def test_published_release_lookup_needs_no_draft_listing(self):
+        published = dict(tag_name='v0.11.1', draft=False)
+        with patch.object(release, 'api', return_value=published), patch.object(release, 'command') as command:
+            self.assertEqual(release.release_for_tag('v0.11.1'), published)
+            command.assert_not_called()
+
+    def test_draft_lookup_follows_authenticated_pages_when_tag_endpoint_returns_404(self):
+        draft = dict(id=123, tag_name='v0.11.1', draft=True, assets=[])
+        pages = [[dict(tag_name='other')], [draft]]
+        with patch.object(release, 'api', return_value=None), patch.object(release, 'command', return_value=json.dumps(pages)) as command:
+            self.assertEqual(release.release_for_tag('v0.11.1'), draft)
+            self.assertIn('--paginate', command.call_args.args)
+            self.assertIn('--slurp', command.call_args.args)
+            self.assertIsNone(release.release_for_tag('v9.9.9'))
+        with patch.object(release, 'api', return_value=None), patch.object(release, 'command', return_value=json.dumps([[draft], [draft]])):
+            with self.assertRaisesRegex(AssertionError, 'ambiguous'):
+                release.release_for_tag('v0.11.1')
+
     def environment(self, branch='main'):
         return dict(GITHUB_ACTIONS='true', GITHUB_EVENT_NAME='push', GITHUB_REPOSITORY=release.REPOSITORY,
                     GITHUB_REF='refs/heads/' + branch, GITHUB_SHA='a' * 40, GITHUB_RUN_NUMBER='101')
@@ -73,7 +91,7 @@ class BranchReleaseTests(unittest.TestCase):
             with patch.dict(os.environ, env, clear=True), patch.object(release, 'ROOT', root), \
                  patch.object(release, 'PLAN', root / 'plan.json'), patch.object(release, 'profile_pin'), \
                  patch.object(release, 'command', side_effect=command), patch.object(release, 'is_ancestor', return_value=ancestor), \
-                 patch.object(release, 'api', return_value=published_release if published else None):
+                 patch.object(release, 'release_for_tag', return_value=published_release if published else None):
                 release.plan()
             return json.loads((root / 'plan.json').read_text()), (root / 'output').read_text()
 
@@ -157,6 +175,20 @@ class BranchReleaseTests(unittest.TestCase):
                 release.publish_files('v0.11.1-dev.1', folder, folder / 'notes.md', True)
                 self.assertEqual(command.call_args.args[:3], ('gh', 'release', 'edit'))
                 self.assertIn('--latest=false', command.call_args.args)
+
+    def test_new_draft_is_found_then_uploaded_and_verified_before_publication(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            (folder / 'app.zip').write_bytes(b'fixture')
+            expected = release.asset_files(folder)
+            draft = dict(tag_name='v0.11.1', draft=True, prerelease=False, assets=[])
+            completed = dict(draft, assets=[dict(name='app.zip', digest='sha256:' + expected['app.zip'])])
+            with patch.dict(os.environ, self.environment(), clear=True), \
+                 patch.object(release, 'release_for_tag', side_effect=[None, draft, completed]), \
+                 patch.object(release, 'command') as command:
+                release.publish_files('v0.11.1', folder, folder / 'notes.md', False, latest=True)
+                self.assertEqual([call.args[:3] for call in command.call_args_list],
+                                 [('gh', 'release', 'create'), ('gh', 'release', 'upload'), ('gh', 'release', 'edit')])
 
     def test_build_refuses_to_regenerate_already_uploaded_signed_assets(self):
         with patch.object(release, 'load_plan', return_value=self.record()), \

@@ -29,13 +29,15 @@ Manual update checks offer only notarized downloads for the app's own channel. T
 
 ## One-time setup before enabling publication
 
-1. Publish the already reviewed source archive `TryOmarchyKit.zip` with SHA-256 `5b30b9b3a82a80eac5c32e96302a8abe5d8a50c9a05853b876f0603a63839839` under `runtime-kit-5b30b9b3a82a80eac5c32e96302a8abe5d8a50c9a05853b876f0603a63839839`. Use the exact complete kit from the stable/Dev split, not a rebuild with different dates/signatures. Clean release runners otherwise stop at acquisition. This is a packaging dependency, with no factory image or VM data.
+1. **VERIFIED — published 5 November 2026:** the exact reviewed `TryOmarchyKit.zip`, SHA-256 `5b30b9b3a82a80eac5c32e96302a8abe5d8a50c9a05853b876f0603a63839839`, is available at the [digest-named source-kit dependency](https://github.com/reactive-org/omarchy-vm-manager/releases/tag/runtime-kit-5b30b9b3a82a80eac5c32e96302a8abe5d8a50c9a05853b876f0603a63839839). Server digests/sizes and anonymous downloaded bytes match all four originals (ZIP, checksum, manifest and source lock); the downloaded archive inventory/manifest pass. No rebuild or re-pin occurred. Future source-kit changes require publication of their exact reviewed archive. Dependencies contain no factory image or VM data and never become Latest.
 2. Retain the existing stable signing/notarization secrets and `MACOS_KEYCHAIN_PROFILE_BASE64`. Create a separate macOS Developer ID profile for `dev.omarchy.vm-manager.dev` authorizing the same signing certificate. Review its App ID/team/scope/expiry, set its SHA-256 in `Config/TouchIDDevProfile.lock.json`, and supply its base64 bytes as `MACOS_DEV_KEYCHAIN_PROFILE_BASE64`. The current null digest deliberately refuses Dev publication before tag reservation; there is no stable-profile fallback. The user chose to supply this profile later.
 3. Merge the workflow PR into `main`. Once the source dependency is available, its successful push checks can publish stable. Create `next` from a commit containing this workflow when ready to start Dev publication. Changes reach stable by merging reviewed work into `main`; merging `main` into `next` keeps Dev current. Protect both branches with the checks required by your repository policy. Repository token permission/rules must allow the release job to create tags/releases.
 
 Secrets are injected only into the conditional signing step of the trusted branch-push job. The temporary CI keychain/profile/API files are cleaned up. PR checks have read-only permissions and no signing secrets. No real credential or provisioning operation is needed to test the release scripts locally.
 
 ## Failures and retained artifacts
+
+Drafts are resolved through the authenticated paginated release listing when GitHub's by-tag endpoint returns 404. Ambiguous matches fail closed; the publisher does not create a duplicate draft or bypass asset verification. This behavior was confirmed during the first source-kit upload and covered by create/upload/verify/finalize regression fixtures.
 
 The run retains the plan, source receipts, original Apple-submitted archives, Apple JSON and final artifacts for seven days, including on failure. Download evidence before expiry when investigating a failed notarization or publication.
 
