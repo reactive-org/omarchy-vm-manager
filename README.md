@@ -4,6 +4,8 @@
 
 This project is based heavily on the work of the [Try Omarchy team](https://github.com/omacom/try-omarchy). Their kit provides the VM runtime, official guest image and native Mac integrations; Omarchy VM Manager adds a native macOS app and orchestration for multiple independent guests.
 
+See [third-party notices](THIRD_PARTY_NOTICES.md) for component licenses, upstream attribution and distribution obligations.
+
 ## Why use it?
 
 - **Multiple concurrent Omarchy guests.** Run one guest per project, one per client, or separate environments for experiments and AI agents. Each guest has independent storage and configuration.
