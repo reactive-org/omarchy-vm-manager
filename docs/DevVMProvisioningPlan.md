@@ -3698,3 +3698,9 @@ snapshot finds them absent. All 18,928 prior private entries/reviews/plans/pins 
 unchanged. The plan remains consumed; the ordinary product and shared package are
 unchanged. No notarization, SSH/Ansible, installs, normal app/runtime or VM launch
 occurs. See the [attempt, cleanup and limits](DevVMMilestone6Runbook.md#attended-4a0f30a-run--first-signing-timeout-5-november-2026).
+
+**Operator follow-up:** the user reports completing the macOS dialog. Exact dialog
+type and completion time relative to the timeout are unknown; key use/timestamp
+outcome and timeout cause remain unestablished. Preserve the stopped/consumed plan
+and automated evidence; no retry or new native/key/network operation occurs. See
+the runbook's Operator observation after the 4a0f30a timeout.

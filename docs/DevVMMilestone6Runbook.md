@@ -2104,3 +2104,14 @@ consumed and cannot be retried. Merged-source signed-candidate completion, actua
 key/UI/timestamps, original-Mac scope, loaded-child and guest acceptance remain
 unproven. No notarization, SSH/Ansible, install, publication, normal app/UI/runtime
 execution or VM operation occurs.
+
+### Operator observation after the 4a0f30a timeout
+
+**USER-REPORTED OBSERVATION:** the operator answers “Completed the dialog” to the
+current-chat question about macOS secure-key/keychain UI. Record the dialog as
+displayed/completed according to the operator. Its exact type and completion time
+relative to the 120-second signing deadline are unrecorded. This does not establish
+selected-key use, keychain unlock/ACL outcome, a timestamp request/result or the
+timeout cause. The automated timeout/unchanged-helper evidence is retained as-is.
+No retry, new plan, keychain-state change or native/key/network diagnosis follows;
+the plan remains consumed. This updates the earlier pending-observation wording.

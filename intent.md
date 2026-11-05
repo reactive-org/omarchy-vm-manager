@@ -3739,3 +3739,10 @@ without retry or orchestrator keychain state query/change. No scope pin is obser
 ordinary approval/shared code/pins stay unchanged. No notarization, SSH/Ansible,
 install, publication, normal app/UI/runtime or VM action occurs. Signing completion
 and original-Mac/loaded-child/guest acceptance remain TO PROVE.
+
+**USER-REPORTED FOLLOW-UP — 4a0f30a attempt:** the operator answers “Completed the
+dialog.” Record UI displayed/completed as user-reported; exact dialog type and
+completion time relative to the 120-second signing limit remain unrecorded. This
+does not establish selected-key use, keychain/ACL or timestamp outcome, or the
+timeout cause. Automated failure evidence stays unchanged; the plan stays consumed
+without retry, state change or additional native/key/network operation.
