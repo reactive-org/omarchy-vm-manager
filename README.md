@@ -156,6 +156,9 @@ The CLI opens the manager in the background when needed and shares its existing 
 
 ## Developer setup in Dev
 
+Build with Swift 6.2+ and macOS 15+; the bundled terminal requires that toolchain.
+CI selects a compatible preinstalled Xcode without installing host tools.
+
 The Dev app can configure verified manager-owned Dev guests from bundled profiles
 or a local setup folder. New VM saves the selected setup with the profile; the
 Setup tab provides preview, explicit permissions, progress and the actual live

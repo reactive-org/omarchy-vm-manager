@@ -2513,3 +2513,17 @@ real signing occurs. Both feature branches and draft PRs must be published with
 explicit consent before GitHub checks can run on these commits. Local checks are
 not reported as a hosted CI result. Signed normal-Dev and real guest acceptance
 remain TO PROVE and require their own authorization.
+
+
+**HOSTED CI — authorized feature branches:** the user subsequently approves
+publishing both feature branches and opening draft manager PR #10 (base next)
+and companion PR #8 (base main) for test-only CI. No branch is merged. The first
+manager macOS run selects Swift 6.1 and stops because the bundled SwiftTerm needs
+Swift 6.2. The manager now declares that effective minimum and CI selects the
+preinstalled Xcode 26.0.1 for both test and future release jobs; no toolchain is
+installed and the release job remains skipped on these feature/PR events.
+The companion's parallel package run times out in local PTY fixtures; its test
+recipe now uses --no-parallel, matching the successful local validation while
+retaining each test's explicit concurrency/cancellation checks and deadlines.
+These are CI fixes, not a completed hosted pass; current results are in the PRs.
+No frozen pin/artifact, real signing, Main operation or VM launch changes.

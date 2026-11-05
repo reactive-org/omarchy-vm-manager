@@ -9,11 +9,15 @@ jobs:
   test:
     name: macOS build and tests
     runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - name: Verify the preinstalled Swift 6.2+ toolchain
+        run: swift --version
       - name: Manager and artifact contracts
         run: make test
       - name: Isolated Dev channel build and no-VM contracts
@@ -50,6 +54,7 @@ jobs:
       queue: max
       cancel-in-progress: false
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7

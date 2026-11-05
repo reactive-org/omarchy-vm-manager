@@ -11,7 +11,7 @@ Read intent.md before changing architecture or policy. Preserve its VERIFIED, DE
 
 ## Implementation and VM safety
 
-- Use Swift 6 and macOS 15+, SwiftPM, and `make` for builds and tests.
+- Use Swift 6.2+ (Swift 6 language mode) and macOS 15+, SwiftPM, and `make` for builds and tests.
 - Use the isolated **Dev candidate** for development work and local UI testing: `make app-dev verify-dev`. It must use `DEVELOPMENT_CHANNEL`, bundle ID `dev.omarchy.vm-manager.dev`, Dev data/locks and the `omarchy-vm-dev` CLI. Leave the user's `main`/Stable manager, installed app and VMs untouched; never stop or replace Stable to test development changes. See [Stable and Dev](docs/DevelopmentChannels.md).
 - If local signing is required, use the ad-hoc Dev/debug path provided by `Scripts/build-app.sh --dev` (which wraps `Scripts/assemble_app.py` and defaults to `codesign --sign -`); `make app-dev` uses this path. A fresh `--output-directory` keeps test candidates separate. Use `--preserve-runtime-signatures` with an exact verified `--runtime-directory` when reusing the pinned runtime. Verify the resulting Dev app with `Scripts/verify-app.sh --bundle-only <Dev.app>`. This needs no signing credentials or Apple requests. Ad-hoc signing does not enable protected Touch ID storage or satisfy same-team operational provisioning-helper admission. Normal Dev build eligibility still requires verified Dev roots, reviewed permissions and authenticated helpers; Stable stays disabled. Never migrate a Stable disposable approval to Dev.
 - Own orchestration, never duplicate the upstream VM implementation.
