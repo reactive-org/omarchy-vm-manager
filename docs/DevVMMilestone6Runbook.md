@@ -2405,3 +2405,50 @@ Its five timestamp signatures/twenty bounded workers and private ZIP roundtrip
 pass. Native UI after reopening shows Setup history (3 runs) and the persisted
 Setup complete result with finished-state messaging. The disposable VM stays
 stopped; Main remains untouched. Original candidate artifacts are retained.
+
+
+## Live terminal density and direct input — 6 November 2026
+
+**USER REQUEST / DESIGN DECISION:** use a modern, denser terminal; click its
+content to type, default to Follow output and remove the expand control.
+The owned terminal now starts at 120 columns × 30 rows even before input is
+claimed. Piped Ansible output gets matching COLUMNS/LINES hints. The manager
+uses an 11-point default font, fits the preferred grid on normal widths,
+shrinks within a readable bound on narrower widths and retains font controls.
+The live viewport is 420 points tall; it has no expand action.
+
+A direct left click claims the existing single-writer lease. Focus, output,
+attachment/reconnection and another viewer's release do not claim input.
+Concurrent pre-dispatch socket contention can wait at most 250 ms; dispatched
+claims/input and lost replies are never replayed. No keystrokes queue before
+ownership and a live input-capable invocation. Another owner is refused; input
+can be released explicitly. Native guest confirmation/password entry is still
+performed by the human. The terminal's Follow setting starts on at attachment;
+layout/output scroll callbacks no longer turn it off. Toggle/search/Jump to
+latest control the user's follow intent.
+
+**VERIFIED — fake/local:** all 86 shared Swift tests, 239 Python/local Ansible
+tests (one skip), fifteen manager terminal/UI tests and 140 screen checks/27
+screenshots pass. A synthetic click admits typing, a synthetic character reaches
+a disposable PTY, a second viewer cannot steal input and needs a fresh click
+after release. Normal manager layout fits at least 120 columns/30 rows; font,
+Follow and LF/split-CRLF checks pass. Package `99a8b55` is immutably exported and
+pinned; the changed engine does not relabel old saved plans or frozen candidates.
+No real SSH/Ansible, install or guest lifecycle action is used for these checks.
+
+**TO PROVE:** real prompt typing and sizing during a future separately operated
+job. The existing single-root restriction and same-team helper authentication
+remain; no new guest apply is inferred from a UI change. Private scope, old pins
+and candidate artifacts stay outside Git.
+
+
+**VERIFIED — private Dev handoff:** the updated single-root candidate passes
+same-team manager/helper scope checks, five timestamp signatures and twenty
+bounded workers with cleanup confirmed. Its private ZIP roundtrip matches file
+inventory, package seals and strict deep signatures. Only the idle Dev manager
+is reopened; native UI shows Follow output on and no expand/Take input controls.
+Main's nineteen persistent baseline processes and four hashes still match;
+there are no Dev guest runtime children. No VM lifecycle/apply, real SSH/Ansible,
+host install or notarization occurs. Old signed candidates and frozen pins are
+retained. Native click-to-type against a real future guest prompt remains
+TO PROVE; this update tests that path only with local fake/PTY fixtures.

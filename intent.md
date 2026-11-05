@@ -3882,3 +3882,17 @@ copy. Pipe-LF and split-CRLF rendering pass regression checks. The final 136-che
 UI suite passes; the signed UI-only Dev replacement shows the persisted successful
 result without another guest launch. Private scope, engine and frozen inputs
 remain unchanged.
+
+
+## Direct live terminal interaction — 6 November 2026
+
+**USER REQUEST / DESIGN DECISION:** use a 120 × 30 starting grid, smaller 11-point
+responsive type, click-to-type and Follow output on by default; remove expansion.
+Clicking claims the existing single-writer lease; it does not bypass guest
+confirmation or credentials. Layout/output callbacks preserve Follow intent.
+
+**VERIFIED — fake/local:** 86 shared Swift, 239 Python/local (one skip), fifteen
+manager terminal tests and 140 offscreen UI checks pass, including synthetic
+click-to-PTY input and ownership refusal. **TO PROVE:** actual future live guest
+prompt interaction after these changes. Existing private target restriction,
+ordinary disabled gate, Main isolation and frozen artifact/pin policy remain.

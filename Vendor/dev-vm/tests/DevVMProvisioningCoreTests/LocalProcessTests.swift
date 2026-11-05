@@ -284,7 +284,8 @@ private func noLiveFixtureChild(_ fixture: LocalFixture) throws {
         target: fixture.context.target, dependencyDigest: fixture.context.dependencyDigest, inputLeaseID: lease)
     try terminal.reserveInput(for: request)
     let invocation = fixture.invocation(["tty"], input: .terminalLease(lease), output: .terminalStream)
-    _ = try terminal.begin(invocation)
+    let initialSize = try terminal.begin(invocation)
+    #expect(initialSize.rows == 30 && initialSize.columns == 120)
     defer { terminal.end(invocation.id) }
     #expect(!terminal.snapshot().acceptsInput)
     #expect(throws: SequencingFailure.self) { try terminal.sendInput(leaseID: lease, invocationID: invocation.id, sequence: 1, bytes: Data([10])) }

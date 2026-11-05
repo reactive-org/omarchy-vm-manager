@@ -44,7 +44,6 @@ struct DeveloperSetupView: View {
     @State private var planning = false
     @State private var planRevision = UUID()
     @State private var failure: String?
-    @State private var expanded = false
     @State private var search = ""
     @State private var matches: Int?
     @State private var confirmCancel = false
@@ -139,7 +138,7 @@ struct DeveloperSetupView: View {
                     } else { Label("Cleanup has not been confirmed. Recovery must verify the original guest and authorization state.", systemImage: "exclamationmark.shield").foregroundStyle(.orange) }
                 }
                 workflowActions(workflow)
-                terminal(height: expanded ? 640 : 360)
+                terminal(height: 420)
                 HStack {
                     Text(continuationMessage).font(.callout).foregroundStyle(.secondary)
                     Spacer()
@@ -209,13 +208,12 @@ struct DeveloperSetupView: View {
                     case .prepareApply: if let frozen { Task { await prepareReview(frozen) } }
                     case .grant(let sudo, let docker, let tasks): grantConsent = sudo; dockerConsent = docker; taskConsent = tasks
                     case .submit: if let frozen, let applyReview { Task { await submit(frozen, review: applyReview) } }
-                    case .expand(let value): expanded = value
                     case .search(let value): search = value; matches = screen.search(value)
                     case .requestCancel: if workflow?.canCancel == true { confirmCancel = true }
                     case .confirmCancel: if confirmCancel { confirmCancel = false; cancelConfirmed() }
                     default: break
                     }
-                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "expanded": String(expanded), "cancelPending": String(confirmCancel), "continuation": continuationMessage] })
+                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "cancelPending": String(confirmCancel), "continuation": continuationMessage] })
             } }
             #endif
         }
@@ -304,10 +302,9 @@ struct DeveloperSetupView: View {
                 Circle().fill(screen.connected ? .green : .gray).frame(width: 8, height: 8)
                 Text("Live terminal").bold()
                 Spacer()
-                Button("A−") { screen.fontSize -= 1 }.disabled(screen.fontSize <= 10)
+                Button("A−") { screen.fontSize -= 1 }.disabled(screen.fontSize <= 9)
                 Button("A+") { screen.fontSize += 1 }.disabled(screen.fontSize >= 24)
                 Toggle("Follow output", isOn: $screen.follow).toggleStyle(.switch).controlSize(.small)
-                Button { expanded.toggle() } label: { Image(systemName: expanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") }.help("Expand terminal")
             }.padding(12).background(.quaternary)
             HStack {
                 TextField("Search terminal", text: $search).textFieldStyle(.roundedBorder).onSubmit { matches = screen.search(search) }
@@ -317,7 +314,6 @@ struct DeveloperSetupView: View {
                 }
                 Button("Jump to latest") { screen.jumpToLatest() }
                 if screen.ownsInput { Button("Release input") { Task { await screen.releaseInput() } } }
-                else { Button("Take input") { Task { await screen.takeInput() } }.disabled(!screen.connected) }
             }.padding(8)
             ProvisioningNativeTerminal(screen: screen).frame(height: height).clipped()
             HStack {

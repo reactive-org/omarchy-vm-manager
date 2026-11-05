@@ -58,7 +58,7 @@ public final class ProvisioningTerminal: @unchecked Sendable {
     public init(capacityBytes: Int = 256 * 1024) throws {
         guard (8192...1024 * 1024).contains(capacityBytes) else { throw SequencingFailure.invalidRequest }
         capacity = capacityBytes
-        size = try ProvisioningTerminalSize(rows: 24, columns: 80)
+        size = try ProvisioningTerminalSize(rows: 30, columns: 120)
     }
     public func grantInput(leaseID: UUID, context: GuestJobContext, size: ProvisioningTerminalSize) throws {
         try grant(leaseID, scope: TerminalInputScope(jobID: context.jobID, target: context.target,
@@ -83,7 +83,7 @@ public final class ProvisioningTerminal: @unchecked Sendable {
     public func reserveInput(for request: ProvisioningRequest) throws {
         guard let lease = request.inputLeaseID else { throw SequencingFailure.authorizationRequired }
         try grant(lease, scope: TerminalInputScope(jobID: request.jobID, target: request.target,
-            dependencyDigest: request.dependencyDigest, mode: request.mode), size: ProvisioningTerminalSize(rows: 24, columns: 80), enabled: false)
+            dependencyDigest: request.dependencyDigest, mode: request.mode), size: ProvisioningTerminalSize(rows: 30, columns: 120), enabled: false)
     }
     /// Serialize detach with PTY writes and discard queued keystrokes/resizes.
     /// The reviewed scope survives so a new, explicit attachment can reclaim it.

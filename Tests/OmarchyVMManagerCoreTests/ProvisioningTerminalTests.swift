@@ -10,14 +10,14 @@ final class TerminalFixture: @unchecked Sendable {
     let terminal: ProvisioningTerminal
     let hub: ProvisioningTerminalHub
     let context: GuestJobContext
-    init(capacity: Int = 256 * 1024, input: Bool = true, now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }) throws {
+    init(capacity: Int = 256 * 1024, input: Bool = true, lifetime: Duration = .seconds(1), now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }) throws {
         try PrivateFiles.directory(root, create: true)
         try Data("schema_version: 1\nid: terminal-fixture\n".utf8).write(to: root.appendingPathComponent("vm.yml"))
         let target = try GuestBinding(vmID: UUID(), sessionID: UUID(), owner: "fixture", ownerUID: 1000, hostKeyDigest: String(repeating: "a", count: 64))
         request = try .init(jobID: UUID(), plan: SetupPlanner.plan(repository: root), repository: root, target: target,
             dependencyDigest: String(repeating: "b", count: 64), inputLeaseID: input ? UUID() : nil)
         terminal = try ProvisioningTerminal(capacityBytes: capacity)
-        hub = try ProvisioningTerminalHub(terminal: terminal, request: request, lifetime: .seconds(1), now: now)
+        hub = try ProvisioningTerminalHub(terminal: terminal, request: request, lifetime: lifetime, now: now)
         context = .init(jobID: request.jobID, payloadID: UUID(), target: target, dependencyDigest: request.dependencyDigest, mode: .apply)
     }
     deinit { try? FileManager.default.removeItem(at: root) }

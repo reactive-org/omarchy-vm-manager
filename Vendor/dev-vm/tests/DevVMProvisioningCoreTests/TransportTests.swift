@@ -192,6 +192,7 @@ private func jsonFile(_ url: URL) throws -> [String: ManifestValue] { try PlainD
     for invocation in invocations {
         #expect(invocation.context == first.context)
         #expect(!invocation.arguments.joined().contains("synthetic-secret-never-log"))
+        #expect(invocation.environment["COLUMNS"] == "120" && invocation.environment["LINES"] == "30")
         #expect(invocation.environment["PYTHONPATH"] == nil && invocation.environment["SSH_AUTH_SOCK"] == nil)
         if case .terminalLease(let id) = invocation.input { #expect(id == request.inputLeaseID && invocation.arguments.contains("-tt")) }
         let info = try FileManager.default.attributesOfItem(atPath: invocation.workingDirectory.path)

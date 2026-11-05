@@ -354,6 +354,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let running = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id), driver: runningDriver, width: 1200, height: 960, dark: true)
         defer { running.close() }; tick(); try until { runningDriver.terminalScreen != nil }
         let screen = runningDriver.terminalScreen!
+        try check(screen.follow, "terminal-default-follows-output")
         screen.render(Data("first\nsecond".utf8))
         try check(String(decoding: screen.view.getBufferAsData(), as: UTF8.self).contains("\nsecond"), "terminal-pipe-lf-starts-at-column-zero")
         screen.resetScreen(); screen.render(Data("first\r".utf8)); screen.render(Data("\nsecond".utf8))
@@ -362,11 +363,15 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
 
         screen.render(Data("SYNTHETIC ACCEPTANCE OUTPUT — no live job\r\n\u{001B}[32mok: [fixture]\u{001B}[0m\r\nUnicode → café ✓\r\n".utf8))
         try runningDriver.send("setup", .search("café")); try check(runningDriver.state("setup", "matches") == "1", "full-screen-literal-terminal-search")
-        try runningDriver.send("setup", .expand(true)); tick(); try check(runningDriver.state("setup", "expanded") == "true", "full-screen-expand-terminal")
+        screen.jumpToLatest(); tick(); try check(screen.follow, "terminal-jump-to-latest-restores-follow")
+        screen.scrolled(source: screen.view, position: 0); try check(screen.follow, "terminal-layout-scroll-does-not-disable-follow")
+        try check(screen.fontSize == 11 && screen.view.font.pointSize <= 11, "terminal-denser-default-font")
+        let dimensions = screen.view.terminalStateSnapshot().dimensions
+        try check(dimensions.cols >= 120 && dimensions.rows >= 30, "terminal-modern-grid-fits-normal-manager-width")
+
         try runningDriver.send("setup", .requestCancel); tick(); try check(enabled.cancellations == 0 && runningDriver.state("setup", "cancelPending") == "true", "cancel-needs-confirmation")
         try runningDriver.send("setup", .confirmCancel); try until { enabled.cancellations == 1 }
         try check(!screen.connected && !screen.ownsInput, "synthetic-output-grants-no-input")
-        try runningDriver.send("setup", .expand(false)); tick()
         running.scroll(bottom: true); tick(); try capture(running, "setup-terminal-dark.png", screen: screen)
         enabledModel.setupWorkflows = [completedHistory]; tick()
         try check(runningDriver.state("setup", "continuation") == "Setup has finished. Its result remains saved.", "completed-setup-does-not-claim-running")

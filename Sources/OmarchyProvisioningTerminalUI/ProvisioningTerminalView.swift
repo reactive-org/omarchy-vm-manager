@@ -3,6 +3,33 @@ import OmarchyVMManagerCore
 import SwiftUI
 import SwiftTerm
 
+/// A direct click expresses input intent. Output, focus changes and reconnects
+/// never claim the single-writer lease, and no keystrokes queue before admission.
+@MainActor private final class ClickableProvisioningTerminal: TerminalView {
+    var inputRequested: (() -> Void)?
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        if event.type == .leftMouseDown { inputRequested?() }
+    }
+}
+
+/// Fits the preferred 120-column grid on normal manager widths. Wide windows
+/// retain the user's font size; narrow windows use a bounded smaller font.
+@MainActor private final class ProvisioningTerminalContainer: NSView {
+    let screen: ProvisioningTerminalScreen
+    init(screen: ProvisioningTerminalScreen) {
+        self.screen = screen
+        super.init(frame: .zero)
+        addSubview(screen.view)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
+    override func layout() {
+        super.layout()
+        screen.fit(width: bounds.width)
+        screen.view.frame = bounds
+    }
+}
+
 /// UI owns only a viewer. Output stays in the bounded emulator; no output mirror,
 /// log, restoration archive or automatic input queue. All work runs on MainActor.
 @MainActor public final class ProvisioningTerminalScreen: NSObject, ObservableObject, @preconcurrency TerminalViewDelegate {
@@ -12,8 +39,7 @@ import SwiftTerm
     @Published public private(set) var ownsInput = false
     @Published public private(set) var acceptsInput = false
     @Published public private(set) var message = "Live output appears when a job is attached."
-    @Published public var fontSize: Double = 13 { didSet { view.font = .monospacedSystemFont(ofSize: min(24, max(10, fontSize)), weight: .regular) } }
-    private var rendering = false
+    @Published public var fontSize: Double = 11 { didSet { fit(width: view.bounds.width) } }
     private var display = ProvisioningTerminalDisplay()
     private var attachment: ProvisioningTerminalAttachment?
     private var invocation: UUID?
@@ -23,29 +49,32 @@ import SwiftTerm
     private var operation = false
     private var pendingInput: [(UUID, Data)] = []
     private var pendingBytes = 0
-    private var sentSize = (24, 80)
-    private var size = (24, 80)
+    private var sentSize = (30, 120)
+    private var size = (30, 120)
     public override init() {
         // Pipe-based Ansible output uses LF; PTY output may already use CRLF.
         // The display must start both at column zero without modifying job bytes.
-        view = TerminalView(frame: .init(x: 0, y: 0, width: 800, height: 360), options: .init(convertEol: true))
+        view = ClickableProvisioningTerminal(frame: .init(x: 0, y: 0, width: 800, height: 420), options: .init(cols: 120, rows: 30, convertEol: true))
         super.init()
-        view.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        view.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         view.nativeBackgroundColor = .black; view.nativeForegroundColor = .white
         view.allowMouseReporting = false
         view.configureProvisioningDisplay()
         view.terminalDelegate = self
+        (view as? ClickableProvisioningTerminal)?.inputRequested = { [weak self] in
+            Task { await self?.takeInput() }
+        }
 
     }
     deinit { polling?.cancel() }
     public func attach(service: any ProvisioningObserving, workflowID: UUID) async {
         await detach()
         let generation = UUID(); self.generation = generation
-        resetScreen()
+        follow = true; resetScreen()
         do {
             let value = try await service.attachTerminal(workflowID)
             guard self.generation == generation, !Task.isCancelled else { await value.detach(); return }
-            attachment = value; connected = true; message = "View only · Take input to answer a prompt."
+            attachment = value; connected = true; message = "Click in the terminal to type."
             polling = Task { [weak self] in
                 while !Task.isCancelled {
                     guard self?.generation == generation else { return }
@@ -73,7 +102,7 @@ import SwiftTerm
                 pendingInput.removeAll(); pendingBytes = 0
                 ownsInput = false; acceptsInput = false; invocation = nil
                 _ = try await attachment.acknowledgeReset()
-                message = "Output gap · Screen reset. Take input again when ready."
+                message = "Output gap · Screen reset. Click in the terminal to type again."
             } else {
                 if invocation != page.activeInvocationID || !page.acceptsInput { pendingInput.removeAll(); pendingBytes = 0 }
                 ownsInput = page.ownsInput; acceptsInput = page.acceptsInput; invocation = page.activeInvocationID
@@ -91,7 +120,6 @@ import SwiftTerm
     /// Byte filter carries UTF-8 and escape state across frames. Kept public for
     /// deterministic local rendering fixtures; callers provide actual job bytes.
     public func render(_ data: Data) {
-        rendering = true; defer { rendering = false }
         let position = view.scrollPosition
         let bytes = display.consume(data)
         if !bytes.isEmpty { view.feed(byteArray: Array(bytes)[...]) }
@@ -108,6 +136,18 @@ import SwiftTerm
         }
         return !operation && generation == self.generation && !Task.isCancelled
     }
+    /// A busy client rejects before sending anything. Briefly wait for another
+    /// viewer's read; never replay dispatched input/claims or a lost reply.
+    private func beforeDispatchBusy<T: Sendable>(_ action: () async throws -> T) async throws -> T {
+        let deadline = ContinuousClock.now + .milliseconds(250)
+        while true {
+            do { return try await action() }
+            catch ProvisioningTerminalDenial.busy {
+                guard ContinuousClock.now < deadline, !Task.isCancelled else { throw ProvisioningTerminalDenial.busy }
+                try await Task.sleep(for: .milliseconds(5))
+            }
+        }
+    }
     public func takeInput() async {
         guard !controlPending, !ownsInput, let attachment else { return }
         controlPending = true; defer { controlPending = false }
@@ -115,9 +155,18 @@ import SwiftTerm
         guard await idle(generation) else { return }
         operation = true; defer { operation = false }
         do {
-            try await attachment.claimInput(rows: size.0, columns: size.1)
+            try await beforeDispatchBusy { try await attachment.claimInput(rows: size.0, columns: size.1) }
             guard generation == self.generation else { return }
-            ownsInput = true; sentSize = size; message = "Input owned here · Password input is handled by the native guest prompt."
+            let page = try await beforeDispatchBusy { try await attachment.poll() }
+            guard self.generation == generation else { return }
+            if page.resetRequired {
+                resetScreen(); _ = try await attachment.acknowledgeReset()
+                message = "Output gap · Screen reset. Click in the terminal to type again."
+                return
+            }
+            ownsInput = page.ownsInput; acceptsInput = page.acceptsInput; invocation = page.activeInvocationID
+            for frame in page.frames { render(frame.bytes) }
+            sentSize = size; message = "Keyboard connected · Type directly in the terminal."
             view.window?.makeFirstResponder(view)
         } catch { if generation == self.generation { message = "Input was refused. Another viewer may own it, or the job scope has ended." } }
     }
@@ -128,7 +177,7 @@ import SwiftTerm
         let generation = generation
         guard await idle(generation) else { await attachment.detach(); return }
         operation = true; defer { operation = false }
-        do { try await attachment.releaseInput() } catch { await attachment.detach() }
+        do { try await attachment.releaseInput(); message = "Click in the terminal to type." } catch { await attachment.detach() }
     }
     public func jumpToLatest() { follow = true; view.scroll(toPosition: 1) }
     /// Literal, bounded, in-memory search. Never evaluates patterns or opens URLs.
@@ -169,7 +218,7 @@ import SwiftTerm
             guard generation == self.generation, ownsInput, acceptsInput, !pendingInput.isEmpty else { return }
             let value = pendingInput.removeFirst(); pendingBytes -= value.1.count
             guard value.0 == invocation else { pendingInput.removeAll(); pendingBytes = 0; return }
-            try await attachment.send(value.1, invocationID: value.0)
+            try await beforeDispatchBusy { try await attachment.send(value.1, invocationID: value.0) }
         }
     }
     private func inputFailed(_ attachment: ProvisioningTerminalAttachment, generation: UUID) async {
@@ -178,7 +227,17 @@ import SwiftTerm
         message = "Input acknowledgement failed. Reconnect before reclaiming input."
         await attachment.detach()
     }
-    public func scrolled(source: TerminalView, position: Double) { if !rendering, position < 0.99 { follow = false } }
+    // Layout, resize and output can all emit scroll callbacks. Only the Follow
+    // toggle, search and Jump to latest change follow intent.
+    public func scrolled(source: TerminalView, position: Double) { }
+    func fit(width: CGFloat) {
+        guard width > 0 else { return }
+        let preferred = min(24, max(9, fontSize))
+        let sample = NSFont.monospacedSystemFont(ofSize: preferred, weight: .regular)
+        let cell = ("M" as NSString).size(withAttributes: [.font: sample]).width
+        let fitted = max(9, min(preferred, preferred * max(1, width - 12) / ((fontSize <= 11 ? 120 : 80) * cell)))
+        if abs(view.font.pointSize - fitted) > 0.05 { view.font = .monospacedSystemFont(ofSize: fitted, weight: .regular) }
+    }
     public func setTerminalTitle(source: TerminalView, title: String) { }
     public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) { }
     public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) { }
@@ -191,6 +250,6 @@ import SwiftTerm
 public struct ProvisioningNativeTerminal: NSViewRepresentable {
     @ObservedObject var screen: ProvisioningTerminalScreen
     public init(screen: ProvisioningTerminalScreen) { self.screen = screen }
-    public func makeNSView(context: Context) -> TerminalView { screen.view }
-    public func updateNSView(_ nsView: TerminalView, context: Context) { }
+    public func makeNSView(context: Context) -> NSView { ProvisioningTerminalContainer(screen: screen) }
+    public func updateNSView(_ nsView: NSView, context: Context) { nsView.needsLayout = true }
 }

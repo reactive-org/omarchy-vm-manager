@@ -130,7 +130,7 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
     private func environment() -> [String: String] {
         ["PATH": tools.playbook.target.deletingLastPathComponent().path + ":/usr/bin:/bin:/usr/sbin:/sbin",
          "HOME": workspace.url("home").path, "TMPDIR": workspace.url("tmp").path,
-         "TERM": "xterm-256color",
+         "TERM": "xterm-256color", "COLUMNS": "120", "LINES": "30",
          "LANG": "en_US.UTF-8", "LC_CTYPE": "en_US.UTF-8", "ANSIBLE_CONFIG": workspace.url("ansible.cfg").path,
          "ANSIBLE_LOCAL_TEMP": workspace.url("tmp").path, "ANSIBLE_COLLECTIONS_PATH": workspace.url("collections").path,
          "ANSIBLE_LIBRARY": workspace.url("plugins").path, "ANSIBLE_CALLBACK_PLUGINS": workspace.url("plugins").path,
