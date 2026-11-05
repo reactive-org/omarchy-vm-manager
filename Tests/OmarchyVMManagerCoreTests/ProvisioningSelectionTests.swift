@@ -203,7 +203,7 @@ final class CreationFixture: Sendable {
         #expect(try Data(contentsOf: file) == changed)
         await f.assertInert(); await f.close()
     }
-    @Test func reopeningKeepsReceiptForLookupButCannotReconstructFrozenAuthority() async throws {
+    @Test func reopeningRestoresExactSavedInputsWithoutRestoringExecutionAuthority() async throws {
         let f = try await CreationFixture(), p = try await f.prepare(), id = try await f.create(p)
         let profile = try #require(await f.manager.snapshots().first?.profile)
         try await f.service.closeForReopen()
@@ -216,7 +216,31 @@ final class CreationFixture: Sendable {
         let next = try await ProvisioningService.open(manager: reopened, directory: f.state, environment: .init(executionEnabled: false,
             engineDigest: f.engine, dependencies: f.dependencies, launcher: f.launcher, transportPolicy: .fixture(f.provider.root), admitPackage: {}))
         await #expect(throws: ProvisioningReviewFailure.unavailable) { _ = try await next.creation(p.id) }
-        await #expect(throws: ProvisioningReviewFailure.unavailable) { _ = try await next.preview(p.id) }
+        let restored = try await next.preview(p.id)
+        #expect(restored.vmID == id && restored.planDigest == p.planDigest && restored.inputDigest == p.inputDigest)
+        #expect(restored.sessionID == nil && restored.tasks == p.tasks && restored.proposal == p.proposal)
+        await #expect(throws: ProvisioningServiceFailure.disabled) { _ = try await next.prepareApply(p.id) }
+        try await next.closeForReopen(); await f.assertInert(); await f.close()
+    }
+    @Test(arguments: ["changed-bytes", "changed-mode", "missing", "other-receipt", "changed-engine"])
+    func restartedSavedSelectionRefusesChangedOrMissingInputs(kind: String) async throws {
+        let f = try await CreationFixture(), p = try await f.prepare(), _ = try await f.create(p)
+        let draft = try #require(await f.service.creations[p.id])
+        let profile = try #require(await f.manager.snapshots().first?.profile)
+        let frozen = draft.frozen.storage.directory.appendingPathComponent("vm.yml")
+        try await f.service.closeForReopen()
+        switch kind {
+        case "changed-bytes": try Data("schema_version: 1\nid: changed\n".utf8).write(to: frozen)
+        case "changed-mode": #expect(chmod(frozen.path, 0o640) == 0)
+        case "missing": try FileManager.default.removeItem(at: frozen) // Fixture source file only.
+        default: break
+        }
+        let reopened = VMManager(runtime: f.runtime, profiles: [profile], applicationSupport: f.root, hostMemoryMiB: 32768, logicalCPUs: 8, registry: f.registry, portProbe: TransportFixturePorts())
+        let next = try await ProvisioningService.open(manager: reopened, directory: f.state, environment: .init(executionEnabled: false,
+            engineDigest: kind == "changed-engine" ? String(repeating: "0", count: 64) : f.engine,
+            dependencies: f.dependencies, launcher: f.launcher, transportPolicy: .fixture(f.provider.root), admitPackage: {}))
+        await #expect(throws: Error.self) { _ = try await next.preview(kind == "other-receipt" ? UUID() : p.id) }
+        await #expect(throws: ProvisioningServiceFailure.disabled) { _ = try await next.prepareApply(p.id) }
         try await next.closeForReopen(); await f.assertInert(); await f.close()
     }
     @Test(arguments: ["overlap", "duplicate", "private-edit", "reserved-file", "quota"])

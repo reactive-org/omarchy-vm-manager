@@ -87,7 +87,9 @@ extension ProvisioningService: ProvisioningCreationPlanning {
         return receipt
     }
     func bindCreation(_ id: UUID) async throws {
-        guard let draft = creations[id], let receipt = draft.reservation else { throw ProvisioningReviewFailure.unavailable }
+        guard let draft = creations[id], let receipt = draft.reservation else {
+            try await restoreSavedSelection(id); return
+        }
         let targets = await manager.snapshots().filter { $0.profile.developerSetup?.reviewID == id }
         try reviewAvailable(); try verifyCreation(draft)
         guard targets.count == 1, targets[0].id == receipt.vmID, targets[0].profile.developerSetup == receipt else { throw ProvisioningReviewFailure.changed }

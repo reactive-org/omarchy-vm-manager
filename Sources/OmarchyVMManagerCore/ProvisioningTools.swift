@@ -158,7 +158,7 @@ public struct ProvisioningToolsInvocation: Sendable {
     public let overrides: [ProvisioningTool: String]
     public static func parse(_ arguments: [String]) throws -> Self? {
         guard arguments.first == "setup" else { return nil }
-        guard arguments.count >= 2, arguments[1] == "tools" else { throw invalid() }
+        guard arguments.count >= 2, arguments[1] == "tools" else { return nil }
         var overrides: [ProvisioningTool: String] = [:], index = 2
         while index < arguments.count {
             guard arguments[index] == "--tool", index + 1 < arguments.count else { throw invalid() }

@@ -391,7 +391,7 @@ struct DeveloperSetupView: View {
         guard let service = reviewingService, let id = UUID(uuidString: previewLookup) else { return }
         planning = true; failure = nil; let revision = planRevision; defer { planning = false }
         do { let value = try await service.preview(id); guard revision == planRevision else { return }; try display(value) }
-        catch { failure = "This frozen preview is unavailable or belongs to another guest. It cannot be restored from a saved identifier after manager restart." }
+        catch { failure = "The saved setup inputs are missing, changed or belong to another guest. Create a new preview to review the intended setup again." }
     }
     @MainActor private func inspectTask(_ value: ProvisioningPlanPreview, task: ProvisioningTaskReview) async {
         guard let service = reviewingService else { return }

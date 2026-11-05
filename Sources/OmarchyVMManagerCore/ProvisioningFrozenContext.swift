@@ -63,6 +63,28 @@ final class ProvisioningPrivateInputTree: @unchecked Sendable {
             throw ProvisioningJobFailure.artifactUnavailable
         }
     }
+    /// Reopen only a retained manager source tree. This supplies file ownership,
+    /// never execution authority; the caller must match the saved receipt hashes.
+    init(retained directory: URL, parent: URL) throws {
+        self.parent = parent; self.directory = directory
+        guard directory.deletingLastPathComponent() == parent,
+              directory.lastPathComponent.hasPrefix("inputs-"),
+              UUID(uuidString: String(directory.lastPathComponent.dropFirst(7))) != nil else { throw ProvisioningJobFailure.artifactUnavailable }
+        do {
+            try PrivateFiles.directory(parent); try PrivateFiles.directory(directory)
+            parentFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            rootFD = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            var p = stat(), r = stat()
+            guard parentFD >= 0, rootFD >= 0, fstat(parentFD, &p) == 0, fstat(rootFD, &r) == 0,
+                  p.st_dev == r.st_dev else { throw ProvisioningJobFailure.artifactUnavailable }
+            parentInode = p.st_ino; rootInode = r.st_ino; device = p.st_dev
+            try verifyRoot()
+        } catch {
+            if rootFD >= 0 { Darwin.close(rootFD); rootFD = -1 }
+            if parentFD >= 0 { Darwin.close(parentFD); parentFD = -1 }
+            throw ProvisioningJobFailure.artifactUnavailable
+        }
+    }
     deinit { if rootFD >= 0 { Darwin.close(rootFD) }; if parentFD >= 0 { Darwin.close(parentFD) } }
     func verifyRoot() throws {
         try PrivateFiles.directory(parent); try PrivateFiles.directory(directory)

@@ -2293,3 +2293,37 @@ remain untouched. Shared provisioning resources/runtime/frozen pins are unchange
 Fake/local checks pass 75 core tests and 130 offscreen UI checks/27 screenshots;
 a fresh isolated ad-hoc Dev app is packaged separately. Real first boot with this
 revision remains TO PROVE. See [the semantics and exact limits](UnattendedDefaults.md#saved-values-apply-automatically--5-november-2026).
+
+## Disposable Dev end-to-end preparation — 5 November 2026
+
+**USER AUTHORIZATION:** enable provisioning only for the user's disposable Dev
+test VM, apply its saved Developer setup and rebuild Dev. Leave Main and its VMs
+untouched. This is a new Dev scope; historical Stable scope and frozen pins stay
+unchanged.
+
+**VERIFIED — read-only/fake/local:** one Dev profile has the saved setup receipt,
+account-default snapshot and ready managed SSH; no other Dev VM is active. Exact
+saved plan/input hashes match the current manager's preview. The plan selects
+Developer (workstation, keyring, CLI, VCS, editors and API), with no custom tasks,
+removals or Docker membership changes. Required Homebrew Ansible tools pass bounded
+readiness probes; no installation occurs.
+
+CLI routing and exact saved-input restoration across manager restart are fixed.
+The latter reopens only private retained source trees and matches plan/input/engine
+receipt hashes, without restoring consent, sessions or helper authority. Byte/mode,
+missing-input, wrong-receipt and changed-engine cases fail closed. Seventy-one
+focused fake/local tests and 130 offscreen UI checks/27 screenshots pass.
+
+**PRIVATE COUPLING:** a separate private Dev source/build embeds the same single
+original UUID/root/device/inode/marker scope in manager and helper. Both read-only
+inspections verify the approved root, reject another UUID and agree on scope. The
+ordinary worktree's execution gate remains disabled. Private approval, inputs,
+review packet and candidate stay outside Git. The same-application-team helper
+policy is preserved and correctly refuses the ad-hoc candidate.
+
+**TO PROVE / PENDING AUTHORIZATION:** real selected-key signing with secure UI and
+Apple timestamps, operational loaded-child admission, Dev-only replacement and
+saved-plan application, guest validation and cleanup. AGENTS.md requires separate
+approval before a real signing identity is used; the concrete private review is
+prepared and that authorization is requested. No real signing/key access, guest
+mutation or Main operation has occurred in this preparation.

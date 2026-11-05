@@ -281,7 +281,10 @@ struct ProvisioningToolsTests {
             do { _ = try ProvisioningToolsInvocation.parse(["setup", "tools", "--tool", key + "=/some/path"]); Issue.record("Retired override accepted") }
             catch let error as VMFailure { #expect(error.code == "retired-tool-override" && error.message.contains("schema 2")) }
         }
-        for arguments in [["setup"], ["setup", "apply"], ["setup", "tools", "--install"],
+        for arguments in [["setup"], ["setup", "apply"], ["setup", "preview", UUID().uuidString], ["setup", "capabilities"]] {
+            #expect(try ProvisioningToolsInvocation.parse(arguments) == nil)
+        }
+        for arguments in [["setup", "tools", "--install"],
                           ["setup", "tools", "--tool", "brew=relative"], ["setup", "tools", "--tool", "ssh=/bin/other"],
                           ["setup", "tools", "--tool", "brew=/one", "--tool", "brew=/two"]] {
             #expect(throws: VMFailure.self) { try ProvisioningToolsInvocation.parse(arguments) }

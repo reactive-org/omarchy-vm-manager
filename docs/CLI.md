@@ -229,7 +229,7 @@ connection; mutations are never automatically replayed. The endpoint admits
 only same-user peers, at most eight connections and one viewer per connection,
 with a 15-second activity lease. Inactive clients must poll or heartbeat.
 
-The frozen review/consent contract is described below. Product prepare/apply returns `failure: "disabled"` even when tools are ready; workflow restart/check/recover use the separately reviewed, execution-gated contract below. New VM can now save a frozen selection without authorizing execution, as described below. No product job is submitted. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
+The frozen review/consent contract is described below. Ordinary product prepare/apply returns `failure: "disabled"` even when tools are ready; workflow restart/check/recover use the separately reviewed, execution-gated contract below. New VM can now save a frozen selection without authorizing execution, as described below. No product job is submitted. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
 for validation and the remaining acceptance boundary.
 
 ### Frozen preview and separate task trust
@@ -251,8 +251,11 @@ Choose/retain the preview UUID before capture. A repeated UUID looks up its exac
 frozen inputs; it does not reread an edited source folder. A changed target/selection
 under that UUID is refused. Create a new preview to capture edits. `setup plan`
 remains a standalone proposal and cannot be supplied as an apply receipt. Preview
-capture starts no VM/helper and runs no dependency probe. Manager restart loses
-preview/consent handles; retained private files cannot restore execution authority.
+capture starts no VM/helper and runs no dependency probe. After manager restart, a saved New VM selection can restore its exact preview
+from manager-owned retained files only when plan, input and engine hashes match
+the profile receipt. It does not restore consent, session, helper or execution
+authority; prepare/apply still requires fresh admission. Other transient previews
+remain process-local.
 
 Review replies expose exact plan/input hashes, task entrypoint names/hashes and
 target review identity. Task-source reads are explicit 4096-byte chunks, encoded
@@ -381,3 +384,13 @@ build-time acceptance gate. Prepare/apply/workflow actions remain disabled befor
 tools or factories run; Homebrew readiness cannot enable them. Fake/local evidence
 and the remaining guest acceptance are recorded in
 [the milestone-6 preparation record](DevVMProvisioningPlan.md#milestone-6-preparation-authenticated-identity-and-dormant-backends--3-november-2026).
+
+### Setup CLI routing and saved selections — 5 November 2026
+
+`setup tools` parsing now defers other `setup` commands to the setup parser, so
+preview/apply/capabilities requests reach the dedicated manager endpoint. A saved
+New VM selection survives a manager restart through bounded retained-input lookup
+and exact plan/input/engine receipt matching. Changed bytes, modes, missing inputs,
+wrong receipts and changed engines are refused. Recovery restores no old consent
+or execution capability. Validation passes 71 focused fake/local tests and 130
+offscreen UI checks; the ordinary execution gate remains disabled.
