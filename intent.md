@@ -3393,3 +3393,44 @@ remains the visual target for milestone 5.
   Ansible/install/UI/app/runtime/VM action occurs. Commit before a separately
   approved new run; real final signature/resource-chain/candidate/guest behavior
   remains unproven. See the [fresh review](docs/DevVMMilestone6Runbook.md#resource-payload-admission--fake-fixtures-and-fresh-review-5-november-2026).
+
+## Maintained operator signing attempt — 5 November 2026
+
+**LATEST USER CLARIFICATION:** the operator says “I missed the prompt.” This
+supports a missed secure-UI response as the explanation for the signing timeout;
+it does not independently prove key use or timestamp success/failure. Keep the
+earlier completed-dialog report and automated evidence as historical records;
+exact dialog type/timing is not reconstructed. The plan remains consumed.
+
+- **USER-REPORTED FOLLOW-UP:** the operator reports completing a macOS secure-key/
+  keychain dialog. Dialog type and timing relative to the timeout remain unknown;
+  actual key use, timestamps and wait cause stay TO PROVE. The separate private
+  observation supplements, rather than rewrites, automated evidence. No retry,
+  native/key operation or new approval follows from this report.
+
+- **USER AUTHORIZATION:** fresh operator-plan build/sign/verify after manager
+  `b3171b0` / companion `9d3b4b6`, including selected key, secure UI and timestamps;
+  no notarization, SSH/Ansible, installs or VM launch. The exact 32-file snapshot,
+  engine/operator and plan bindings pass. Maintained CLI exact-plan confirmation
+  uses a real terminal; durable consumption precedes the default backend.
+- **VERIFIED — partial:** frozen preparation, 23 runtime static checks, public
+  certificate/dependency checks, release compilation and scope/binary checks pass.
+  Assembly now admits the exact 45-file payload, retaining the 49-file reference.
+  First child signing hits its 120-second limit; root/group is killed and reaped
+  (-9). Audited elapsed 715.494 seconds; CLI exit 1 and plan consumed/no retry.
+- **VERIFIED — cleanup/preservation:** all 43 roots/workers reap after group
+  quietness, descriptors closed, no pending handles and no recorded-PID survivors.
+  All 8,713 previous private entries/pins/reviews/audits are unchanged. Failed
+  output and consumed/attempt evidence remain private. Retained credential content
+  is unopened; selected keychain admission is metadata-only and lock state unqueried.
+  No orchestrator unlock/relock/import/export/enumeration/ACL/search-list changes,
+  scope-root observation/recapture or product approval change occurs.
+- **PRIVATE COUPLING / TO PROVE:** observed stderr 274 bytes is incomplete, raw
+  output unretained. Storage-helper bytes match compiled input, but actual key use,
+  secure UI display/response and timestamp outcome cannot be established. Do not
+  infer secure-UI versus Apple waiting. Other signing, final validation/seal/archive
+  and success receipt are not reached. No notarization/SSH/Ansible/install/app/
+  runtime/VM action occurs. Next collect operator observations/review key readiness
+  and timestamp connectivity before a new plan and fresh explicit approval. No
+  post-failure native/key operation or retry is performed. See the
+  [result](docs/DevVMMilestone6Runbook.md#first-maintained-operator-run--signing-timeout-5-november-2026).

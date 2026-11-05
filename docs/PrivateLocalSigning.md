@@ -149,3 +149,37 @@ umask `022` passes; both attempts' local test evidence is retained. `git diff
 --check` and the operator's `--help` also pass. The running engine's seventeen-file
 digest is unchanged. No real selection, inspection, signing, key access, Apple
 request, install or VM action is performed for this implementation task.
+
+### First real maintained run — 5 November 2026
+
+**LATEST USER CLARIFICATION:** the operator says “I missed the prompt.” This
+supports a missed secure-UI response as the explanation for the signing timeout;
+it does not independently prove key use or timestamp success/failure. Keep the
+earlier completed-dialog report and automated evidence as historical records;
+exact dialog type/timing is not reconstructed. The plan remains consumed.
+
+**USER-REPORTED FOLLOW-UP:** the operator reports completing a macOS secure-key/
+keychain dialog. The exact dialog type and timing relative to the timeout are
+unknown; this establishes neither selected-key use nor timestamp success or the
+wait cause. Historical automated evidence stays unchanged, with the report saved
+separately. No additional run, native check or key operation follows this reply.
+
+The explicitly approved `b3171b0` / companion `9d3b4b6` plan runs through this
+CLI's real exact-plan terminal confirmation, recheck, durable consumption and
+default backend. Frozen preparation, 23 runtime static checks, public inputs/
+dependencies, release build, compiled scope and corrected resource assembly pass.
+The first selected-key child signing command reaches its 120-second limit; the
+supervisor kills/reaps it, with no pending handles. Total audited elapsed is
+715.494 seconds, CLI exit 1; `attempt.json` is STOPPED_NO_RETRY. All 43 recorded
+command/native roots are absent in a bounded cleanup snapshot. All 8,713 prior
+artifact entries/pins remain unchanged; consumed/attempt/output evidence is private.
+
+The storage-helper bytes equal their compiled input. Observed stderr (274 bytes)
+is incomplete and not retained raw. Actual private-key use, secure UI display/
+response and Apple timestamp outcome are unestablished; no specific wait cause is
+inferred. No other signing/final app validation/seal/archive or success receipt is
+reached. No automatic unlock/relock, key import/export/enumeration, ACL/search-list
+change, scope recapture, notarization, SSH/Ansible, install, app/runtime or VM action.
+Lock state is not re-queried. Preserve this consumed plan and failed output; collect
+operator UI observations and review key readiness/timestamp connectivity before a
+new plan/output with fresh approval. See the [full result](DevVMMilestone6Runbook.md#first-maintained-operator-run--signing-timeout-5-november-2026).

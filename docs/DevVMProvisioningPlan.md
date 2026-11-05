@@ -3495,3 +3495,42 @@ No real inspection, signing, key access, Apple request, SSH/Ansible, install, UI
 app/runtime or VM execution occurs. Commit before a separately approved fresh run;
 real resource-seal/signing/candidate/guest evidence remains TO PROVE. See the
 [policy, fixtures and fresh review](DevVMMilestone6Runbook.md#resource-payload-admission--fake-fixtures-and-fresh-review-5-november-2026).
+
+## Maintained operator attempt — selected signing timeout, 5 November 2026
+
+**LATEST USER CLARIFICATION:** the operator says “I missed the prompt.” This
+supports a missed secure-UI response as the explanation for the signing timeout;
+it does not independently prove key use or timestamp success/failure. Keep the
+earlier completed-dialog report and automated evidence as historical records;
+exact dialog type/timing is not reconstructed. The plan remains consumed.
+
+**USER-REPORTED FOLLOW-UP:** the operator reports completing a macOS secure-key/
+keychain dialog. UI presence/response is now reported by the operator, while the
+exact dialog type/timing, selected-key use and timestamp outcome remain unproven.
+The consumed request is not retried; no new inspection/key operation is authorized.
+
+The user approves the fresh plan after `b3171b0` / companion `9d3b4b6`, including
+selected key, secure UI and Apple timestamps. All 32 snapshot files and engine/
+operator/plan bindings match; the maintained CLI obtains exact-plan confirmation
+through a real terminal and durably consumes the plan before backend construction.
+Frozen preparation, 23 runtime static checks, public certificate/dependency
+validation, release build and binary/scope checks pass. Resource assembly now
+succeeds with 45 exact payload files and the unchanged 49-file frozen reference.
+
+The first child signing command reaches its 120-second limit; it is killed/reaped
+with confirmed group/descriptor cleanup. Total audited elapsed time is 715.494
+seconds, CLI exit 1. Storage-helper bytes remain equal to compiled input. Observed
+stderr is 274 bytes/incomplete and retained only as a fixed sign/incomplete-output
+code; it cannot distinguish secure UI/key access from timestamp waiting. Actual
+key use, UI display/response and Apple timestamp outcome remain unestablished.
+No remaining signing/final app validation/seal/archive or success receipt is reached.
+
+All 43 recorded command/worker roots are reaped with no unresolved handles and
+absent in a bounded snapshot. All 8,713 previous artifact entries/pins remain
+unchanged; failed output and new consumed/attempt records stay private. Retained
+credential content is unopened, keychain state unqueried, no automatic unlock or
+scope recapture. No notarization, SSH/Ansible, install, app/runtime or VM action.
+Next collect operator UI observations and review key readiness versus timestamp
+connectivity, then prepare a distinct plan with fresh approval. No retry or further
+native/key operation is performed here. See the
+[operator result and limits](DevVMMilestone6Runbook.md#first-maintained-operator-run--signing-timeout-5-november-2026).

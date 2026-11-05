@@ -325,3 +325,13 @@ reference signatures excluded. Built/output signatures and unknown changes still
 refuse; generic inventories and final seals remain enforced. Fourteen new cases;
 291 audited passes/five signing skips. A fresh maintained operator plan is prepared
 but unexecuted, with all approvals unset and 8,691 old artifact entries/pins intact.
+
+[First maintained operator run](DevVMMilestone6Runbook.md#first-maintained-operator-run--signing-timeout-5-november-2026)
+passes build, runtime checks and corrected resource assembly, then times out on the
+first selected-key signing command. All 43 recorded roots clean up; 8,713 prior
+artifact entries/pins are preserved. The operator later reports completing a macOS
+secure-key/keychain dialog; its type/timing, actual key use and timestamp/wait outcome
+remain unproven. No signed result/archive is established. The plan is consumed.
+
+The operator clarifies that the signing prompt was missed. This supports a secure-UI
+wait explanation; key readiness and timestamp outcomes remain separate evidence.

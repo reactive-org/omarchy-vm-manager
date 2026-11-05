@@ -1520,6 +1520,73 @@ occurs. Commit the reviewed bytes before any separately approved new attempt wit
 fresh terminal confirmation. Real final signing/key/UI/timestamp/resource-seal and
 candidate/guest behavior remain unproven; no old approval transfers.
 
+## First maintained operator run — signing timeout, 5 November 2026
+
+**LATEST USER CLARIFICATION:** the operator says “I missed the prompt.” This
+supports a missed secure-UI response as the explanation for the signing timeout;
+it does not independently prove key use or timestamp success/failure. Keep the
+earlier completed-dialog report and automated evidence as historical records;
+exact dialog type/timing is not reconstructed. The plan remains consumed.
+
+**USER-REPORTED FOLLOW-UP:** the operator answers “I completed a dialog” to the
+question about a macOS secure-key/keychain dialog during this run. Record the UI
+as displayed/completed according to the operator. Its exact type and completion
+time relative to the timeout are unknown: keychain unlock, selected-key approval
+and timestamp success are not independently established. This does not identify
+the timeout cause or authorize another attempt. Automated evidence and old private
+audit records remain unchanged; the observation is a separate private supplement.
+
+**AUTHORIZED / STOPPED WITHOUT RETRY:** after manager `b3171b0` / companion
+`9d3b4b6`, the user approves the fresh operator plan's private build/sign/verify
+run with selected-key use, existing secure key UI and Apple timestamps. Preflight
+confirms all 32 snapshot files match the commit/current files, independent engine/
+operator hashes and the exact reviewed plan. The unmodified maintained CLI receives
+its exact-plan confirmation through a real controlling terminal, rechecks inputs,
+and exclusively records `consumed.json` before constructing the default backend.
+Historical review/approval files remain unchanged; no old authority is replayed.
+
+**VERIFIED — partial:** frozen preparation, all 23 runtime static checks, public
+certificate/dependency validation, release compilation and binary/scope-marker
+checks pass. Corrected resource assembly succeeds: all 45 payload/wrapper files
+match the admitted comparison while all 49 frozen reference files are retained.
+The first selected signing command, `sign-child-OmarchyVMStorageHelper`, reaches
+its reviewed 120-second limit. The supervisor refuses `offline-stage-timeout`,
+kills the original command group and reaps the root with exit -9. Total audited
+elapsed time is 715.494 seconds; the CLI exits 1 and records STOPPED_NO_RETRY.
+
+**DIAGNOSIS LIMIT / TO PROVE:** zero stdout bytes and 274 stderr bytes are observed,
+with no complete stderr/EOF classification. Only the fixed sign/incomplete-output
+code is retained; raw child output is not saved. The helper's bytes equal its
+compiled input after cleanup. This does not establish whether the selected key
+was accessed, a secure-key prompt appeared/was answered, or Apple was contacted.
+A secure-UI/key-availability wait and a timestamp-service wait cannot be distinguished
+from this evidence. Key/UI/timestamp success and final candidate signatures remain
+unproven. No other child/outer signing stage, final static app verification, digest
+seal/archive roundtrip, success receipt or signed archive is reached. The assembled
+app is retained as failed/incomplete signing output and must not be treated as a
+launch-ready or distributable candidate.
+
+**VERIFIED — cleanup/preservation:** twelve build commands and thirty native workers
+complete; the thirteenth command times out. All 43 roots/workers record group
+quietness, reap and closed descriptors; there are no pending handles. A bounded
+read-only snapshot restricted to their recorded PIDs finds none remaining and its
+process is reaped. All 8,713 earlier private artifact entries/pins, older attempts,
+reviews and audits compare unchanged. Only new candidate output, durable consumed/
+attempt records and private audit evidence are added. Retained credential-named
+content stays unopened with stable metadata. Selected keychain admission is metadata
+only; actual selected-key/certificate/timestamp signing behavior is unestablished.
+No keychain state query, orchestrator unlock/relock, import/export/enumeration,
+ACL/search-list modification, scope-root observation or pin recapture occurs.
+Product approval remains nil. No notarization, SSH/Ansible, install, app/runtime
+execution or VM operation occurs.
+
+**NEXT:** collect the operator's observation of any secure-key/keychain dialog and
+review selected-key readiness/secure UI versus timestamp connectivity before a
+new attempt. Do not infer the cause or extend the timeout from the incomplete
+stream count. Preserve the consumed plan and failed output; any retry requires a
+new plan/output and fresh explicit approval/terminal confirmation. No new real
+inspection, signing or key query is run as post-failure diagnosis here.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without
