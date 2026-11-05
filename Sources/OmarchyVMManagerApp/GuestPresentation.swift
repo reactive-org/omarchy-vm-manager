@@ -19,12 +19,37 @@ struct GuestArtwork: View {
                 Image(systemName: "desktopcomputer").resizable().scaledToFit().padding(size * 0.2)
             }
             if busy {
-                RoundedRectangle(cornerRadius: size * 0.185).fill(.black.opacity(0.55))
+                RoundedRectangle(cornerRadius: size * 0.185).fill(.black.opacity(0.35))
                     .frame(width: size * 0.81, height: size * 0.81)
-                ProgressView().controlSize(size < 40 ? .mini : .regular)
-                    .environment(\.colorScheme, .dark)
+                TileTracer(radius: size * 0.185, lineWidth: max(1.5, size * 0.035))
+                    .frame(width: size * 0.81, height: size * 0.81)
             }
         }.frame(width: size, height: size).accessibilityHidden(true)
+    }
+}
+
+/// Busy indicator for the guest tile: a green segment running around its edge, matching the
+/// library frame mark's tracer. Under Reduce Motion the whole edge stays lit instead.
+private struct TileTracer: View {
+    let radius: CGFloat
+    let lineWidth: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let length = 0.22
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: radius)
+        let line = StrokeStyle(lineWidth: lineWidth, lineCap: .square)
+        if reduceMotion {
+            shape.strokeBorder(Theme.green, lineWidth: lineWidth)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+                let start = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
+                ZStack {
+                    shape.stroke(Theme.green.opacity(0.25), lineWidth: lineWidth)
+                    shape.trim(from: start, to: min(start + length, 1)).stroke(Theme.green, style: line)
+                    if start + length > 1 { shape.trim(from: 0, to: start + length - 1).stroke(Theme.green, style: line) }
+                }.padding(lineWidth / 2)
+            }
+        }
     }
 }
 
