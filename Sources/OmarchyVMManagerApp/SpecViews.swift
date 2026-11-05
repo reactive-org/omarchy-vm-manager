@@ -16,6 +16,24 @@ struct QuietActionButtonStyle: ButtonStyle {
     }
 }
 
+/// Sidebar row: a green outline marks the selection instead of the system highlight.
+struct SidebarRowButtonStyle: ButtonStyle {
+    let selected: Bool
+    let focused: Bool
+    @State private var hovering = false
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.controlRadius)
+        configuration.label
+            .font(.system(size: 13)).foregroundStyle(Color.primary)
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Theme.green.opacity(focused ? 0.12 : 0.07) : configuration.isPressed || hovering ? Color.primary.opacity(0.06) : .clear, in: shape)
+            .overlay(shape.strokeBorder(selected ? (focused ? Theme.green : Theme.green.opacity(0.55)) : .clear))
+            .contentShape(shape)
+            .onHover { hovering = $0 }
+    }
+}
+
 extension ButtonStyle where Self == QuietActionButtonStyle {
     static var quietAction: QuietActionButtonStyle { QuietActionButtonStyle() }
 }

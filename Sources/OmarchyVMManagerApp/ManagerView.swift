@@ -12,6 +12,7 @@ struct ManagerView: View {
     @State private var importingFactory = false
     @State private var page: GuestPage = .home
     @State private var detailPresentation = UUID()
+    @FocusState private var sidebarFocused: Bool
     init(model: AppModel) { self.model = model }
     #if DEBUG
     init(model: AppModel, acceptanceGuestID: UUID, acceptancePage: String = GuestPage.setup.rawValue) {
@@ -37,35 +38,46 @@ struct ManagerView: View {
     private var navigationContent: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
-                List(selection: $destination) {
-                    HStack(spacing: 9) {
-                        ManagerArtwork(size: 34)
-                        Text(AppChannel.current.displayName).font(.system(size: 17, weight: .medium)).fixedSize(horizontal: false, vertical: true)
-                    }.padding(.vertical, 5).tag(Destination.library)
-                    Section {
-                        if model.snapshots.isEmpty, model.registryError == nil {
-                            Text("No guests yet").font(.system(size: 13)).foregroundStyle(.secondary).selectionDisabled()
-                        }
-                        ForEach(model.snapshots) { snapshot in
-                            HStack(spacing: 9) {
-                                GuestArtwork(size: 26, state: snapshot.state)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(snapshot.profile.name).lineLimit(1)
-                                    HStack(spacing: 6) {
-                                        GuestStatusMarker(active: snapshot.sessionID != nil)
-                                        Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(.caption).foregroundStyle(snapshot.sessionID == nil ? Color.secondary : Theme.green).lineLimit(1)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            sidebarRow(.library) {
+                                HStack(spacing: 9) {
+                                    ManagerArtwork(size: 34)
+                                    Text(AppChannel.current.displayName).font(.system(size: 17, weight: .medium)).fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            sidebarHeader("guests")
+                            if model.snapshots.isEmpty, model.registryError == nil {
+                                Text("No guests yet").font(.system(size: 13)).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 5)
+                            }
+                            ForEach(model.snapshots) { snapshot in
+                                sidebarRow(.guest(snapshot.id)) {
+                                    HStack(spacing: 9) {
+                                        GuestArtwork(size: 26, state: snapshot.state)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(snapshot.profile.name).lineLimit(1)
+                                            HStack(spacing: 6) {
+                                                GuestStatusMarker(active: snapshot.sessionID != nil)
+                                                Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(.caption).foregroundStyle(snapshot.sessionID == nil ? Color.secondary : Theme.green).lineLimit(1)
+                                            }
+                                        }
                                     }
                                 }
-                            }.padding(.vertical, 5).tag(Destination.guest(snapshot.id))
-                        }
-                    } header: { sidebarHeader("guests") }
-                    Section {
-                        Label("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark").tag(Destination.defaults)
-                        Label("Permissions", systemImage: "hand.raised.fill").tag(Destination.permissions)
-                        Label("Runtime", systemImage: "checkmark.shield").tag(Destination.runtime)
-                        Label("Provisioning tools", systemImage: "wrench.and.screwdriver").tag(Destination.provisioningTools)
-                    } header: { sidebarHeader("manager") }
-                }.listStyle(.sidebar).scrollContentBackground(.hidden)
+                            }
+                            sidebarHeader("manager")
+                            sidebarLink("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark", .defaults)
+                            sidebarLink("Permissions", systemImage: "hand.raised.fill", .permissions)
+                            sidebarLink("Runtime", systemImage: "checkmark.shield", .runtime)
+                            sidebarLink("Provisioning tools", systemImage: "wrench.and.screwdriver", .provisioningTools)
+                        }.padding(.horizontal, 10).padding(.vertical, 8)
+                    }
+                    .focusable().focused($sidebarFocused).focusEffectDisabled()
+                    .onKeyPress(.upArrow) { moveSelection(by: -1) }
+                    .onKeyPress(.downArrow) { moveSelection(by: 1) }
+                    .onChange(of: destination) { if let destination { proxy.scrollTo(destination) } }
+                    .accessibilityElement(children: .contain).accessibilityLabel("Sidebar")
+                }
                 VStack(alignment: .leading, spacing: 5) {
                     Text(AppChannel.current.displayName + " " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")")
                         .bold()
@@ -125,6 +137,35 @@ struct ManagerView: View {
 
     private func sidebarHeader(_ title: String) -> some View {
         Text(title).font(Theme.mono(11)).foregroundStyle(Theme.label).textCase(nil)
+            .padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 4).accessibilityAddTraits(.isHeader)
+    }
+
+    /// Sidebar destinations in visual order, for arrow-key navigation.
+    private var sidebarOrder: [Destination] {
+        [.library] + model.snapshots.map { .guest($0.id) } + [.defaults, .permissions, .runtime, .provisioningTools]
+    }
+
+    private func moveSelection(by offset: Int) -> KeyPress.Result {
+        let order = sidebarOrder
+        let current = destination.flatMap(order.firstIndex(of:)) ?? 0
+        destination = order[min(max(current + offset, 0), order.count - 1)]
+        return .handled
+    }
+
+    private func sidebarRow<Content: View>(_ target: Destination, @ViewBuilder content: () -> Content) -> some View {
+        Button { destination = target; sidebarFocused = true } label: { content() }
+            .buttonStyle(SidebarRowButtonStyle(selected: destination == target, focused: sidebarFocused))
+            .accessibilityAddTraits(destination == target ? .isSelected : [])
+            .id(target)
+    }
+
+    private func sidebarLink(_ title: String, systemImage: String, _ target: Destination) -> some View {
+        sidebarRow(target) {
+            HStack(spacing: 9) {
+                Image(systemName: systemImage).foregroundStyle(destination == target ? Theme.green : Theme.label).frame(width: 20)
+                Text(title)
+            }
+        }
     }
 
     private var backupConfirmationContent: some View {
