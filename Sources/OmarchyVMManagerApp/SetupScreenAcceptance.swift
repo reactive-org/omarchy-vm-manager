@@ -407,6 +407,8 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         defer { homeHost.close() }; tick(); try capture(homeHost, "home-dark.png")
         enabledModel.snapshots = []; tick(); try capture(homeHost, "home-empty-dark.png")
         homeHost.close(); tick()
+        let loadingHost = Host(ManagerLoadingView(), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+        tick(); try capture(loadingHost, "loading-dark.png"); loadingHost.close(); tick()
         try check(runtime.startRequests.isEmpty && !FileManager.default.fileExists(atPath: support.path), "zero-runtime-starts-or-support-access")
         try check(NSApplication.shared.windows.filter { $0.isVisible }.isEmpty, "zero-visible-windows")
         let report: [String: Any] = ["schema": 1, "checks": checks, "realExecution": false, "runtimeStarts": runtime.startRequests.count, "captures": service.captures, "images": images, "fakeSubmissions": enabled.submissions, "physicalInputTested": false, "visibleWindows": NSApplication.shared.windows.filter(\.isVisible).count, "gate": "unchanged-disabled", "onscreenWindows": 0, "activation": false]

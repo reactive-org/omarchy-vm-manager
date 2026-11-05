@@ -37,8 +37,9 @@ struct ManagerView: View {
 
     private var navigationContent: some View {
         NavigationSplitView {
-            VStack(spacing: 0) {
-                ScrollViewReader { proxy in
+            // The sidebar scroll view lays out below the toolbar but draws with the toolbar inset a second time,
+            // which shifts rows 52 pt below their click targets. Ignore the top safe area and pad by it instead.
+            GeometryReader { geometry in ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
                             sidebarRow(.library) {
@@ -70,21 +71,24 @@ struct ManagerView: View {
                             sidebarLink("Permissions", systemImage: "hand.raised.fill", .permissions)
                             sidebarLink("Runtime", systemImage: "checkmark.shield", .runtime)
                             sidebarLink("Provisioning tools", systemImage: "wrench.and.screwdriver", .provisioningTools)
-                        }.padding(.horizontal, 10).padding(.vertical, 8)
+                        }.padding(.horizontal, 10).padding(.top, geometry.safeAreaInsets.top + 8).padding(.bottom, 8)
                     }
-                    .focusable().focused($sidebarFocused).focusEffectDisabled()
-                    .onKeyPress(.upArrow) { moveSelection(by: -1) }
-                    .onKeyPress(.downArrow) { moveSelection(by: 1) }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(AppChannel.current.displayName + " " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")")
+                                .bold()
+                            Text("A project of [reactive.org enterprises](https://www.reactive.org/)").foregroundStyle(.secondary)
+                        }.font(.caption).lineLimit(1).minimumScaleFactor(0.75)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(18).background(Theme.pane)
+                    }
                     .onChange(of: destination) { if let destination { proxy.scrollTo(destination) } }
-                    .accessibilityElement(children: .contain).accessibilityLabel("Sidebar")
-                }
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(AppChannel.current.displayName + " " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")")
-                        .bold()
-                    Text("A project of [reactive.org enterprises](https://www.reactive.org/)").foregroundStyle(.secondary)
-                }.font(.caption).lineLimit(1).minimumScaleFactor(0.75)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(18)
-            }.background(Theme.pane).navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
+                    .ignoresSafeArea(.container, edges: .top)
+            } }
+            .focusable().focused($sidebarFocused).focusEffectDisabled()
+            .onKeyPress(.upArrow) { moveSelection(by: -1) }
+            .onKeyPress(.downArrow) { moveSelection(by: 1) }
+            .accessibilityElement(children: .contain).accessibilityLabel("Sidebar")
+            .background(Theme.pane).navigationSplitViewColumnWidth(min: 230, ideal: 255, max: 330)
         } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.gap) {
@@ -760,22 +764,23 @@ struct VMEditor: View {
 
 }
 
-private struct ManagerLoadingView: View {
+struct ManagerLoadingView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        VStack(spacing: 24) {
-            ManagerArtwork(size: 112)
-            VStack(spacing: 8) {
-                Text(AppChannel.current.displayName).font(.title.bold())
-                Text("Loading your virtual machines…")
-                    .foregroundStyle(.secondary)
+        VStack(spacing: 20) {
+            // The library's frame mark with its tracer stands in for a spinner; Reduce Motion falls back to the system one.
+            FrameMark(size: 120, tracer: reduceMotion ? nil : Theme.green)
+            VStack(spacing: 6) {
+                Text(AppChannel.current.displayName).font(.system(size: 22, weight: .semibold))
+                Text("loading guests…").font(Theme.mono(13)).foregroundStyle(Theme.label)
             }
-            ProgressView()
-                .controlSize(.regular)
-                .accessibilityLabel("Loading your virtual machines")
+            if reduceMotion { ProgressView().controlSize(.small) }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading your virtual machines")
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Theme.ground)
         .navigationTitle(AppChannel.current.displayName)
     }
 }
