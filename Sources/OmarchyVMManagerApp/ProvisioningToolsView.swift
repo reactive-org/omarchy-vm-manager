@@ -9,7 +9,7 @@ struct ProvisioningToolsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Text("Provisioning tools").font(.system(size: 26, weight: .semibold))
+                Text("Provisioning tools").font(Theme.sans(26, weight: .semibold))
                 Spacer()
                 if checking { ProgressView().controlSize(.small) }
                 Button("Check again") { Task { await refresh() } }.disabled(checking)
@@ -21,12 +21,12 @@ struct ProvisioningToolsView: View {
                 ForEach(report.tools) { tool in
                     VStack(alignment: .leading, spacing: 7) {
                         HStack {
-                            Text(tool.tool.title).font(.headline)
+                            Text(tool.tool.title).font(Theme.sans(14, weight: .semibold))
                             if let version = tool.version { Text(version).monospaced().foregroundStyle(.secondary) }
                             Spacer()
                             Text(tool.status.label).foregroundStyle(tool.status == .available ? Color.green : Color.orange)
                         }
-                        Text(tool.reason).font(.callout)
+                        Text(tool.reason).font(Theme.sans(13))
                         if let executable = tool.executable {
                             Text(executable.path).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                         }
@@ -41,7 +41,7 @@ struct ProvisioningToolsView: View {
                     }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
                         .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
                 }
-                Text("Feature availability").font(.title2.bold())
+                Text("Feature availability").font(Theme.sans(20, weight: .semibold))
                 ForEach(report.features) { feature in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -49,13 +49,13 @@ struct ProvisioningToolsView: View {
                             Spacer()
                             Text(feature.toolsReady ? "Tools ready · integration pending" : "Unavailable").foregroundStyle(.secondary)
                         }
-                        Text(feature.reason).font(.callout).foregroundStyle(.secondary)
+                        Text(feature.reason).font(Theme.sans(13)).foregroundStyle(.secondary)
                     }.padding(.vertical, 6)
                 }
                 Text(report.policy).font(.caption).foregroundStyle(.secondary)
             }
             Text("Checks do not install tools, read GitHub credentials, contact a guest or launch a VM.")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(Theme.sans(13)).foregroundStyle(.secondary)
         }.task { if report == nil { await refresh() } }
     }
 

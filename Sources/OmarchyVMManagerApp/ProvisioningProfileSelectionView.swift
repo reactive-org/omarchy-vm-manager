@@ -11,7 +11,7 @@ struct ProvisioningProfileSelectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Profiles").font(.headline)
+                Text("Profiles").font(Theme.sans(14, weight: .semibold))
                 Spacer()
                 Text(selection.isEmpty ? (localSource ? "Optional additions" : "Select one or more") : "\(selection.count) selected").font(Theme.note).foregroundStyle(.secondary)
             }
@@ -45,7 +45,7 @@ struct ProvisioningProfileSelectionView: View {
                 }.frame(width: 15, height: 15).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text(name).font(.system(size: 13, weight: .medium))
+                        Text(name).font(Theme.sans(13, weight: .medium))
                         if profile.includesDeveloper { Text("Includes Developer").font(Theme.note).foregroundStyle(.secondary) }
                     }
                     let details = profile.additionalFeatures.map(featureTitle) + profile.tools.map(toolTitle) + (profile.databaseClients.isEmpty ? [] : [profile.databaseClients.map(toolTitle).joined(separator: " · ") + " clients"])
@@ -107,7 +107,7 @@ struct ProvisioningReviewedProfilesView: View {
     var body: some View {
         if !names.isEmpty {
             Label("In this preview: " + names.joined(separator: " · "), systemImage: "checkmark.seal")
-                .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                .font(Theme.sans(13)).foregroundStyle(.secondary).textSelection(.enabled)
         }
     }
 }

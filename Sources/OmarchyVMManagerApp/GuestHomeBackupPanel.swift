@@ -31,7 +31,7 @@ struct GuestHomeBackupPanel: View {
                         Button("Back Up Home…", action: review).disabled(!snapshot.canBackUpHome)
                     }
                 }
-                Text(detail).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(detail).font(Theme.sans(13)).foregroundStyle(.secondary).textSelection(.enabled)
             }.padding(20)
         }
     }

@@ -17,17 +17,17 @@ struct FactoryImportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Import Factory").font(.system(size: 20, weight: .semibold))
+            Text("Import Factory").font(Theme.sans(20, weight: .semibold))
             if let imported {
-                Label(imported.displayName, systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).font(.headline)
+                Label(imported.displayName, systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).font(Theme.sans(14, weight: .semibold))
                 Text("Verified and imported. This factory is available for new virtual machines.")
                     .foregroundStyle(.secondary)
             } else {
                 Text("Choose a prepared factory bundle from a source you trust. The app checks the image, provisioning files and compatibility with this runtime.")
                     .foregroundStyle(.secondary)
                 Link("Prepare your own factory image: dev-vm example", destination: URL(string: "https://www.reactive.org/dev-vm")!)
-                    .font(.callout)
-                if let selectedName { Text(selectedName).font(.callout).lineLimit(2) }
+                    .font(Theme.sans(13))
+                if let selectedName { Text(selectedName).font(Theme.sans(13)).lineLimit(2) }
                 if working {
                     ProgressView(cancelling ? "Cancelling import…" : model.factoryImportProgress.rawValue)
                     Text("Large factory images can take a few minutes to verify and copy.").font(Theme.note).foregroundStyle(.secondary)
@@ -36,7 +36,7 @@ struct FactoryImportView: View {
                     Text("Select the folder containing factory.json and reviewed-factory.json.").font(Theme.note).foregroundStyle(.secondary)
                 }
             }
-            if let error { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }
+            if let error { Text(error).foregroundStyle(.red).font(Theme.sans(13)).fixedSize(horizontal: false, vertical: true) }
             Divider()
             HStack {
                 Spacer()
@@ -50,7 +50,7 @@ struct FactoryImportView: View {
                 }
             }
         }
-        .padding(20).frame(width: 500, alignment: .leading).background(Theme.pane).buttonStyle(.quietAction)
+        .padding(20).frame(width: 500, alignment: .leading).font(Theme.body).background(Theme.pane).buttonStyle(.quietAction)
         .interactiveDismissDisabled(working || choosing)
         .onDisappear { operation?.cancel(); chooser?.cancel() }
     }

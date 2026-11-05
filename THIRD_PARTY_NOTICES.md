@@ -58,3 +58,12 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Inter 4.1 and JetBrains Mono 2.304
+
+The manager's interface typefaces are bundled in `App/Fonts` and copied unchanged to `Contents/Resources/Fonts`. They are registered for the manager process only.
+
+- Inter 4.1 (Regular, Medium and SemiBold static TTFs from `extras/ttf` of https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip, archive SHA-256 `9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e`). Copyright (c) 2016 The Inter Project Authors. SIL Open Font License 1.1; full text in `App/Fonts/Inter-OFL.txt`.
+- JetBrains Mono 2.304 (Regular and Medium TTFs from `fonts/ttf` of https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip, archive SHA-256 `6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf`). Copyright 2020 The JetBrains Mono Project Authors. SIL Open Font License 1.1; full text in `App/Fonts/JetBrainsMono-OFL.txt`.
+
+The font files are unmodified and are not sold on their own.

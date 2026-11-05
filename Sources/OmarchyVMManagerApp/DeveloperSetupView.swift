@@ -56,7 +56,7 @@ struct DeveloperSetupView: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Developer setup").font(.system(size: 26, weight: .semibold))
+                    Text("Developer setup").font(Theme.sans(26, weight: .semibold))
                     Text("Configure this VM from a reviewed dev-vm configuration.").foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -81,8 +81,8 @@ struct DeveloperSetupView: View {
                     }
                     if source != "none" { ProvisioningAppearanceSelectionView(draft: $appearance).disabled(planning || preparingApply || submitting || applyReview != nil) }
                     if let folder, source == "local" { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
-                    Text("Preview software, removals, update policy, dotfiles and restart requirements before applying. Custom tasks require separate trust tied to the frozen inputs.").font(.callout).foregroundStyle(.secondary)
-                    Text(executionEnabled ? "Applying setup requires a target review and the permissions shown below. A preview does not change this VM." : "Setup execution is disabled in this build. A preview does not change this VM or its resource settings.").font(.callout).foregroundStyle(.secondary)
+                    Text("Preview software, removals, update policy, dotfiles and restart requirements before applying. Custom tasks require separate trust tied to the frozen inputs.").font(Theme.sans(13)).foregroundStyle(.secondary)
+                    Text(executionEnabled ? "Applying setup requires a target review and the permissions shown below. A preview does not change this VM." : "Setup execution is disabled in this build. A preview does not change this VM or its resource settings.").font(Theme.sans(13)).foregroundStyle(.secondary)
                     DisclosureGroup("Details") {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -126,7 +126,7 @@ struct DeveloperSetupView: View {
                 }
             }
             if let workflow {
-                Text(workflow.title).font(.title2.bold())
+                Text(workflow.title).font(Theme.sans(20, weight: .semibold))
                 HStack(spacing: 14) {
                     ForEach(ProvisioningSetupPhase.allCases, id: \.self) { phase in
                         Label(phase.rawValue, systemImage: currentPhase(workflow) == phase ? "circle.inset.filled" : "circle").foregroundStyle(currentPhase(workflow) == phase ? Color.accentColor : Color.secondary)
@@ -140,7 +140,7 @@ struct DeveloperSetupView: View {
                 workflowActions(workflow)
                 terminal(height: 420)
                 HStack {
-                    Text(continuationMessage).font(.callout).foregroundStyle(.secondary)
+                    Text(continuationMessage).font(Theme.sans(13)).foregroundStyle(.secondary)
                     Spacer()
                     Button("Cancel Setup…") { confirmCancel = true }.disabled(!workflow.canCancel)
                 }
@@ -155,7 +155,7 @@ struct DeveloperSetupView: View {
                 }
             } else {
                 terminal(height: 260)
-                Text("No setup job for this guest. Live output will appear here when an admitted job is available.").foregroundStyle(.secondary).font(.callout)
+                Text("No setup job for this guest. Live output will appear here when an admitted job is available.").foregroundStyle(.secondary).font(Theme.sans(13))
             }
         }
         .onChange(of: workflow?.id) { _, _ in
@@ -171,7 +171,7 @@ struct DeveloperSetupView: View {
         }
         .sheet(isPresented: taskPresentation) {
             VStack(alignment: .leading) {
-                Text("Frozen task source").font(.title2.bold())
+                Text("Frozen task source").font(Theme.sans(20, weight: .semibold))
                 ScrollView([.horizontal, .vertical]) { Text(taskText ?? "Source unavailable").font(.system(.body, design: .monospaced)).textSelection(.enabled).padding(12) }
                 Button("Done") { showingTask = false }
             }.padding(20).frame(width: 760, height: 560)
@@ -237,10 +237,10 @@ struct DeveloperSetupView: View {
         if !workflow.availableActions.isEmpty || workflowActionReview?.workflowID == workflow.id {
             GroupedPanel {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Reviewed workflow actions").font(.headline)
+                    Text("Reviewed workflow actions").font(Theme.sans(14, weight: .semibold))
                     ForEach(workflow.availableActions, id: \.self) { action in
                         HStack {
-                            Text(action.explanation).font(.callout).foregroundStyle(.secondary)
+                            Text(action.explanation).font(Theme.sans(13)).foregroundStyle(.secondary)
                             Spacer()
                             Button("Review " + action.title.lowercased() + "…") { Task { await prepareWorkflowAction(workflow, action: action) } }
                                 .disabled(actingService?.executionEnabled != true || actionBusy)
@@ -248,7 +248,7 @@ struct DeveloperSetupView: View {
                     }
                     if let review = workflowActionReview, review.workflowID == workflow.id {
                         Text(review.action.title).bold()
-                        Text(review.action.explanation).font(.callout)
+                        Text(review.action.explanation).font(Theme.sans(13))
                         DisclosureGroup("Details") {
                             Text("Session: " + review.sessionID.uuidString).font(.caption).textSelection(.enabled)
                             Text("Input fingerprint: " + review.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
@@ -371,7 +371,7 @@ struct DeveloperSetupView: View {
                     Toggle("Allow custom tasks from this configuration", isOn: $taskConsent)
                         .help("Trust the exact reviewed configuration, inspected task files and assets. This permission is separate from admin and Docker access.")
                         .disabled(!value.tasks.allSatisfy { inspectedTasks.contains($0.name) })
-                    Text("Custom Ansible tasks can run on this Mac and in the VM, using credentials available to Ansible. Approval covers the reviewed configuration, task files and assets.").font(.callout)
+                    Text("Custom Ansible tasks can run on this Mac and in the VM, using credentials available to Ansible. Approval covers the reviewed configuration, task files and assets.").font(Theme.sans(13))
                 }
                 Button("Apply reviewed setup") { Task { await submit(value, review: review) } }
                     .accessibilityIdentifier("setup.apply")

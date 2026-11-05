@@ -6,7 +6,7 @@ struct QuietActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let destructive = configuration.role == .destructive
         configuration.label
-            .font(.system(size: 13, weight: .medium))
+            .font(Theme.sans(13, weight: .medium))
             .foregroundStyle(destructive ? Color.red : Color.primary)
             .padding(.horizontal, 12).frame(minHeight: 32)
             .background(configuration.isPressed ? Color.primary.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
@@ -67,7 +67,7 @@ struct SpecLine: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 88, alignment: .leading)
             Text(value).font(Theme.mono(14)).foregroundStyle(tint ?? Color.primary).textSelection(.enabled)
-            if let note { Text(note).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if let note { Text(note).font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -112,7 +112,7 @@ struct SpecRow<Trailing: View>: View {
             Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 132, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 if let value { Text(value).font(Theme.mono(14)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
-                if let note { Text(note).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                if let note { Text(note).font(Theme.sans(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }.frame(maxWidth: .infinity, alignment: .leading)
             trailing.layoutPriority(1)
         }
@@ -197,8 +197,8 @@ struct ScreenHeader<Trailing: View>: View {
         GroupedPanel {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(title).font(.system(size: 26, weight: .semibold)).accessibilityAddTraits(.isHeader)
-                    if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                    Text(title).font(Theme.sans(26, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    if let subtitle { Text(subtitle).font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 trailing
             }.padding(.horizontal, 24).padding(.vertical, 18)
@@ -226,7 +226,7 @@ struct DisclosurePaneRow<Content: View>: View {
                     Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.secondary)
                         .rotationEffect(isOpen ? .degrees(90) : .zero).frame(width: 10).accessibilityHidden(true)
                     Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 88, alignment: .leading)
-                    Text(summary).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(summary).font(Theme.sans(13)).foregroundStyle(.secondary).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, 20).frame(minHeight: 48).contentShape(Rectangle())
             }

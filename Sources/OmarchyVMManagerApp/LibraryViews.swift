@@ -58,7 +58,7 @@ struct LibraryHeader: View {
     private var title: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                Text("Your Omarchy virtual machines").font(.system(size: 26, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                Text("Your Omarchy virtual machines").font(Theme.sans(26, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                 if AppChannel.current == .development {
                     Text("DEV").font(Theme.mono(11, weight: .medium)).foregroundStyle(Theme.onGreen)
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -137,7 +137,7 @@ struct FirstGuestPanel: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("virtual machines").font(Theme.mono(13, weight: .medium)).foregroundStyle(Theme.green)
                     Rectangle().fill(Theme.strongBorder).frame(height: 1).padding(.top, 8).padding(.bottom, 10)
-                    Text("No guests yet").font(.system(size: 24, weight: .semibold))
+                    Text("No guests yet").font(Theme.sans(24, weight: .semibold))
                     Text("Create an independent guest with its own disk, settings and clipboard.")
                         .foregroundStyle(.secondary).padding(.top, 6).padding(.bottom, 16)
                         .fixedSize(horizontal: false, vertical: true)
@@ -169,7 +169,7 @@ private struct StartRow: View {
         Button(action: action) {
             HStack(spacing: 16) {
                 Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 132, alignment: .leading)
-                Text(text).font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                Text(text).font(Theme.sans(13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(.secondary).accessibilityHidden(true)
             }
             .padding(.horizontal, 12).frame(minHeight: 44)

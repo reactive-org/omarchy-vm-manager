@@ -45,12 +45,12 @@ struct ManagerView: View {
                             sidebarRow(.library) {
                                 HStack(spacing: 9) {
                                     ManagerArtwork(size: 34)
-                                    Text(AppChannel.current.displayName).font(.system(size: 17, weight: .medium)).fixedSize(horizontal: false, vertical: true)
+                                    Text(AppChannel.current.displayName).font(Theme.sans(17, weight: .medium)).fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                             sidebarHeader("guests")
                             if model.snapshots.isEmpty, model.registryError == nil {
-                                Text("No guests yet").font(.system(size: 13)).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 5)
+                                Text("No guests yet").font(Theme.sans(13)).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 5)
                             }
                             ForEach(model.snapshots) { snapshot in
                                 sidebarRow(.guest(snapshot.id)) {
@@ -231,7 +231,7 @@ struct ManagerView: View {
             if !model.snapshots.isEmpty {
                 GroupedPanel {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Virtual Machines").font(.system(size: 15, weight: .semibold)).padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 10)
+                        Text("Virtual Machines").font(Theme.sans(15, weight: .semibold)).padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 10)
                         ForEach(model.snapshots) { snapshot in
                             GuestLibraryRow(snapshot: snapshot, open: { focusGuest(snapshot.id) }) { controls(snapshot) }
                         }
@@ -246,7 +246,7 @@ struct ManagerView: View {
             GuestHeaderPane(snapshot: snapshot) { controls(snapshot) }
             GuestTabs(page: $page)
             if snapshot.profile.isRetainedPOC {
-                Label("This POC disk keeps its original configuration. Delete VM moves it to Trash after confirmation.", systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
+                Label("This POC disk keeps its original configuration. Delete VM moves it to Trash after confirmation.", systemImage: "info.circle").font(Theme.sans(13)).foregroundStyle(.secondary)
             }
             switch page {
             case .home: guestHome(snapshot)
@@ -258,12 +258,12 @@ struct ManagerView: View {
             case .setup: DeveloperSetupView(model: model, snapshot: snapshot)
             }
             Group {
-                if let notice = snapshot.notice { Label(notice, systemImage: "info.circle").font(.callout).lineLimit(2).help(notice) }
+                if let notice = snapshot.notice { Label(notice, systemImage: "info.circle").font(Theme.sans(13)).lineLimit(2).help(notice) }
                 else { Color.clear }
             }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 38, alignment: .top)
             if let failure = snapshot.lastFailure {
                 GroupedPanel { VStack(alignment: .leading, spacing: 10) {
-                    Label("\(failure.code)", systemImage: "exclamationmark.triangle").font(.headline)
+                    Label("\(failure.code)", systemImage: "exclamationmark.triangle").font(Theme.sans(14, weight: .semibold))
                     Text(failure.message)
                     if !failure.diagnostics.isEmpty { DisclosureGroup("Helper diagnostics") { Text(failure.diagnostics).font(Theme.mono(12)).textSelection(.enabled) } }
                 }.padding(20) }
@@ -322,7 +322,7 @@ struct ManagerView: View {
     }
 
     private func paneNote(_ text: String) -> some View {
-        Text(text).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4).padding(.top, 2)
+        Text(text).font(Theme.sans(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4).padding(.top, 2)
     }
 
     private func status(_ text: String) -> some View {
@@ -405,7 +405,7 @@ struct ManagerView: View {
         GroupedPanel {
             VStack(alignment: .leading, spacing: 0) {
                 SpecHeading("mission control spaces")
-                Text("Use the guest’s own Dock icon to choose its desktop.").font(.system(size: 13)).foregroundStyle(.secondary).padding(.top, 4).padding(.bottom, 10)
+                Text("Use the guest’s own Dock icon to choose its desktop.").font(Theme.sans(13)).foregroundStyle(.secondary).padding(.top, 4).padding(.bottom, 10)
                 let steps = ["Launch this guest in windowed mode.", "Move its window to the desktop you want in Mission Control.", "Control-click “\(snapshot.profile.name)” in the Dock.", "Choose Options → Assign To → This Desktop."]
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -416,8 +416,8 @@ struct ManagerView: View {
                     .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Each storage root has a stable guest app identity, independent of its display name. macOS manages the assignment. To release it, choose Assign To → None.").font(.system(size: 13)).foregroundStyle(.secondary)
-                    if snapshot.profile.isRetainedPOC { Text("Retained POC guests keep their original display settings. New guests start in windowed mode.").font(.callout).foregroundStyle(.secondary) }
+                    Text("Each storage root has a stable guest app identity, independent of its display name. macOS manages the assignment. To release it, choose Assign To → None.").font(Theme.sans(13)).foregroundStyle(.secondary)
+                    if snapshot.profile.isRetainedPOC { Text("Retained POC guests keep their original display settings. New guests start in windowed mode.").font(Theme.sans(13)).foregroundStyle(.secondary) }
                     Link("Apple’s guide to Mission Control Spaces", destination: URL(string: "https://support.apple.com/guide/mac-help/mh14112/mac")!)
                     Text("Assignment persistence across guest restarts needs verification on this Mac with the updated runtime.").font(Theme.note).foregroundStyle(.secondary)
                 }.padding(.top, 10).overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
@@ -496,7 +496,7 @@ private struct GuestTabs: View {
                 ForEach(GuestPage.allCases, id: \.self) { item in
                     let selected = item == page
                     Button { page = item } label: {
-                        Text(item.rawValue).font(.system(size: 13, weight: selected ? .medium : .regular)).foregroundStyle(selected ? Color.primary : Color.secondary)
+                        Text(item.rawValue).font(Theme.sans(13, weight: selected ? .medium : .regular)).foregroundStyle(selected ? Color.primary : Color.secondary)
                             .frame(maxWidth: .infinity).frame(height: 32)
                             .background(selected ? Theme.green.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
                             .overlay { if selected { RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(Theme.green) } }
@@ -604,7 +604,7 @@ struct VMEditor: View {
     }
     private var identity: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(profile == nil ? "New Virtual Machine" : "Configure Virtual Machine").font(.system(size: 20, weight: .semibold)).padding(.bottom, 10)
+            Text(profile == nil ? "New Virtual Machine" : "Configure Virtual Machine").font(Theme.sans(20, weight: .semibold)).padding(.bottom, 10)
             SpecRow("name") {
                 TextField("Name", text: $name, prompt: Text("Enter a name")).labelsHidden().specField().frame(width: 400)
             }
@@ -696,12 +696,12 @@ struct VMEditor: View {
             DisclosurePaneRow(key: "resources", summary: resourcesSummary, isOpen: paneBinding(.resources)) { resourceRows.disabled(saving) }
             DisclosurePaneRow(key: "access", summary: accessSummary, isOpen: paneBinding(.access)) { accessRows.disabled(saving) }
             VStack(alignment: .leading, spacing: 10) {
-            if let error = keyError { Text(error).foregroundStyle(.red).font(.callout) }
-            if let error = model.configurationError { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }
-            Text(profile == nil ? "The selected factory prepares on first launch. Each guest has independent storage. Networking uses NAT. Host-folder sharing and guest Touch ID are opt-in. USB and camera are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let error = keyError { Text(error).foregroundStyle(.red).font(Theme.sans(13)) }
+            if let error = model.configurationError { Text(error).foregroundStyle(.red).font(Theme.sans(13)).fixedSize(horizontal: false, vertical: true) }
+            Text(profile == nil ? "The selected factory prepares on first launch. Each guest has independent storage. Networking uses NAT. Host-folder sharing and guest Touch ID are opt-in. USB and camera are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(Theme.sans(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let saveBlocker {
                 Label(saveBlocker, systemImage: saving ? "hourglass" : "info.circle")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("new-vm.validation")
             }
             HStack {
@@ -711,7 +711,7 @@ struct VMEditor: View {
                 }.accessibilityIdentifier("new-vm.create").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
             }
             }.padding(.horizontal, 20).padding(.vertical, 12).overlay(alignment: .top) { Rectangle().fill(Theme.strongBorder).frame(height: 1) }
-        }.frame(width: 620).background(Theme.pane).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle()).interactiveDismissDisabled(saving)
+        }.frame(width: 620).font(Theme.body).background(Theme.pane).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle()).interactiveDismissDisabled(saving)
         .onChange(of: setupBlocker) { _, value in if value != nil { openPane = .software } }
         .onChange(of: useOwnerDefaults) { _, value in
             if value { selectedPublicKey = model.ownerDefaults?.sshPublicKey }
@@ -773,7 +773,7 @@ struct ManagerLoadingView: View {
             // The library's frame mark with its tracer stands in for a spinner; Reduce Motion falls back to the system one.
             FrameMark(size: 120, tracer: reduceMotion ? nil : Theme.green)
             VStack(spacing: 6) {
-                Text(AppChannel.current.displayName).font(.system(size: 22, weight: .semibold))
+                Text(AppChannel.current.displayName).font(Theme.sans(22, weight: .semibold))
                 Text("loading guests…").font(Theme.mono(13)).foregroundStyle(Theme.label)
             }
             if reduceMotion { ProgressView().controlSize(.small) }

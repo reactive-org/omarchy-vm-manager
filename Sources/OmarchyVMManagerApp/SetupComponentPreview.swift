@@ -50,14 +50,14 @@ import SwiftUI
                 VStack(alignment: .leading, spacing: 16) {
                     Picker("Source", selection: .constant("developer")) { Text("developer").tag("developer") }
                     ProvisioningFeatureSelectionView(selection: .constant(.init(enable: [.cli, .docker], disable: [.languages])), initiallyExpanded: true)
-                    Text("Creating a VM saves its reviewed selection. Apply, custom tasks and sudo require separate review.").font(.callout).foregroundStyle(.secondary)
-                    Label("Setup execution disabled", systemImage: "lock.fill").font(.callout)
+                    Text("Creating a VM saves its reviewed selection. Apply, custom tasks and sudo require separate review.").font(Theme.sans(13)).foregroundStyle(.secondary)
+                    Label("Setup execution disabled", systemImage: "lock.fill").font(Theme.sans(13))
                 }.frame(width: 400)
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Terminal rendering sample · synthetic").font(.headline)
+                    Text("Terminal rendering sample · synthetic").font(Theme.sans(14, weight: .semibold))
                     ProvisioningNativeTerminal(screen: screen).frame(height: 440)
                     Text(screen.message).font(.caption).foregroundStyle(.secondary)
-                    Text("This image checks component layout and rendering only. Full Setup/New VM interaction and real guest output remain separate acceptance checks.").font(.callout).foregroundStyle(.secondary)
+                    Text("This image checks component layout and rendering only. Full Setup/New VM interaction and real guest output remain separate acceptance checks.").font(Theme.sans(13)).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)

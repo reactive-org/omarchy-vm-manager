@@ -120,7 +120,7 @@ struct OwnerDefaultsView: View {
                     }
                 }.buttonStyle(.primaryAction).disabled(saving || model.registryError != nil)
             }
-            Text("Automatic setup supports the reviewed prepared factory image. Disk partitioning, encryption and Tailscale settings from the ISO guide are outside this flow. If the image’s setup scripts change, the guest returns to normal setup and the manager reports why.").font(.callout).foregroundStyle(.secondary)
+            Text("Automatic setup supports the reviewed prepared factory image. Disk partitioning, encryption and Tailscale settings from the ISO guide are outside this flow. If the image’s setup scripts change, the guest returns to normal setup and the manager reports why.").font(Theme.sans(13)).foregroundStyle(.secondary)
             Link("Omarchy’s unattended-install guide", destination: URL(string: "https://omarchy.org/manual/unattended-installs/")!)
         }
         .task { await model.loadDefaults(); disks = model.diskDefaults; if let value = model.ownerDefaults { configuration = value.configuration; publicKey = value.sshPublicKey } }

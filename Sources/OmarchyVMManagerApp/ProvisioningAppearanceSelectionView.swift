@@ -114,7 +114,7 @@ struct ProvisioningAppearanceSelectionView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "link").foregroundStyle(.secondary)
                     TextField("Theme repository", text: $draft.theme, prompt: Text("https://github.com/owner/theme"))
-                        .labelsHidden().textFieldStyle(.plain).font(.callout)
+                        .labelsHidden().textFieldStyle(.plain).font(Theme.sans(13))
                         .accessibilityIdentifier("setup.theme")
                 }.padding(10).background(inputBackground)
                 Label("Repository checked when you review", systemImage: "network")
@@ -122,7 +122,7 @@ struct ProvisioningAppearanceSelectionView: View {
                     .help("Review setup checks repository accessibility with a GET request. This does not verify theme contents or pin a Git commit.")
             case .random:
                 HStack(spacing: 8) {
-                    Text("Minimum stars").font(.callout).foregroundStyle(.secondary)
+                    Text("Minimum stars").font(Theme.sans(13)).foregroundStyle(.secondary)
                     Spacer()
                     HStack(spacing: 6) {
                         Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
@@ -168,7 +168,7 @@ struct ProvisioningAppearanceSelectionView: View {
                 } else {
                     Button { choosingLayout = true } label: {
                         Label("Choose a layout file…", systemImage: "doc.badge.plus")
-                            .font(.callout).frame(maxWidth: .infinity).padding(.vertical, 15)
+                            .font(Theme.sans(13)).frame(maxWidth: .infinity).padding(.vertical, 15)
                             .contentShape(Rectangle())
                     }.buttonStyle(.plain)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))

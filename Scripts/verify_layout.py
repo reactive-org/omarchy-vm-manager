@@ -45,6 +45,10 @@ for stem in ("OmarchyVMManager", "OmarchyGuest"):
         source_stem = "OmarchyVMManagerDev" if development and stem == "OmarchyVMManager" else stem
         assert (contents / "Resources" / name).read_bytes() == (ROOT / "App/Assets" / (source_stem + "." + extension)).read_bytes()
     assert (contents / "Resources" / (stem + ".icns")).read_bytes().startswith(b"icns")
+fonts = sorted(path.name for path in (ROOT / "App/Fonts").iterdir())
+assert sorted(path.name for path in (contents / "Resources/Fonts").iterdir()) == fonts, "bundled fonts differ"
+for name in fonts:
+    assert (contents / "Resources/Fonts" / name).read_bytes() == (ROOT / "App/Fonts" / name).read_bytes()
 assert not (contents / "Library/LaunchDaemons").exists(), "NAT-only app must not register networking"
 assert (contents / "Resources/TryOmarchy-THIRD_PARTY_NOTICES.md").is_file()
 cli_name = "omarchy-vm-dev" if development else "omarchy-vm"

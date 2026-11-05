@@ -21,11 +21,19 @@ enum Theme {
     static let gap: CGFloat = 8
 
     /// Supporting text. macOS's caption style is 10 pt, too small against the 14 pt body the design uses.
-    static let note = Font.system(size: 12)
-    static let body = Font.system(size: 14)
+    static let note = sans(12)
+    static let body = sans(14)
 
+    /// Inter, bundled with the app (see BundledFonts). Weights above semibold use SemiBold,
+    /// the heaviest bundled cut; an unregistered font falls back to the system font.
+    static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let name = [.semibold, .bold, .heavy, .black].contains(weight) ? "Inter-SemiBold" : weight == .medium ? "Inter-Medium" : "Inter-Regular"
+        return .custom(name, size: size)
+    }
+
+    /// JetBrains Mono, bundled with the app, in Regular or Medium.
     static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+        .custom([.ultraLight, .thin, .light, .regular].contains(weight) ? "JetBrainsMono-Regular" : "JetBrainsMono-Medium", size: size)
     }
 
     private static func dynamic(dark: UInt32, light: UInt32) -> Color {
@@ -41,7 +49,7 @@ struct PrimaryActionButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
+            .font(Theme.sans(13, weight: .semibold))
             .foregroundStyle(Theme.onGreen)
             .padding(.horizontal, 10).frame(minHeight: 30)
             .background(RoundedRectangle(cornerRadius: Theme.controlRadius).fill(Theme.green))

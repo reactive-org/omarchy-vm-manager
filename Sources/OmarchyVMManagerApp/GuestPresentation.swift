@@ -104,7 +104,7 @@ struct GuestLibraryRow<Controls: View>: View {
         HStack(spacing: 18) {
             GuestArtwork(size: 44, state: snapshot.state)
             VStack(alignment: .leading, spacing: 3) {
-                Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(.system(size: 15, weight: .medium))
+                Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(Theme.sans(15, weight: .medium))
                     .lineLimit(1).help(snapshot.profile.name)
                 GuestStatusLine(snapshot: snapshot).font(Theme.note)
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -136,11 +136,11 @@ struct GuestHeaderPane<Controls: View>: View {
             HStack(spacing: 24) {
                 GuestArtwork(size: 76, state: snapshot.state)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(snapshot.profile.name).font(.system(size: 26, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.8).help(snapshot.profile.name)
+                    Text(snapshot.profile.name).font(Theme.sans(26, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.8).help(snapshot.profile.name)
                     HStack(spacing: 4) {
                         GuestStatusLine(snapshot: snapshot)
                         Text(snapshot.state == .stopped && snapshot.suspension == nil ? "· Ready to launch · Independent disk · Shared (NAT) network" : "· Independent disk · Shared (NAT) network").foregroundStyle(.secondary).lineLimit(1)
-                    }.font(.system(size: 13))
+                    }.font(Theme.sans(13))
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 controls.frame(width: 148, height: 30, alignment: .trailing)
             }
@@ -185,7 +185,7 @@ struct GuestControls: View {
                 } else if snapshot.sessionID != nil {
                     Button { stop() } label: { Text("Shut Down").frame(width: 96) }
                         .disabled(snapshot.state == .stopping)
-                } else { Text("Please wait…").font(.callout).foregroundStyle(.secondary) }
+                } else { Text("Please wait…").font(Theme.sans(13)).foregroundStyle(.secondary) }
             }.frame(width: 116, height: 30)
             Menu {
                 if snapshot.state == .running {
@@ -257,8 +257,8 @@ struct GuestHibernationPanel: View {
                     if snapshot.experimentalPowerBusy { ProgressView().controlSize(.small) }
                 }.frame(width: 34)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Suspend to Disk · Experimental").font(.headline)
-                    Text(snapshot.profile.homeDisk != nil ? "Separate home disk" : snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(.callout).lineLimit(1)
+                    Text("Suspend to Disk · Experimental").font(Theme.sans(14, weight: .medium))
+                    Text(snapshot.profile.homeDisk != nil ? "Separate home disk" : snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(Theme.sans(13)).lineLimit(1)
                     Text(detail).font(Theme.note).foregroundStyle(.secondary).lineLimit(3).help(detail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Group {

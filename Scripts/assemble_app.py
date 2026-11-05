@@ -96,6 +96,7 @@ def assemble():
             for extension in ("icns", "png"):
                 source_stem = "OmarchyVMManagerDev" if development and stem == "OmarchyVMManager" else stem
                 shutil.copy2(ROOT / "App/Assets" / (source_stem + "." + extension), stage / "Contents/Resources" / (stem + "." + extension))
+        shutil.copytree(ROOT / "App/Fonts", stage / "Contents/Resources/Fonts")
         shutil.copy2(lock_path, stage / "Contents/Resources/TryOmarchyRuntime.lock.json")
         for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(ROOT / name, stage / "Contents/Resources" / name)
