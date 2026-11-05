@@ -76,6 +76,34 @@ struct SpecLine: View {
     }
 }
 
+/// A menu picker drawn as a spec field (dark well, mono value, chevrons) instead of the grey pop-up button.
+struct SpecMenuPicker<Value: Hashable, Options: View>: View {
+    let title: String
+    @Binding var selection: Value
+    let label: String
+    @ViewBuilder let options: Options
+    init(_ title: String, selection: Binding<Value>, label: String, @ViewBuilder options: () -> Options) {
+        self.title = title; _selection = selection; self.label = label; self.options = options()
+    }
+    var body: some View {
+        Menu {
+            Picker(title, selection: $selection) { options }.pickerStyle(.inline).labelsHidden()
+        } label: {
+            HStack(spacing: 8) {
+                Text(label).font(Theme.mono(13)).lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10).frame(height: 30)
+            .background(Theme.ground, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(Theme.strongBorder))
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+        .accessibilityLabel(title).accessibilityValue(label)
+    }
+}
+
 extension View {
     /// Text entry in the spec sheet's monospaced style.
     func specField() -> some View {
@@ -112,16 +140,36 @@ struct SpecRow<Trailing: View>: View {
         self.key = key; self.value = value; self.note = note; self.trailing = trailing()
     }
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 132, alignment: .leading)
-            VStack(alignment: .leading, spacing: 2) {
-                if let value { Text(value).font(Theme.mono(14)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
-                if let note { Text(note).font(Theme.sans(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            trailing.layoutPriority(1)
+        // Notes sit beside the value when there is room; beside a wide control they drop to their
+        // own line rather than being squeezed to a sliver.
+        ViewThatFits(in: .horizontal) {
+            row(inlineNote: true)
+            row(inlineNote: false)
         }
         .padding(.vertical, 6).frame(minHeight: 40)
         .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+
+    private func row(inlineNote: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 12) {
+                Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 132, alignment: .leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Color.clear.frame(height: 0)
+                    if let value { Text(value).font(Theme.mono(14)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
+                    if let note, inlineNote { noteText(note) }
+                }.frame(minWidth: inlineNote && note != nil && hasControl ? 220 : 0, maxWidth: .infinity, alignment: .leading)
+                trailing.layoutPriority(1)
+            }
+            if let note, !inlineNote { noteText(note).padding(.leading, 144) }
+        }
+    }
+}
+
+extension SpecRow {
+    private var hasControl: Bool { Trailing.self != EmptyView.self }
+    private func noteText(_ note: String) -> some View {
+        Text(note).font(Theme.sans(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -182,6 +230,8 @@ struct SpecPane<Action: View, Content: View>: View {
                     .frame(minHeight: 30).padding(.bottom, 8)
                 content
             }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 8)
+            // Rows only set a minimum height, so a stretched pane would spread them apart.
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

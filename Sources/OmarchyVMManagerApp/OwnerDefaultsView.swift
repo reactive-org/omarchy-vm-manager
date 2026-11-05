@@ -65,16 +65,16 @@ struct OwnerDefaultsView: View {
                     SpecRow("hostname") { TextField("Hostname prefix", text: $configuration.hostnamePrefix).labelsHidden().specField().frame(maxWidth: 260) }
                     SpecNote("Guest hostnames append a unique suffix, for example \(configuration.hostnamePrefix)-a1b2c3d4.").padding(.bottom, 6)
                     SpecRow("time zone") {
-                        Picker("Time zone", selection: $configuration.timezone) {
+                        SpecMenuPicker("Time zone", selection: $configuration.timezone, label: configuration.timezone) {
                             Text("Same as macOS").tag("Same as macOS")
                             Text("UTC").tag("UTC")
                             ForEach(TimeZone.knownTimeZoneIdentifiers, id: \.self) { Text($0).tag($0) }
-                        }.labelsHidden().frame(maxWidth: 240)
+                        }.frame(maxWidth: 240)
                     }
                     SpecRow("keyboard") {
-                        Picker("Keyboard", selection: $configuration.keyboardID) {
+                        SpecMenuPicker("Keyboard", selection: $configuration.keyboardID, label: configuration.keyboardID) {
                             ForEach(OwnerSetupContract.current.keyboards) { Text($0.id).tag($0.id) }
-                        }.labelsHidden().frame(maxWidth: 240)
+                        }.frame(maxWidth: 240)
                     }
                     }
                     SpecPane("ssh public key") {
