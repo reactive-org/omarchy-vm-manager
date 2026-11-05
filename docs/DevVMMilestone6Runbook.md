@@ -1953,3 +1953,51 @@ output, authority, build or candidate output is created now. All execution effec
 remain NOT_GRANTED. No signing, key access, Apple request, SSH/Ansible, install,
 normal app/UI/runtime action or VM launch occurs. Loaded-child, original-Mac scope
 and real guest acceptance remain separately reviewed TO PROVE work.
+
+## Fresh 4a0f30a native inspection passed — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** preparation docs are committed as manager
+`e04f20a` and companion `f51fc47`. The user explicitly approves the fresh review's
+bounded read-only native inspection, preserving artifacts/pins and excluding
+signing, private-key access, Apple requests, SSH/Ansible, installs and VM launches.
+All 173 sealed review files, corrected guard/composition, new request and seventeen
+engine-file bindings match; the 32 committed tooling files match `4a0f30a`, the
+documentation execution commit and current files. The original review is unchanged.
+The trusted one-off composition constructs only the exact typed in-memory
+`offline-native-inspect` authority after those checks and durably consumes the
+request once. No JSON or prior approval is treated as authority.
+
+The native call succeeds as **OFFLINE_STATIC_INSPECTION_ONLY** in 77.816 audited
+seconds. All 31 workers complete without fixed parent refusals, worker diagnostics
+or guard blocks. Both pinned dependencies pass fresh before/after clean revision
+and raw tracked-source/index checks. With interaction disabled, the named
+keychain is locked before/after, its file identity/metadata revalidates unchanged
+throughout and native references release. No identity/item/private-key query,
+unlock/relock/import/export, ACL/search-list change or prompt is used.
+
+The strict signedData/content-only CMS path, exact Stable profile policy, public
+leaf membership and certificate name/typed validity-date checks pass. All 22
+admitted runtime Mach-O files plus the enclosing bundle pass the exact team/ID,
+hardened-runtime/timestamp/entitlement policy with explicit no-network/strict/
+all-architecture and appropriate nested-code flags. The upstream verifier and
+daemon `check` are not run; no runtime/app executable is launched.
+
+All 31 owned roots have quiet groups, matching exit/reap, closed descriptors and
+zero unresolved handles; a separate five-second PID-only snapshot finds every
+recorded root absent. All 18,881 pre-existing private artifact entries, including
+the frozen review, old successful ZIP, failed attempts, consumed plans and pins,
+compare unchanged. Credential-named content remains unopened and metadata stable;
+no VM root is observed or pin recaptured. Source-only admission and all 173 sealed
+review-file hashes independently revalidate after execution. Only the planned
+new inspection output and separate private execution/analysis evidence are added.
+The ordinary product approval remains nil; shared package/code/pins are unchanged.
+
+**LIMITS / NEXT:** this is fresh offline static evidence for the exact merged-source/
+runtime review. CMS signer authenticity and selected-certificate trust are not
+established/evaluated; online revocation, fresh notarization/Gatekeeper, private-key
+availability, loaded-child behavior, original-Mac scope and real guest acceptance
+remain unproven. No signing operator plan or candidate build is created. The request
+stays consumed, with no automatic retry. A fresh attended signing plan may now be
+prepared against this new receipt; actual build/signing/selected-key use/secure UI/
+Apple timestamps still require separate exact-plan approval. No signing, private-key
+access, Apple request, SSH/Ansible, install, UI/app/runtime or VM operation occurs.

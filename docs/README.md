@@ -352,3 +352,5 @@ original-Mac, loaded-child and disposable-guest acceptance remain separate.
 [Integration with next](DevVMProvisioningPlan.md#integration-with-next--5-november-2026) records combined channel/home/Setup behavior and the historical signed candidate boundary. A merged-source candidate needs a fresh review; private pins are preserved.
 
 [Fresh private 4a0f30a candidate review](DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-4a0f30a--5-november-2026) prepares exact merged-source/runtime inputs and a new bounded-inspection request. File-data/fake checks pass; native inspection and signing remain unexecuted and require separate approval.
+
+[Fresh 4a0f30a native inspection passed](DevVMMilestone6Runbook.md#fresh-4a0f30a-native-inspection-passed--5-november-2026): 31 bounded workers and 23 offline static code checks pass; cleanup and preservation verified. The consumed receipt supports a new signing-plan review, without granting signing/key/Apple/guest authority.

@@ -3664,3 +3664,28 @@ its new successful receipt must precede a signing operator plan. No native outpu
 authority, operator plan or candidate build exists. All execution effects remain
 NOT_GRANTED. No signing, key access, Apple request, SSH/Ansible, installs, normal
 app/UI/runtime action or VM launch occurs. See the fresh 4a0f30a review runbook.
+
+## Fresh merged-source native inspection result — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** after manager `e04f20a` / companion `f51fc47`
+commit the preparation docs, the user approves the exact fresh `4a0f30a` bounded
+read-only inspection. The unchanged review/composition/guard, 173 sealed files,
+32 committed tooling files and seventeen-file engine digest match. Only the exact
+typed in-memory offline-inspection effect is granted; the request is consumed once.
+
+**VERIFIED — native offline static only:** all 31 workers pass in 77.816 seconds.
+Pinned source dependencies are clean before/after; interaction-disabled named
+keychain status is locked before/after with metadata revalidated unchanged. Public
+profile policy, leaf membership, certificate identity/typed dates and all 22 runtime
+Mach-O plus enclosing-bundle no-network static checks pass. Every root is group-quiet/
+reaped/closed, with zero unresolved handles and absent in a bounded recorded-PID
+snapshot. All 18,881 prior private entries, review/pins and candidate/failed/consumed
+artifacts remain unchanged. Source admission and all 173 sealed files revalidate.
+Ordinary product approval remains nil; no scope root is observed or pin recaptured.
+
+**TO PROVE:** CMS signer authenticity, certificate trust, online revocation/fresh
+notarization/Gatekeeper, key availability, merged-source candidate build/signing,
+loaded-child/original-Mac/guest acceptance. The new receipt permits preparation of
+a fresh attended signing plan, not execution authority. No plan/candidate build,
+signing, private-key access, Apple request, SSH/Ansible, install, UI/app/runtime or
+VM action occurs; no automatic retry. See the fresh inspection result runbook.

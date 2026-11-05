@@ -3642,3 +3642,21 @@ A new successful source/runtime-bound inspection receipt must precede signing-pl
 preparation. All proposed execution effects remain NOT_GRANTED. No signing, key
 access, Apple request, SSH/Ansible, install, app/runtime or VM launch occurs.
 See the [fresh review and limits](DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-4a0f30a--5-november-2026).
+
+## Fresh merged-source native inspection passed — 5 November 2026
+
+After preparation commits `e04f20a` / companion `f51fc47`, the explicitly approved
+`4a0f30a` review succeeds as OFFLINE_STATIC_INSPECTION_ONLY in 77.816 seconds.
+All 31 workers, pinned dependency checks, locked-before/after named-keychain status,
+public profile/certificate policy and 23 no-network static code checks pass. Every
+owned root is group-quiet/reaped/closed with zero unresolved handles and absent in
+a bounded PID-only snapshot. All 18,881 old private entries, frozen review/pins and
+prior candidates remain unchanged; 173 sealed review files and source admission
+revalidate. The ordinary product and shared package remain unchanged.
+
+The request is consumed without retry. No signing plan/candidate build, private-key
+query, Apple request, SSH/Ansible, install, app/runtime or VM launch occurs. This
+receipt can support preparing a fresh attended signing plan; it does not authorize
+signing or establish key availability, CMS signer authenticity, certificate trust,
+current revocation/notarization or original-Mac/loaded-child/guest acceptance.
+See the [exact result and limits](DevVMMilestone6Runbook.md#fresh-4a0f30a-native-inspection-passed--5-november-2026).
