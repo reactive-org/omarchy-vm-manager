@@ -72,14 +72,14 @@ struct LibraryHeader: View {
     private func stat(_ value: String, _ label: String, tint: Color = .primary) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(value).font(Theme.mono(24, weight: .medium)).foregroundStyle(tint)
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(label).font(Theme.note).foregroundStyle(.secondary)
         }.accessibilityElement(children: .combine)
     }
 
     private func inlineStat(_ value: String, _ label: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             Text(value).font(Theme.mono(20, weight: .medium))
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(label).font(Theme.note).foregroundStyle(.secondary)
         }.accessibilityElement(children: .combine)
     }
 

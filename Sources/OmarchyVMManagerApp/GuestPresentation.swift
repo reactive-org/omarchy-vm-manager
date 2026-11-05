@@ -49,7 +49,7 @@ struct GuestProgressSlot: View {
         VStack(alignment: .leading, spacing: 6) {
             if let detail {
                 let label = detail.text + (detail.percent.map { " · \($0)%" } ?? "")
-                Text(label).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).help(label)
+                Text(label).font(Theme.note).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).help(label)
                 if let percent = detail.percent {
                     ProgressView(value: Double(percent), total: 100).progressViewStyle(.linear).frame(height: 4)
                 } else { Color.clear.frame(height: 4) }
@@ -106,7 +106,7 @@ struct GuestLibraryRow<Controls: View>: View {
             VStack(alignment: .leading, spacing: 3) {
                 Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(.system(size: 15, weight: .medium))
                     .lineLimit(1).help(snapshot.profile.name)
-                GuestStatusLine(snapshot: snapshot).font(.caption)
+                GuestStatusLine(snapshot: snapshot).font(Theme.note)
             }.frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 10) {
                 spec("\(snapshot.profile.cpus)", "cores")
@@ -156,7 +156,7 @@ struct GuestHeaderPane<Controls: View>: View {
 struct OmarchyAttribution: View {
     var body: some View {
         Text("Omarchy is a pending trademark of the [Omacom Foundation](https://omarchy.org/foundation/).")
-            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            .font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -259,7 +259,7 @@ struct GuestHibernationPanel: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Suspend to Disk · Experimental").font(.headline)
                     Text(snapshot.profile.homeDisk != nil ? "Separate home disk" : snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(.callout).lineLimit(1)
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3).help(detail)
+                    Text(detail).font(Theme.note).foregroundStyle(.secondary).lineLimit(3).help(detail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Group {
                 if snapshot.suspension?.stage == .coldBootDetected && snapshot.state == .running {

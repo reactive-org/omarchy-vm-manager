@@ -20,6 +20,10 @@ enum Theme {
     static let controlRadius: CGFloat = 4
     static let gap: CGFloat = 8
 
+    /// Supporting text. macOS's caption style is 10 pt, too small against the 14 pt body the design uses.
+    static let note = Font.system(size: 12)
+    static let body = Font.system(size: 14)
+
     static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .monospaced)
     }

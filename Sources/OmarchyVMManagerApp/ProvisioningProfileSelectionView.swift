@@ -13,17 +13,17 @@ struct ProvisioningProfileSelectionView: View {
             HStack {
                 Text("Profiles").font(.headline)
                 Spacer()
-                Text(selection.isEmpty ? (localSource ? "Optional additions" : "Select one or more") : "\(selection.count) selected").font(.caption).foregroundStyle(.secondary)
+                Text(selection.isEmpty ? (localSource ? "Optional additions" : "Select one or more") : "\(selection.count) selected").font(Theme.note).foregroundStyle(.secondary)
             }
             Text(localSource ? "Profiles in vm.yml stay included. Select cards to add bundled profiles." : "Combine profiles to build your workstation. Shared features are included once.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(Theme.note).foregroundStyle(.secondary)
             VStack(spacing: 2) {
                 ForEach(summaries) { profile in
                     row(profile)
                 }
             }
-            if unavailable { Text("Profile descriptions are unavailable. Check the bundled setup resources.").font(.caption).foregroundStyle(.orange) }
-            if !localSource, selection.isEmpty { Text("Select at least one profile to review setup.").font(.caption).foregroundStyle(.secondary) }
+            if unavailable { Text("Profile descriptions are unavailable. Check the bundled setup resources.").font(Theme.note).foregroundStyle(.orange) }
+            if !localSource, selection.isEmpty { Text("Select at least one profile to review setup.").font(Theme.note).foregroundStyle(.secondary) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task {
@@ -46,10 +46,10 @@ struct ProvisioningProfileSelectionView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Text(name).font(.system(size: 13, weight: .medium))
-                        if profile.includesDeveloper { Text("Includes Developer").font(.caption).foregroundStyle(.secondary) }
+                        if profile.includesDeveloper { Text("Includes Developer").font(Theme.note).foregroundStyle(.secondary) }
                     }
                     let details = profile.additionalFeatures.map(featureTitle) + profile.tools.map(toolTitle) + (profile.databaseClients.isEmpty ? [] : [profile.databaseClients.map(toolTitle).joined(separator: " · ") + " clients"])
-                    Text(details.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(details.joined(separator: " · ")).font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
             }

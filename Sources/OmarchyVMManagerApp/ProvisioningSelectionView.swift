@@ -20,7 +20,7 @@ struct ProvisioningFeatureSelectionView: View {
                 }
             }
             Text("Use source keeps the preset or manifest choice. The shared planner resolves profiles, dependencies and conflicts. Disabling a feature does not remove installed packages. Custom features and options stay in the source manifest.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(Theme.note).foregroundStyle(.secondary)
         }
     }
 }

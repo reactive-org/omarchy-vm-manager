@@ -8,7 +8,7 @@ struct QuietActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(destructive ? Color.red : Color.primary)
-            .padding(.horizontal, 12).frame(minHeight: 30)
+            .padding(.horizontal, 12).frame(minHeight: 32)
             .background(configuration.isPressed ? Color.primary.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
             .overlay(RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(destructive ? Color.red.opacity(0.5) : Theme.strongBorder))
             .opacity(isEnabled ? 1 : 0.45)
@@ -24,8 +24,8 @@ struct SidebarRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: Theme.controlRadius)
         configuration.label
-            .font(.system(size: 13)).foregroundStyle(Color.primary)
-            .padding(.horizontal, 8).padding(.vertical, 5)
+            .font(Theme.body).foregroundStyle(Color.primary)
+            .padding(.horizontal, 8).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(selected ? Theme.green.opacity(focused ? 0.12 : 0.07) : configuration.isPressed || hovering ? Color.primary.opacity(0.06) : .clear, in: shape)
             .overlay(shape.strokeBorder(selected ? (focused ? Theme.green : Theme.green.opacity(0.55)) : .clear))
@@ -56,6 +56,22 @@ struct SpecSwitchToggleStyle: ToggleStyle {
     }
 }
 
+/// Compact key–value line for summary panes, without the row dividers of SpecRow.
+struct SpecLine: View {
+    let key: String
+    let value: String
+    var note: String?
+    var tint: Color?
+    init(_ key: String, value: String, note: String? = nil, tint: Color? = nil) { self.key = key; self.value = value; self.note = note; self.tint = tint }
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 88, alignment: .leading)
+            Text(value).font(Theme.mono(14)).foregroundStyle(tint ?? Color.primary).textSelection(.enabled)
+            if let note { Text(note).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 extension View {
     /// Text entry in the spec sheet's monospaced style.
     func specField() -> some View {
@@ -77,7 +93,7 @@ struct SpecNote: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        Text(text).font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

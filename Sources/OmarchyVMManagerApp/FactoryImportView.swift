@@ -30,10 +30,10 @@ struct FactoryImportView: View {
                 if let selectedName { Text(selectedName).font(.callout).lineLimit(2) }
                 if working {
                     ProgressView(cancelling ? "Cancelling import…" : model.factoryImportProgress.rawValue)
-                    Text("Large factory images can take a few minutes to verify and copy.").font(.caption).foregroundStyle(.secondary)
+                    Text("Large factory images can take a few minutes to verify and copy.").font(Theme.note).foregroundStyle(.secondary)
                 } else {
                     Button("Choose Bundle…") { chooseBundle() }.buttonStyle(.primaryAction).disabled(choosing)
-                    Text("Select the folder containing factory.json and reviewed-factory.json.").font(.caption).foregroundStyle(.secondary)
+                    Text("Select the folder containing factory.json and reviewed-factory.json.").font(Theme.note).foregroundStyle(.secondary)
                 }
             }
             if let error { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }

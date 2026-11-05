@@ -55,12 +55,12 @@ struct ManagerView: View {
                             ForEach(model.snapshots) { snapshot in
                                 sidebarRow(.guest(snapshot.id)) {
                                     HStack(spacing: 9) {
-                                        GuestArtwork(size: 26, state: snapshot.state)
+                                        GuestArtwork(size: 28, state: snapshot.state)
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(snapshot.profile.name).lineLimit(1)
                                             HStack(spacing: 6) {
                                                 GuestStatusMarker(active: snapshot.sessionID != nil)
-                                                Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(.caption).foregroundStyle(snapshot.sessionID == nil ? Color.secondary : Theme.green).lineLimit(1)
+                                                Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(Theme.note).foregroundStyle(snapshot.sessionID == nil ? Color.secondary : Theme.green).lineLimit(1)
                                             }
                                         }
                                     }
@@ -68,7 +68,7 @@ struct ManagerView: View {
                             }
                             sidebarHeader("manager")
                             sidebarLink("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark", .defaults)
-                            sidebarLink("Permissions", systemImage: "hand.raised.fill", .permissions)
+                            sidebarLink("Permissions", systemImage: "hand.raised", .permissions)
                             sidebarLink("Runtime", systemImage: "checkmark.shield", .runtime)
                             sidebarLink("Provisioning tools", systemImage: "wrench.and.screwdriver", .provisioningTools)
                         }.padding(.horizontal, 10).padding(.top, geometry.safeAreaInsets.top + 8).padding(.bottom, 8)
@@ -76,9 +76,9 @@ struct ManagerView: View {
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(AppChannel.current.displayName + " " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")")
-                                .bold()
+                                .font(Theme.mono(11))
                             Text("A project of [reactive.org enterprises](https://www.reactive.org/)").foregroundStyle(.secondary)
-                        }.font(.caption).lineLimit(1).minimumScaleFactor(0.75)
+                        }.font(Theme.note).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.75)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(18).background(Theme.pane)
                     }
                     .onChange(of: destination) { if let destination { proxy.scrollTo(destination) } }
@@ -108,7 +108,7 @@ struct ManagerView: View {
                     default: library
                     }
                 }.padding(Theme.gap).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
-            }.id(detailPresentation).background(Theme.ground).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle())
+            }.id(detailPresentation).font(Theme.body).background(Theme.ground).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle())
         }
         .navigationTitle(AppChannel.current.displayName)
         .toolbar {
@@ -166,9 +166,9 @@ struct ManagerView: View {
     private func sidebarLink(_ title: String, systemImage: String, _ target: Destination) -> some View {
         sidebarRow(target) {
             HStack(spacing: 9) {
-                Image(systemName: systemImage).foregroundStyle(destination == target ? Theme.green : Theme.label).frame(width: 20)
+                Image(systemName: systemImage).font(.system(size: 15, weight: .light)).foregroundStyle(destination == target ? Theme.green : Color.secondary).frame(width: 20)
                 Text(title)
-            }
+            }.frame(minHeight: 34)
         }
     }
 
@@ -265,14 +265,14 @@ struct ManagerView: View {
                 GroupedPanel { VStack(alignment: .leading, spacing: 10) {
                     Label("\(failure.code)", systemImage: "exclamationmark.triangle").font(.headline)
                     Text(failure.message)
-                    if !failure.diagnostics.isEmpty { DisclosureGroup("Helper diagnostics") { Text(failure.diagnostics).font(.system(.caption, design: .monospaced)).textSelection(.enabled) } }
+                    if !failure.diagnostics.isEmpty { DisclosureGroup("Helper diagnostics") { Text(failure.diagnostics).font(Theme.mono(12)).textSelection(.enabled) } }
                 }.padding(20) }
             }
             let events = model.records.filter { $0.vmID == snapshot.id }
             GroupedPanel {
                 DisclosureGroup("Session activity") {
                     VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(events.suffix(30).reversed())) { Text("\($0.date.formatted(date: .omitted, time: .standard))  \($0.text)").font(.system(.caption, design: .monospaced)).textSelection(.enabled) }
+                        ForEach(Array(events.suffix(30).reversed())) { Text("\($0.date.formatted(date: .omitted, time: .standard))  \($0.text)").font(Theme.mono(12)).textSelection(.enabled) }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
                 }.disabled(events.isEmpty).padding(.horizontal, 20).padding(.vertical, 12)
             }
@@ -300,12 +300,14 @@ struct ManagerView: View {
                             Spacer(minLength: 0)
                             Button("Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                         }.padding(.bottom, 8)
-                        SpecRow("cores", value: "\(snapshot.profile.cpus)")
-                        SpecRow("memory", value: "\(snapshot.profile.memoryMiB / 1024) GiB")
-                        SpecRow("disk", value: snapshot.profile.diskSummary)
-                        SpecRow("used", value: ByteCountFormatter.string(fromByteCount: model.storageBytes[snapshot.id] ?? 0, countStyle: .file))
-                        SpecRow("clipboard", value: snapshot.profile.clipboardEnabled ? "Enabled" : "Off", note: snapshot.profile.clipboardEnabled ? "Syncs with the Mac while this guest is focused." : "Clipboard sharing is off for this guest.")
-                        SpecRow("touch id", value: GuestTouchIDRecord(snapshot).hostBridge.capitalized, note: "Pair through Setup → Security → Touch ID for sudo inside the guest. Guest pairing status is unknown to the manager.")
+                        VStack(alignment: .leading, spacing: 4) {
+                            SpecLine("cores", value: "\(snapshot.profile.cpus)")
+                            SpecLine("memory", value: "\(snapshot.profile.memoryMiB / 1024) GiB")
+                            SpecLine("disk", value: snapshot.profile.diskSummary)
+                            SpecLine("used", value: ByteCountFormatter.string(fromByteCount: model.storageBytes[snapshot.id] ?? 0, countStyle: .file))
+                            SpecLine("clipboard", value: snapshot.profile.clipboardEnabled ? "Enabled" : "Off", note: snapshot.profile.clipboardEnabled ? "Syncs with the Mac while this guest is focused." : "Clipboard sharing is off for this guest.", tint: snapshot.profile.clipboardEnabled ? Theme.green : nil)
+                            SpecLine("touch id", value: GuestTouchIDRecord(snapshot).hostBridge.capitalized, note: "Pair through Setup → Security → Touch ID for sudo inside the guest. Guest pairing status is unknown to the manager.")
+                        }.padding(.top, 8).overlay(alignment: .top) { Rectangle().fill(Theme.strongBorder).frame(height: 1) }
                     }
                 }.padding(.leading, 16).padding(.trailing, 20).padding(.vertical, 14)
             }
@@ -417,7 +419,7 @@ struct ManagerView: View {
                     Text("Each storage root has a stable guest app identity, independent of its display name. macOS manages the assignment. To release it, choose Assign To → None.").font(.system(size: 13)).foregroundStyle(.secondary)
                     if snapshot.profile.isRetainedPOC { Text("Retained POC guests keep their original display settings. New guests start in windowed mode.").font(.callout).foregroundStyle(.secondary) }
                     Link("Apple’s guide to Mission Control Spaces", destination: URL(string: "https://support.apple.com/guide/mac-help/mh14112/mac")!)
-                    Text("Assignment persistence across guest restarts needs verification on this Mac with the updated runtime.").font(.caption).foregroundStyle(.secondary)
+                    Text("Assignment persistence across guest restarts needs verification on this Mac with the updated runtime.").font(Theme.note).foregroundStyle(.secondary)
                 }.padding(.top, 10).overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
             }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 16)
         }
@@ -447,7 +449,7 @@ struct ManagerView: View {
                 if let d = model.diagnostics {
                     SpecRow("protocol", value: "\(d.runProtocolVersion)")
                     SpecRow("preflight", value: d.preflightFailure ?? "Passed")
-                    DisclosureGroup("Build provenance") { Text(d.patchCommit).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6) }
+                    DisclosureGroup("Build provenance") { Text(d.patchCommit).font(Theme.mono(12)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6) }
                         .padding(.vertical, 8).overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
                 }
             }

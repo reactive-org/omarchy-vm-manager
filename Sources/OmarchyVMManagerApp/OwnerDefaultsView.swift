@@ -36,16 +36,16 @@ struct OwnerDefaultsView: View {
                     SpecRow("confirm") { SecureField("Confirm new password", text: $confirmation).labelsHidden().specField().frame(maxWidth: 260) }
                     VStack(alignment: .leading, spacing: 8) {
                     if developmentPasswords {
-                        Text("This development build uses your existing login Keychain password. macOS may ask for your login password or permission to access it. Completed guests do not read the password again.").font(.caption).foregroundStyle(.secondary)
+                        Text("This development build uses your existing login Keychain password. macOS may ask for your login password or permission to access it. Completed guests do not read the password again.").font(Theme.note).foregroundStyle(.secondary)
                     } else {
-                        Text("The manager retrieves the saved password from protected Keychain storage at first launch, using Touch ID or your Mac login password. Creating a VM only saves its profile. Completed guests do not ask again.").font(.caption).foregroundStyle(.secondary)
+                        Text("The manager retrieves the saved password from protected Keychain storage at first launch, using Touch ID or your Mac login password. Creating a VM only saves its profile. Completed guests do not ask again.").font(Theme.note).foregroundStyle(.secondary)
                     }
-                    Text("A private temporary seed sets the guest owner and root passwords; SSH uses independent keys.").font(.caption).foregroundStyle(.secondary)
+                    Text("A private temporary seed sets the guest owner and root passwords; SSH uses independent keys.").font(Theme.note).foregroundStyle(.secondary)
                     if !protectedPasswordsAvailable && !developmentPasswords {
-                        Label("Touch ID password storage requires a signed, provisioned build. Your existing saved password is preserved.", systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+                        Label("Touch ID password storage requires a signed, provisioned build. Your existing saved password is preserved.", systemImage: "info.circle").font(Theme.note).foregroundStyle(.secondary)
                     }
                     if model.passwordUpgradeResult == .authenticationPending {
-                        Text("Keychain needs authentication before protection can be confirmed. You can retry the upgrade after unlocking your Mac. First launch still requires the protected password; this check did not read or replace it.").font(.caption).foregroundStyle(.secondary)
+                        Text("Keychain needs authentication before protection can be confirmed. You can retry the upgrade after unlocking your Mac. First launch still requires the protected password; this check did not read or replace it.").font(Theme.note).foregroundStyle(.secondary)
                     }
                     if model.ownerDefaults?.credentialReference != nil && protectedPasswordsAvailable {
                         Button(upgradeButtonTitle) {
@@ -55,7 +55,7 @@ struct OwnerDefaultsView: View {
                                 saving = false
                             }
                         }.disabled(saving || (model.passwordUpgradeResult != nil && model.passwordUpgradeResult != .authenticationPending) || !protectedPasswordsAvailable || model.registryError != nil)
-                        Text("For passwords saved by older versions, this one-time upgrade may request login-Keychain access. It preserves the original entry and pending guest references. Touch ID storage requires a provisioned app build.").font(.caption).foregroundStyle(.secondary)
+                        Text("For passwords saved by older versions, this one-time upgrade may request login-Keychain access. It preserves the original entry and pending guest references. Touch ID storage requires a provisioned app build.").font(Theme.note).foregroundStyle(.secondary)
                     }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                     .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
