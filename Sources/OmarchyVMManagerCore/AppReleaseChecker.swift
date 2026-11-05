@@ -51,7 +51,7 @@ public enum AppReleaseCheckError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .unknownInstalledVersion:
-            "This build has no valid embedded release tag. Install a packaged release to compare versions, including prereleases."
+            "This build has no valid embedded release tag. Install a packaged release for this app channel to compare versions."
         case .network: "GitHub could not be reached. Check your internet connection and try again."
         case .timedOut: "GitHub took too long to respond. Please try again."
         case .rateLimited: "GitHub is limiting update requests. Please try again later."
@@ -67,8 +67,10 @@ public struct AppReleaseChecker: Sendable {
     public static let releaseTagKey = "OmarchyReleaseTag"
     private static let repository = "https://github.com/reactive-org/omarchy-vm-manager"
     private let fetch: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    private let channel: AppChannel
 
-    public init(fetch: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = Self.fetch) {
+    public init(channel: AppChannel = .current, fetch: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = Self.fetch) {
+        self.channel = channel
         self.fetch = fetch
     }
 
@@ -107,10 +109,19 @@ public struct AppReleaseChecker: Sendable {
                 throw AppReleaseCheckError.invalidResponse
             }
             for release in releases where !release.draft && release.tag_name.hasPrefix("v") {
-                guard let version = AppReleaseVersion(release.tag_name), release.assets.contains(where: { asset in
-                    asset.state == "uploaded" && ["development", "notarized"].contains(where: { flavor in
-                        asset.name == "Omarchy-VM-Manager-\(release.tag_name)-macOS-arm64-\(flavor).zip"
-                    })
+                guard let version = AppReleaseVersion(release.tag_name) else { continue }
+                let expectedPrefix: String
+                switch channel {
+                case .stable:
+                    guard !release.prerelease, version.prerelease.isEmpty else { continue }
+                    expectedPrefix = "Omarchy-VM-Manager"
+                case .development:
+                    guard release.prerelease, version.prerelease.count == 2, version.prerelease[0] == "dev",
+                          version.prerelease[1].allSatisfy(\.isNumber) else { continue }
+                    expectedPrefix = "Omarchy-VM-Manager-Dev"
+                }
+                guard release.assets.contains(where: { asset in
+                    asset.state == "uploaded" && asset.name == "\(expectedPrefix)-\(release.tag_name)-macOS-arm64-notarized.zip"
                 }) else { continue }
                 if newest == nil || newest!.0 < version {
                     // Construct the link from our fixed repository and validated tag, never a response-supplied URL.
@@ -139,6 +150,7 @@ public struct AppReleaseChecker: Sendable {
     private struct GitHubRelease: Decodable {
         let tag_name: String
         let draft: Bool
+        let prerelease: Bool
         let assets: [Asset]
         struct Asset: Decodable { let name: String; let state: String }
     }

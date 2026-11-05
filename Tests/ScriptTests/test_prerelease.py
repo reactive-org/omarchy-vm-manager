@@ -99,9 +99,10 @@ class LockedRuntimeTests(unittest.TestCase):
 
 
 class PrereleaseVersionTests(unittest.TestCase):
-    def test_only_matching_development_tags_are_accepted(self):
+    def test_only_matching_release_tags_are_accepted(self):
         self.assertEqual(validate_tag("v0.9.3-dev.1", "0.9.3"), "v0.9.3-dev.1")
-        for tag in ["", "v0.9.3", "v0.9.3-dev.0", "v0.9.3-dev.01", "v1.0.0-dev.1", "v0.9.3-dev.1/extra", "v0.9.3-dev.$(id)"]:
+        self.assertEqual(validate_tag("v0.9.3", "0.9.3", 'stable'), "v0.9.3")
+        for tag in ["", "v0.9.3-dev.0", "v0.9.3-dev.01", "v1.0.0-dev.1", "v0.9.3-dev.1/extra", "v0.9.3-dev.$(id)"]:
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 validate_tag(tag, "0.9.3")
 

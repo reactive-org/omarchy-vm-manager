@@ -14,7 +14,7 @@ This project is based heavily on the work of the [Try Omarchy team](https://gith
 
 The native SwiftUI app requires macOS 15 or later. The current private debug build provides a persistent guest library, configuration and safe deletion through macOS Trash. Guests start when you choose **Launch** or issue a CLI start command. The two retained POC profiles keep their original configuration and can be moved to Trash through the normal confirmed deletion flow.
 
-Use **Omarchy VM Manager → Check for Updates…** to check published app releases, including prereleases. An available update offers **View Release** for manual download from GitHub. See [release identity and local-build behavior](docs/Prereleases.md#manual-update-checks).
+Use **Omarchy VM Manager → Check for Updates…** to check published releases for your app's channel: stable downloads for stable, Dev prereleases for Dev. An available update offers **View Release** for manual download from GitHub. See [release identity and local-build behavior](docs/Prereleases.md#manual-update-checks).
 
 **[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [48-second MP4 tour](docs/media/quick-tour.mp4)
 
@@ -46,11 +46,11 @@ The [build and no-VM workflow](.github/workflows/test.yml) runs on pushes and pu
 
 `make test` runs Swift test cases serially because several fixtures deliberately block synchronous runtime/progress callbacks. Running those cases together can exhaust a small runner's cooperative thread pool. Lifecycle and race tests still run concurrent tasks and independent sessions within each case. Resource-policy fixtures supply synthetic host budgets rather than relying on the runner's CPU/RAM.
 
-Tags matching `vVERSION-dev.N` publish a development-fork `.app` and SHA-256 checksum on [GitHub Releases](https://github.com/reactive-org/omarchy-vm-manager/releases), after both test jobs pass. New tagged jobs use the authorized Developer ID credentials to sign, notarize and staple both the runtime kit and app, then verify Gatekeeper acceptance and the extracted ZIP. The original ad-hoc runtime and development pin are preserved; signed builds use separate exact provenance. Earlier `v0.9.3-dev.3` downloads remain ad-hoc signed. See [development prereleases](docs/Prereleases.md) for setup, compatibility and validation limits.
+Successful pushes to `main` publish stable releases with automatic patch versions; `next` publishes the isolated Dev app with `dev.N` prerelease versions. Both wait for the exact commit's test jobs and use the existing CI-only signing/notarization gates. Tags are reserved automatically; manual tag pushes do not publish. See [branch releases](docs/BranchReleases.md) for versioning, source-kit/profile setup and retry limitations, and [release history](docs/Prereleases.md) for compatibility and validation evidence.
 
 CI downloads no factory image and starts no guest. Real guest, focus, sleep/wake and crash validation remain separate observed checks on a real Mac; GitHub's ARM macOS runners do not support nested virtualization. Standard GitHub-hosted macOS runners are [free for public repositories](https://docs.github.com/en/actions/reference/runners/github-hosted-runners); larger runners have separate billing.
 
-Signing/notarization secrets are available only to the tagged package step, in a temporary CI keychain that is removed afterward. The signed-prerelease compiler mode accepts only its exact compiled signed-fork provenance and source/team pins. Ordinary production release builds still reject the private development kit; a signed prerelease is not an official upstream release or proof of real-VM acceptance.
+Signing/notarization secrets are available only to the trusted branch release signing step, in a temporary CI keychain that is removed afterward. Stable and Dev require separately pinned provisioning profiles. The signed-prerelease compiler mode accepts only its exact compiled signed-fork provenance and source/team pins. Ordinary production release builds still reject the private development kit; a signed release is not an official upstream runtime or proof of real-VM acceptance.
 
 ## Provenance
 

@@ -9,16 +9,19 @@ import subprocess
 import tempfile
 
 
-def profile_pin():
-    path = Path(__file__).resolve().parents[1] / "Config/TouchIDProfile.lock.json"
+def profile_pin(bundle_id="dev.omarchy.vm-manager"):
+    names = {"dev.omarchy.vm-manager": "TouchIDProfile.lock.json", "dev.omarchy.vm-manager.dev": "TouchIDDevProfile.lock.json"}
+    assert bundle_id in names, "unknown manager provisioning identity"
+    path = Path(__file__).resolve().parents[1] / "Config" / names[bundle_id]
     value = json.loads(path.read_bytes())
-    assert value["format"] == 1 and value["bundleID"] == "dev.omarchy.vm-manager", "unsupported Keychain profile pin"
-    assert re.fullmatch(r"[0-9a-f]{64}", value["profileSHA256"]), "invalid Keychain profile digest"
+    assert value["format"] == 1 and value["bundleID"] == bundle_id, "unsupported Keychain profile pin"
+    if not isinstance(value.get("profileSHA256"), str) or not re.fullmatch(r"[0-9a-f]{64}", value["profileSHA256"]):
+        raise ValueError(f"Provisioning is not configured: pin the reviewed {bundle_id} profile in {path.name}")
     return value
 
 
-def verify_profile_bytes(raw):
-    assert hashlib.sha256(raw).hexdigest() == profile_pin()["profileSHA256"], "Keychain profile digest mismatch"
+def verify_profile_bytes(raw, bundle_id="dev.omarchy.vm-manager"):
+    assert hashlib.sha256(raw).hexdigest() == profile_pin(bundle_id)["profileSHA256"], "Keychain profile digest mismatch"
 
 
 def signing_certificate(app):
@@ -35,7 +38,7 @@ def profile_entitlements(profile, team, bundle_id, now=None):
     app's signing certificate at launch. Unit tests supply synthetic dictionaries.
     """
     assert re.fullmatch(r"[A-Z0-9]{10}", team), "invalid signing team"
-    assert bundle_id == "dev.omarchy.vm-manager", "Keychain profile is only for the manager"
+    assert bundle_id in {"dev.omarchy.vm-manager", "dev.omarchy.vm-manager.dev"}, "Keychain profile is only for a manager channel"
     app_id = team + "." + bundle_id
     assert profile.get("TeamIdentifier") == [team], "Keychain profile team mismatch"
     assert "OSX" in profile.get("Platform", []), "not a macOS Keychain profile"
@@ -63,7 +66,7 @@ def decode_profile(path):
 
 def stage_keychain_profile(profile_path, stage, team, bundle_id, base_entitlements):
     profile_bytes = Path(profile_path).read_bytes()
-    verify_profile_bytes(profile_bytes)
+    verify_profile_bytes(profile_bytes, bundle_id)
     # Decode the same bytes that will be embedded, avoiding a source-file race.
     embedded = stage / "Contents/embedded.provisionprofile"
     embedded.write_bytes(profile_bytes)
@@ -82,7 +85,7 @@ def verify_keychain_profile(app, team):
         assert not restricted, "Keychain entitlements require an embedded profile"
         return False
     bundle_id = plistlib.loads((app / "Contents/Info.plist").read_bytes())["CFBundleIdentifier"]
-    verify_profile_bytes(embedded.read_bytes())
+    verify_profile_bytes(embedded.read_bytes(), bundle_id)
     profile = decode_profile(embedded)
     expected = profile_entitlements(profile, team, bundle_id)
     assert restricted == expected, "packaged Keychain entitlement scope mismatch"

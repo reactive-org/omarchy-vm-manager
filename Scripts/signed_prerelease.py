@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import urllib.error
 
 from kit_artifacts import ROOT, digest
 from build_patched_kit import inventory
@@ -24,28 +25,31 @@ from package_prerelease import validate_tag
 from ticket_network import retry_ticket_call
 from upstream_source import prepare
 from keychain_profile import decode_profile, profile_entitlements, verify_profile_bytes
+from release_metadata import channel_spec
 
 REQUIRED_SECRETS = ("MACOS_CERTIFICATE_P12_BASE64", "MACOS_CERTIFICATE_PASSWORD",
                     "MACOS_SIGNING_IDENTITY", "APPLE_TEAM_ID", "APPLE_API_KEY_P8",
-                    "APPLE_API_KEY_ID", "APPLE_API_ISSUER_ID", "MACOS_KEYCHAIN_PROFILE_BASE64")
+                    "APPLE_API_KEY_ID", "APPLE_API_ISSUER_ID")
 REDACTIONS = []
 
 
 @contextmanager
-def provisioning_profile():
+def provisioning_profile(channel="stable"):
     if os.environ.get("GITHUB_ACTIONS") != "true" or not os.environ.get("RUNNER_TEMP"):
         raise RuntimeError("Provisioned signing is restricted to the authorized GitHub release job")
-    encoded = os.environ.get("MACOS_KEYCHAIN_PROFILE_BASE64", "")
+    bundle_id = channel_spec(channel)[0]
+    secret_name = "MACOS_DEV_KEYCHAIN_PROFILE_BASE64" if channel == "development" else "MACOS_KEYCHAIN_PROFILE_BASE64"
+    encoded = os.environ.get(secret_name, "")
     if not encoded.strip():
-        raise ValueError("Missing GitHub secret: MACOS_KEYCHAIN_PROFILE_BASE64")
+        raise ValueError("Missing GitHub secret: " + secret_name)
     REDACTIONS.extend((encoded, encoded.strip()))
     raw = base64.b64decode(re.sub(r"\s", "", encoded), validate=True)
-    verify_profile_bytes(raw)
+    verify_profile_bytes(raw, bundle_id)
     with tempfile.TemporaryDirectory(prefix="omarchy-profile-", dir=os.environ["RUNNER_TEMP"]) as temp:
         path = Path(temp) / "manager.provisionprofile"
         path.write_bytes(raw)
         path.chmod(0o600)
-        profile_entitlements(decode_profile(path), os.environ.get("APPLE_TEAM_ID", "").strip(), "dev.omarchy.vm-manager")
+        profile_entitlements(decode_profile(path), os.environ.get("APPLE_TEAM_ID", "").strip(), bundle_id)
         try:
             yield path
         finally:
@@ -114,7 +118,8 @@ def validate_signed_lock(lock, source, source_sha, team):
     assert lock["sourceLockSHA256"] == source_sha
     assert lock["sourceKitSHA256"] == source["kitSHA256"]
     assert re.fullmatch(r"[0-9a-f]{64}", lock["kitSHA256"]) and lock["kitSHA256"] != source["kitSHA256"]
-    assert re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+-dev\.[1-9][0-9]*", lock["artifactTag"])
+    artifact = lock["artifactTag"]
+    assert re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-dev\.[1-9][0-9]*)?", artifact) or artifact == "signed-runtime-" + source_sha
     for key, value in source.items():
         if key not in {"files", "kitSHA256", "buildDate", "composition"}:
             assert lock[key] == value, "signed runtime changed source provenance/capability: " + key
@@ -330,8 +335,28 @@ def prepare_runtime(source, source_bytes, profile, team, identity, tag, work, re
     source_sha = hashlib.sha256(source_bytes).hexdigest()
     pinned = ROOT / "Config/TryOmarchySignedRuntime.lock.json"
     signature = upstream / "scripts/kit_signature.py"
+    lock = None
     if pinned.exists():
-        lock = json.loads(pinned.read_bytes())
+        candidate = json.loads(pinned.read_bytes())
+        assert re.fullmatch(r"[0-9a-f]{64}", candidate["sourceLockSHA256"]), "damaged signed runtime provenance"
+        if candidate["sourceLockSHA256"] == source_sha:
+            lock = candidate
+        elif not os.environ.get("RELEASE_CHANNEL"):
+            validate_signed_lock(candidate, source, source_sha, team)
+    if os.environ.get("RELEASE_CHANNEL"):
+        tag = "signed-runtime-" + source_sha
+        if lock is None:
+            url = "https://github.com/reactive-org/omarchy-vm-manager/releases/download/" + tag + "/TryOmarchySignedRuntime.lock.json"
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response:
+                    raw = response.read(1_048_577)
+                assert len(raw) <= 1_048_576, "signed runtime lock exceeds limit"
+                lock = json.loads(raw)
+                assert lock["artifactTag"] == tag
+            except urllib.error.HTTPError as error:
+                if error.code != 404:
+                    raise
+    if lock is not None:
         validate_signed_lock(lock, source, source_sha, team)
         folder.mkdir()
         download(folder / "TryOmarchyKit.zip", "https://github.com/reactive-org/omarchy-vm-manager/releases/download/" + lock["artifactTag"] + "/TryOmarchySignedKit.zip")
@@ -365,13 +390,18 @@ def prepare_runtime(source, source_bytes, profile, team, identity, tag, work, re
         "verify", "--team", team, "--require-notarization", folder / "TryOmarchyKit.bundle")
     lock_path = work / "TryOmarchySignedRuntime.lock.json"
     lock_path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
+    if os.environ.get("RELEASE_CHANNEL") and lock["artifactTag"] == "signed-runtime-" + source_sha:
+        from branch_release import publish_runtime
+        publish_runtime(lock, lock_path, folder, source_bytes)
     return lock, lock_path, folder
 
 
 def release(retained=None):
     import plistlib
-    version = plistlib.loads((ROOT / "App/Info.plist").read_bytes())["CFBundleShortVersionString"]
-    tag = validate_tag(os.environ.get("RELEASE_TAG", ""), version)
+    channel = os.environ.get("RELEASE_CHANNEL")
+    channel_spec(channel or "stable")
+    version = os.environ.get("RELEASE_VERSION") or plistlib.loads((ROOT / "App/Info.plist").read_bytes())["CFBundleShortVersionString"]
+    tag = validate_tag(os.environ.get("RELEASE_TAG", ""), version, channel)
     source_bytes = (ROOT / "Config/TryOmarchyRuntime.lock.json").read_bytes()
     source = json.loads(source_bytes)
     work = ROOT / ".build/signed-release"
@@ -379,13 +409,14 @@ def release(retained=None):
     (work / "SourceRuntime.lock.json").write_bytes(source_bytes)
     (work / "ReleaseSource.json").write_text(json.dumps({
         "releaseTag": tag,
+        "appChannel": channel or "stable",
         "applicationSourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "sourceLockSHA256": hashlib.sha256(source_bytes).hexdigest(),
         "sourceKitSHA256": source["kitSHA256"],
         "workflowRunID": os.environ.get("GITHUB_RUN_ID"),
         "workflowRunAttempt": os.environ.get("GITHUB_RUN_ATTEMPT")
     }, indent=2, sort_keys=True) + "\n")
-    with provisioning_profile() as keychain_profile, credentials() as (profile, team, identity):
+    with provisioning_profile(channel or "stable") as keychain_profile, credentials() as (profile, team, identity):
         lock, lock_path, folder = prepare_runtime(source, source_bytes, profile, team, identity, tag, work, retained)
         pin = ROOT / "Sources/OmarchyVMManagerCore/RuntimePin.swift"
         signed_pin = ROOT / "Sources/OmarchyVMManagerCore/SignedBuildPin.swift"
@@ -398,11 +429,12 @@ def release(retained=None):
                                   "\n".join(f'    static let {key} = "{value}"' for key, value in {
                                       "signingTeamID": team, "sourceKitSHA256": source["kitSHA256"],
                                       "sourceLockSHA256": digest(ROOT / "Config/TryOmarchyRuntime.lock.json")}.items()) + "\n}\n")
-            run("Compile optimized signed-prerelease executables", "make", "build-signed")
+            run("Compile optimized signed executables", "make", "build-dev-signed" if channel == "development" else "build-signed")
             run("Assemble and sign app inside out", "python3", ROOT / "Scripts/assemble_app.py", "--signed-prerelease",
                 "--preserve-runtime-signatures", "--runtime-lock", lock_path, "--runtime-directory", folder,
-                "--output-directory", ROOT / "dist/prerelease-staging", "--keychain-profile", keychain_profile)
-            app = ROOT / "dist/prerelease-staging/Omarchy VM Manager.app"
+                "--output-directory", ROOT / "dist/prerelease-staging", "--keychain-profile", keychain_profile,
+                *(["--dev"] if channel == "development" else []))
+            app = ROOT / "dist/prerelease-staging" / (channel_spec(channel or "stable")[1] + ".app")
             run("Verify signed bundle without host/guest launch", ROOT / "Scripts/verify-app.sh", "--bundle-only", app, lock_path)
             submission_archive = work / "notary-app.zip"
             run("Archive app for Apple submission", "ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, submission_archive)
