@@ -362,3 +362,8 @@ original-Mac, loaded-child and disposable-guest acceptance remain separate.
 [Manager package pin follows merged dev-vm](DevVMProvisioningPlan.md#manager-pin-follows-merged-dev-vm--5-november-2026)
 records the exact `5770d0f` export with its former integration patches incorporated,
 unchanged engine/resources and preservation of historical private candidate pins.
+
+[Fresh private 007bc66 candidate review](DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-007bc66--5-november-2026)
+binds the merged package and matching runtime while preserving the original
+disposable scope. Source/fake checks pass; native inspection is prepared only,
+with all execution effects still NOT_GRANTED.

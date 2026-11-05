@@ -3770,3 +3770,26 @@ source/package bindings. See the [package update record](docs/DevVMProvisioningP
 native/guest acceptance from the updated manager source. No signing, key access,
 native inspection, Apple request, real SSH/Ansible, install, normal app/runtime
 action or VM launch occurs. No historical receipt or consumed plan is rebound.
+
+## Fresh private review of 007bc66 — 5 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** prepare a new exact-source private review
+for committed `007bc66`, with merged package `5770d0f` and the existing matching
+runtime. Preserve all old artifacts/pins and the original Stable disposable scope;
+do not execute native inspection or create signing/guest authority.
+
+**VERIFIED — file data/fake:** source-only admission, independent six-file private
+overlay reconstruction and verbatim scope JSON/receipt/definition comparisons
+pass. A new 173-file sealed review binds 32 committed tooling files, seventeen
+engine files, operator, corrected guard and retained public-material copies.
+All 25 actual-packet positive/refusal checks and 170 fake tests pass; old or
+relabeled receipts cannot transfer. All 23,951 prior private entries and four
+current pin files remain unchanged. No VM root or original signing-material/
+keychain metadata is queried; the keychain selector is only a path string.
+
+**TO PROVE / NOT GRANTED:** fresh exact-review native observations, trust, key
+availability, attended signing and original-Mac/loaded-child/guest acceptance.
+All effects remain NOT_GRANTED; no inspection output, authority, signing plan or
+candidate output exists. No real inspection, signing, key access, Apple request,
+real SSH/Ansible, install, normal app/runtime action or VM launch occurs. See the
+[fresh review and limits](docs/DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-007bc66--5-november-2026).

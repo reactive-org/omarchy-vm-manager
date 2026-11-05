@@ -3756,3 +3756,28 @@ lock/generated pin are refreshed. The companion worktree is unchanged and clean.
 No signing, key access, native inspection, Apple request, real SSH/Ansible, install,
 normal app/runtime action or VM launch occurs. Signed distribution, native UI and
 real guest acceptance remain **TO PROVE** for any future candidate from this source.
+
+## Fresh private review after package pin update — 5 November 2026
+
+**DESIGN DECISION:** prepare exact committed `007bc66` with package `5770d0f` and
+the unchanged matching local signed runtime. Preserve the original Stable
+disposable UUID/root, scope JSON, receipt and Swift definition verbatim. Earlier
+candidate artifacts and frozen source/package/runtime pins remain unchanged; no
+root observation, scope recapture or ordinary product approval change occurs.
+
+**VERIFIED — file data/fake only:** source-only admission and independent six-file
+overlay reconstruction pass. A new request binds 32 committed tooling files,
+seventeen engine files, operator, corrected guard and staged public material
+copies. All 25 actual-packet checks and 170 fake tests pass. The new source,
+implementation and inspection hashes differ from the previous review; an old or
+relabeled receipt cannot transfer. The 173-file sealed review uses owner-only
+paths, and all 23,951 prior private entries plus four current pin files are
+preserved. Documentation changes in both worktrees describe preparation only.
+
+**TO PROVE / NOT GRANTED:** fresh native inspection, current keychain state/key
+availability, trust, signing and original-Mac/loaded-child/guest acceptance.
+No authority, inspection output, signing plan, candidate build/output, signing,
+key access, Apple request, real SSH/Ansible, install, normal app/runtime action or
+VM launch occurs. All effects remain NOT_GRANTED; a successful exact-input native
+receipt and separate approval must precede any attended signing plan. See the
+[fresh 007bc66 review runbook](DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-007bc66--5-november-2026).

@@ -2125,3 +2125,48 @@ reviews, scope receipts, successful/failed outputs and consumed plans retain the
 original frozen pins and source bindings. This product-source update neither
 refreshes those inputs nor grants another inspection/signing/guest run. See the
 [package update and offline evidence](DevVMProvisioningPlan.md#manager-pin-follows-merged-dev-vm--5-november-2026).
+
+## Fresh private candidate review for 007bc66 — 5 November 2026
+
+**PREPARED / NOT AUTHORIZED:** a new owner-only review binds committed manager
+`007bc66a3091d798d1fc58fa38a8d6797d728a2a`, merged dev-vm package `5770d0f`
+and the unchanged runtime source `d6dd3dbe860f`. The existing local Stable
+`v0.11.1` signed runtime matches its source lock, archive and extracted inventories
+as file data. Historical signature/notarization evidence is retained as history;
+no fresh native validation, trust, revocation or Apple request is performed.
+
+The candidate remains **Stable** with the original approved disposable UUID/root.
+Its scope JSON, root-preparation receipt and private Swift scope definition are
+copied verbatim. No VM root is observed, pin recaptured or channel migrated. The
+ordinary nil approval, channel checks and production signing admission remain
+unchanged. A six-file private overlay is independently reconstructed and admitted
+against the new source archive. The new package lock incorporates its former four
+integration patches; frozen older candidates retain their original locks.
+
+The packet binds 32 committed tooling files, seventeen engine files, operator,
+corrected inspection guard, staged public profile/certificate copies and fresh
+source/material/inspection request hashes. The selected keychain is only a stored
+path string: original signing materials and keychain metadata/state are unqueried.
+The prior `4a0f30a` inspection receipt is retained as nontransferable history; no
+receipt or consumed signing plan is reused or relabeled as current evidence.
+
+**VERIFIED — offline/fake:** all 25 actual-packet positive/refusal checks and 170
+fake API/process tests pass, with zero actual child processes or native-library
+attempts in the fake suite. Independent source/overlay reconstruction and original
+scope comparisons pass. The review seals 173 file hashes with owner-only paths;
+private packets, raw materials, paths and pins remain out of Git. All 23,951 prior
+private entries and four current generated/configuration pin files are unchanged.
+Only new review artifacts and documentation are added; no product code is changed.
+
+**TO PROVE / NEXT:** a fresh bounded native inspection is prepared, not executed.
+All effects remain **NOT_GRANTED**. It requires separate approval of this exact
+review/request/implementation/guard and fresh output. The existing no-network,
+300-second job/120-second stage, 2 MiB stream caps, one-shot consumption and owned
+worker cleanup contract remain. Inspection must establish the named keychain's
+required locked state; preparation does not query it or infer key availability.
+Content-only CMS decoding cannot establish signer authenticity or certificate
+trust. Only a new successful, cleanup-confirmed receipt can support preparation
+of an attended signing plan. No inspection output, authority, signing plan,
+candidate build/output, signing, key access, Apple request, real SSH/Ansible,
+install, normal app/runtime action or VM launch occurs. Original-Mac, loaded-child
+and real-guest acceptance remain separately reviewed **TO PROVE** work.
