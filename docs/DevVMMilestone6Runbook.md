@@ -2211,3 +2211,37 @@ exact receipt, but no such plan, candidate build/output or signing authority is
 created here. The consumed request has no retry. No signing, private-key access,
 Apple request, real SSH/Ansible, install, normal app/runtime action or VM launch
 occurs. Raw receipts, selectors, paths, inventory hashes and evidence remain private.
+
+## Signed 007bc66 test build — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** the user requests a build to test and explicitly
+approves an attended run with selected-key use, existing macOS secure-key UI and
+Apple timestamps. Inspection-result docs commit as manager `96319b0` / companion
+`79399ae`. A fresh maintained operator plan binds the successful `007bc66` receipt,
+exact source/package/runtime/material/scope and unchanged tooling. Fourteen plan
+checks and 44 fake operator/receipt-bound tests pass. The real-terminal exact-plan
+confirmation precedes durable one-shot consumption and the bounded default backend.
+
+**VERIFIED — signed private artifact:** the run completes in 903.341 seconds.
+All 17 command roots and 46 native workers pass, including five selected-key
+timestamp signatures, 23 runtime static checks and twelve staged/extracted candidate
+checks. Six code identities, the post-sign helper/resource seals and complete app
+inventory match across ZIP roundtrip. The ZIP is 176,350,211 bytes. The signed app
+and ZIP remain in the owner-only private candidate output; neither is installed
+or published. Current package `5770d0f` and original Stable disposable scope are
+retained. Secure UI type/count and Touch ID versus password are not captured.
+
+All 63 owned roots have quiet groups before reaping and closed descriptors; no
+handles remain unresolved and a bounded PID-only snapshot finds all absent.
+The before/after prior-artifact inventories match, all 173 review hashes and ten
+plan hashes remain exact, and all four current pin files are unchanged. Only the
+new candidate, consumed/attempt records and private evidence are added. No scope
+root observation/recapture, orchestrator unlock/import/export/enumeration,
+ACL/search-list change, notarization, installation, SSH/Ansible or VM action occurs.
+
+**TO PROVE:** result is SIGNED_OFFLINE_STATIC_CHECKS_ONLY. Normal app launch/UI,
+daemon diagnostics, loaded-child/original-Mac scope validation and real guest
+acceptance are not run by this build/sign/verify action. Notarization, fresh online
+revocation and CMS signer trust remain unestablished. The private test build can
+be handed to the user; its consumed signing plan has no automatic retry. Raw
+selectors, paths, pins, artifact hashes and evidence remain out of Git.

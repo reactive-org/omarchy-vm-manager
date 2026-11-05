@@ -372,3 +372,8 @@ with all execution effects still NOT_GRANTED.
 31 bounded workers and 23 no-network static code checks pass, with confirmed cleanup
 and artifact/pin preservation. The new consumed receipt can support a signing-plan
 review; signing/key/Apple/guest authority remains separate.
+
+[Signed 007bc66 private test build](DevVMMilestone6Runbook.md#signed-007bc66-test-build--5-november-2026):
+the separately approved attended run passes signing, static verification and ZIP
+roundtrip, preserving prior artifacts and pins. The app is ready for user testing;
+installation, notarization and guest acceptance are not performed.

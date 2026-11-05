@@ -3819,3 +3819,22 @@ attended signing plan, not execution authority. No plan/candidate build, signing
 private-key access, Apple request, real SSH/Ansible, install, normal app/runtime
 action or VM launch occurs. Only the planned inspection output and separate private
 execution/analysis evidence are added; historical artifacts and pins stay frozen.
+
+## Signed private test build for 007bc66 — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** the user requests a testable build and explicitly
+approves selected-key use, secure-key UI and Apple timestamps for a fresh attended
+plan. Inspection-result docs commit as manager `96319b0` / companion `79399ae`.
+Fourteen plan checks and 44 fake tests pass; real-terminal confirmation and durable
+consumption precede the bounded build/sign/verify run. All 17 commands and 46
+native workers pass in 903.341 seconds, including five timestamp signatures and
+complete staged/ZIP-roundtrip checks. Six signed code identities and post-sign
+package seals match. All 63 roots are quiet/reaped/closed and absent in a bounded
+PID-only snapshot. Historical artifacts, review/plan hashes and four current pins
+remain unchanged; the original disposable scope is neither observed nor recaptured.
+
+**TO PROVE:** normal app/UI, daemon/loaded-child/original-Mac and real-guest
+acceptance, notarization/fresh online checks and CMS signer trust. The signed app
+and ZIP are private user-test artifacts, not installed or published. No SSH/Ansible,
+host install, normal app/runtime or VM launch, key export/import/enumeration,
+orchestrator unlock/ACL change or automatic signing retry occurs.

@@ -3807,3 +3807,25 @@ plan; it grants no signing/key/Apple/guest authority. No such plan, candidate bu
 signing, private-key access, Apple request, real SSH/Ansible, install, normal app/
 runtime action or VM launch occurs. The request remains consumed without retry.
 See the [inspection result and limits](DevVMMilestone6Runbook.md#fresh-007bc66-native-inspection-passed--5-november-2026).
+
+## Signed 007bc66 test build — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** after inspection-result commits manager
+`96319b0` / companion `79399ae`, the user explicitly approves the fresh attended
+build/sign/verify run with selected-key use, secure-key UI and Apple timestamps.
+The exact-receipt plan passes fourteen checks and 44 fake tests before real-terminal
+confirmation and durable one-shot consumption. Source, original disposable scope,
+package `5770d0f`, runtime and material selectors are unchanged.
+
+All 17 command roots and 46 native workers pass in 903.341 seconds, including
+five timestamp signatures and staged/extracted checks of six code identities.
+The complete app inventory, post-sign helper/resource seals and ZIP roundtrip
+match. All 63 roots are group-quiet/reaped/closed and absent in a bounded PID-only
+snapshot. Prior private artifacts, 173 review hashes, ten plan hashes and four
+current pin files remain unchanged. The signed app and 176,350,211-byte ZIP are
+ready for private user testing; neither is installed or published.
+
+**TO PROVE:** normal native UI, daemon/loaded-child/original-Mac and real-guest
+acceptance. No notarization, SSH/Ansible, install, ordinary app/runtime or VM launch
+is performed. The result is SIGNED_OFFLINE_STATIC_CHECKS_ONLY; the consumed plan
+has no automatic retry. See the [signed test-build record](DevVMMilestone6Runbook.md#signed-007bc66-test-build--5-november-2026).
