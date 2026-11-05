@@ -42,12 +42,6 @@ struct ManagerView: View {
             GeometryReader { geometry in ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
-                            sidebarRow(.library) {
-                                HStack(spacing: 9) {
-                                    ManagerArtwork(size: 34)
-                                    Text(AppChannel.current.displayName).font(Theme.sans(17, weight: .medium)).tracking(-0.17).lineLimit(1).minimumScaleFactor(0.8)
-                                }
-                            }
                             sidebarHeader("guests")
                             if model.snapshots.isEmpty, model.registryError == nil {
                                 Text("No guests yet").font(Theme.sans(13)).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 5)
@@ -112,7 +106,12 @@ struct ManagerView: View {
         }
         .navigationTitle(AppChannel.current.displayName)
         .toolbar {
-            ToolbarItem {
+            // The app icon sits before the window title and returns to the overview.
+            ToolbarItem(placement: .navigation) {
+                Button { destination = .library } label: { ManagerArtwork(size: 22) }
+                    .buttonStyle(.plain).help("Show all virtual machines").accessibilityLabel("All virtual machines")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button { importingFactory = true } label: { Label("Import Factory", systemImage: "square.and.arrow.down") }
                     .disabled(model.registryError != nil || model.shuttingDown || model.checking || model.diagnostics == nil || model.factoryImportInProgress)
             }
@@ -146,7 +145,7 @@ struct ManagerView: View {
 
     /// Sidebar destinations in visual order, for arrow-key navigation.
     private var sidebarOrder: [Destination] {
-        [.library] + model.snapshots.map { .guest($0.id) } + [.defaults, .permissions, .runtime, .provisioningTools]
+        model.snapshots.map { .guest($0.id) } + [.defaults, .permissions, .runtime, .provisioningTools]
     }
 
     private func moveSelection(by offset: Int) -> KeyPress.Result {
@@ -168,7 +167,7 @@ struct ManagerView: View {
             HStack(spacing: 9) {
                 Image(systemName: systemImage).font(.system(size: 15, weight: .light)).foregroundStyle(destination == target ? Theme.green : Color.secondary).frame(width: 20)
                 Text(title)
-            }.frame(minHeight: 34)
+            }.frame(minHeight: 26)
         }
     }
 
@@ -790,7 +789,7 @@ struct ManagerLoadingView: View {
 private struct ManagerArtwork: View {
     let size: CGFloat
     var body: some View {
-        if let path = Bundle.main.url(forResource: "OmarchyVMManager", withExtension: "png"), let image = NSImage(contentsOf: path) {
+        if let image = AppArtwork.image("OmarchyVMManager") {
             Image(nsImage: image).resizable().interpolation(.high).frame(width: size, height: size).accessibilityHidden(true)
         } else {
             Image(systemName: "square.stack.3d.up").resizable().scaledToFit().frame(width: size, height: size).foregroundStyle(.green).accessibilityHidden(true)

@@ -11,45 +11,30 @@ struct GuestArtwork: View {
         default: false
         }
     }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
-            if let url = Bundle.main.url(forResource: "OmarchyGuest", withExtension: "png"), let image = NSImage(contentsOf: url) {
-                Image(nsImage: image).resizable().interpolation(.high)
-            } else {
-                Image(systemName: "desktopcomputer").resizable().scaledToFit().padding(size * 0.2)
-            }
             if busy {
-                RoundedRectangle(cornerRadius: size * 0.185).fill(.black.opacity(0.35))
-                    .frame(width: size * 0.81, height: size * 0.81)
-                TileTracer(radius: size * 0.185, lineWidth: max(1.5, size * 0.035))
-                    .frame(width: size * 0.81, height: size * 0.81)
-            }
-        }.frame(width: size, height: size).accessibilityHidden(true)
-    }
-}
-
-/// Busy indicator for the guest tile: a green segment running around its edge, matching the
-/// library frame mark's tracer. Under Reduce Motion the whole edge stays lit instead.
-private struct TileTracer: View {
-    let radius: CGFloat
-    let lineWidth: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private let length = 0.22
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: radius)
-        let line = StrokeStyle(lineWidth: lineWidth, lineCap: .square)
-        if reduceMotion {
-            shape.strokeBorder(Theme.green, lineWidth: lineWidth)
-        } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-                let start = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
+                // The same stacked frames and tracer as the loading screen, on the guest tile's ground.
                 ZStack {
-                    shape.stroke(Theme.green.opacity(0.25), lineWidth: lineWidth)
-                    shape.trim(from: start, to: min(start + length, 1)).stroke(Theme.green, style: line)
-                    if start + length > 1 { shape.trim(from: 0, to: start + length - 1).stroke(Theme.green, style: line) }
-                }.padding(lineWidth / 2)
+                    RoundedRectangle(cornerRadius: size * 0.185).fill(Theme.ground)
+                        .overlay(RoundedRectangle(cornerRadius: size * 0.185).strokeBorder(Theme.border))
+                        .frame(width: size * 0.81, height: size * 0.81)
+                    FrameMark(size: size * 0.62, tracer: Theme.green)
+                }.transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 1.12)))
+            } else {
+                Group {
+                    if let image = AppArtwork.image("OmarchyGuest") {
+                        Image(nsImage: image).resizable().interpolation(.high)
+                    } else {
+                        Image(systemName: "desktopcomputer").resizable().scaledToFit().padding(size * 0.2)
+                    }
+                }.transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.8)))
             }
         }
+        // When work finishes the frames give way to the Omarchy logo.
+        .animation(.easeOut(duration: reduceMotion ? 0.2 : 0.45), value: busy)
+        .frame(width: size, height: size).accessibilityHidden(true)
     }
 }
 

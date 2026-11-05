@@ -23,7 +23,8 @@ struct FrameMark: View {
     var frame = Theme.idleFrame
     var tracer: Color?
     var body: some View {
-        let line = StrokeStyle(lineWidth: size * 7 / 300)
+        // Keep the frames legible when the mark shrinks to a guest tile.
+        let line = StrokeStyle(lineWidth: max(1.25, size * 7 / 300))
         ZStack {
             BackFrame().stroke(Theme.quietFrame, style: line)
             FrontFrame().stroke(frame, style: line)
