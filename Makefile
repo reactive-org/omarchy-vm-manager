@@ -5,9 +5,9 @@ export CLANG_MODULE_CACHE_PATH := $(CURDIR)/.build/module-cache/clang
 export MACOSX_DEPLOYMENT_TARGET := 15.0
 export RELEASE_TAG
 
-.PHONY: prepare-source help build build-signed icon test test-build-policies test-ssh app app-preview verify-app verify-bundle verify-preview run fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
+.PHONY: prepare-source help build build-dev build-signed icon test test-dev test-channel-bundles test-build-policies test-ssh app app-dev app-preview verify-app verify-bundle verify-dev verify-preview run run-dev fetch-kit fetch-runtime-kit patched-kit test-upstream layout-preview verify-layout-preview prerelease signed-prerelease
 help:
-	@echo 'make prepare-source | test | test-build-policies | test-factories | test-ssh | build | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | verify-app | verify-bundle | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | app-preview | layout-preview | verify-layout-preview | run | test-upstream'
+	@echo 'make prepare-source | test | test-dev | test-build-policies | test-factories | test-ssh | build | build-dev | build-signed | icon | fetch-kit | fetch-runtime-kit | patched-kit | app | app-dev | verify-app | verify-bundle | verify-dev | prerelease | signed-prerelease RELEASE_TAG=vVERSION-dev.N | layout-preview | verify-layout-preview | run | run-dev | test-upstream'
 
 prepare-source:
 	python3 Scripts/prepare_runtime_source.py
@@ -19,6 +19,14 @@ build: prepare-source
 build-signed: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
 	swift build --disable-sandbox -c release -Xswiftc -DSIGNED_PRERELEASE
+
+build-dev: prepare-source
+	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
+	swift build --disable-sandbox --scratch-path .build/dev -Xswiftc -DDEVELOPMENT_CHANNEL
+
+test-dev: prepare-source
+	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
+	swift test --disable-sandbox --scratch-path .build/dev -Xswiftc -DDEVELOPMENT_CHANNEL --no-parallel
 
 test: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
@@ -76,11 +84,21 @@ test-home-disks: prepare-source
 icon:
 	python3 Scripts/build_icon.py
 
-app-preview: build icon
-	Scripts/build-app.sh --preview
+app-dev: build-dev icon
+	Scripts/build-app.sh --dev
 
-verify-preview:
-	Scripts/verify-app.sh "$(CURDIR)/dist/Omarchy VM Manager Preview.app"
+app-preview: app-dev
+
+verify-dev:
+	Scripts/verify-app.sh --bundle-only "$(CURDIR)/dist/Omarchy VM Manager Dev.app"
+
+verify-preview: verify-dev
+
+test-channel-bundles:
+	python3 Scripts/test_channel_bundles.py "$(CURDIR)/dist/Omarchy VM Manager.app" "$(CURDIR)/dist/Omarchy VM Manager Dev.app"
+
+run-dev: verify-dev
+	open "dist/Omarchy VM Manager Dev.app"
 
 layout-preview: build icon
 	Scripts/build-app.sh --layout-preview

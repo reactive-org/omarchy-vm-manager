@@ -302,7 +302,7 @@ final class AppModel: ObservableObject {
     }
 
     private func writeReport() throws {
-        let logs = support.appendingPathComponent("Omarchy VM Manager/Logs")
+        let logs = ManagerStorage(applicationSupport: support).directory.appendingPathComponent("Logs")
         if mkdir(logs.path, 0o700) != 0, errno != EEXIST { throw CocoaError(.fileWriteUnknown) }
         try PrivateFiles.directory(logs)
         let object: [String: Any] = [

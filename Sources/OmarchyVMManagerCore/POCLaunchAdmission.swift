@@ -17,7 +17,7 @@ public struct POCStorage: Sendable {
 
     public func prepare(_ profile: VMProfile) throws -> URL {
         guard POCProfiles.all.contains(profile) else { throw failure("Only the two fixed disposable POC profiles are allowed.") }
-        let manager = applicationSupport.appendingPathComponent("Omarchy VM Manager", isDirectory: true)
+        let manager = AppChannel.current.directory(in: applicationSupport)
         let vms = manager.appendingPathComponent("VMs", isDirectory: true)
         try ensureDirectory(manager)
         try ensureDirectory(vms)

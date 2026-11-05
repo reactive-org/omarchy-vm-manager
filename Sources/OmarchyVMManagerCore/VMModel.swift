@@ -166,7 +166,7 @@ public enum POCProfiles {
     ]
 
     public static func root(for profile: VMProfile, applicationSupport: URL) -> URL {
-        applicationSupport.appendingPathComponent("Omarchy VM Manager/VMs", isDirectory: true)
+        AppChannel.current.directory(in: applicationSupport).appendingPathComponent("VMs", isDirectory: true)
             .appendingPathComponent(profile.id.uuidString, isDirectory: true)
     }
 }

@@ -50,7 +50,7 @@ class KeychainProfileTests(unittest.TestCase):
                 keychain_profile.profile_entitlements(dict(self.profile, **changes), self.team, self.bundle, self.now)
 
     def test_profiles_cannot_be_reused_by_cli_or_layout_preview(self):
-        for bundle in [self.bundle + ".cli", self.bundle + ".storage", self.bundle + ".layout-preview"]:
+        for bundle in [self.bundle + ".cli", self.bundle + ".storage", self.bundle + ".layout-preview", self.bundle + ".dev"]:
             with self.subTest(bundle=bundle), self.assertRaises(AssertionError):
                 keychain_profile.profile_entitlements(self.profile, self.team, bundle, self.now)
 

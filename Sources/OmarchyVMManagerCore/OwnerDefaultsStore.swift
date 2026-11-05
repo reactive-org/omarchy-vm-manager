@@ -28,8 +28,8 @@ public final class OwnerDefaultsStore: @unchecked Sendable {
     private let access = NSRecursiveLock()
     private var revision: Data?
     private var cached: OwnerDefaults?
-    public init(applicationSupport: URL, vault: any OwnerSecretStoring = KeychainOwnerSecretStore()) {
-        directory = applicationSupport.resolvingSymlinksInPath().appendingPathComponent("Omarchy VM Manager")
+    public init(applicationSupport: URL, vault: any OwnerSecretStoring = KeychainOwnerSecretStore(), channel: AppChannel = .current) {
+        directory = channel.directory(in: applicationSupport)
         self.vault = vault
     }
     private var file: URL { directory.appendingPathComponent("guest-defaults.json") }

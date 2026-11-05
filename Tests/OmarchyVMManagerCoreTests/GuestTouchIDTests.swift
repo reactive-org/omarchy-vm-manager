@@ -79,7 +79,7 @@ struct GuestTouchIDTests {
             hostMemoryMiB: 65536, logicalCPUs: 64, registry: registry)
         try await manager.update(profile.id, configuration: GuestConfigurationPatch(guestTouchID: true))
         #expect(await manager.snapshots().first?.profile.guestTouchIDEnabled == true)
-        let registryData = try Data(contentsOf: files.support.appendingPathComponent("Omarchy VM Manager/registry.json"))
+        let registryData = try Data(contentsOf: files.storage.directory.appendingPathComponent("registry.json"))
         let persisted = try #require(JSONSerialization.jsonObject(with: registryData) as? [String: Any])
         let persistedProfiles = try #require(persisted["profiles"] as? [[String: Any]])
         #expect(persistedProfiles.first?["guestTouchIDEnabled"] as? Bool == true)

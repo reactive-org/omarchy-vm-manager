@@ -9,6 +9,12 @@ func reply(_ object: [String: Any], status: Int32) -> Never {
 
 do {
     let args = CommandLine.arguments
+    if Array(args.dropFirst()) == ["--channel-json"] {
+        let data = try JSONSerialization.data(withJSONObject: ["appChannel": AppChannel.current.rawValue], options: [.sortedKeys])
+        FileHandle.standardOutput.write(data + Data([10])); exit(0)
+    }
+    guard let executable = Bundle.main.executableURL else { throw VMFailure(code: "app-required", message: "The bundled storage helper is required.") }
+    _ = try AppChannel.current.enclosingApp(for: executable)
     guard args.count == 4, args[1] == "--trash", let id = UUID(uuidString: args[2]),
           args[2] == id.uuidString, args[3].utf8.count <= 256 else {
         throw VMFailure(code: "invalid-request", message: "A registered UUID and reviewed storage identity are required.")

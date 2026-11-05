@@ -45,7 +45,7 @@ class ManagedHomeGuardTests(unittest.TestCase):
                  mock.patch.object(home.stat, 'S_ISBLK', return_value=True), \
                  mock.patch.object(home.pwd, 'getpwuid', return_value=owner), \
                  mock.patch.object(home, 'identity', return_value={'TYPE': 'ext4', 'UUID': disk_id}), \
-                 mock.patch.object(home.os, 'stat', side_effect=lookup), \
+                 mock.patch.object(home.Path, 'stat', autospec=True, side_effect=lookup), \
                  mock.patch.object(home, 'run') as commands, mock.patch.object(home.subprocess, 'run') as subprocesses:
                 home.main()
                 commands.assert_not_called(); subprocesses.assert_not_called()

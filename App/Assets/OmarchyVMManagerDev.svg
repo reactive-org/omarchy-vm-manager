@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Omarchy VM Manager Dev</title>
+  <desc id="desc">Purple workspace frames with a DEV badge on a dark rounded tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#31263f"/>
+      <stop offset="1" stop-color="#171020"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#dbb2ff"/>
+      <stop offset="1" stop-color="#b78be8"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="108" width="824" height="824" rx="190" fill="#000000" fill-opacity="0.14"/>
+  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#tile)" stroke="#b78be8" stroke-opacity="0.25" stroke-width="3"/>
+  <path d="M658 326V266H266V658H326" fill="none" stroke="#8864a5" stroke-width="48" stroke-linejoin="miter"/>
+  <path d="M350 350H790V790H350Z" fill="#21162b"/>
+  <path d="M602 374H374V766H766V374H662" fill="none" stroke="url(#front)" stroke-width="48" stroke-linejoin="miter"/>
+  <path d="M374 602V662" fill="none" stroke="#21162b" stroke-width="54"/>
+  <rect x="462" y="646" width="362" height="178" rx="40" fill="#dbb2ff"/>
+  <text x="643" y="767" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="116" font-weight="bold" fill="#21162b">DEV</text>
+</svg>

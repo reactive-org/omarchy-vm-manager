@@ -4,8 +4,8 @@ import Foundation
 public struct ManagerCommandEndpoint: Sendable {
     public let directory: URL
     public var socket: URL { directory.appendingPathComponent("control.sock") }
-    public init(applicationSupport: URL) {
-        let identity = KitVerifier.sha256(Data(applicationSupport.resolvingSymlinksInPath().path.utf8)).prefix(16)
+    public init(applicationSupport: URL, channel: AppChannel = .current) {
+        let identity = KitVerifier.sha256(Data(channel.commandIdentity(in: applicationSupport).utf8)).prefix(16)
         directory = URL(fileURLWithPath: "/private/tmp/omarchy-manager-\(getuid())-\(identity)")
     }
     public init(directory: URL) { self.directory = directory }
