@@ -373,3 +373,11 @@ See [the full live record and limits](SharedFolders.md#authorized-live-validatio
 
 
 **VERIFIED — final sharing handoff:** installed build 23 passes installed-path bundle verification and 65 seconds of periodic health observation, ending Running / SSH ready / Mounted. Both exact disposable files were removed after inode/hash checks and their absence confirmed through the guest. Unrelated shared-folder files were preserved. The original Dev VM remains running with writable `~/Shared → /mnt/mac`, unchanged disk/profile/key/pin identity and the independent read-only SSH share. Final receipts: `.build/shared-folder-validation/{result,final-monitor,cleanup,final-build-graphics,final-post-cleanup-mount}.json`.
+
+## Manager redesign — 5 November 2026
+
+**DESIGN DECISION:** the manager window uses a dark, tiling-style theme with square status markers and monospaced spec rows. It is pinned to dark; light values remain only so offscreen appearance checks stay legible. New VM and Configure VM are one summary sheet whose sections open in place and stay mounted while closed, so edits survive. Library rows are 62 points high and guest headers 120 points high in every state, replacing the earlier 160-point cards and 200-point heroes. Wording and rules are unchanged except the new Home empty state, which adds links to Guest Defaults, Runtime and Permissions.
+
+**VERIFIED — fake/local:** `make test` passes 523 Swift tests in 69 suites, 333 script tests and 130 offscreen UI checks with 39 rendered screens, using synthetic services only. `make app-dev verify-dev` builds and verifies the ad-hoc Dev bundle without launching it.
+
+**TO PROVE:** the redesign has not been observed in a real window. `make layout-preview` needs its own kit artifact, so the new fixed row and header heights have not been measured across lifecycle states. Sidebar selection, keyboard focus, Reduce Motion and VoiceOver also need checking in the running app.
