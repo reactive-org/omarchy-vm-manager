@@ -141,7 +141,7 @@ struct DeveloperSetupView: View {
                 workflowActions(workflow)
                 terminal(height: expanded ? 640 : 360)
                 HStack {
-                    Text("You can leave this page. Setup will continue.").font(.callout).foregroundStyle(.secondary)
+                    Text(continuationMessage).font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     Button("Cancel Setup…") { confirmCancel = true }.disabled(!workflow.canCancel)
                 }
@@ -215,7 +215,7 @@ struct DeveloperSetupView: View {
                     case .confirmCancel: if confirmCancel { confirmCancel = false; cancelConfirmed() }
                     default: break
                     }
-                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "expanded": String(expanded), "cancelPending": String(confirmCancel)] })
+                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "expanded": String(expanded), "cancelPending": String(confirmCancel), "continuation": continuationMessage] })
             } }
             #endif
         }
@@ -321,7 +321,7 @@ struct DeveloperSetupView: View {
             }.padding(8)
             ProvisioningNativeTerminal(screen: screen).frame(height: height).clipped()
             HStack {
-                Text(screen.message).font(.caption).foregroundStyle(.secondary)
+                Text(workflow?.canCancel == false && !screen.connected ? "Live output has ended. Job status remains available." : screen.message).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if screen.acceptsInput { Label("Interactive input available", systemImage: "keyboard").font(.caption) }
             }.padding(10)
@@ -329,6 +329,11 @@ struct DeveloperSetupView: View {
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary)).clipShape(RoundedRectangle(cornerRadius: 10))
     }
     private var reviewingService: (any ProvisioningReviewing)? { model.setupService as? any ProvisioningReviewing }
+    private var continuationMessage: String {
+        guard let workflow else { return "No setup job is running." }
+        if workflow.cleanupRequired && !workflow.canCancel { return "Cleanup still needs verification. Review job details before continuing." }
+        return workflow.canCancel ? "You can leave this page. Setup will continue." : "Setup has finished. Its result remains saved."
+    }
     private var terminalAttachmentID: String? {
         guard let workflow, let job = model.setupJobs[workflow.id], job.state != .queued else { return nil }
         return workflow.id.uuidString + ":" + job.jobID.uuidString
@@ -403,7 +408,7 @@ struct DeveloperSetupView: View {
         guard let service = reviewingService, let id = UUID(uuidString: previewLookup) else { return }
         planning = true; failure = nil; let revision = planRevision; defer { planning = false }
         do { let value = try await service.preview(id); guard revision == planRevision else { return }; try display(value) }
-        catch { failure = "The saved setup inputs are missing, changed or belong to another guest. Create a new preview to review the intended setup again." }
+        catch { failure = "The saved preview is unavailable. Existing job results are shown below. Choose a source to review a new setup." }
     }
     @MainActor private func inspectTask(_ value: ProvisioningPlanPreview, task: ProvisioningTaskReview) async {
         guard let service = reviewingService else { return }

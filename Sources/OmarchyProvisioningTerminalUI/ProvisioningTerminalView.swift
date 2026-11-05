@@ -26,7 +26,9 @@ import SwiftTerm
     private var sentSize = (24, 80)
     private var size = (24, 80)
     public override init() {
-        view = TerminalView(frame: .init(x: 0, y: 0, width: 800, height: 360))
+        // Pipe-based Ansible output uses LF; PTY output may already use CRLF.
+        // The display must start both at column zero without modifying job bytes.
+        view = TerminalView(frame: .init(x: 0, y: 0, width: 800, height: 360), options: .init(convertEol: true))
         super.init()
         view.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         view.nativeBackgroundColor = .black; view.nativeForegroundColor = .white

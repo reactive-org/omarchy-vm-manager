@@ -337,6 +337,15 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         try actionDriver.send("setup", .submit); try until { enabled.submissions == 1 }
         try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 1, "submission-attempt-not-replayed")
         actionHost.close()
+        let failedHistory = try enabled.row(UUID(), stage: "failed")
+        let completedHistory = try enabled.row(UUID(), stage: "succeeded")
+        enabledModel.setupWorkflows = [failedHistory, completedHistory]
+        try check(enabledModel.setupSummary(for: profile.id)?.title == "Setup history (2 runs)", "home-does-not-infer-history-order-from-uuid")
+        enabledModel.setupWorkflows.reverse()
+        try check(enabledModel.setupSummary(for: profile.id)?.title == "Setup history (2 runs)", "home-history-order-independent")
+        let cleanupHistory = try enabled.row(UUID(), stage: "cleanupRequired", cleanupRequired: true)
+        enabledModel.setupWorkflows.append(cleanupHistory)
+        try check(enabledModel.setupSummary(for: profile.id)?.cleanupRequired == true, "home-prioritizes-unresolved-cleanup")
         let workflow = try enabled.row(UUID(), stage: "running")
         enabledModel.setupWorkflows = [workflow]
         enabledModel.snapshots = [.init(profile: profile, state: .running, sessionID: workflow.originalSessionID,
@@ -345,6 +354,12 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let running = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id), driver: runningDriver, width: 1200, height: 960, dark: true)
         defer { running.close() }; tick(); try until { runningDriver.terminalScreen != nil }
         let screen = runningDriver.terminalScreen!
+        screen.render(Data("first\nsecond".utf8))
+        try check(String(decoding: screen.view.getBufferAsData(), as: UTF8.self).contains("\nsecond"), "terminal-pipe-lf-starts-at-column-zero")
+        screen.resetScreen(); screen.render(Data("first\r".utf8)); screen.render(Data("\nsecond".utf8))
+        try check(String(decoding: screen.view.getBufferAsData(), as: UTF8.self).contains("\nsecond"), "terminal-split-pty-crlf-remains-single-newline")
+        screen.resetScreen()
+
         screen.render(Data("SYNTHETIC ACCEPTANCE OUTPUT — no live job\r\n\u{001B}[32mok: [fixture]\u{001B}[0m\r\nUnicode → café ✓\r\n".utf8))
         try runningDriver.send("setup", .search("café")); try check(runningDriver.state("setup", "matches") == "1", "full-screen-literal-terminal-search")
         try runningDriver.send("setup", .expand(true)); tick(); try check(runningDriver.state("setup", "expanded") == "true", "full-screen-expand-terminal")
@@ -353,6 +368,8 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         try check(!screen.connected && !screen.ownsInput, "synthetic-output-grants-no-input")
         try runningDriver.send("setup", .expand(false)); tick()
         running.scroll(bottom: true); tick(); try capture(running, "setup-terminal-dark.png", screen: screen)
+        enabledModel.setupWorkflows = [completedHistory]; tick()
+        try check(runningDriver.state("setup", "continuation") == "Setup has finished. Its result remains saved.", "completed-setup-does-not-claim-running")
         running.close(); tick(); try check(enabled.cancellations == 1, "view-disappear-detaches-not-cancels")
         try check(runtime.startRequests.isEmpty && !FileManager.default.fileExists(atPath: support.path), "zero-runtime-starts-or-support-access")
         try check(NSApplication.shared.windows.filter { $0.isVisible }.isEmpty, "zero-visible-windows")

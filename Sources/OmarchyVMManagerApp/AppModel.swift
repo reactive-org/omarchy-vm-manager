@@ -67,6 +67,14 @@ final class AppModel: ObservableObject {
         #endif
         return provisioningService
     }
+    func setupSummary(for vmID: UUID) -> (title: String, cleanupRequired: Bool)? {
+        let rows = setupWorkflows.filter { $0.vmID == vmID }
+        guard let row = rows.first(where: { $0.cleanupRequired }) ?? rows.first(where: { $0.canCancel }) ?? rows.first else { return nil }
+        // UUID ordering is not chronology. Never present an arbitrary historical
+        // failure as the current result when several completed runs exist.
+        let title = rows.count > 1 && !row.cleanupRequired && !row.canCancel ? "Setup history (\(rows.count) runs)" : row.title
+        return (title, row.cleanupRequired)
+    }
     func cancelSetup(_ id: UUID) async {
         do { try await setupService?.cancel(id) }
         catch { actionError = "Setup cancellation could not be confirmed. Check its job state and cleanup requirement." }

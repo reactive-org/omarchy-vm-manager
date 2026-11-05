@@ -3875,3 +3875,10 @@ same saved input bytes. Historical receipts and private frozen pins stay intact.
 74 focused manager tests and 130 UI checks pass. **TO PROVE:** unrestricted/fresh
 creation and factory-matrix acceptance, other options and prior native lifecycle
 limits. See the [bounded acceptance record](docs/DevVMMilestone6Runbook.md#disposable-dev-saved-setup-acceptance--6-november-2026).
+
+**VERIFIED — final UI:** setup history no longer implies chronological order
+from UUIDs; active cleanup retains priority and completed jobs use finished-state
+copy. Pipe-LF and split-CRLF rendering pass regression checks. The final 136-check
+UI suite passes; the signed UI-only Dev replacement shows the persisted successful
+result without another guest launch. Private scope, engine and frozen inputs
+remain unchanged.

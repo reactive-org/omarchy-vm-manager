@@ -3889,6 +3889,21 @@ creation across both factory variants. Ordinary builds stay disabled; historical
 receipts require fresh explicit review after an engine change. Other profiles,
 themes, trimming, Docker/custom-task consent, protected Touch ID, focus,
 sleep/wake and crash/recovery cases retain their earlier acceptance limits.
-Live-terminal bytes and user input were observed; output wrapping and completed
-job messaging still need polish. Private root selectors, signing selectors,
+Live-terminal bytes and user input were observed; the final presentation
+follow-up is recorded below. Private root selectors, signing selectors,
 review packets, receipts, binaries and hashes remain outside Git.
+
+
+**VERIFIED — final presentation follow-up:** the Home badge no longer treats
+UUID order as chronology. Multiple completed runs show setup history, while
+unresolved cleanup and active work take priority. Completed jobs no longer say
+setup is continuing; a missing historical preview does not hide persisted job
+results. The native terminal uses line-feed conversion for pipe output, with
+split CRLF preserved. All 136 fake-service checks/27 screenshots pass, including
+history ordering, cleanup priority, completed messaging and LF/split-CRLF display.
+The final private UI-only candidate preserves the successful setup engine,
+input bytes, scope and runtime; no additional guest apply or launch occurs.
+Its five timestamp signatures/twenty bounded workers and private ZIP roundtrip
+pass. Native UI after reopening shows Setup history (3 runs) and the persisted
+Setup complete result with finished-state messaging. The disposable VM stays
+stopped; Main remains untouched. Original candidate artifacts are retained.

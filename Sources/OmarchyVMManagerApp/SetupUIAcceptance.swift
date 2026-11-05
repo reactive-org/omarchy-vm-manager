@@ -108,8 +108,8 @@ enum AcceptanceFailure: Error { case check }
         fields["proposal"] = review.proposal.base64EncodedString(); previews[review.id] = try value(fields)
         return profile
     }
-    func row(_ id: UUID, stage: String) throws -> ProvisioningWorkflowSnapshot {
-        try value(["id": id.uuidString, "vmID": vmID.uuidString, "originalSessionID": UUID().uuidString, "sequence": 1, "stage": stage, "cleanupRequired": false, "applyJobID": id.uuidString])
+    func row(_ id: UUID, stage: String, cleanupRequired: Bool = false) throws -> ProvisioningWorkflowSnapshot {
+        try value(["id": id.uuidString, "vmID": vmID.uuidString, "originalSessionID": UUID().uuidString, "sequence": 1, "stage": stage, "cleanupRequired": cleanupRequired, "applyJobID": id.uuidString])
     }
     func statuses() async -> [ProvisioningWorkflowSnapshot] { [] }
     func status(_ id: UUID) async -> ProvisioningWorkflowSnapshot? { nil }

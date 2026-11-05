@@ -244,7 +244,7 @@ struct ManagerView: View {
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 22) {
             GuestHomeHero(snapshot: snapshot)
-            if let job = model.setupWorkflows.last(where: { $0.vmID == snapshot.id }) {
+            if let job = model.setupSummary(for: snapshot.id) {
                 Button { page = .setup } label: { Label(job.title, systemImage: job.cleanupRequired ? "exclamationmark.shield" : "terminal") }.buttonStyle(.plain)
             }
             GuestHibernationPanel(snapshot: snapshot, review: { action in model.experimentalPowerReview = .init(id: snapshot.id, action: action) }, recheck: { Task { await model.recheckExperimentalRecovery(snapshot.id) } })
