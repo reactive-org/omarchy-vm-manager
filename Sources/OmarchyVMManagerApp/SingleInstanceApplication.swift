@@ -8,7 +8,7 @@ enum SingleInstanceApplication {
     static var activationNotification: Notification.Name {
         Notification.Name(AppModel.layoutPreview
             ? "dev.omarchy.vm-manager.layout-preview.activate"
-            : "dev.omarchy.vm-manager.activate")
+            : AppChannel.current.activationNotification)
     }
 
     static func acquire() -> ManagerInstanceLock {
@@ -16,13 +16,12 @@ enum SingleInstanceApplication {
         if AppModel.layoutPreview {
             directory = URL(fileURLWithPath: "/private/tmp/omarchy-manager-layout-preview-\(getuid())")
         } else {
-            directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .resolvingSymlinksInPath().appendingPathComponent("Omarchy VM Manager")
+            directory = AppChannel.current.directory(in: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0])
         }
         do {
             if let lock = try ManagerInstanceLock.acquire(in: directory) { return lock }
             DistributedNotificationCenter.default().postNotificationName(activationNotification, object: nil, userInfo: nil, deliverImmediately: true)
-            let identifier = Bundle.main.bundleIdentifier ?? "dev.omarchy.vm-manager"
+            let identifier = AppModel.layoutPreview ? "dev.omarchy.vm-manager.layout-preview" : AppChannel.current.bundleIdentifier
             for application in NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
                 where application.processIdentifier != getpid() {
                 application.activate(options: [.activateAllWindows])

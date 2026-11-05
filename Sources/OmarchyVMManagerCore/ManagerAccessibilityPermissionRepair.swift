@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ManagerAccessibilityPermissionRepair {
-    public static let bundleIdentifier = "dev.omarchy.vm-manager"
+    public static var bundleIdentifier: String { AppChannel.current.bundleIdentifier }
 
     public static func resetCurrentAppEntry() -> Bool {
         resetStaleEntry(bundleIdentifier: Bundle.main.bundleIdentifier,

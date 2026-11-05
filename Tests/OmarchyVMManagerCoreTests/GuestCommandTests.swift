@@ -168,7 +168,7 @@ struct GuestCommandTests {
         #expect(renamed.guest?.memoryMiB == 8192)
         let fetched = await f.service.execute(GuestCommandRequest(command: .get, selector: "Renamed"))
         #expect(fetched.ok && fetched.guest?.id == id)
-        #expect(fetched.guest?.ssh.host == "127.0.0.1" && fetched.guest?.ssh.port == 2222)
+        #expect(fetched.guest?.ssh.host == "127.0.0.1" && fetched.guest?.ssh.port == AppChannel.current.sshPorts.lowerBound)
         #expect(fetched.guest?.network.guestIPs == [] && fetched.guest?.network.addressesVerified == false)
         let data = String(decoding: try JSONEncoder().encode(fetched), as: UTF8.self)
         for field in ["credentialReference", "password", "privateKey", "ownerSetup"] { #expect(!data.contains(field)) }

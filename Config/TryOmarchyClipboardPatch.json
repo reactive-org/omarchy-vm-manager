@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-03T03:56:16Z",
+  "authorDate": "2026-11-05T00:00:00+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-04T00:00:00+00:00",
-  "subject": "Add optional persistent home disks while preserving scoped authentication",
-  "commit": "b5a9599ad4d67632e9957419432bfccbdb39ba39",
-  "patchSHA256": "7bdf4294f1705a3ac32d3fcc2fb7863bf6d02a0714a19fa283451a8ec9fe0601"
+  "committerDate": "2026-11-05T00:00:00+00:00",
+  "subject": "Isolate stable and development manager caches and authentication keys",
+  "commit": "d6dd3dbe860f55302a66be884113e647e42b0eba",
+  "patchSHA256": "2baa0c70ab412f7f1a0f9937e91973877eeff4099c28b180e37eb73eb0eb2aea"
 }

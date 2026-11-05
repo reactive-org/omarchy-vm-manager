@@ -4,12 +4,15 @@ import TryOmarchyKitClient
 
 public struct ManagerStorage: Sendable {
     public let applicationSupport: URL
+    public let channel: AppChannel
     private var sharingHome = FileManager.default.homeDirectoryForCurrentUser
-    public init(applicationSupport: URL) { self.applicationSupport = applicationSupport.resolvingSymlinksInPath() }
+    public init(applicationSupport: URL, channel: AppChannel = .current) {
+        self.applicationSupport = applicationSupport.resolvingSymlinksInPath(); self.channel = channel
+    }
     init(applicationSupport: URL, sharingHome: URL) {
         self.init(applicationSupport: applicationSupport); self.sharingHome = sharingHome
     }
-    public var directory: URL { applicationSupport.appendingPathComponent("Omarchy VM Manager") }
+    public var directory: URL { channel.directory(in: applicationSupport) }
     public var vms: URL { directory.appendingPathComponent("VMs") }
     public func root(for profile: VMProfile) -> URL { vms.appendingPathComponent(profile.id.uuidString) }
     func matchesRoot(_ url: URL, profile: VMProfile) -> Bool {
@@ -96,7 +99,7 @@ public struct ManagerStorage: Sendable {
             }
         }
         if profile.ssh != nil {
-            try withLock(profile) { try ManagedSSHStorage(root: root).prepare(profile: profile, sessionID: sessionID, applicationSupport: applicationSupport, newRoot: created) }
+            try withLock(profile) { try ManagedSSHStorage(root: root).prepare(profile: profile, sessionID: sessionID, applicationSupport: applicationSupport, newRoot: created, channel: channel) }
         } else if PrivateFiles.exists(root.appendingPathComponent(ManagedSSHStorage.manifestName)) {
             throw PrivateFiles.failure("Unexpected managed SSH metadata is present. No existing access was changed.")
         }

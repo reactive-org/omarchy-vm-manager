@@ -31,7 +31,7 @@ struct ManagerView: View {
                 List(selection: $destination) {
                     HStack(spacing: 9) {
                         ManagerArtwork(size: 26)
-                        Text("Omarchy VM Manager").fixedSize(horizontal: false, vertical: true)
+                        Text(AppChannel.current.displayName).fixedSize(horizontal: false, vertical: true)
                     }.padding(.vertical, 5).tag(Destination.library)
                     Section("Guests") {
                         ForEach(model.snapshots) { snapshot in
@@ -51,7 +51,7 @@ struct ManagerView: View {
                     }
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Omarchy VM Manager " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")")
+                    Text(AppChannel.current.displayName + " " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "–") + ")")
                         .bold()
                     Text("A project of [reactive.org enterprises](https://www.reactive.org/)").foregroundStyle(.secondary)
                 }.font(.caption).lineLimit(1).minimumScaleFactor(0.75)
@@ -77,7 +77,7 @@ struct ManagerView: View {
                 }.padding(28).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
             }.id(detailPresentation).background(Color(nsColor: .windowBackgroundColor))
         }
-        .navigationTitle("Omarchy VM Manager")
+        .navigationTitle(AppChannel.current.displayName)
         .toolbar {
             ToolbarItem {
                 Button { importingFactory = true } label: { Label("Import Factory", systemImage: "square.and.arrow.down") }
@@ -155,7 +155,7 @@ struct ManagerView: View {
                     HStack(spacing: 24) {
                         ManagerArtwork(size: 144)
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Omarchy VM Manager").font(.system(size: 32, weight: .bold))
+                            Text(AppChannel.current.displayName).font(.system(size: 32, weight: .bold))
                             Text("Your Omarchy virtual machines").font(.title3).foregroundStyle(.secondary)
                             Text("\(active.count) active · \(active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024) GiB allocated").foregroundStyle(.secondary)
                         }
@@ -576,7 +576,7 @@ private struct ManagerLoadingView: View {
         VStack(spacing: 24) {
             ManagerArtwork(size: 112)
             VStack(spacing: 8) {
-                Text("Omarchy VM Manager").font(.title.bold())
+                Text(AppChannel.current.displayName).font(.title.bold())
                 Text("Loading your virtual machines…")
                     .foregroundStyle(.secondary)
             }
@@ -587,7 +587,7 @@ private struct ManagerLoadingView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
-        .navigationTitle("Omarchy VM Manager")
+        .navigationTitle(AppChannel.current.displayName)
     }
 }
 

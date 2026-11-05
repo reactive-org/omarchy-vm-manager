@@ -3035,7 +3035,7 @@ index 40d02e3..828a0db 100644
      /// Checks one part against its digest and feeds it to the whole-image hash.
 diff --git a/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift b/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift
 new file mode 100644
-index 0000000..fb18a2f
+index 0000000..9b202f3
 --- /dev/null
 +++ b/macos/Sources/OmarchyVMHelper/ManagedAuthentication.swift
 @@ -0,0 +1,196 @@
@@ -3083,7 +3083,7 @@ index 0000000..fb18a2f
 +        guard focused() else { NativeAuthenticationDiagnostic.report(.focusBefore); return nil }
 +        guard !cancelled() else { NativeAuthenticationDiagnostic.report(.cancelled); return nil }
 +        guard let epoch = ManagedAuthenticationAttempt.epoch(at: Self.gateURL(socketPath)) else { NativeAuthenticationDiagnostic.report(.gateUnavailable); return nil }
-+        let directory = try leaseDirectory ?? ManagedAuthenticationFiles.root()
++        let directory = try leaseDirectory ?? ManagedAuthenticationFiles.root(channel: .stable)
 +        return try ManagedAuthenticationAttempt.acquire(directory: directory, scope: scope,
 +            valid: {
 +                guard self.controller.isStillRunning, processAlive() else { NativeAuthenticationDiagnostic.report(.processChanged); return false }
@@ -3096,17 +3096,17 @@ index 0000000..fb18a2f
 +}
 +
 +enum ManagedAuthenticationFiles {
-+    static func root(base: URL? = nil) throws -> URL {
++    static func root(base: URL? = nil, channel: ManagerRuntimeChannel = .current) throws -> URL {
 +        let support = base ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-+        let root = support.appendingPathComponent("Omarchy VM Manager", isDirectory: true)
++        let root = support.appendingPathComponent(channel.directoryName, isDirectory: true)
 +            .appendingPathComponent("Native Authentication Keys", isDirectory: true)
 +        try ensurePrivateDirectory(root)
 +        return root
 +    }
 +
-+    static func keyURL(vmID: UUID, guestID: String, base: URL? = nil) throws -> URL {
++    static func keyURL(vmID: UUID, guestID: String, base: URL? = nil, channel: ManagerRuntimeChannel = .current) throws -> URL {
 +        guard guestID.count == 64, guestID.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { throw HelperError.io("invalid managed authentication key identity") }
-+        let directory = try root(base: base).appendingPathComponent(vmID.uuidString, isDirectory: true)
++        let directory = try root(base: base, channel: channel).appendingPathComponent(vmID.uuidString, isDirectory: true)
 +        try ensurePrivateDirectory(directory)
 +        return directory.appendingPathComponent(guestID + ".key")
 +    }
@@ -3122,7 +3122,7 @@ index 0000000..fb18a2f
 +            let next = openat(descriptor, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 +            guard next >= 0 else { throw HelperError.io("unsafe authentication directory") }
 +            Darwin.close(descriptor); descriptor = next
-+            privateTree = privateTree || component == "Omarchy VM Manager"
++            privateTree = privateTree || component == "Omarchy VM Manager" || component == "Omarchy VM Manager Dev"
 +            if privateTree {
 +                var info = stat()
 +                guard fstat(descriptor, &info) == 0, info.st_uid == getuid(), info.st_mode & 0o077 == 0 else {
@@ -3237,7 +3237,7 @@ index 0000000..fb18a2f
 +}
 diff --git a/macos/Sources/OmarchyVMHelper/ManagedFactoryCache.swift b/macos/Sources/OmarchyVMHelper/ManagedFactoryCache.swift
 new file mode 100644
-index 0000000..d47aa37
+index 0000000..233ea63
 --- /dev/null
 +++ b/macos/Sources/OmarchyVMHelper/ManagedFactoryCache.swift
 @@ -0,0 +1,67 @@
@@ -3251,11 +3251,11 @@ index 0000000..d47aa37
 +        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
 +    }
 +
-+    static func cacheDirectory(downloads: URL = downloads) -> URL {
-+        downloads.appendingPathComponent("Omarchy VM Manager/Factory Images", isDirectory: true)
++    static func cacheDirectory(downloads: URL = downloads, channel: ManagerRuntimeChannel = .current) -> URL {
++        downloads.appendingPathComponent(channel.directoryName, isDirectory: true).appendingPathComponent("Factory Images", isDirectory: true)
 +    }
 +
-+    static func directory(for root: URL, downloads: URL = downloads) throws -> URL? {
++    static func directory(for root: URL, downloads: URL = downloads, channel: ManagerRuntimeChannel = .current) throws -> URL? {
 +        let marker = root.appendingPathComponent(".omarchy-vm-manager.json")
 +        var info = stat()
 +        guard lstat(marker.path, &info) == 0 else {
@@ -3268,14 +3268,14 @@ index 0000000..d47aa37
 +        guard value.schemaVersion == 1, value.id.uuidString == root.lastPathComponent else {
 +            throw HelperError.io("The factory download cache requires a valid manager-owned UUID root")
 +        }
-+        return cacheDirectory(downloads: downloads)
++        return cacheDirectory(downloads: downloads, channel: channel)
 +    }
 +
 +    static func contains(_ directory: URL) -> Bool {
 +        directory.standardizedFileURL == cacheDirectory().standardizedFileURL
 +    }
 +
-+    static func prepare(downloads: URL = downloads) throws {
++    static func prepare(downloads: URL = downloads, channel: ManagerRuntimeChannel = .current) throws {
 +        var info = stat()
 +        if lstat(downloads.path, &info) != 0, errno == ENOENT {
 +            guard mkdir(downloads.path, 0o700) == 0 || errno == EEXIST else {
@@ -3286,7 +3286,7 @@ index 0000000..d47aa37
 +              info.st_uid == getuid(), info.st_mode & 0o022 == 0 else {
 +            throw HelperError.io("The Omarchy image cache needs an owned Downloads folder without symbolic links or writable access for others")
 +        }
-+        for directory in [downloads.appendingPathComponent("Omarchy VM Manager", isDirectory: true), cacheDirectory(downloads: downloads)] {
++        for directory in [downloads.appendingPathComponent(channel.directoryName, isDirectory: true), cacheDirectory(downloads: downloads, channel: channel)] {
 +            if mkdir(directory.path, 0o700) != 0, errno != EEXIST {
 +                throw HelperError.io("Cannot create the Omarchy image cache in Downloads")
 +            }
@@ -3496,6 +3496,35 @@ index 0000000..7763f0c
 +        }
 +    }
 +
++}
+diff --git a/macos/Sources/OmarchyVMHelper/ManagerRuntimeChannel.swift b/macos/Sources/OmarchyVMHelper/ManagerRuntimeChannel.swift
+new file mode 100644
+index 0000000..fb744d8
+--- /dev/null
++++ b/macos/Sources/OmarchyVMHelper/ManagerRuntimeChannel.swift
+@@ -0,0 +1,23 @@
++import Foundation
++
++enum ManagerRuntimeChannel: Sendable {
++    case stable, development
++
++    static var current: Self {
++        guard let executable = Bundle.main.executableURL else { return .stable }
++        return enclosing(executable: executable)
++    }
++
++    static func enclosing(executable: URL) -> Self {
++        var ancestor = executable.resolvingSymlinksInPath().deletingLastPathComponent()
++        while ancestor.path != "/" {
++            if ancestor.pathExtension == "app" {
++                return Bundle(url: ancestor)?.bundleIdentifier == "dev.omarchy.vm-manager.dev" ? .development : .stable
++            }
++            ancestor.deleteLastPathComponent()
++        }
++        return .stable
++    }
++
++    var directoryName: String { self == .development ? "Omarchy VM Manager Dev" : "Omarchy VM Manager" }
 +}
 diff --git a/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift b/macos/Sources/OmarchyVMHelper/NativeAuthenticationBridge.swift
 index d182da3..3eaeed3 100644
@@ -6139,6 +6168,62 @@ index 0000000..15b630e
 +        #expect(throws: (any Error).self) { try decode() }
 +        value["failureCode"] = "invalid-seed"; value["owner"] = "root"
 +        #expect(throws: (any Error).self) { try decode() }
++    }
++}
+diff --git a/macos/Tests/OmarchyVMHelperTests/ManagerRuntimeChannelTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagerRuntimeChannelTests.swift
+new file mode 100644
+index 0000000..7bc2f18
+--- /dev/null
++++ b/macos/Tests/OmarchyVMHelperTests/ManagerRuntimeChannelTests.swift
+@@ -0,0 +1,50 @@
++import Darwin
++import Foundation
++import Testing
++@testable import OmarchyVMHelper
++
++@Suite("Manager channel storage — no real credentials or guests")
++struct ManagerRuntimeChannelTests {
++    @Test("nested kit and authentication subprocesses resolve their enclosing app")
++    func enclosingApp() throws {
++        let root = URL(fileURLWithPath: "/private/tmp").appendingPathComponent(UUID().uuidString)
++        defer { try? FileManager.default.removeItem(at: root) }
++        for (id, expected): (String, ManagerRuntimeChannel) in [("dev.omarchy.vm-manager", .stable), ("dev.omarchy.vm-manager.dev", .development)] {
++            let app = root.appendingPathComponent(id + ".app")
++            let contents = app.appendingPathComponent("Contents")
++            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
++            let info = ["CFBundleIdentifier": id, "CFBundleName": id, "CFBundleExecutable": "OmarchyVMManager", "CFBundlePackageType": "APPL"]
++            try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: contents.appendingPathComponent("Info.plist"))
++            let helper = contents.appendingPathComponent("Helpers/TryOmarchyKit.bundle/Contents/MacOS/omarchy-vm-helper")
++            #expect(ManagerRuntimeChannel.enclosing(executable: helper) == expected)
++        }
++        #expect(ManagerRuntimeChannel.enclosing(executable: root.appendingPathComponent("helper")) == .stable)
++    }
++
++    @Test("Dev cache preparation and identical VM identities cannot touch stable keys or cached images")
++    func isolatedPaths() throws {
++        let root = URL(fileURLWithPath: "/private/tmp").appendingPathComponent(UUID().uuidString)
++        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
++        defer { try? FileManager.default.removeItem(at: root) }
++        let downloads = root.appendingPathComponent("Downloads")
++        try ManagedFactoryCache.prepare(downloads: downloads, channel: .stable)
++        let stableCache = ManagedFactoryCache.cacheDirectory(downloads: downloads, channel: .stable)
++        let sentinel = stableCache.appendingPathComponent("preserved")
++        try Data("stable cache".utf8).write(to: sentinel)
++        try ManagedFactoryCache.prepare(downloads: downloads, channel: .development)
++        let devCache = ManagedFactoryCache.cacheDirectory(downloads: downloads, channel: .development)
++        #expect(devCache != stableCache)
++        #expect(try FileManager.default.contentsOfDirectory(atPath: devCache.path).isEmpty)
++        #expect(try Data(contentsOf: sentinel) == Data("stable cache".utf8))
++        let id = UUID(), guest = String(repeating: "a", count: 64)
++        let stableKey = try ManagedAuthenticationFiles.keyURL(vmID: id, guestID: guest, base: root, channel: .stable)
++        try Data("synthetic stable key".utf8).write(to: stableKey)
++        let devKey = try ManagedAuthenticationFiles.keyURL(vmID: id, guestID: guest, base: root, channel: .development)
++        #expect(devKey != stableKey)
++        #expect(!FileManager.default.fileExists(atPath: devKey.path))
++        #expect(try Data(contentsOf: stableKey) == Data("synthetic stable key".utf8))
++        let devRoot = root.appendingPathComponent("Omarchy VM Manager Dev")
++        chmod(devRoot.path, 0o755)
++        #expect(throws: HelperError.self) { try ManagedAuthenticationFiles.root(base: root, channel: .development) }
 +    }
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift b/macos/Tests/OmarchyVMHelperTests/NativeClipboardBridgeTests.swift

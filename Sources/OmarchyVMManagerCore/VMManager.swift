@@ -253,7 +253,7 @@ public actor VMManager {
         } else if useOwnerDefaults == true { throw OwnerConfiguration.invalid("Guest Defaults is unavailable.") }
         if sshEnabled {
             let occupied = Set(profiles.compactMap { $0.ssh?.hostPort })
-            guard let port = (2222...49151).first(where: { !occupied.contains($0) && portProbe.isAvailable($0) }) else {
+            guard let port = AppChannel.current.sshPorts.first(where: { !occupied.contains($0) && portProbe.isAvailable($0) }) else {
                 throw VMFailure(code: "ssh-port-unavailable", message: "No unprivileged loopback port is available for SSH.")
             }
             let fingerprint = try chosenPublicKey.map { try SelectedPublicKeyStore(applicationSupport: applicationSupport).save($0, id: profile.id) }

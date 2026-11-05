@@ -26,7 +26,7 @@ def main():
     assert len(source_paths) == len(rendered_paths) == 1
     assert source_paths[0].attrib["d"] == rendered_paths[0].attrib["d"], "guest icon must preserve the official Omarchy mark"
     BUILD.mkdir(parents=True, exist_ok=True)
-    for stem in ("OmarchyVMManager", "OmarchyGuest"):
+    for stem in ("OmarchyVMManager", "OmarchyVMManagerDev", "OmarchyGuest"):
         iconset = BUILD / (stem + ".iconset")
         iconset.mkdir(exist_ok=True)
         master = ASSETS / (stem + ".png")

@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import OmarchyVMManagerCore
 
-private struct AvailablePorts: HostPortProbing { func isAvailable(_ port: Int) -> Bool { port != 2222 } }
+private struct AvailablePorts: HostPortProbing { func isAvailable(_ port: Int) -> Bool { port != AppChannel.current.sshPorts.lowerBound } }
 private actor ControlledSSHProbe: SSHReadinessChecking {
     private var callbacks: [UUID: @Sendable (SSHReadiness) async -> Void] = [:]
     func monitor(_ request: VMStartRequest, update: @escaping @Sendable (SSHReadiness) async -> Void) async {
@@ -26,8 +26,8 @@ struct ManagedSSHTests {
         let b = try await manager.create(name: "B", memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false)
         let rows = await manager.snapshots()
         #expect(rows[0].profile.ssh == nil)
-        #expect(rows.first(where: { $0.id == a })?.profile.ssh?.hostPort == 2223)
-        #expect(rows.first(where: { $0.id == b })?.profile.ssh?.hostPort == 2224)
+        #expect(rows.first(where: { $0.id == a })?.profile.ssh?.hostPort == AppChannel.current.sshPorts.lowerBound + 1)
+        #expect(rows.first(where: { $0.id == b })?.profile.ssh?.hostPort == AppChannel.current.sshPorts.lowerBound + 2)
         #expect(rows[1].sshReadiness == .stopped)
         let data = try PrivateFiles.read(f.storage.directory.appendingPathComponent("registry.json"), maximum: 1_048_576)
         let object = try JSONSerialization.jsonObject(with: data) as! [String: Any]

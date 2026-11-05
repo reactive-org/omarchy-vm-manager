@@ -30,7 +30,9 @@ public struct DiskDefaults: Codable, Equatable, Sendable {
 
 struct DiskDefaultsStore {
     let applicationSupport: URL
-    private var directory: URL { ManagerStorage(applicationSupport: applicationSupport).directory }
+    private let channel: AppChannel
+    init(applicationSupport: URL, channel: AppChannel = .current) { self.applicationSupport = applicationSupport; self.channel = channel }
+    private var directory: URL { channel.directory(in: applicationSupport) }
     private struct Record: Codable { let schemaVersion: Int; let disks: DiskDefaults }
     func load() throws -> DiskDefaults {
         let path = directory.appendingPathComponent("disk-defaults.json")

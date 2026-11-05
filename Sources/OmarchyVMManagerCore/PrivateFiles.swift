@@ -60,6 +60,7 @@ public enum PrivateFiles {
 public final class RegistryStore: @unchecked Sendable {
     public static let supportedSchemaVersions = 1...6
     public let directory: URL
+    private let channel: AppChannel
     private let lockFD: Int32
     private var revision: Data?
     private var loaded = false
@@ -68,8 +69,9 @@ public final class RegistryStore: @unchecked Sendable {
     private var pending: Set<UUID> = []
     private let access = NSRecursiveLock()
 
-    public init(applicationSupport: URL) throws {
-        directory = applicationSupport.resolvingSymlinksInPath().appendingPathComponent("Omarchy VM Manager")
+    public init(applicationSupport: URL, channel: AppChannel = .current) throws {
+        self.channel = channel
+        directory = channel.directory(in: applicationSupport)
         try PrivateFiles.directory(directory, create: true)
         let lock = directory.appendingPathComponent(".manager.lock")
         let descriptor = open(lock.path, O_RDWR | O_CREAT | O_EXLOCK | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC, 0o600)
@@ -117,7 +119,7 @@ public final class RegistryStore: @unchecked Sendable {
             return registry.profiles
         }
         loaded = true
-        let storage = ManagerStorage(applicationSupport: directory.deletingLastPathComponent())
+        let storage = ManagerStorage(applicationSupport: directory.deletingLastPathComponent(), channel: channel)
         var retained: [VMProfile] = []
         for profile in POCProfiles.all where PrivateFiles.exists(storage.root(for: profile)) {
             try storage.validate(profile)

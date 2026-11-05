@@ -17,6 +17,8 @@ jobs:
           submodules: true
       - name: Manager and artifact contracts
         run: make test
+      - name: Isolated Dev channel build and no-VM contracts
+        run: make test-dev build-dev
       - name: Optimized release and signed-prerelease admission
         run: make test-build-policies
       - name: Build app, CLI and storage helper
