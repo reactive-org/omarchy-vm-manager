@@ -382,6 +382,27 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         enabledModel.setupWorkflows = []
         enabledModel.snapshots = [.init(profile: profile, state: .stopped), .init(profile: downloading, state: .downloading(phase: .downloading, percent: 48), sessionID: UUID()),
             .init(profile: failed, state: .failed(VMFailure(code: "synthetic", message: "The download could not finish.")), lastFailure: VMFailure(code: "synthetic", message: "The download could not finish."))]
+        for page in ["Home", "Network", "SSH", "Spaces"] {
+            let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: page), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+            tick(); try capture(pageHost, "guest-" + page.lowercased() + "-dark.png"); pageHost.close()
+        }
+        for page in ["permissions", "runtime"] {
+            let pageHost = Host(ManagerView(model: enabledModel, acceptanceManagerPage: page), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+            tick(); try capture(pageHost, page + "-dark.png"); pageHost.close()
+        }
+        for (section, name) in [("software", "new-vm-software-dark.png"), ("resources", "new-vm-pane-resources-dark.png"), ("access", "new-vm-access-dark.png")] {
+            let sheetDriver = SetupUIAcceptanceDriver()
+            let sheet = Host(VMEditor(model: enabledModel, profile: nil, saved: { _ in }), driver: sheetDriver, width: 640, height: 820, dark: true)
+            tick(); try until { sheetDriver.scopes["selection"] != nil }
+            try sheetDriver.send("editor", .name("Development"))
+            try sheetDriver.send("selection", .source("bundled")); try sheetDriver.send("editor", .section(section)); tick()
+            try capture(sheet, name); sheet.close()
+        }
+        let configureDriver = SetupUIAcceptanceDriver()
+        let configure = Host(VMEditor(model: enabledModel, profile: profile, saved: { _ in }), driver: configureDriver, width: 640, height: 820, dark: true)
+        tick(); try until { configureDriver.scopes["editor"] != nil }
+        try configureDriver.send("editor", .section("access")); tick()
+        try capture(configure, "configure-vm-dark.png"); configure.close()
         let homeHost = Host(ManagerView(model: enabledModel), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
         defer { homeHost.close() }; tick(); try capture(homeHost, "home-dark.png")
         enabledModel.snapshots = []; tick(); try capture(homeHost, "home-empty-dark.png")

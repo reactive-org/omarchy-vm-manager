@@ -13,6 +13,7 @@ struct OwnerDefaultsView: View {
     @State private var saved = false
     @State private var disks = DiskDefaults()
     @State private var disksSaved = false
+    @State private var wide = true
     private let protectedPasswordsAvailable = KeychainOwnerSecretStore.supportsProtectedStorage
     private let developmentPasswords = KeychainOwnerSecretStore.usesDevelopmentKeychain
     private var upgradeButtonTitle: String {
@@ -23,28 +24,17 @@ struct OwnerDefaultsView: View {
         }
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Guest Defaults").font(.largeTitle.bold())
-            Text("Save your account details once and they apply automatically to new virtual machines. You can choose manual account setup for an individual VM. Existing guests keep their saved settings.").foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: Theme.gap) {
+            ScreenHeader("Guest Defaults", subtitle: "Save your account details once and they apply automatically to new virtual machines. You can choose manual account setup for an individual VM. Existing guests keep their saved settings.")
             if let failure = model.defaultsError { Text(failure).foregroundStyle(.red) }
-            Form {
-                Section("New guest disks") {
-                    Toggle("Use a separate home disk", isOn: $disks.separateHome)
-                    Stepper("System disk: \(disks.systemDiskGiB) GiB", value: $disks.systemDiskGiB, in: 64...8192, step: 16)
-                    Stepper("Home disk: \(disks.homeDiskGiB) GiB", value: $disks.homeDiskGiB, in: 16...8192, step: 16).disabled(!disks.separateHome)
-                    Text("With a separate home disk, a replacement system can reuse its data. Turning this off puts the home on the system disk. Existing guests are unchanged.").font(.caption).foregroundStyle(.secondary)
-                    Button(disksSaved ? "Disk Defaults Saved" : "Save Disk Defaults") {
-                        saving = true; error = nil
-                        Task { disksSaved = await model.saveDiskDefaults(disks); if !disksSaved { error = model.defaultsError }; saving = false }
-                    }
-                    .onChange(of: disks) { disksSaved = false }
-                }
-                Section("Owner") {
-                    TextField("Username", text: $configuration.username)
-                    TextField("Full name", text: $configuration.fullName)
-                    TextField("Git email (optional)", text: $configuration.email)
-                    SecureField(model.ownerDefaults?.credentialReference == nil ? "Password" : "New password (leave blank to keep saved)", text: $password)
-                    SecureField("Confirm new password", text: $confirmation)
+            AnyLayout(wide ? AnyLayout(HStackLayout(alignment: .top, spacing: Theme.gap)) : AnyLayout(VStackLayout(spacing: Theme.gap))) {
+                SpecPane("owner") {
+                    SpecRow("username") { TextField("Username", text: $configuration.username).labelsHidden().specField().frame(maxWidth: 260) }
+                    SpecRow("full name") { TextField("Full name", text: $configuration.fullName).labelsHidden().specField().frame(maxWidth: 260) }
+                    SpecRow("git email") { TextField("Git email (optional)", text: $configuration.email).labelsHidden().specField().frame(maxWidth: 260) }
+                    SpecRow("password", note: model.ownerDefaults?.credentialReference == nil ? nil : "Leave blank to keep the saved password.") { SecureField("Password", text: $password).labelsHidden().specField().frame(maxWidth: 260) }
+                    SpecRow("confirm") { SecureField("Confirm new password", text: $confirmation).labelsHidden().specField().frame(maxWidth: 260) }
+                    VStack(alignment: .leading, spacing: 8) {
                     if developmentPasswords {
                         Text("This development build uses your existing login Keychain password. macOS may ask for your login password or permission to access it. Completed guests do not read the password again.").font(.caption).foregroundStyle(.secondary)
                     } else {
@@ -67,35 +57,53 @@ struct OwnerDefaultsView: View {
                         }.disabled(saving || (model.passwordUpgradeResult != nil && model.passwordUpgradeResult != .authenticationPending) || !protectedPasswordsAvailable || model.registryError != nil)
                         Text("For passwords saved by older versions, this one-time upgrade may request login-Keychain access. It preserves the original entry and pending guest references. Touch ID storage requires a provisioned app build.").font(.caption).foregroundStyle(.secondary)
                     }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
+                    .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
                 }
-                Section("System") {
-                    TextField("Hostname prefix", text: $configuration.hostnamePrefix)
-                    Text("Guest hostnames append a unique suffix, for example \(configuration.hostnamePrefix)-a1b2c3d4.").font(.caption).foregroundStyle(.secondary)
-                    Picker("Time zone", selection: $configuration.timezone) {
-                        Text("Same as macOS").tag("Same as macOS")
-                        Text("UTC").tag("UTC")
-                        ForEach(TimeZone.knownTimeZoneIdentifiers, id: \.self) { Text($0).tag($0) }
+                VStack(spacing: Theme.gap) {
+                    SpecPane("system") {
+                    SpecRow("hostname") { TextField("Hostname prefix", text: $configuration.hostnamePrefix).labelsHidden().specField().frame(maxWidth: 260) }
+                    SpecNote("Guest hostnames append a unique suffix, for example \(configuration.hostnamePrefix)-a1b2c3d4.").padding(.bottom, 6)
+                    SpecRow("time zone") {
+                        Picker("Time zone", selection: $configuration.timezone) {
+                            Text("Same as macOS").tag("Same as macOS")
+                            Text("UTC").tag("UTC")
+                            ForEach(TimeZone.knownTimeZoneIdentifiers, id: \.self) { Text($0).tag($0) }
+                        }.labelsHidden().frame(maxWidth: 240)
                     }
-                    Picker("Keyboard", selection: $configuration.keyboardID) {
-                        ForEach(OwnerSetupContract.current.keyboards) { Text($0.id).tag($0.id) }
+                    SpecRow("keyboard") {
+                        Picker("Keyboard", selection: $configuration.keyboardID) {
+                            ForEach(OwnerSetupContract.current.keyboards) { Text($0.id).tag($0.id) }
+                        }.labelsHidden().frame(maxWidth: 240)
                     }
-                }
-                Section("SSH public key") {
-                    HStack {
-                        Text("Additional login key (optional)")
-                        Spacer()
+                    }
+                    SpecPane("ssh public key") {
+                    SpecRow("login key", note: "Optional") {
                         Button("Choose .pub…") {
                             do { if let key = try PublicKeyPicker.choose() { publicKey = key; saved = false } }
                             catch { self.error = error.localizedDescription }
                         }
                     }
                     if let publicKey, let fingerprint = try? SSHPublicKey.fingerprint(publicKey) {
-                        Text(fingerprint).font(.caption).textSelection(.enabled)
+                        SpecNote(fingerprint).textSelection(.enabled)
                         Button("Remove Key") { self.publicKey = nil; saved = false }
                     }
-                    Text("Added to new SSH-enabled guests alongside the manager’s own per-guest key. Private keys are never imported.").font(.caption).foregroundStyle(.secondary)
+                    SpecNote("Added to new SSH-enabled guests alongside the manager’s own per-guest key. Private keys are never imported.").padding(.vertical, 6)
+                    }
+                    SpecPane("new guest disks") {
+                    SpecToggleRow("separate home", isOn: $disks.separateHome)
+                    SpecStepperRow("system disk", value: $disks.systemDiskGiB, in: 64...8192, step: 16, unit: " GiB")
+                    SpecStepperRow("home disk", value: $disks.homeDiskGiB, in: 16...8192, step: 16, unit: " GiB").disabled(!disks.separateHome)
+                    SpecNote("With a separate home disk, a replacement system can reuse its data. Turning this off puts the home on the system disk. Existing guests are unchanged.").padding(.vertical, 6)
+                    Button(disksSaved ? "Disk Defaults Saved" : "Save Disk Defaults") {
+                        saving = true; error = nil
+                        Task { disksSaved = await model.saveDiskDefaults(disks); if !disksSaved { error = model.defaultsError }; saving = false }
+                    }
+                    .onChange(of: disks) { disksSaved = false }.padding(.bottom, 6)
+                    }
                 }
-            }.formStyle(.grouped).fixedSize(horizontal: false, vertical: true).disabled(saving)
+            }.disabled(saving)
+            .onGeometryChange(for: Bool.self, of: { $0.size.width >= 760 }, action: { wide = $0 })
             if let error { Text(error).foregroundStyle(.red) }
             HStack {
                 if saved, configuration == model.ownerDefaults?.configuration, publicKey == model.ownerDefaults?.sshPublicKey, password.isEmpty, confirmation.isEmpty { Label("Defaults saved", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }

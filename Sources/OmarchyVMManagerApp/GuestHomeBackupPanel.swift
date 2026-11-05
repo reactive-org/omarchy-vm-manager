@@ -22,7 +22,7 @@ struct GuestHomeBackupPanel: View {
         GroupedPanel {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Label("Home Backup", systemImage: "externaldrive.badge.timemachine").font(.headline)
+                    SpecHeading("home backup")
                     Spacer()
                     if snapshot.homeBackup.isBusy {
                         ProgressView().controlSize(.small)

@@ -9,7 +9,7 @@ struct ProvisioningToolsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Text("Provisioning tools").font(.largeTitle.bold())
+                Text("Provisioning tools").font(.system(size: 26, weight: .semibold))
                 Spacer()
                 if checking { ProgressView().controlSize(.small) }
                 Button("Check again") { Task { await refresh() } }.disabled(checking)

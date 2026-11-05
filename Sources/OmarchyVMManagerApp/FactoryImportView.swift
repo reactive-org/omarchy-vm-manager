@@ -16,10 +16,10 @@ struct FactoryImportView: View {
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Label("Import Factory", systemImage: "square.and.arrow.down").font(.title2.bold())
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Import Factory").font(.system(size: 20, weight: .semibold))
             if let imported {
-                Label(imported.displayName, systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.headline)
+                Label(imported.displayName, systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).font(.headline)
                 Text("Verified and imported. This factory is available for new virtual machines.")
                     .foregroundStyle(.secondary)
             } else {
@@ -32,7 +32,7 @@ struct FactoryImportView: View {
                     ProgressView(cancelling ? "Cancelling import…" : model.factoryImportProgress.rawValue)
                     Text("Large factory images can take a few minutes to verify and copy.").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Button("Choose Bundle…") { chooseBundle() }.disabled(choosing)
+                    Button("Choose Bundle…") { chooseBundle() }.buttonStyle(.primaryAction).disabled(choosing)
                     Text("Select the folder containing factory.json and reviewed-factory.json.").font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -41,7 +41,7 @@ struct FactoryImportView: View {
             HStack {
                 Spacer()
                 if imported != nil {
-                    Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                    Button("Done") { dismiss() }.buttonStyle(.primaryAction).keyboardShortcut(.defaultAction)
                 } else {
                     Button("Cancel", role: .cancel) {
                         if working { cancelling = true; operation?.cancel() }
@@ -50,7 +50,7 @@ struct FactoryImportView: View {
                 }
             }
         }
-        .padding(26).frame(width: 500, alignment: .leading)
+        .padding(20).frame(width: 500, alignment: .leading).background(Theme.pane).buttonStyle(.quietAction)
         .interactiveDismissDisabled(working || choosing)
         .onDisappear { operation?.cancel(); chooser?.cancel() }
     }

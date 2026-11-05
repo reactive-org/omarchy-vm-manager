@@ -56,7 +56,7 @@ struct DeveloperSetupView: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Developer setup").font(.largeTitle.bold())
+                    Text("Developer setup").font(.system(size: 26, weight: .semibold))
                     Text("Configure this VM from a reviewed dev-vm configuration.").foregroundStyle(.secondary)
                 }
                 Spacer()

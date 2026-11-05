@@ -59,11 +59,9 @@ struct GuestProgressSlot: View {
     }
 }
 
-struct GuestLibraryRow<Controls: View>: View {
+/// The single status line shared by library rows and the guest header.
+struct GuestStatusLine: View {
     let snapshot: VMSnapshot
-    let open: () -> Void
-    @ViewBuilder var controls: Controls
-    @State private var hovering = false
     private var active: Bool { snapshot.sessionID != nil }
     private var progress: (text: String, percent: Int?)? { GuestProgressSlot(state: snapshot.state).detail }
     private var status: (text: String, color: Color) {
@@ -73,6 +71,23 @@ struct GuestLibraryRow<Controls: View>: View {
         let label = snapshot.state.label + (snapshot.profile.isRetainedPOC ? " · Retained POC disk" : "")
         return (label, active ? Theme.green : .secondary)
     }
+    var body: some View {
+        HStack(spacing: 7) {
+            GuestStatusMarker(active: active)
+            Text(status.text).monospacedDigit().foregroundStyle(status.color).lineLimit(1).help(status.text)
+            if let percent = progress?.percent {
+                ProgressView(value: Double(percent), total: 100).progressViewStyle(.linear).frame(width: 80)
+            }
+        }
+    }
+}
+
+struct GuestLibraryRow<Controls: View>: View {
+    let snapshot: VMSnapshot
+    let open: () -> Void
+    @ViewBuilder var controls: Controls
+    @State private var hovering = false
+    private var active: Bool { snapshot.sessionID != nil }
     private var disk: String {
         guard let system = snapshot.profile.diskGiB else { return "Factory" }
         return snapshot.profile.homeDisk.map { "\(system)+\($0.sizeGiB) GiB" } ?? "\(system) GiB"
@@ -91,13 +106,7 @@ struct GuestLibraryRow<Controls: View>: View {
             VStack(alignment: .leading, spacing: 3) {
                 Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(.system(size: 15, weight: .medium))
                     .lineLimit(1).help(snapshot.profile.name)
-                HStack(spacing: 7) {
-                    GuestStatusMarker(active: active)
-                    Text(status.text).font(.caption).monospacedDigit().foregroundStyle(status.color).lineLimit(1).help(status.text)
-                    if let percent = progress?.percent {
-                        ProgressView(value: Double(percent), total: 100).progressViewStyle(.linear).frame(width: 80)
-                    }
-                }
+                GuestStatusLine(snapshot: snapshot).font(.caption)
             }.frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 10) {
                 spec("\(snapshot.profile.cpus)", "cores")
@@ -118,19 +127,28 @@ struct GuestLibraryRow<Controls: View>: View {
     }
 }
 
-struct GuestHomeHero: View {
+/// Fixed height, so the page below stays put as the guest changes state.
+struct GuestHeaderPane<Controls: View>: View {
     let snapshot: VMSnapshot
+    @ViewBuilder var controls: Controls
     var body: some View {
         GroupedPanel {
             HStack(spacing: 24) {
-                GuestArtwork(size: 104, state: snapshot.state)
+                GuestArtwork(size: 76, state: snapshot.state)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Omarchy").font(.system(size: 34, weight: .bold))
-                    Text(snapshot.suspension?.label ?? (snapshot.state == .stopped ? "Ready to launch" : snapshot.state.label)).font(.title3).foregroundStyle(.secondary).lineLimit(1)
-                    Text("Independent disk · Shared (NAT) network").foregroundStyle(.secondary).lineLimit(1)
-                    GuestProgressSlot(state: snapshot.state)
-                }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 148, alignment: .center)
-            }.padding(26)
+                    Text(snapshot.profile.name).font(.system(size: 26, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.8).help(snapshot.profile.name)
+                    HStack(spacing: 4) {
+                        GuestStatusLine(snapshot: snapshot)
+                        Text(snapshot.state == .stopped && snapshot.suspension == nil ? "· Ready to launch · Independent disk · Shared (NAT) network" : "· Independent disk · Shared (NAT) network").foregroundStyle(.secondary).lineLimit(1)
+                    }.font(.system(size: 13))
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                controls.frame(width: 148, height: 30, alignment: .trailing)
+            }
+            .padding(.horizontal, 24).frame(height: 120)
+            .background(alignment: .topTrailing) {
+                FrameMark(size: 170, frame: Theme.quietFrame).offset(x: -190, y: 6)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.paneRadius))
         }
     }
 }
@@ -231,10 +249,10 @@ struct GuestHibernationPanel: View {
         return "Waiting for a verified guest capability check over managed SSH."
     }
     var body: some View {
-        GroupedPanel {
+        GroupedPanel(dashed: true) {
             HStack(spacing: 16) {
                 ZStack {
-                    Image(systemName: "moon.zzz").font(.title2).foregroundStyle(.indigo)
+                    Image(systemName: "moon.zzz").font(.title2).foregroundStyle(Theme.lavender)
                         .opacity(snapshot.experimentalPowerBusy ? 0.25 : 1)
                     if snapshot.experimentalPowerBusy { ProgressView().controlSize(.small) }
                 }.frame(width: 34)
@@ -254,7 +272,7 @@ struct GuestHibernationPanel: View {
                     Button("Suspend…") { review(.suspend) }.disabled(!snapshot.canAttemptExperimentalSuspend)
                 }
                 }.frame(width: 180, height: 30, alignment: .trailing)
-            }.padding(20).frame(height: 144)
+            }.padding(.horizontal, 20).frame(height: 120)
         }
     }
 }

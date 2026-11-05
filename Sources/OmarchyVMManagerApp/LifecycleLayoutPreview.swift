@@ -58,7 +58,7 @@ struct LifecycleLayoutPreview: View {
                 GroupedPanel { GuestLibraryRow(snapshot: snapshot, open: {}) { GuestControls(snapshot: snapshot, start: { phase = .running }, stop: { phase = .stopped }, forceStop: { phase = .stopped }, pause: { phase = .paused }, resume: { phase = .running }) } }
                     .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("gallery")) }, action: { rowFrame = $0 })
                 Text("Guest home").font(.title2.bold())
-                GuestHomeHero(snapshot: snapshot)
+                GuestHeaderPane(snapshot: snapshot) { EmptyView() }
                     .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("gallery")) }, action: { heroFrame = $0 })
                 Picker("Hibernation capability", selection: $power) {
                     ForEach(Power.allCases, id: \.self) { Text($0.rawValue).tag($0) }

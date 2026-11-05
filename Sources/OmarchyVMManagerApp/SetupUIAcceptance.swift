@@ -11,7 +11,7 @@ import SwiftUI
     enum Command {
         case source(String), profiles([String]), folder(URL), trim(Bool), factory(String), appearance(ProvisioningAppearanceSelection?), appearanceExpanded(Bool), themeChoice(ProvisioningThemeChoice), themeRepository(String), layoutExample(ProvisioningLayoutExampleID?)
         case ownerDefaults(Bool), name(String), resources(Int, Int, Int), preview, save, lookup(UUID), inspect, prepareApply
-        case grant(Bool, Bool, Bool), submit, search(String), requestCancel, confirmCancel
+        case grant(Bool, Bool, Bool), submit, search(String), requestCancel, confirmCancel, section(String)
     }
     struct Scope { let action: (Command) -> Void; let snapshot: () -> [String: String] }
     var scopes: [String: Scope] = [:]

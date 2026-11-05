@@ -72,22 +72,24 @@ struct NewVMSetupSelectionView: View {
         return .init(profiles: profiles.sorted(), trimOptionalApps: factory == "official" && trimOptionalApps, appearance: appearance.selection)
     }
     var body: some View {
-        Section("Developer setup") {
-            Picker("Source", selection: $source) {
-                Text("None").tag("none")
-                Text("Bundled configuration").tag("bundled")
-                Text("Local setup folder").tag("local")
-            }.help(ProvisioningSetupHelp.source)
+        VStack(alignment: .leading, spacing: 8) {
+            SpecRow("source") {
+                Picker("Source", selection: $source) {
+                    Text("None").tag("none")
+                    Text("Bundled configuration").tag("bundled")
+                    Text("Local setup folder").tag("local")
+                }.labelsHidden().frame(maxWidth: 240).help(ProvisioningSetupHelp.source)
+            }
             if source != "none" {
                 if source == "local" {
-                    Button("Choose setup folder…") { choosingFolder = true }
-                    if let folder { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
+                    SpecRow("folder", note: folder.map { $0.lastPathComponent + "/vm.yml" }) {
+                        Button("Choose setup folder…") { choosingFolder = true }
+                    }
                 }
                 ProvisioningProfileSelectionView(selection: $profiles, localSource: source == "local")
                 if factory == "official" { ProvisioningTrimSelectionView(selection: $trimOptionalApps) }
                 ProvisioningAppearanceSelectionView(draft: $appearance)
-                Text("Create VM validates and saves these selections with the new VM. It does not start setup. Execution and custom tasks require separate approval.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                SpecNote("Create VM validates and saves these selections with the new VM. It does not start setup. Execution and custom tasks require separate approval.")
             }
         }
         .background {
