@@ -1587,6 +1587,60 @@ stream count. Preserve the consumed plan and failed output; any retry requires a
 new plan/output and fresh explicit approval/terminal confirmation. No new real
 inspection, signing or key query is run as post-failure diagnosis here.
 
+## Read-only signing readiness diagnosis — 5 November 2026
+
+**AUTHORIZED / DOCUMENTED:** the user requests docs committed in both worktrees,
+then bounded read-only diagnosis, and clarifies “I missed the prompt.” Prior run/
+observation docs, including that clarification, are committed as manager `f67c5e4`
+and companion `b260d8f`. This grants no new signing, private-key, Apple/network,
+SSH/Ansible, install or VM action and does not revive the consumed operator plan.
+
+**USER REPORT / SOURCE-BASED INFERENCE:** the missed prompt is a supported, likely
+explanation for the timeout. `Adapter._call` defaults signing commands to 120
+seconds; `Runner._supervise` sets an elapsed-time deadline before spawning and
+checks it while waiting/draining. It does not pause the clock for secure UI.
+Consequently a missed prompt can exhaust that stage without a signature being
+committed. This agrees with the observed timeout/unchanged helper bytes. The exact
+old prompt type/timing is not reconstructed. There is no evidence of an Apple
+timestamp failure, and timestamp service health is not checked or inferred.
+
+**VERIFIED — current container/public readiness:** a single dedicated Python
+worker uses the existing lazy Security/CoreFoundation bindings with a closed
+sixteen-symbol call allowlist. Optional interaction is disabled before opening
+only the named keychain reference and reading status twice. Both results are 7:
+unlocked, with container read/write status flags. It is currently **unlocked**;
+no unlock, lock/relock, import/export, search-list or ACL call is made. A staged
+public DER certificate matches the recorded leaf digest and reviewed selector,
+is within its validity dates, and belongs to the unchanged reviewed provisioning
+profile with matching policy. This reads public metadata; no new trust/revocation
+or signature/timestamp evaluation is performed.
+
+**BOUNDS / VERIFIED — cleanup:** `/usr/bin/sandbox-exec` denies network and file
+writes for the worker. The deadline is 15 seconds, stdout/stderr are each capped
+at 4 KiB, with primary/fallback cleanup waits capped at five seconds each. The
+worker completes in 0.218 seconds: exit 0, 902 stdout bytes, zero stderr, all six
+native references released. The original held root is group-quiet, reaped and
+closed; its recorded PID is absent in a bounded snapshot. Raw error output and
+certificate subject/selector data are not logged. Parent native calls are limited
+to owned-process supervision; the worker calls no identity/item/private-key, trust,
+CMS-signature, signing or timestamp API.
+
+**VERIFIED — preservation / LIMITS:** all 13,565 preexisting artifact entries/pins,
+including failed output and consumed/attempt records, remain unchanged. Selected
+keychain file metadata stays identical before/after; its unlocked state is left as
+found. Retained credential content stays unopened (metadata-only preservation).
+No scope-root/pin is observed or recaptured; implementation/product approval is
+unchanged. The public-input check still reports CONSUMED_NO_RETRY. No signing,
+private-key access, Apple request, SSH/Ansible, install, UI interaction, app/runtime
+execution or VM operation occurs.
+
+**TO PROVE / NEXT:** container/public readiness passes, but private-key presence,
+certificate-to-private-key association, ACL usability/Touch ID, actual signing and
+timestamps cannot be proved under the no-private-key restriction. Do not label
+this fully signing-ready or extend the timeout merely because the prompt was
+missed. Any new attempt needs a new operator plan/output, fresh approval and an
+attended secure prompt. No plan or signing attempt is created/retried here.
+
 ## Offline candidate preflight
 
 `make provisioning-preflight` reports existing debug build artifacts without

@@ -3534,3 +3534,28 @@ Next collect operator UI observations and review key readiness versus timestamp
 connectivity, then prepare a distinct plan with fresh approval. No retry or further
 native/key operation is performed here. See the
 [operator result and limits](DevVMMilestone6Runbook.md#first-maintained-operator-run--signing-timeout-5-november-2026).
+
+## Read-only readiness after missed prompt — 5 November 2026
+
+Prior result/observation docs are committed as `f67c5e4` / companion `b260d8f`.
+The user reports missing the prompt. Source review confirms the signing deadline
+is 120 elapsed seconds and includes secure-UI waiting; that is a supported, likely
+explanation for the prior timeout/unchanged helper, not proof of an Apple failure.
+No network/timestamp-service diagnostic is run.
+
+A 15-second, 4-KiB-per-stream worker sandboxed against network/file writes finishes
+in 0.218 seconds. With optional UI disabled, it opens only the named keychain
+reference and checks status twice: 7/unlocked, unchanged. Staged public-certificate
+selector/digest/date validity and reviewed-profile membership/policy match. No
+identity/item/private-key or trust/signing/timestamp API is called. All native
+references release; the owned worker is group-quiet/reaped/closed and absent in a
+bounded recorded-PID snapshot. Keychain metadata remains identical, state left as
+found. All 13,565 prior artifact entries/pins and consumed/attempt data are intact;
+implementation, VM scope and product approval remain unchanged.
+
+This establishes current container/public readiness, not private-key presence,
+association, ACL/Touch-ID usability, signing or timestamp success. No new signing,
+private-key access, Apple request, SSH/Ansible, install, UI or app/runtime/VM action.
+The old plan stays consumed. Next prepare a distinct plan for a separately approved
+attended signing attempt; no timeout change or automatic retry is justified here.
+See the [bounded diagnosis](DevVMMilestone6Runbook.md#read-only-signing-readiness-diagnosis--5-november-2026).

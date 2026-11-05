@@ -335,3 +335,9 @@ remain unproven. No signed result/archive is established. The plan is consumed.
 
 The operator clarifies that the signing prompt was missed. This supports a secure-UI
 wait explanation; key readiness and timestamp outcomes remain separate evidence.
+
+[Read-only signing readiness](DevVMMilestone6Runbook.md#read-only-signing-readiness-diagnosis--5-november-2026)
+finds the selected keychain currently unlocked and staged public certificate/profile
+metadata consistent. A missed prompt fits the elapsed signing deadline. One bounded,
+network/file-write-denied worker cleans up; all 13,565 old entries/pins are intact.
+Private-key/ACL usability and timestamps remain untested; no signing or retry occurs.

@@ -183,3 +183,22 @@ change, scope recapture, notarization, SSH/Ansible, install, app/runtime or VM a
 Lock state is not re-queried. Preserve this consumed plan and failed output; collect
 operator UI observations and review key readiness/timestamp connectivity before a
 new plan/output with fresh approval. See the [full result](DevVMMilestone6Runbook.md#first-maintained-operator-run--signing-timeout-5-november-2026).
+
+### Bounded read-only follow-up — 5 November 2026
+
+The operator clarifies that the prompt was missed. The 120-second signing timer
+includes secure-UI waiting; this supports a missed-prompt explanation without
+establishing an Apple timestamp fault. Under separate read-only authorization,
+one network/file-write-denied worker checks only the named keychain's status and
+staged public certificate metadata, with optional UI disabled. It reports status
+7/unlocked twice, matching public selector/digest/date validity and reviewed-profile
+membership/policy. It completes in 0.218 seconds under a 15-second/4-KiB-stream
+limit; all references/owned process handles clean up and the recorded PID is absent.
+
+All 13,565 prior artifact entries/pins and failed/consumed records are preserved;
+keychain metadata and unlocked state stay as found. No private-key/identity/item
+query, trust/signing/timestamp call, automatic unlock/relock or permission change
+occurs. This proves container/public readiness only; private-key presence, matching
+association/ACL, Touch ID and signing/timestamps remain untested. No new plan or
+retry is created; any new run requires a new plan/output, fresh approval and an
+attended prompt. See the [read-only diagnosis](DevVMMilestone6Runbook.md#read-only-signing-readiness-diagnosis--5-november-2026).

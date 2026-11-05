@@ -3434,3 +3434,29 @@ exact dialog type/timing is not reconstructed. The plan remains consumed.
   and timestamp connectivity before a new plan and fresh explicit approval. No
   post-failure native/key operation or retry is performed. See the
   [result](docs/DevVMMilestone6Runbook.md#first-maintained-operator-run--signing-timeout-5-november-2026).
+
+## Read-only keychain/public readiness — 5 November 2026
+
+- **USER AUTHORIZATION / REPORT:** commit result/observation docs (`f67c5e4`,
+  companion `b260d8f`), then bounded read-only checks; the operator missed the
+  prompt. No signing/private-key/Apple/SSH/Ansible/install/VM action is authorized.
+- **SOURCE-BASED INFERENCE:** the signing deadline is 120 elapsed seconds and
+  includes secure-UI waiting. A missed prompt is a supported, likely explanation
+  for the prior timeout, not evidence of timestamp-service failure. Exact prior
+  timing and actual key/timestamp outcome remain unobserved.
+- **VERIFIED — bounded current state:** one network/file-write-denied worker,
+  optional UI disabled, named keychain Open/GetStatus only plus staged public
+  certificate metadata: status 7/unlocked before/after, selector/digest/dates and
+  reviewed-profile membership/policy match. Sixteen allowed native symbols exclude
+  identity/item/private-key, trust/signature and timestamp calls. It completes in
+  0.218 seconds under a 15-second/4-KiB-stream bound with all references released,
+  owned group quiet/reaped/descriptors closed and no recorded-PID survivor.
+- **VERIFIED — preservation:** all 13,565 old artifact entries/pins/failed and
+  consumed evidence remain unchanged. Keychain metadata and unlocked state stay
+  as found; no unlock/relock/import/export/ACL/search-list change. No raw credential
+  content, scope-root observation/recapture, production approval or source change.
+- **TO PROVE:** container/public readiness does not establish private-key presence,
+  association/ACL/Touch ID, signing or timestamps. No new signing/private-key/Apple/
+  SSH/Ansible/install/UI/app/runtime/VM action or retry occurs. A fresh plan and
+  explicit attended-run approval remain necessary. See the
+  [diagnosis](docs/DevVMMilestone6Runbook.md#read-only-signing-readiness-diagnosis--5-november-2026).
