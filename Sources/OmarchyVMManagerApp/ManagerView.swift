@@ -40,6 +40,9 @@ struct ManagerView: View {
                         Text(AppChannel.current.displayName).font(.system(size: 17, weight: .medium)).fixedSize(horizontal: false, vertical: true)
                     }.padding(.vertical, 5).tag(Destination.library)
                     Section {
+                        if model.snapshots.isEmpty, model.registryError == nil {
+                            Text("No guests yet").font(.system(size: 13)).foregroundStyle(.secondary).selectionDisabled()
+                        }
                         ForEach(model.snapshots) { snapshot in
                             HStack(spacing: 9) {
                                 GuestArtwork(size: 26, state: snapshot.state)
@@ -168,30 +171,24 @@ struct ManagerView: View {
     }
 
     private var library: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            GroupedPanel {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 24) {
-                        ManagerArtwork(size: 144)
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(AppChannel.current.displayName).font(.system(size: 32, weight: .bold))
-                            Text("Your Omarchy virtual machines").font(.title3).foregroundStyle(.secondary)
-                            Text("\(active.count) active · \(active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024) GiB allocated").foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    OmarchyAttribution()
-                }.padding(24)
-            }
-            Text("Virtual Machines").font(.title2.bold())
+        VStack(alignment: .leading, spacing: Theme.gap) {
+            LibraryHeader(activeCount: active.count, allocatedGiB: active.reduce(0) { $0 + $1.profile.memoryMiB } / 1024, guestCount: model.snapshots.count)
             if model.snapshots.isEmpty, model.registryError == nil {
-                ContentUnavailableView {
-                    Label("Your Omarchy machines", systemImage: "desktopcomputer")
-                } description: { Text("Create an independent guest with its own disk, settings and clipboard.") }
-                actions: { Button("New VM") { editor = EditorSelection(profile: nil) }.buttonStyle(.primaryAction) }
+                FirstGuestPanel(
+                    canCreate: !model.shuttingDown,
+                    canImport: !model.shuttingDown && !model.checking && model.diagnostics != nil && !model.factoryImportInProgress,
+                    newVM: { editor = EditorSelection(profile: nil) }, importFactory: { importingFactory = true },
+                    openDefaults: { destination = .defaults }, openRuntime: { destination = .runtime }, openPermissions: { destination = .permissions })
             }
-            ForEach(model.snapshots) { snapshot in
-                GuestLibraryRow(snapshot: snapshot, open: { focusGuest(snapshot.id) }) { controls(snapshot) }
+            if !model.snapshots.isEmpty {
+                GroupedPanel {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Virtual Machines").font(.system(size: 15, weight: .semibold)).padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 10)
+                        ForEach(model.snapshots) { snapshot in
+                            GuestLibraryRow(snapshot: snapshot, open: { focusGuest(snapshot.id) }) { controls(snapshot) }
+                        }
+                    }.padding(8)
+                }
             }
         }
     }

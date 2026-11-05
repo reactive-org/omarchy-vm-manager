@@ -55,7 +55,7 @@ struct LifecycleLayoutPreview: View {
                     ForEach(Phase.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.menu)
                 Text("Library card").font(.title2.bold())
-                GuestLibraryRow(snapshot: snapshot, open: {}) { GuestControls(snapshot: snapshot, start: { phase = .running }, stop: { phase = .stopped }, forceStop: { phase = .stopped }, pause: { phase = .paused }, resume: { phase = .running }) }
+                GroupedPanel { GuestLibraryRow(snapshot: snapshot, open: {}) { GuestControls(snapshot: snapshot, start: { phase = .running }, stop: { phase = .stopped }, forceStop: { phase = .stopped }, pause: { phase = .paused }, resume: { phase = .running }) } }
                     .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("gallery")) }, action: { rowFrame = $0 })
                 Text("Guest home").font(.title2.bold())
                 GuestHomeHero(snapshot: snapshot)

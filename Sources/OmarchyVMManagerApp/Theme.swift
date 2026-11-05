@@ -13,6 +13,9 @@ enum Theme {
     static let green = dynamic(dark: 0x9ECE6A, light: 0x4F7A1F)
     static let onGreen = dynamic(dark: 0x12160C, light: 0xFFFFFF)
     static let lavender = dynamic(dark: 0xB5ABFC, light: 0x5B4BC4)
+    static let idleFrame = dynamic(dark: 0x4D5068, light: 0xB9BCCB)
+    static let quietFrame = dynamic(dark: 0x34364A, light: 0xD7D9E3)
+    static let tracer = dynamic(dark: 0xEAF7D9, light: 0x2F4A12)
     static let paneRadius: CGFloat = 6
     static let controlRadius: CGFloat = 4
     static let gap: CGFloat = 8
@@ -36,7 +39,7 @@ struct PrimaryActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(Theme.onGreen)
-            .padding(.horizontal, 14).frame(minHeight: 30)
+            .padding(.horizontal, 10).frame(minHeight: 30)
             .background(RoundedRectangle(cornerRadius: Theme.controlRadius).fill(Theme.green))
             .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.8 : 1)
             .contentShape(RoundedRectangle(cornerRadius: Theme.controlRadius))

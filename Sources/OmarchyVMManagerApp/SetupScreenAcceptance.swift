@@ -376,6 +376,16 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         enabledModel.setupWorkflows = [completedHistory]; tick()
         try check(runningDriver.state("setup", "continuation") == "Setup has finished. Its result remains saved.", "completed-setup-does-not-claim-running")
         running.close(); tick(); try check(enabled.cancellations == 1, "view-disappear-detaches-not-cancels")
+        // Home renders from synthetic snapshots only; nothing here is launched.
+        var downloading = VMProfile(id: UUID(), name: "Synthetic downloading"); downloading.diskGiB = 64
+        let failed = VMProfile(id: UUID(), name: "Synthetic failed")
+        enabledModel.setupWorkflows = []
+        enabledModel.snapshots = [.init(profile: profile, state: .stopped), .init(profile: downloading, state: .downloading(phase: .downloading, percent: 48), sessionID: UUID()),
+            .init(profile: failed, state: .failed(VMFailure(code: "synthetic", message: "The download could not finish.")), lastFailure: VMFailure(code: "synthetic", message: "The download could not finish."))]
+        let homeHost = Host(ManagerView(model: enabledModel), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+        defer { homeHost.close() }; tick(); try capture(homeHost, "home-dark.png")
+        enabledModel.snapshots = []; tick(); try capture(homeHost, "home-empty-dark.png")
+        homeHost.close(); tick()
         try check(runtime.startRequests.isEmpty && !FileManager.default.fileExists(atPath: support.path), "zero-runtime-starts-or-support-access")
         try check(NSApplication.shared.windows.filter { $0.isVisible }.isEmpty, "zero-visible-windows")
         let report: [String: Any] = ["schema": 1, "checks": checks, "realExecution": false, "runtimeStarts": runtime.startRequests.count, "captures": service.captures, "images": images, "fakeSubmissions": enabled.submissions, "physicalInputTested": false, "visibleWindows": NSApplication.shared.windows.filter(\.isVisible).count, "gate": "unchanged-disabled", "onscreenWindows": 0, "activation": false]

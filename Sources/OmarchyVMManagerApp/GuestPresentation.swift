@@ -30,7 +30,7 @@ struct GuestArtwork: View {
 
 struct GuestProgressSlot: View {
     let state: VMState
-    private var detail: (text: String, percent: Int?)? {
+    fileprivate var detail: (text: String, percent: Int?)? {
         switch state {
         case .downloading(let phase, let percent), .starting(let phase, let percent):
             (phase.rawValue.replacingOccurrences(of: "-", with: " ").capitalized, percent)
@@ -63,30 +63,58 @@ struct GuestLibraryRow<Controls: View>: View {
     let snapshot: VMSnapshot
     let open: () -> Void
     @ViewBuilder var controls: Controls
+    @State private var hovering = false
+    private var active: Bool { snapshot.sessionID != nil }
+    private var progress: (text: String, percent: Int?)? { GuestProgressSlot(state: snapshot.state).detail }
+    private var status: (text: String, color: Color) {
+        if let suspension = snapshot.suspension { return (suspension.label, .orange) }
+        if let failure = snapshot.lastFailure { return (failure.message, .red) }
+        if let progress { return (progress.text + (progress.percent.map { " · \($0)%" } ?? ""), active ? Theme.green : .secondary) }
+        let label = snapshot.state.label + (snapshot.profile.isRetainedPOC ? " · Retained POC disk" : "")
+        return (label, active ? Theme.green : .secondary)
+    }
+    private var disk: String {
+        guard let system = snapshot.profile.diskGiB else { return "Factory" }
+        return snapshot.profile.homeDisk.map { "\(system)+\($0.sizeGiB) GiB" } ?? "\(system) GiB"
+    }
+    private func spec(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value).font(Theme.mono(13)).lineLimit(1).minimumScaleFactor(0.8)
+            Text(label).font(Theme.mono(11)).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine)
+    }
+    // The height never changes with state, so the list stays still as guests
+    // move through their lifecycle.
     var body: some View {
-        GroupedPanel {
-            HStack(spacing: 18) {
-                GuestArtwork(size: 52, state: snapshot.state)
-                VStack(alignment: .leading, spacing: 5) {
-                    Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(.title3.bold())
-                        .lineLimit(1).help(snapshot.profile.name)
-                    let disk = " · " + snapshot.profile.diskSummary
-                    let summary = "\(snapshot.state.label) · \(snapshot.profile.cpus) cores · \(snapshot.profile.memoryMiB / 1024) GiB memory" + disk
-                    Text(summary).font(.callout).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).help(summary)
-                    GuestProgressSlot(state: snapshot.state)
-                    Group {
-                        if let suspension = snapshot.suspension {
-                            Text(suspension.label).foregroundStyle(.orange).lineLimit(2)
-                        } else if let failure = snapshot.lastFailure {
-                            Text(failure.message).foregroundStyle(.red).lineLimit(2).help(failure.message)
-                        } else if snapshot.profile.isRetainedPOC {
-                            Label("Retained POC disk", systemImage: "internaldrive").foregroundStyle(.secondary)
-                        } else { Color.clear }
-                    }.font(.caption).frame(maxWidth: .infinity, alignment: .topLeading).frame(height: 28, alignment: .top)
-                }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 120, alignment: .top)
-                controls.frame(width: 148, height: 30, alignment: .trailing)
-            }.padding(20)
+        HStack(spacing: 18) {
+            GuestArtwork(size: 44, state: snapshot.state)
+            VStack(alignment: .leading, spacing: 3) {
+                Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(.system(size: 15, weight: .medium))
+                    .lineLimit(1).help(snapshot.profile.name)
+                HStack(spacing: 7) {
+                    GuestStatusMarker(active: active)
+                    Text(status.text).font(.caption).monospacedDigit().foregroundStyle(status.color).lineLimit(1).help(status.text)
+                    if let percent = progress?.percent {
+                        ProgressView(value: Double(percent), total: 100).progressViewStyle(.linear).frame(width: 80)
+                    }
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 10) {
+                spec("\(snapshot.profile.cpus)", "cores")
+                spec("\(snapshot.profile.memoryMiB / 1024) GiB", "memory")
+                spec(disk, "disk").help(snapshot.profile.diskSummary)
+            }.frame(width: 210)
+            controls.frame(width: 148, height: 30, alignment: .trailing)
         }
+        .padding(.horizontal, 10).frame(height: 62)
+        .background(active ? Theme.green.opacity(0.07) : hovering ? Color.primary.opacity(0.05) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
+        .overlay {
+            if active { RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(Theme.green) }
+        }
+        .overlay(alignment: .bottom) {
+            if !active { Rectangle().fill(Theme.border).frame(height: 1) }
+        }
+        .onHover { hovering = $0 }
     }
 }
 
