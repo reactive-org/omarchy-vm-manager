@@ -1909,3 +1909,47 @@ tooling currently models the Stable bundle/root contract; Dev distribution needs
 its own reviewed bindings rather than reusing Stable approvals. The compiled
 disposable admission rejects roots from the other channel even with matching UUIDs.
 The earlier original-Mac, loaded-child and real-guest checks remain TO PROVE.
+
+## Fresh private candidate review for 4a0f30a — 5 November 2026
+
+**PREPARED / NOT AUTHORIZED:** a new owner-only private packet binds the exact
+committed `4a0f30a` source and updated runtime source `d6dd3dbe860f`. It uses the
+existing local signed-runtime artifact from stable `v0.11.1`; source-lock/archive/
+extracted inventories and permitted signing-payload differences match as file
+data. No runtime is downloaded, rebuilt or executed and no native signature,
+profile trust, revocation or notarization check is refreshed. Historical accepted
+release evidence remains historical.
+
+The candidate remains **Stable** to preserve the original disposable scope. `next`
+is the merge target, not an instruction to migrate its channel or approval. The
+original scope JSON, preparation receipt and private Swift definition are copied
+verbatim; their original source identity remains separate from `4a0f30a`. No VM
+root is observed or any pin recaptured. An independently applied six-file private
+overlay preserves current channel guards, production signing admission and the
+ordinary product's nil approval. Source-only version-2 admission and exact overlay
+reconstruction pass. The committed 32-file tooling snapshot, seventeen-file engine
+digest, operator digest, corrected inspection guard, public material copies and
+new source/runtime/selection request are bound together.
+
+**VERIFIED — offline/fake:** 25 actual-packet positive/refusal checks and 170
+relevant fake API/process tests pass. The old receipt fails the new source binding;
+relabeling its review fields still fails historical-receipt admission. No old
+receipt or consumed signing plan is reused. Prior successful ZIP, failed attempts,
+reviews, consumed records and frozen pins are retained unchanged. Private paths,
+raw materials, gate packet and pins stay out of Git. Only documentation changes
+are made in the two repositories; shared package/product code and pins are unchanged.
+
+**TO PROVE / NEXT:** the new bounded native inspection is prepared, not run. It
+requires separate approval of the exact request, implementation/snapshot, corrected
+guard, selection and fresh output. The proposed inspection requires the named
+keychain to be locked and leaves it as found; current lock state and private-key
+availability are not queried. No automatic unlock/relock/import or retry is proposed.
+The existing no-network flags, 300-second job/120-second stage, 2 MiB stream caps,
+one-shot consumption and owned-group/reap/descriptor cleanup contract remain.
+Its content-only CMS decoding does not establish signer authenticity or certificate
+trust. Only a new successful receipt bound to this source/runtime can support
+preparing a fresh attended signing operator plan. No such plan, native inspection
+output, authority, build or candidate output is created now. All execution effects
+remain NOT_GRANTED. No signing, key access, Apple request, SSH/Ansible, install,
+normal app/UI/runtime action or VM launch occurs. Loaded-child, original-Mac scope
+and real guest acceptance remain separately reviewed TO PROVE work.

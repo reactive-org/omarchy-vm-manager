@@ -3623,3 +3623,22 @@ content/modes/link targets; credential content remains unopened and metadata is
 unchanged. The historical signed archive retains its exact original digest/size.
 
 `make test-build-policies` also passes both launch/credential policy cases in all three optimized modes: ordinary release, Stable signed-prerelease and Dev signed-prerelease. No signing runs. The first dSYM generation attempt is sandbox-blocked; the outside-sandbox rerun passes. Changed packaging/channel scripts parse and diff whitespace checks pass.
+
+## Fresh merged-source candidate review — 5 November 2026
+
+A new private review freezes committed `4a0f30a`, the updated `d6dd3dbe860f` runtime
+and its matching existing signed artifact, while retaining the original Stable
+disposable scope verbatim. Source-only admission and independent private-overlay
+reconstruction pass; the ordinary product gate, shared package and historical
+pins are unchanged. The 32 committed tooling files, seventeen engine files, operator,
+corrected inspection guard and named public-material copies bind a new request.
+Twenty-five packet/refusal checks and 170 fake API/process tests pass, including
+refusal to transfer the old native receipt. This is file-data preparation only.
+
+A fresh bounded native inspection is prepared but needs separate exact-review
+approval. Keychain state/availability, native validation and trust are unqueried;
+no native output, signing operator plan, authority or candidate build is created.
+A new successful source/runtime-bound inspection receipt must precede signing-plan
+preparation. All proposed execution effects remain NOT_GRANTED. No signing, key
+access, Apple request, SSH/Ansible, install, app/runtime or VM launch occurs.
+See the [fresh review and limits](DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-4a0f30a--5-november-2026).

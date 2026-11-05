@@ -3640,3 +3640,27 @@ content is unopened; no signing, key access, Apple request, install, SSH/Ansible
 manager/runtime or VM launch occurs. Signed bundle/app acceptance is not repeated.
 
 **VERIFIED — optimized policy checks:** `make test-build-policies` passes both launch/credential policy cases in ordinary release, Stable `SIGNED_PRERELEASE` and Dev `SIGNED_PRERELEASE` modes. These are compilation/test variants; no signing identity, credential or signing operation is used. The initial sandboxed dSYM step is refused; the same tests pass outside that sandbox. Diff whitespace and changed script syntax checks pass.
+
+## Fresh private review after next integration — 5 November 2026
+
+**DESIGN DECISION:** prepare committed `4a0f30a` with its updated runtime and the
+matching existing local signed runtime. Keep the original Stable disposable scope
+definition, JSON, receipt and historical pins verbatim; next is the merge target,
+not a channel/scope migration. Only ignored private overlay copies enable that
+recorded scope; the ordinary product approval remains nil. No VM root is observed.
+
+**VERIFIED — file-data/fake only:** source-only admission and independent patch
+reconstruction pass. The review binds 32 committed tooling files, seventeen engine
+files, operator, corrected guard, public-material copies and new source/runtime/
+selection hashes. All 25 packet/refusal checks and 170 relevant fake API/process
+tests pass. Old or relabeled native receipts cannot transfer. Existing private
+artifacts, successful/failed candidates, consumed plans and pins are preserved.
+Manager and companion edits are documentation only; package/product pins unchanged.
+
+**TO PROVE:** fresh native inspection, trust, current keychain state/private-key
+availability, merged-source build/signing and all later original-Mac/loaded-child/
+guest acceptance. A bounded exact-request inspection is prepared, not executed;
+its new successful receipt must precede a signing operator plan. No native output,
+authority, operator plan or candidate build exists. All execution effects remain
+NOT_GRANTED. No signing, key access, Apple request, SSH/Ansible, installs, normal
+app/UI/runtime action or VM launch occurs. See the fresh 4a0f30a review runbook.
