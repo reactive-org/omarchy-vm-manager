@@ -2245,3 +2245,51 @@ acceptance are not run by this build/sign/verify action. Notarization, fresh onl
 revocation and CMS signer trust remain unestablished. The private test build can
 be handed to the user; its consumed signing plan has no automatic retry. Raw
 selectors, paths, pins, artifact hashes and evidence remain out of Git.
+
+## Dev-channel test app clarification — 5 November 2026
+
+The user requires Dev alongside the existing Stable manager. A separate ordinary
+Dev/debug app and ZIP are built through the existing development target, using
+local ad-hoc signing and the pinned runtime/package. Bundle-only verification,
+compiled Dev identities, opposite-channel refusal and archive roundtrip pass.
+All 29,481 prior private entries and four pins are preserved. No installed/running
+manager or VM is changed, and no real signing identity/key or Apple request is used.
+
+The prior signed `007bc66` candidate retains its Stable identity and original
+disposable scope; its receipt/plan/pins are not converted to Dev. The new debug app
+supports native UI testing, with protected Touch ID and provisioning execution
+still gated. See [the Dev build record](DevelopmentChannels.md#current-provisioning-ui-test-build--5-november-2026).
+
+## Create VM saves the selected setup — 5 November 2026
+
+New VM now uses selections → Create VM. Both the separate Review setup action and
+selection-confirmation checkbox are removed. Draft edits do not freeze inputs or
+call the backend. Create VM captures every form value, prepares an immutable input
+copy, constructs the existing metadata-only creation acknowledgment for that copy,
+and saves the profile. While preparation waits, form edits/cancellation and duplicate
+submissions are disabled. An identical retry retains the request identity and
+frozen inputs; changing configuration or source starts a different attempt.
+Preparation failure saves no profile and reports a recoverable error in the form.
+None still creates without setup. Core/API consent validation and separate
+task-trust, sudo/Docker and execution permissions are unchanged. The existing guest
+Setup tab retains its preview/review flow; creation invokes no execution operation.
+
+Fake/local verification passes 118 native offscreen checks, 24 screenshots in
+light/dark appearances and 36 focused creation/review tests. Bundled and Local
+creation freeze only on Create VM and grant no execution or task trust. Held
+preparation proves that late programmatic edits cannot change the configuration
+being saved, and duplicate/retry and preparation-failure cases pass. Missing inputs
+and unavailable services remain visibly explained. A fresh ad-hoc Dev app is
+packaged separately and verified without a normal manager session or VM launch.
+Main, its VMs, earlier artifacts and frozen pins are untouched.
+
+## Saved account defaults correction — 5 November 2026
+
+Saved account values now apply automatically to new profiles. The global enable
+checkbox is removed; New VM offers **Set up account manually** as a per-VM opt-out.
+Legacy saved inputs with the old flag off work without rewriting settings or
+reading passwords at creation. Existing profiles, credentials and Main/Stable
+remain untouched. Shared provisioning resources/runtime/frozen pins are unchanged.
+Fake/local checks pass 75 core tests and 130 offscreen UI checks/27 screenshots;
+a fresh isolated ad-hoc Dev app is packaged separately. Real first boot with this
+revision remains TO PROVE. See [the semantics and exact limits](UnattendedDefaults.md#saved-values-apply-automatically--5-november-2026).

@@ -10,7 +10,7 @@ import SwiftUI
 @MainActor final class SetupUIAcceptanceDriver {
     enum Command {
         case source(String), profiles([String]), folder(URL), trim(Bool), factory(String), appearance(ProvisioningAppearanceSelection?), appearanceExpanded(Bool), themeChoice(ProvisioningThemeChoice), themeRepository(String), layoutExample(ProvisioningLayoutExampleID?)
-        case name(String), resources(Int, Int, Int), preview, acknowledge(Bool), save, lookup(UUID), inspect, prepareApply
+        case ownerDefaults(Bool), name(String), resources(Int, Int, Int), preview, save, lookup(UUID), inspect, prepareApply
         case grant(Bool, Bool, Bool), submit, expand(Bool), search(String), requestCancel, confirmCancel
     }
     struct Scope { let action: (Command) -> Void; let snapshot: () -> [String: String] }
@@ -39,6 +39,7 @@ enum AcceptanceFailure: Error { case check }
     var sources: [UUID: ProvisioningSetupSource] = [:]
     var saved: [UUID: (GuestConfigurationPatch, VMProfile)] = [:]
     var savedCalls = 0, noneSaves = 0
+    var savedConfigurations: [GuestConfigurationPatch] = []
     let task = Data(("# Synthetic UI acceptance task only\n" + String(repeating: "# fixture café ✓\n", count: 520) + "- ansible.builtin.debug: {msg: synthetic}\n").utf8)
     let vmID: UUID
     init(vmID: UUID, enabled: Bool = false) { self.vmID = vmID; executionEnabled = enabled }
@@ -91,7 +92,7 @@ enum AcceptanceFailure: Error { case check }
         submissions += 1; return try row(id, stage: "running")
     }
     func save(_ config: GuestConfigurationPatch, consent: ProvisioningCreationConsent?) async throws -> VMProfile {
-        savedCalls += 1
+        savedCalls += 1; savedConfigurations.append(config)
         if consent == nil {
             noneSaves += 1
             var profile = VMProfile(id: UUID(), name: config.name!, memoryMiB: config.memoryMiB!, cpus: config.cpus!, diskGiB: config.diskGiB, clipboardEnabled: config.clipboard!, immersiveMode: config.immersive)

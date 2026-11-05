@@ -88,7 +88,10 @@ public struct GuestOwnerOverrides: Codable, Equatable, Sendable {
 public struct OwnerDefaults: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let revision: UUID
+    /// Legacy schema-1 metadata. New-guest behavior depends on saved account
+    /// inputs, not this former global opt-in. Retained for decoding old files.
     public let enabled: Bool
+    public var isConfigured: Bool { credentialReference != nil }
     public let configuration: OwnerConfiguration
     public let credentialReference: UUID?
     public let sshPublicKey: String?
@@ -102,7 +105,7 @@ public struct OwnerDefaults: Codable, Equatable, Sendable {
         if let sshPublicKey { guard try SSHPublicKey.canonical(sshPublicKey) == sshPublicKey else { throw OwnerConfiguration.invalid("The saved SSH public key is malformed.") } }
     }
     public func snapshot(for id: UUID) throws -> OwnerSetupOptions? {
-        try validate(); guard enabled, let credentialReference else { return nil }
+        try validate(); guard let credentialReference else { return nil }
         return OwnerSetupOptions(defaultsRevision: revision, configuration: configuration, credentialReference: credentialReference, hostname: configuration.hostnamePrefix + "-" + id.uuidString.prefix(8).lowercased())
     }
 }

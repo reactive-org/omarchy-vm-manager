@@ -55,7 +55,7 @@ final class AppModel: ObservableObject {
     private var isolatedService: (any ProvisioningObserving)?
     private var isolatedSave: (@MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile)?
     private var isolated = false
-    init(isolatedManager: VMManager, support: URL, snapshots: [VMSnapshot], service: any ProvisioningObserving,
+    init(isolatedManager: VMManager, support: URL, snapshots: [VMSnapshot], service: (any ProvisioningObserving)?,
          save: @escaping @MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile) {
         manager = isolatedManager; self.support = support; self.snapshots = snapshots
         isolatedService = service; isolatedSave = save; isolated = true; checking = false; isLoading = false
@@ -177,10 +177,22 @@ final class AppModel: ObservableObject {
 
     func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, diskGiB: Int,
               clipboard: Bool, guestTouchID: Bool = false, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath,
-              separateHome: Bool = true, homeDiskGiB: Int = 64, reuseHomeFrom: UUID? = nil, setupConsent: ProvisioningCreationConsent? = nil) async -> UUID? {
+              separateHome: Bool = true, homeDiskGiB: Int = 64, reuseHomeFrom: UUID? = nil, setupSource: ProvisioningSetupSource? = nil, setupRequestID: UUID? = nil) async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
+        var preparingSetup = false
         do {
+            let setupConsent: ProvisioningCreationConsent?
+            if let setupSource {
+                preparingSetup = true
+                guard profile == nil, let setupRequestID,
+                      let planner = setupService as? any ProvisioningCreationPlanning else { throw ProvisioningReviewFailure.unavailable }
+                let review = try await planner.prepareCreation(id: setupRequestID, source: setupSource)
+                // The primary Create action confirms the inputs it just froze.
+                // This consent saves metadata only; it grants no execution rights.
+                setupConsent = .init(reviewID: review.id, reviewIdentity: review.reviewIdentity, acknowledged: true)
+                preparingSetup = false
+            } else { setupConsent = nil }
             #if DEBUG
             if isolated {
                 guard profile == nil, let isolatedSave else { throw ProvisioningReviewFailure.invalid }
@@ -209,7 +221,18 @@ final class AppModel: ObservableObject {
             }
             storageRefreshed = .distantPast
             await update(); return id
-        } catch { configurationError = error.localizedDescription; return nil }
+        } catch {
+            if preparingSetup {
+                if error as? ProvisioningReviewFailure == .conflictingProfiles {
+                    configurationError = "These profiles have conflicting settings. Choose a compatible combination or resolve the settings in a local vm.yml."
+                } else if error as? ProvisioningReviewFailure == .unavailable {
+                    configurationError = "Developer setup is unavailable. Choose Source: None to create this VM without it."
+                } else {
+                    configurationError = ProvisioningAppearance.failureMessage(error) ?? "Could not prepare developer setup. Check the configuration and referenced files, then try Create VM again. No VM was created."
+                }
+            } else { configurationError = error.localizedDescription }
+            return nil
+        }
     }
 
     func importFactory(from url: URL) async throws -> FactoryIdentity {
@@ -247,9 +270,9 @@ final class AppModel: ObservableObject {
         do { try await manager.saveDiskDefaults(value); diskDefaults = value; defaultsError = nil; return true }
         catch { defaultsError = error.localizedDescription; return false }
     }
-    func saveDefaults(enabled: Bool, configuration: OwnerConfiguration, password: Data?, publicKey: String?) async -> Bool {
+    func saveDefaults(configuration: OwnerConfiguration, password: Data?, publicKey: String?) async -> Bool {
         do {
-            ownerDefaults = try await manager.saveGuestDefaults(enabled: enabled, configuration: configuration, password: password, sshPublicKey: publicKey)
+            ownerDefaults = try await manager.saveGuestDefaults(configuration: configuration, password: password, sshPublicKey: publicKey)
             defaultsError = nil; return true
         } catch { defaultsError = error.localizedDescription; return false }
     }

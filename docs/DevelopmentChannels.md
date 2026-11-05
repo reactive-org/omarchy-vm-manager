@@ -32,6 +32,41 @@ Existing `make app`, `make run` and `bin/omarchy-vm` retain the stable channel. 
 
 Each app embeds its own complete verified runtime. Dev requires pinned `managerChannelsVersion: 1`; an older kit cannot silently reuse stable runtime storage. Rebuilding this runtime preserves the guest packages, QEMU, firmware and factory contracts. Legacy exact-runtime custom factory receipts may need a separate explicit import for a changed runtime; no receipt or disk is migrated automatically.
 
+## Current provisioning UI test build — 5 November 2026
+
+The user clarified that the test app must be Dev so the existing Stable manager
+can remain running. The ordinary `DEVELOPMENT_CHANNEL` debug target now produces
+a separate private **Omarchy VM Manager Dev.app**, with bundle ID
+`dev.omarchy.vm-manager.dev`, Dev data/locks and `omarchy-vm-dev`. Existing pinned
+dependencies/runtime and package `5770d0f` are reused. Signing is local ad-hoc;
+no real identity, profile, key access, Apple request or runtime rebuild is used.
+
+Bundle-only signature, compatibility, resource/layout and package checks pass with
+host preflight and VM launch disabled. The CLI and both Swift helpers report Dev,
+and reject a synthetic Stable-identity container before manager/guest actions.
+The ZIP extracts to the same complete app inventory. All 29,481 prior private
+entries and four current pin files remain unchanged. No installed app is replaced,
+no running manager is contacted/stopped, and no VM operation is performed.
+
+This is the ordinary Dev/debug build for UI testing. Protected Touch ID storage
+and provisioning execution are unavailable in this build. The original Stable
+M6 disposable approval and signed candidate remain frozen; they are not migrated
+to Dev. Normal UI/guest acceptance is left to the user and remains unobserved here.
+
+**New VM feedback correction:** choose Source, profiles and optional theme/layout,
+then press Create VM. The separate Review setup action and selection-confirmation
+checkbox are removed from New VM. Create VM validates and freezes the pressed
+selections internally, then saves their metadata with the new profile. Draft edits
+perform no backend capture. Task trust and execution permissions stay separate.
+Missing prerequisites, preparation progress and errors appear above Cancel/Create
+VM. The form stays disabled while saving; identical retries reuse the frozen
+inputs/reservation, and changed configurations start a fresh attempt.
+Offscreen acceptance passes 118 checks and 24 screenshots across light/dark
+appearances, plus 36 focused creation/review tests, using fake services with zero
+runtime starts, support-directory access, visible windows or activation. A fresh
+Dev candidate is packaged separately; earlier apps and frozen candidate pins are
+retained. The existing guest Setup tab keeps its review/preview actions.
+
 ## Host integrations
 
 The runtime resolves Dev from the exact enclosing manager app's bundle identifier. Dev downloads and guest Touch ID key representations use Dev directories. Guest setup Keychain services are channel-specific; Dev does not probe or upgrade stable passwords. Ad-hoc Dev builds retain the existing development login-Keychain flow. The current stable provisioning profile is refused for Dev signing; a signed Dev distribution needs separately reviewed provisioning. This implementation uses no real signing identity or credentials.
@@ -83,3 +118,14 @@ The installed Dev CLI performs factory import, create, start, get, pause, resume
 Both stable work VMs retain their sessions and all captured stable process identities. Stable configuration/settings hashes, installed app hashes and VM disk identities match a fresh pre-cleanup baseline. Other Dev profile/session records, defaults and all unrelated Dev filesystem metadata—including the imported factory—are unchanged. All six captured test runtime process identities remain absent. The imported factory, audit evidence and installed apps are retained.
 
 **VERIFIED LIMITATION:** macOS privacy denied independent terminal enumeration of the Trash directory. The guarded native helper's successful Trash result and removal of the exact source root/profile are verified; the destination inode was not independently inspected. No extra permission was requested or granted. Private preflight, native command response and post-check receipts are retained under the acceptance run's `trash-cleanup/` directory. All prior native-feature limitations remain unchanged.
+
+## Saved account defaults correction — 5 November 2026
+
+Saved account values now apply automatically to new profiles. The global enable
+checkbox is removed; New VM offers **Set up account manually** as a per-VM opt-out.
+Legacy saved inputs with the old flag off work without rewriting settings or
+reading passwords at creation. Existing profiles, credentials and Main/Stable
+remain untouched. Shared provisioning resources/runtime/frozen pins are unchanged.
+Fake/local checks pass 75 core tests and 130 offscreen UI checks/27 screenshots;
+a fresh isolated ad-hoc Dev app is packaged separately. Real first boot with this
+revision remains TO PROVE. See [the semantics and exact limits](UnattendedDefaults.md#saved-values-apply-automatically--5-november-2026).

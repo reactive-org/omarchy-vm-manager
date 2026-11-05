@@ -27,7 +27,7 @@ struct HomeDiskAcceptanceTests {
         } else { try PrivateFiles.directory(support) }
         let vault = MemoryOwnerVault()
         let defaults = OwnerDefaultsStore(applicationSupport: support, vault: vault)
-        if !diagnostic { _ = try defaults.save(enabled: true, configuration: OwnerConfiguration(username: "homepoc", fullName: "Disposable Home Test", hostnamePrefix: "homepoc", timezone: "UTC"), password: Data(UUID().uuidString.utf8)) }
+        if !diagnostic { _ = try defaults.save(configuration: OwnerConfiguration(username: "homepoc", fullName: "Disposable Home Test", hostnamePrefix: "homepoc", timezone: "UTC"), password: Data(UUID().uuidString.utf8)) }
         let kit = TryOmarchyKit(bundleURL: URL(fileURLWithPath: approval.kit))
         let lock = try Data(contentsOf: URL(fileURLWithPath: approval.lock))
         guard KitVerifier.sha256(lock) == RuntimePin.lockSHA256 else { throw refusal("Runtime pin changed.") }

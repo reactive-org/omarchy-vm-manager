@@ -42,7 +42,7 @@ Factory selection, SSH and owner setup are creation-only. New guests inherit sav
 
 ### Per-VM owner overrides
 
-For one guest, override the saved owner settings with `--username`, `--full-name`, `--email`, `--hostname-prefix`, `--timezone` or `--keyboard`. Unspecified fields and the saved password reference are inherited from enabled, saved Guest Defaults. Overrides never save changes to Guest Defaults or alter existing profiles. Empty strings clear the optional full name or email. Hostnames keep the stable per-VM UUID suffix; `--hostname-prefix` changes only the prefix. Timezone accepts a supported zone such as `Australia/Melbourne`, `UTC`, or `Same as macOS`; keyboard uses the exact Guest Defaults layout label, such as `English (US)` or `English (UK)`.
+For one guest, override the saved owner settings with `--username`, `--full-name`, `--email`, `--hostname-prefix`, `--timezone` or `--keyboard`. Unspecified fields and the saved password reference are inherited from saved Guest Defaults. Overrides never save changes to Guest Defaults or alter existing profiles. Empty strings clear the optional full name or email. Hostnames keep the stable per-VM UUID suffix; `--hostname-prefix` changes only the prefix. Timezone accepts a supported zone such as `Australia/Melbourne`, `UTC`, or `Same as macOS`; keyboard uses the exact Guest Defaults layout label, such as `English (US)` or `English (UK)`.
 
 | Creation flag | Key inside `ownerOverrides` | Example value |
 | --- | --- | --- |
@@ -92,9 +92,15 @@ The second command inherits the file's full name, hostname prefix, timezone and 
 ./bin/omarchy-vm create private-work --full-name "" --email ""
 ```
 
-Explicit owner flags override individual fields in `ownerOverrides`, preserving its other fields. The object must contain at least one supported text field. Invalid owner values, unknown/secret fields, nulls, updates, `--owner-defaults off`, disabled/missing defaults and unavailable protected credentials are rejected before a profile is saved. This feature adds no password input or credential upgrade path; first-launch authentication retains its existing policy. Build the manager and CLI together with `make app verify-app`; an older running manager rejects the new configuration field.
+Explicit owner flags override individual fields in `ownerOverrides`, preserving its other fields. The object must contain at least one supported text field. Invalid owner values, unknown/secret fields, nulls, updates, `--owner-defaults off`, missing/incomplete defaults and unavailable protected credentials are rejected before a profile is saved. This feature adds no password input or credential upgrade path; first-launch authentication retains its existing policy. Build the manager and CLI together with `make app verify-app`; an older running manager rejects the new configuration field.
 
 Development compatibility builds can reuse saved login-Keychain credentials. Protected Touch ID credentials require a provisioned build; ad-hoc app assembly does not enable their use. Upgrade older saved passwords only through the explicit Guest Defaults action in a compatible build. See [Touch ID requirements](TouchID.md) and [override troubleshooting](troubleshooting.md#cli-owner-overrides-are-rejected).
+
+Saved account values now apply without a global enable switch, including older
+schema-1 defaults whose former `enabled` field is false but whose password
+reference is present. `--owner-defaults off` remains the explicit per-VM manual
+setup choice. No password is read at creation, and existing guest snapshots stay
+unchanged.
 
 ### Personal SSH public-key inheritance
 

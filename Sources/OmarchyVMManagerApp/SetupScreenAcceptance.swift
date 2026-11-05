@@ -124,22 +124,29 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             defer { host.close() }
             tick(); try until { driver.scopes["editor"] != nil && driver.scopes["selection"] != nil }
             try check(driver.state("editor", "ready") == "true", suffix + "-none-ready")
+            try check(driver.state("editor", "canSave") == "false" && driver.state("editor", "validation").contains("Enter a name"), suffix + "-empty-name-explained")
+            try driver.send("editor", .name(" \n ")); tick()
+            try check(driver.state("editor", "canSave") == "false" && driver.state("editor", "validation").contains("Enter a name"), suffix + "-whitespace-name-explained")
             try driver.send("editor", .save); tick()
             try check(returned.isEmpty, suffix + "-empty-name-refused")
             let beforeCapture = service.captures
-            try driver.send("selection", .preview); tick(); try check(service.captures == beforeCapture, suffix + "-none-preview-inert")
-            try driver.send("editor", .name("Synthetic none " + suffix)); try driver.send("editor", .save); try until { returned.count == 1 }
-            try check(model.snapshots.first(where: { $0.id == returned[0] })?.profile.developerSetup == nil, suffix + "-none-creates-metadata-without-setup")
+            try driver.send("editor", .name("Synthetic none " + suffix)); tick()
+            try check(driver.state("editor", "canSave") == "true" && driver.state("editor", "validation").isEmpty, suffix + "-none-create-unblocked")
+            try driver.send("editor", .save); try until { returned.count == 1 }
+            try check(model.snapshots.first(where: { $0.id == returned[0] })?.profile.developerSetup == nil && service.captures == beforeCapture, suffix + "-none-creates-without-capture")
             returned.removeAll()
             try driver.send("editor", .name("Synthetic " + suffix)); try driver.send("editor", .resources(8, 4, 128)); tick()
+            try driver.send("selection", .source("local")); tick()
+            try check(driver.state("editor", "canSave") == "false" && driver.state("editor", "validation").contains("Choose a local setup folder"), suffix + "-local-folder-explained")
             try driver.send("selection", .source("bundled")); tick()
-            try check(driver.state("editor", "ready") == "false", suffix + "-selection-needs-review")
+            try check(driver.state("editor", "canSave") == "true" && driver.state("editor", "hasSetup") == "true", suffix + "-bundled-direct-create-ready")
+            try check(service.captures == beforeCapture, suffix + "-selection-does-not-freeze-or-save")
+            try capture(host, "new-vm-selections-" + suffix + ".png")
             try driver.send("selection", .profiles([])); tick()
-            let beforeEmpty = service.captures
-            try driver.send("selection", .preview); tick()
-            try check(service.captures == beforeEmpty && driver.state("editor", "ready") == "false", suffix + "-empty-bundled-profiles-inert")
+            try check(driver.state("editor", "validation").contains("Select at least one profile"), suffix + "-missing-profiles-explained")
             let calls = service.savedCalls
-            try driver.send("editor", .save); tick(); try check(service.savedCalls == calls, suffix + "-unreviewed-create-refused")
+            try driver.send("editor", .save); tick()
+            try check(service.savedCalls == calls && service.captures == beforeCapture, suffix + "-invalid-profiles-refused-before-capture")
             try check(driver.state("selection", "trimAvailable") == "true" && driver.state("selection", "trim") == "false", suffix + "-official-trim-defaults-off")
             try driver.send("selection", .trim(true)); tick()
             try driver.send("selection", .profiles(["developer", "web"])); tick()
@@ -148,76 +155,66 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try driver.send("appearance", .appearanceExpanded(true)); tick()
             try check(driver.state("appearance", "columns") == "1", suffix + "-appearance-narrow-stacks")
             try driver.send("appearance", .themeChoice(.repository)); tick()
-            let beforeEmptyRepository = service.captures
-            try driver.send("selection", .preview); tick()
-            try check(driver.state("appearance", "valid") == "false" && service.captures == beforeEmptyRepository, suffix + "-github-choice-requires-url")
-            try driver.send("selection", .appearance(.init(theme: "random", minimumStars: 10, layoutFile: "/private/tmp/synthetic-layout.lua"))); tick()
-            try driver.send("appearance", .themeChoice(.source)); tick()
-            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
-            let keptID = try UUID(uuidString: driver.state("selection", "review")).unwrap()
-            try check(service.sources[keptID]?.appearance?.theme == nil && service.sources[keptID]?.appearance?.layoutFile == "/private/tmp/synthetic-layout.lua", suffix + "-keep-theme-retains-layout")
+            try check(driver.state("editor", "canSave") == "false" && driver.state("editor", "validation").contains("Enter a GitHub repository URL"), suffix + "-appearance-error-explained")
+            try driver.send("appearance", .themeRepository("https://github.com/example/omarchy-fixture-theme")); tick()
+            try check(driver.state("selection", "theme") == "https://github.com/example/omarchy-fixture-theme" && driver.state("editor", "canSave") == "true", suffix + "-repository-draft-ready")
             try driver.send("appearance", .themeChoice(.popular)); tick()
-            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
-            let popularID = try UUID(uuidString: driver.state("selection", "review")).unwrap()
-            try check(service.sources[popularID]?.appearance?.theme == "most-starred", suffix + "-popular-theme-forwards-marker")
+            try check(driver.state("selection", "theme") == "most-starred", suffix + "-most-starred-draft")
             try driver.send("appearance", .themeChoice(.random)); tick()
-            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
-            let firstID = driver.state("selection", "review")
-            let selected = service.sources[UUID(uuidString: firstID)!]
-            try check(selected?.bundled == true && selected?.profiles == ["developer", "web"], suffix + "-multiple-profile-selection-forwarded")
-            try check(selected?.appearance?.theme == "random" && selected?.appearance?.layoutFile == "/private/tmp/synthetic-layout.lua", suffix + "-theme-layout-choice-forwarded")
-            try check(selected?.trimOptionalApps == true && ProvisioningTrim.isRequested(in: service.creations[UUID(uuidString: firstID)!]!.proposal), suffix + "-trim-choice-frozen")
-            try check(driver.state("editor", "consent") == "false", suffix + "-review-alone-no-consent")
-            try driver.send("selection", .acknowledge(true)); tick(); try check(driver.state("editor", "ready") == "true", suffix + "-ack-enables-create")
-            try capture(host, "new-vm-review-" + suffix + ".png")
+            try check(driver.state("selection", "theme") == "random", suffix + "-random-draft")
             host.scroll(fraction: 0.35); tick(); try capture(host, "new-vm-trim-" + suffix + ".png"); host.scroll(bottom: false); tick()
             host.scroll(fraction: 0.50); tick(); try capture(host, "new-vm-appearance-" + suffix + ".png"); host.scroll(bottom: false); tick()
             try driver.send("appearance", .layoutExample(nil)); tick()
             try until { driver.state("layout-cards", "count") == "4" }
-            let beforeEmptyLayout = service.captures
-            try driver.send("selection", .preview); tick()
-            try check(driver.state("appearance", "valid") == "false" && service.captures == beforeEmptyLayout, suffix + "-example-gallery-requires-selection")
+            try check(driver.state("appearance", "valid") == "false" && driver.state("editor", "canSave") == "false", suffix + "-example-gallery-requires-selection")
             try driver.send("layout-cards", .layoutExample(.fourTerminals)); tick()
-            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
-            let exampleID = try UUID(uuidString: driver.state("selection", "review")).unwrap()
-            try check(service.sources[exampleID]?.appearance?.layoutExample == .fourTerminals && ProvisioningAppearanceSummary(proposal: service.creations[exampleID]!.proposal).layoutExample?.id == .fourTerminals, suffix + "-layout-card-forwards-frozen-example")
-            try driver.send("selection", .acknowledge(true)); tick()
+            try check(driver.state("selection", "layout") == ProvisioningLayoutExampleID.fourTerminals.rawValue && driver.state("editor", "canSave") == "true", suffix + "-layout-card-draft-ready")
             host.scroll(fraction: 0.53); tick(); try capture(host, "new-vm-layout-cards-" + suffix + ".png")
             try driver.send("layout-cards", .layoutExample(.vscodeBrowser)); tick()
-            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-layout-card-edit-invalidates-review")
-            try driver.send("selection", .appearance(.init(theme: "random", minimumStars: 10, layoutFile: "/private/tmp/synthetic-layout.lua"))); tick()
-            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
-            try driver.send("selection", .acknowledge(true)); tick()
-            try driver.send("appearance", .themeRepository("https://github.com/example/omarchy-other-theme")); tick()
-            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-appearance-edit-invalidates-review")
-            try driver.send("selection", .appearance(nil)); tick()
-            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
-            try driver.send("selection", .acknowledge(true)); tick()
-            if dark, let id = UUID(uuidString: firstID), let review = service.creations[id] {
+            try check(driver.state("selection", "layout") == ProvisioningLayoutExampleID.vscodeBrowser.rawValue && driver.state("editor", "canSave") == "true", suffix + "-layout-edits-need-no-review")
+            try driver.send("selection", .trim(false)); tick()
+            try check(driver.state("editor", "canSave") == "true", suffix + "-trim-edit-needs-no-review")
+            try driver.send("selection", .trim(true)); tick()
+            try driver.send("editor", .factory("synthetic-custom")); tick()
+            try check(driver.state("selection", "trimAvailable") == "false" && driver.state("selection", "trim") == "false", suffix + "-custom-factory-hides-resets-trim")
+            try driver.send("editor", .factory("official")); tick()
+            try check(driver.state("selection", "trimAvailable") == "true" && driver.state("selection", "trim") == "false", suffix + "-official-return-no-implicit-trim")
+            try driver.send("selection", .trim(true)); tick()
+            try check(service.captures == beforeCapture && service.savedCalls == calls, suffix + "-all-draft-edits-have-no-backend-effects")
+            let executions = service.preparations, submissions = service.submissions, reads = service.taskReads
+            service.holdNext = true
+            try driver.send("editor", .save); try until { service.waiting }
+            try check(driver.state("editor", "canSave") == "false" && driver.state("editor", "validation").contains("Preparing setup and creating VM"), suffix + "-create-busy-explained")
+            try driver.send("editor", .save); tick()
+            try check(service.savedCalls == calls && service.captures == beforeCapture + 1, suffix + "-duplicate-in-flight-create-refused")
+            // Debug commands deliberately bypass disabled controls to prove that
+            // suspension cannot mix late edits into the submitted configuration.
+            try driver.send("selection", .profiles(["python"])); try driver.send("editor", .resources(4, 6, 256)); tick()
+            service.release(); try until { returned.count == 1 }
+            let created = try model.snapshots.first(where: { $0.id == returned[0] }).unwrap()
+            let reviewID = try created.profile.developerSetup.unwrap().reviewID
+            let frozenSource = try service.sources[reviewID].unwrap()
+            try check(frozenSource.profiles == ["developer", "web"] && frozenSource.trimOptionalApps == true && frozenSource.appearance?.theme == "random" && frozenSource.appearance?.layoutExample == .vscodeBrowser, suffix + "-create-freezes-exact-pressed-selections")
+            try check(created.profile.memoryMiB == 8192 && created.profile.cpus == 4 && created.profile.diskGiB == 128 && created.profile.factory == .official && service.saved[reviewID]?.0.factory == "official", suffix + "-manager-resources-factory-captured-before-await")
+            try check(created.sessionID == nil && service.preparations == executions && service.submissions == submissions && service.taskReads == reads, suffix + "-create-grants-no-execution-or-task-trust")
+            if dark, let review = service.creations[reviewID] {
                 let object = try JSONSerialization.jsonObject(with: review.proposal)
                 try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("new-vm-proposal.json"), options: .withoutOverwriting)
             }
-            try driver.send("selection", .trim(false)); tick()
-            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-trim-edit-invalidates-consent")
-            try driver.send("selection", .trim(true)); tick()
-            try driver.send("editor", .factory("synthetic-custom")); tick()
-            try check(driver.state("selection", "trimAvailable") == "false" && driver.state("selection", "trim") == "false" && driver.state("editor", "consent") == "false", suffix + "-custom-factory-hides-resets-trim")
-            try driver.send("editor", .factory("official")); tick()
-            try check(driver.state("selection", "trimAvailable") == "true" && driver.state("selection", "trim") == "false", suffix + "-official-return-no-implicit-trim")
+            try driver.send("selection", .profiles(["developer", "web"])); try driver.send("editor", .resources(8, 4, 128)); tick()
+            let frozenCaptures = service.captures
+            try driver.send("editor", .save); try until { returned.count == 2 }
+            try check(returned[0] == returned[1] && service.captures == frozenCaptures, suffix + "-identical-retry-reuses-frozen-inputs-and-uuid")
             try driver.send("selection", .profiles(["python"])); tick()
-            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "consent") == "false", suffix + "-profile-edit-invalidates-review-and-ack")
-            service.holdNext = true; try driver.send("selection", .preview); try until { service.waiting }
-            try driver.send("selection", .profiles(["developer", "project-managed"])); tick(); service.release(); tick()
-            try check(driver.state("selection", "review").isEmpty && driver.state("editor", "ready") == "false", suffix + "-late-capture-discarded")
-            service.failNext = true; try driver.send("selection", .preview); try until { driver.state("selection", "failure") == "true" }
-            try check(driver.state("editor", "consent") == "false", suffix + "-capture-error-no-consent")
-            try driver.send("selection", .preview); try until { !driver.state("selection", "review").isEmpty }
-            try check(driver.state("selection", "review") != firstID, suffix + "-new-selection-new-review")
-            try driver.send("selection", .acknowledge(true)); tick(); try driver.send("editor", .save); try until { returned.count == 1 }
-            let created = try model.snapshots.first(where: { $0.id == returned[0] }).unwrap()
-            try check(created.profile.memoryMiB == 8192 && created.profile.cpus == 4 && created.profile.diskGiB == 128 && created.profile.factory == .official && service.saved[created.profile.developerSetup!.reviewID]?.0.factory == "official", suffix + "-manager-resources-factory-preserved")
-            try check(created.profile.developerSetup?.reviewID.uuidString == driver.state("selection", "review") && created.sessionID == nil, suffix + "-frozen-handoff-without-start")
-            try driver.send("editor", .save); try until { returned.count == 2 }; try check(returned[0] == returned[1], suffix + "-duplicate-save-one-uuid")
+            service.failNext = true
+            let beforeFailure = service.savedCalls
+            try driver.send("editor", .save); try until { !driver.state("editor", "failure").isEmpty && driver.state("editor", "saving") == "false" }
+            try check(driver.state("editor", "failure").contains("Could not prepare developer setup") && service.savedCalls == beforeFailure && returned.count == 2, suffix + "-preparation-failure-shown-without-saving")
+            try check(driver.state("editor", "canSave") == "true", suffix + "-failed-create-can-retry")
+            try capture(host, "new-vm-creation-error-" + suffix + ".png")
+            try driver.send("editor", .save); try until { returned.count == 3 }
+            let retry = try model.snapshots.first(where: { $0.id == returned[2] }).unwrap()
+            try check(retry.id != created.id && retry.profile.developerSetup?.reviewID != reviewID && model.configurationError == nil, suffix + "-changed-selection-gets-new-successful-attempt")
             host.scroll(bottom: true); tick(); try capture(host, "new-vm-resources-" + suffix + ".png")
             let setupDriver = SetupUIAcceptanceDriver()
             let setup = Host(ManagerView(model: model, acceptanceGuestID: created.id), driver: setupDriver, width: 1200, height: 960, dark: dark)
@@ -259,7 +256,67 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let missing = UUID(); try setupDriver.send("setup", .lookup(missing)); tick()
             try check(setupDriver.state("setup", "failure") == "true", suffix + "-lost-review-not-reconstructed")
             setup.close(); host.close()
+
+            let localDriver = SetupUIAcceptanceDriver()
+            var localCreated: [UUID] = []
+            let localHost = Host(VMEditor(model: model, profile: nil, saved: { localCreated.append($0) }), driver: localDriver, width: 640, height: 820, dark: dark)
+            tick(); try until { localDriver.scopes["selection"] != nil }
+            try localDriver.send("editor", .name("Synthetic local " + suffix))
+            try localDriver.send("selection", .source("local")); tick()
+            try localDriver.send("selection", .folder(output.appendingPathComponent("synthetic-local-source"))); tick()
+            let localSaves = service.savedCalls, localPreparations = service.preparations, localSubmissions = service.submissions, localTaskReads = service.taskReads
+            let localCaptures = service.captures
+            try check(localDriver.state("editor", "canSave") == "true" && service.savedCalls == localSaves, suffix + "-local-selection-direct-create-ready")
+            try localDriver.send("editor", .save); try until { localCreated.count == 1 }
+            let localProfile = try model.snapshots.first(where: { $0.id == localCreated[0] }).unwrap().profile
+            let localReview = try localProfile.developerSetup.unwrap().reviewID
+            try check(service.saved[localReview]?.1.id == localCreated[0] && service.sources[localReview]?.directory?.hasSuffix("synthetic-local-source") == true && service.sources[localReview]?.profiles == nil && service.captures == localCaptures + 1, suffix + "-local-create-captures-selected-folder")
+            try check(service.preparations == localPreparations && service.submissions == localSubmissions && service.taskReads == localTaskReads, suffix + "-local-create-grants-no-execution-or-task-trust")
+            localHost.close()
+
+            let unavailableModel = AppModel(isolatedManager: manager, support: support, snapshots: [], service: nil,
+                save: { try await service.save($0, consent: $1) })
+            let unavailableDriver = SetupUIAcceptanceDriver()
+            let unavailableHost = Host(VMEditor(model: unavailableModel, profile: nil, saved: { _ in }), driver: unavailableDriver, width: 640, height: 820, dark: dark)
+            tick(); try until { unavailableDriver.scopes["selection"] != nil }
+            try unavailableDriver.send("editor", .name("Synthetic unavailable " + suffix))
+            try unavailableDriver.send("selection", .source("bundled")); tick()
+            try check(unavailableDriver.state("editor", "canSave") == "false" && unavailableDriver.state("editor", "validation").contains("Developer setup is unavailable"), suffix + "-unavailable-setup-explained")
+            let savedCalls = service.savedCalls
+            try unavailableDriver.send("editor", .save); tick()
+            try check(service.savedCalls == savedCalls, suffix + "-unavailable-setup-cannot-save")
+            try capture(unavailableHost, "new-vm-setup-unavailable-" + suffix + ".png")
+            try unavailableDriver.send("selection", .source("local")); tick()
+            try check(unavailableDriver.state("editor", "canSave") == "false" && unavailableDriver.state("editor", "validation").contains("Developer setup is unavailable"), suffix + "-unavailable-local-explained")
+            try unavailableDriver.send("selection", .source("none")); tick()
+            try check(unavailableDriver.state("editor", "canSave") == "true" && unavailableDriver.state("editor", "validation").isEmpty, suffix + "-unavailable-service-none-unblocked")
+            unavailableHost.close()
         }
+        // Saved account values apply even when schema-1's obsolete global
+        // switch is false. This fixture never reads any credential or real data.
+        model.ownerDefaults = .init(enabled: false, configuration: .init(username: "fixture_owner", timezone: "UTC", keyboardID: "English (UK)"), credentialReference: UUID())
+        for dark in [true, false] {
+            let suffix = dark ? "dark" : "light", driver = SetupUIAcceptanceDriver()
+            var returned: [UUID] = []
+            let host = Host(VMEditor(model: model, profile: nil, saved: { returned.append($0) }), driver: driver, width: 640, height: 820, dark: dark)
+            tick(); try until { driver.scopes["editor"] != nil }
+            try driver.send("editor", .name("Synthetic saved defaults " + suffix)); tick()
+            try check(driver.state("editor", "ownerDefaults") == "true", suffix + "-saved-inputs-default-on-despite-legacy-off")
+            try driver.send("editor", .factory("synthetic-custom")); tick()
+            try check(driver.state("editor", "ownerDefaults") == "true", suffix + "-custom-factory-keeps-account-defaults")
+            try driver.send("editor", .factory("official")); tick()
+            host.scroll(fraction: 0.80); tick(); try capture(host, "new-vm-saved-defaults-" + suffix + ".png")
+            try driver.send("editor", .save); try until { returned.count == 1 }
+            try check(service.savedConfigurations.last?.ownerDefaults == true, suffix + "-create-forwards-saved-account-defaults")
+            try driver.send("editor", .ownerDefaults(false)); tick()
+            try check(driver.state("editor", "ownerDefaults") == "false", suffix + "-manual-account-opt-out-explicit")
+            try driver.send("editor", .save); try until { returned.count == 2 }
+            try check(service.savedConfigurations.last?.ownerDefaults == false, suffix + "-manual-choice-forwarded-without-changing-defaults")
+            try check(model.ownerDefaults?.isConfigured == true && model.ownerDefaults?.enabled == false, suffix + "-legacy-settings-not-rewritten-by-form")
+            host.close()
+        }
+        let defaultsHost = Host(ScrollView { OwnerDefaultsView(model: model).padding(24) }.frame(width: 1200, height: 1100), driver: SetupUIAcceptanceDriver(), width: 1200, height: 1140, dark: true)
+        tick(); try capture(defaultsHost, "guest-defaults-no-global-checkbox-dark.png"); defaultsHost.close()
         // Separate fake-enabled service exercises consent controls, never the
         // real execution gate or any process/guest backend.
         let enabled = SetupAcceptanceService(vmID: profile.id, enabled: true)

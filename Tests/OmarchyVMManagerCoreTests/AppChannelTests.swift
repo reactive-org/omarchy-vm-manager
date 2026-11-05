@@ -98,12 +98,12 @@ struct AppChannelTests {
     func defaultsIsolation() throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let stable = OwnerDefaultsStore(applicationSupport: f.support, vault: MemoryOwnerVault(), channel: .stable)
-        _ = try stable.save(enabled: true, configuration: OwnerConfiguration(username: "work"), password: Data("synthetic-password".utf8))
+        _ = try stable.save(configuration: OwnerConfiguration(username: "work"), password: Data("synthetic-password".utf8))
         let stableFile = AppChannel.stable.directory(in: f.support).appendingPathComponent("guest-defaults.json")
         let before = try PrivateFiles.read(stableFile)
         let dev = OwnerDefaultsStore(applicationSupport: f.support, vault: MemoryOwnerVault(), channel: .development)
         #expect(try !dev.load().enabled)
-        _ = try dev.save(enabled: true, configuration: OwnerConfiguration(username: "testing"), password: Data("synthetic-dev-password".utf8))
+        _ = try dev.save(configuration: OwnerConfiguration(username: "testing"), password: Data("synthetic-dev-password".utf8))
         #expect(try PrivateFiles.read(stableFile) == before)
         let stableDisks = DiskDefaultsStore(applicationSupport: f.support, channel: .stable)
         let devDisks = DiskDefaultsStore(applicationSupport: f.support, channel: .development)

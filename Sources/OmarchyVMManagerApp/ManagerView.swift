@@ -465,8 +465,14 @@ struct VMEditor: View {
     @State private var factory = "official"
     @State private var importingFactory = false
     @State private var useOwnerDefaults: Bool
-    @State private var setupConsent: ProvisioningCreationConsent?
-    @State private var setupReady = true
+    @State private var setupSource: ProvisioningSetupSource?
+    @State private var creationAttempt: CreationAttempt?
+    private struct CreationAttempt {
+        let id: UUID
+        let configuration: GuestConfigurationPatch
+        let source: ProvisioningSetupSource?
+    }
+    @State private var setupBlocker: NewVMSetupBlocker?
     init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = saved
         _name = State(initialValue: profile?.name ?? reuseSource.map { $0.name + " Replacement" } ?? "")
@@ -481,11 +487,16 @@ struct VMEditor: View {
         _immersive = State(initialValue: profile?.immersiveMode ?? false)
         _share = State(initialValue: profile?.sharedFolder?.enabled ?? false)
         _sharePath = State(initialValue: profile?.sharedFolder?.hostPath ?? SharedFolderMapping.defaultPath)
-        _useOwnerDefaults = State(initialValue: reuseSource.map { $0.ownerSetup != nil } ?? (profile == nil && model.ownerDefaults?.enabled == true))
-        _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.enabled == true ? model.ownerDefaults?.sshPublicKey : nil)
+        _useOwnerDefaults = State(initialValue: reuseSource.map { $0.ownerSetup != nil } ?? (profile == nil && model.ownerDefaults?.isConfigured == true))
+        _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.isConfigured == true ? model.ownerDefaults?.sshPublicKey : nil)
         _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
     }
-    private var canSave: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !saving && (profile != nil || setupReady) }
+    private var saveBlocker: String? {
+        if saving { return profile == nil ? (setupSource == nil ? "Creating VM…" : "Preparing setup and creating VM…") : "Saving changes…" }
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Enter a name for this VM." }
+        return profile == nil ? setupBlocker?.message : nil
+    }
+    private var canSave: Bool { saveBlocker == nil }
     private var maximumMemory: Int { max(4, Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) * 3 / 4) }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -501,7 +512,7 @@ struct VMEditor: View {
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    NewVMSetupSelectionView(model: model, factory: $factory, consent: $setupConsent, ready: $setupReady).disabled(saving)
+                    NewVMSetupSelectionView(model: model, factory: $factory, selection: $setupSource, blocker: $setupBlocker).disabled(saving)
                     Button("Import Factory…") { importingFactory = true }
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
                 } else { Text("Factory: \(profile?.factory?.displayName ?? "Legacy original disk")").font(.caption).foregroundStyle(.secondary) }
@@ -522,7 +533,7 @@ struct VMEditor: View {
                             if let source = model.snapshots.first(where: { $0.id == value }) {
                                 homeDisk = source.profile.homeDisk!.sizeGiB; useOwnerDefaults = source.profile.ownerSetup != nil
                             } else {
-                                useOwnerDefaults = model.ownerDefaults?.enabled == true
+                                useOwnerDefaults = model.ownerDefaults?.isConfigured == true
                             }
                         }
                         if reuseHomeFrom != nil {
@@ -542,14 +553,12 @@ struct VMEditor: View {
                 }
                 if !sshEnabled { Text("Managed SSH is required to verify a shared mount.").font(.caption).foregroundStyle(.secondary) }
                 if profile == nil {
-                    Toggle("Use saved owner setup defaults", isOn: $useOwnerDefaults).disabled(reuseHomeFrom != nil || model.ownerDefaults?.enabled != true)
-                        .onChange(of: useOwnerDefaults) { _, value in
-                            if value { selectedPublicKey = model.ownerDefaults?.sshPublicKey }
-                            else if selectedPublicKey == model.ownerDefaults?.sshPublicKey { selectedPublicKey = nil }
-                        }
+                    if model.ownerDefaults?.isConfigured == true || reuseHomeFrom != nil {
+                        Toggle("Set up account manually", isOn: Binding(get: { !useOwnerDefaults }, set: { useOwnerDefaults = !$0 })).disabled(reuseHomeFrom != nil)
+                    }
                     if useOwnerDefaults, let config = reuseHomeFrom.flatMap({ id in model.snapshots.first(where: { $0.id == id })?.profile.ownerSetup?.configuration }) ?? model.ownerDefaults?.configuration {
                         Text("Automatic setup as \(config.username) · \(config.keyboardID). A unique hostname is assigned.").font(.caption).foregroundStyle(.secondary)
-                    } else { Text("Normal Omarchy setup will run on first boot. Configure reusable settings in Guest Defaults.").font(.caption).foregroundStyle(.secondary) }
+                    } else { Text(model.ownerDefaults?.isConfigured == true ? "Account setup: Manual. Omarchy will ask for account details on first boot." : "Account setup: Manual. Save account details and a password in Guest Defaults to apply them automatically to new VMs.").font(.caption).foregroundStyle(.secondary) }
                 } else if let setup = profile?.ownerSetup {
                     Text("Owner defaults snapshot: \(setup.configuration.username) · \(setup.hostname). First-boot answers cannot be changed here.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -568,12 +577,21 @@ struct VMEditor: View {
                     }
                 }
                 if profile != nil { Text("SSH enrollment is chosen at creation. Existing access is preserved.").font(.caption).foregroundStyle(.secondary) }
-            }.formStyle(.grouped)
+            }.formStyle(.grouped).disabled(saving)
+            .onChange(of: useOwnerDefaults) { _, value in
+                if value { selectedPublicKey = model.ownerDefaults?.sshPublicKey }
+                else if selectedPublicKey == model.ownerDefaults?.sshPublicKey { selectedPublicKey = nil }
+            }
             if let error = keyError { Text(error).foregroundStyle(.red).font(.callout) }
             if let error = model.configurationError { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }
             Text(profile == nil ? "The selected factory prepares on first launch. Each guest has independent storage. Networking uses NAT. Host-folder sharing and guest Touch ID are opt-in. USB and camera are off." : "Changes apply the next time this guest starts. Its existing disk is preserved.").font(.callout).foregroundStyle(.secondary)
+            if let saveBlocker {
+                Label(saveBlocker, systemImage: saving ? "hourglass" : "info.circle")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("new-vm.validation")
+            }
             HStack {
-                Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
                 Button(profile == nil ? "Create VM" : "Save Changes") {
                     save()
                 }.accessibilityIdentifier("new-vm.create").buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!canSave)
@@ -589,23 +607,37 @@ struct VMEditor: View {
                     switch command {
                     case .factory(let value): factory = value
                     case .name(let value): name = value
+                    case .ownerDefaults(let value): if reuseHomeFrom == nil { useOwnerDefaults = value && model.ownerDefaults?.isConfigured == true }
                     case .resources(let ram, let cores, let size): memory = ram; cpus = cores; disk = size
                     case .save: save()
                     default: break
                     }
-                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "ready": String(setupReady), "consent": String(setupConsent != nil), "saving": String(saving)] })
+                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "ready": String(setupBlocker == nil), "ownerDefaults": String(useOwnerDefaults), "hasSetup": String(setupSource != nil), "failure": model.configurationError ?? "", "saving": String(saving), "canSave": String(canSave), "validation": saveBlocker ?? ""] })
             } }
             #endif
         }
     }
     private func save() {
         guard canSave else { return }
+        let config = GuestConfigurationPatch(name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryMiB: memory * 1024, cpus: cpus, diskGiB: disk,
+            clipboard: clipboard, immersive: immersive, guestTouchID: guestTouchID, ssh: sshEnabled, ownerDefaults: useOwnerDefaults,
+            publicKey: sshEnabled ? selectedPublicKey : nil, factory: factory, inheritDefaultPublicKey: false,
+            share: share, sharePath: sharePath, separateHome: separateHome, homeDiskGiB: separateHome ? homeDisk : nil, reuseHomeFrom: reuseHomeFrom)
+        // A repeated identical submission reuses its frozen inputs and reservation.
+        // Editing any configuration or source field starts a different attempt.
+        if creationAttempt?.configuration != config || creationAttempt?.source != setupSource {
+            creationAttempt = .init(id: UUID(), configuration: config, source: setupSource)
+        }
+        let requestID = creationAttempt!.id
         saving = true
-        Task {
-            if let id = await model.save(profile, name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, guestTouchID: guestTouchID, immersive: immersive, sshEnabled: sshEnabled, publicKey: sshEnabled ? selectedPublicKey : nil, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, separateHome: separateHome, homeDiskGiB: homeDisk, reuseHomeFrom: reuseHomeFrom, setupConsent: setupConsent) { saved(id) }
+        // Capture all form values before preparation can suspend. Even a late
+        // programmatic edit cannot change the configuration being confirmed.
+        Task { [profile, setupSource, name = config.name!, memory, cpus, disk, clipboard, guestTouchID, immersive, sshEnabled, publicKey = config.publicKey, useOwnerDefaults, factory, share, sharePath, separateHome, homeDisk, reuseHomeFrom] in
+            if let id = await model.save(profile, name: name, memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, guestTouchID: guestTouchID, immersive: immersive, sshEnabled: sshEnabled, publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, separateHome: separateHome, homeDiskGiB: homeDisk, reuseHomeFrom: reuseHomeFrom, setupSource: setupSource, setupRequestID: requestID) { saved(id) }
             saving = false
         }
     }
+
     private func choosePublicKey() {
         do { if let key = try PublicKeyPicker.choose() { selectedPublicKey = key; keyError = nil } }
         catch { keyError = error.localizedDescription }

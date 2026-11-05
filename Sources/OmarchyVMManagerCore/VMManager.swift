@@ -241,7 +241,7 @@ public actor VMManager {
         }
         defer { if let consent = setupConsent { creationSelectionsInFlight.remove(consent.reviewID) } }
         if let ownerOverrides {
-            guard useOwnerDefaults != false, ownerDefaults != nil else { throw OwnerConfiguration.invalid("Owner overrides require enabled, saved Guest Defaults.") }
+            guard useOwnerDefaults != false, ownerDefaults != nil else { throw OwnerConfiguration.invalid("Owner overrides require saved Guest Defaults.") }
             _ = try ownerOverrides.applying(to: OwnerConfiguration())
         }
         if factory != "official" {
@@ -295,7 +295,7 @@ public actor VMManager {
             } else if useOwnerDefaults == true { throw HomeDisk.failure("This source uses manual account setup; recreate the same owner during setup.") }
         } else if useOwnerDefaults != false, let ownerDefaults {
             let defaults = try ownerDefaults.load()
-            if useOwnerDefaults == true, !defaults.enabled { throw OwnerConfiguration.invalid("Enable and save Guest Defaults before choosing unattended setup.") }
+            if useOwnerDefaults == true, !defaults.isConfigured { throw OwnerConfiguration.invalid("Save Guest Defaults with a password before choosing automatic account setup.") }
             profile.ownerSetup = try ownerDefaults.snapshot(for: profile.id, overrides: ownerOverrides)
             if profile.ownerSetup != nil, chosenPublicKey == nil, inheritDefaultPublicKey { chosenPublicKey = defaults.sshPublicKey }
         } else if useOwnerDefaults == true { throw OwnerConfiguration.invalid("Guest Defaults is unavailable.") }
@@ -338,10 +338,10 @@ public actor VMManager {
         return try ownerDefaults.load()
     }
 
-    public func saveGuestDefaults(enabled: Bool, configuration: OwnerConfiguration, password: Data?, sshPublicKey: String?) throws -> OwnerDefaults {
+    public func saveGuestDefaults(configuration: OwnerConfiguration, password: Data?, sshPublicKey: String?) throws -> OwnerDefaults {
         guard !quitting, let registry, let ownerDefaults else { throw OwnerConfiguration.invalid("Guest Defaults is unavailable while the manager is quitting.") }
         try registry.checkRevision()
-        return try ownerDefaults.save(enabled: enabled, configuration: configuration, password: password, sshPublicKey: sshPublicKey)
+        return try ownerDefaults.save(configuration: configuration, password: password, sshPublicKey: sshPublicKey)
     }
 
     public func upgradeSavedGuestPassword() async throws -> OwnerPasswordUpgradeResult {

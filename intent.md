@@ -1,5 +1,21 @@
 # Omarchy VM Manager — implementation intent
 
+## Saved account defaults apply automatically — user correction, 5 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** saved Guest Defaults are the account
+values to apply to new VMs. Remove the redundant global enable checkbox. A valid
+saved configuration/password reference applies by default, including legacy saved
+metadata with the old enable flag off. Retain an explicit per-VM manual choice.
+Keep existing profiles/disks, reused-home account identity, Stable/Dev isolation,
+credential authorization and provisioning execution permissions unchanged. Never
+rewrite a saved defaults file merely to load it.
+
+**VERIFIED — fake/local:** 75 focused core tests and 130 offscreen UI checks pass
+with synthetic services/credentials, including legacy metadata, default/manual
+creation, credential-policy mocks and channel isolation. No live credential,
+manager/guest operation or host install occurs. **TO PROVE:** real first boot with
+these revised defaults semantics. See [account defaults](docs/UnattendedDefaults.md#saved-values-apply-automatically--5-november-2026).
+
 ## First Dev publication — user authorization, 5 November 2026
 
 **USER AUTHORIZATION:** create `next` from `main`, validate the supplied separate Dev provisioning profile, configure its CI secret and publish the first Dev release. Leave installed apps, all running work VMs and their data untouched. Use the existing signing/notarization credentials only in CI; no local private signing identity, permission, installation or real guest action is needed.
