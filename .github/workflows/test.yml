@@ -32,6 +32,9 @@ jobs:
         run: make test-upstream TEST_JOBS=1
 
   managed-ssh:
+    # Factory branch acceptance is fake/local only. This fixture builds a real
+    # Docker image, so leave it for a separately authorized integration pass.
+    if: github.ref != 'refs/heads/codex/factory-image-builder' && github.head_ref != 'codex/factory-image-builder'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

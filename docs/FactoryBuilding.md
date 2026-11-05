@@ -49,7 +49,7 @@ waits for process/resource cleanup before continuing.
 
 On `codex/factory-image-builder`, the active package is pinned to companion
 `codex/swift-factory-builder` revision `df5e2c8`. These follow the previously tested
-provisioning branches; they have not been published.
+provisioning branches. Draft publication runs only the bounded test paths below.
 
 One shared service serializes UI and CLI work with a private filesystem lock.
 Readiness previews are ephemeral and consumed once. A repeated start request for
@@ -143,3 +143,19 @@ are preserved; the active public dev-vm source pin advances explicitly.
 
 These are local working-tree checks. Factory-branch hosted CI and real build/
 guest acceptance have not run. Main, installed Dev and their VMs were untouched.
+
+### Factory-branch CI boundary
+
+For `codex/factory-image-builder`, push and PR events run manager, script,
+offscreen UI, optimized-policy and upstream source checks. The managed-SSH job
+is skipped for this branch because its synthetic fixture still builds and runs
+a real Docker image. Release/signing jobs remain restricted to pushes to `next`
+or `main`; no merge or release is authorized by draft publication.
+
+The companion `codex/swift-factory-builder` branch runs Swift tests and offline
+recipe parity using preinstalled Swift/Python. Its ordinary Ansible-install and
+legacy validation job is skipped. Checkout and pinned source dependencies are
+normal hosted test inputs; factory downloads/builds, software installation, real
+signing and VM operations are outside these factory-branch runs. The source pin
+remains `df5e2c8`: the publication follow-up changes only CI and documentation.
+Full SSH-container and legacy Ansible validation are not claimed by this CI pass.
