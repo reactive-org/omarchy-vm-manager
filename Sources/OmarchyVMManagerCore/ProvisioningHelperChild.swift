@@ -144,8 +144,10 @@ final class ProvisioningHelperChild: @unchecked Sendable {
         if hasSessionAuthority { guard posix_spawn_file_actions_adddup2(&actions, sessionSource, 5) == 0 else { throw ProvisioningHelperIPCFailure.unavailable } }
         if hasTransport { guard posix_spawn_file_actions_adddup2(&actions, transportSource, 6) == 0 else { throw ProvisioningHelperIPCFailure.unavailable } }
         if hasTerminal { guard posix_spawn_file_actions_adddup2(&actions, terminalSource, 7) == 0 else { throw ProvisioningHelperIPCFailure.unavailable } }
-        let arguments = [admission.executable.path, "--ownership-channel-fd", "3"].map { strdup($0) } + [nil]
-        let environment = ["PATH=/nonexistent", "LC_ALL=C", "HOME=" + directory.path, "TMPDIR=" + directory.path].map { strdup($0) } + [nil]
+        let argumentStrings = [admission.executable.path, "--ownership-channel-fd", "3"]
+        let environmentStrings = ["PATH=/nonexistent", "LC_ALL=C", "HOME=" + directory.path, "TMPDIR=" + directory.path]
+        let arguments = argumentStrings.map { value in value.withCString { strdup($0) } } + [nil]
+        let environment = environmentStrings.map { value in value.withCString { strdup($0) } } + [nil]
         defer { arguments.forEach { free($0) }; environment.forEach { free($0) } }
         var pid: pid_t = 0
         let result = arguments.withUnsafeBufferPointer { args in environment.withUnsafeBufferPointer { env in

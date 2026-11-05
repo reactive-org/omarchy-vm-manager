@@ -22,9 +22,14 @@ checks, and isolated SSH-container tests pass. The upstream authentication-lease
 assertion failed once under concurrent jobs and passed unchanged on TEST_JOBS=1;
 its exact cause is unproven, and CI uses the verified serialized job setting.
 All 86,034 prior private artifact entries and six pin hashes match baseline.
-No Main operation, product VM launch or real signing occurs. Hosted CI is pending
-explicit GitHub source-publication permission after automatic review rejected
-the companion push; that is not a failed or successful hosted test result.
+No Main operation, product VM launch or real signing occurs. Following an initial
+automatic publication-review rejection, the user explicitly authorized both feature
+branches and draft PRs: manager #10 to next and companion #8 to main. Test-only
+hosted CI is in progress; branch release jobs remain skipped. CI exposed the
+preinstalled Swift 6.1 / bundled SwiftTerm 6.2 minimum mismatch, then a Swift 6.2
+helper C-string inference issue; the toolchain selection and explicit conversions
+are corrected. Companion process fixtures run serially without changing deadlines.
+Hosted results are tracked separately from the completed local checks.
 
 ## Dev draft publication recovery — user authorization, 5 November 2026
 

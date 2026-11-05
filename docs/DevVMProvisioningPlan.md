@@ -4012,7 +4012,7 @@ real manager guest or personal credential is used. All 86,034 pre-existing priva
 artifact entries and six tracked pin files match the preservation baseline.
 No installed app is replaced/opened and no Main app/VM command is sent.
 
-**HOSTED CI — PENDING PUBLICATION APPROVAL:** automatic review rejected pushing
+**HOSTED CI — initial publication approval boundary (resolved below):** automatic review rejected pushing
 the companion feature branch because explicit authorization to publish the source
 to GitHub was missing. No workaround/retry, push to next/main, hosted release or
 real signing occurs. Both feature branches and draft PRs must be published with
@@ -4033,3 +4033,10 @@ recipe now uses --no-parallel, matching the successful local validation while
 retaining each test's explicit concurrency/cancellation checks and deadlines.
 These are CI fixes, not a completed hosted pass; current results are in the PRs.
 No frozen pin/artifact, real signing, Main operation or VM launch changes.
+
+The Swift 6.2 CI compilation also exposed helper argv/environment literal
+inference accepted by the local Swift 6.4 compiler. Explicit String arrays and
+scoped C-string duplication preserve the same arguments, private environment and
+descriptor inheritance while supporting the declared compiler minimum. Existing
+local inherited-helper fixtures pass; hosted compilation remains pending for
+this correction.
