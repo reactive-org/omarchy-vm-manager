@@ -2170,3 +2170,44 @@ of an attended signing plan. No inspection output, authority, signing plan,
 candidate build/output, signing, key access, Apple request, real SSH/Ansible,
 install, normal app/runtime action or VM launch occurs. Original-Mac, loaded-child
 and real-guest acceptance remain separately reviewed **TO PROVE** work.
+
+## Fresh 007bc66 native inspection passed — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** review-preparation documentation is committed
+as manager `467f979` and companion `8cf7f8d`. The user then approves the exact
+`007bc66` review's bounded read-only native inspection, preserving artifacts/pins
+and excluding signing, private-key access, Apple requests, SSH/Ansible, installs
+and VM launches. All 173 sealed review files, corrected guard/composition/request,
+32 committed tooling files and seventeen-file engine bindings match. Only the
+exact typed in-memory offline-inspection effect is granted; the request is
+consumed once without rewriting the prepared review or replaying an old receipt.
+
+**VERIFIED — native offline static only:** all 31 workers pass in 76.504 seconds.
+Pinned upstream/parser dependencies are clean before and after. With interaction
+disabled, the named keychain reports locked before and after; its metadata remains
+exact throughout the caller's checks. CMS envelope/content consistency, profile
+policy, public certificate membership/selector/typed dates and 23 no-network static
+checks over 22 runtime Mach-O files plus the enclosing bundle pass. There are no
+fixed parent refusals, worker diagnostics or guard-blocked actions. No daemon
+`check`, unlock/relock, key export/import/enumeration, ACL/search-list change or UI
+is performed.
+
+All 31 owned groups are observed quiet before reaping, roots are reaped and
+descriptors closed; zero handles remain unresolved. A separate bounded snapshot
+restricted to those 31 recorded PIDs finds none present, without process names,
+arguments, global VM searches or signals. All 24,204 pre-run private entries,
+including the original review and historical successful/failed/consumed artifacts,
+are unchanged. All 173 sealed files and four current pin files revalidate; typed
+source admission and frozen overlay reconstruction pass again. Only the planned
+new inspection output and separate private execution/analysis evidence are added.
+The approved disposable scope/root is neither observed nor recaptured, ordinary
+product approval remains nil, and product/shared sources/resources/pins are unchanged.
+
+**TO PROVE / NEXT:** the result is **OFFLINE_STATIC_INSPECTION_ONLY**. CMS signer
+authenticity, certificate trust, online revocation/fresh notarization/Gatekeeper,
+private-key availability, original-Mac/loaded-child and real-guest acceptance
+remain unestablished. A fresh attended signing plan may be prepared from this new
+exact receipt, but no such plan, candidate build/output or signing authority is
+created here. The consumed request has no retry. No signing, private-key access,
+Apple request, real SSH/Ansible, install, normal app/runtime action or VM launch
+occurs. Raw receipts, selectors, paths, inventory hashes and evidence remain private.

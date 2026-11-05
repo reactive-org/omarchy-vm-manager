@@ -3793,3 +3793,29 @@ All effects remain NOT_GRANTED; no inspection output, authority, signing plan or
 candidate output exists. No real inspection, signing, key access, Apple request,
 real SSH/Ansible, install, normal app/runtime action or VM launch occurs. See the
 [fresh review and limits](docs/DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-007bc66--5-november-2026).
+
+## Fresh 007bc66 native inspection result — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** preparation docs commit as manager `467f979` /
+companion `8cf7f8d`, then the user approves the new exact review's bounded read-only
+inspection. The 173 sealed files, corrected guard/composition, 32 committed tooling
+files and seventeen-file engine match. Only the digest-bound in-memory offline-
+inspection effect is granted; its request is consumed once without retry.
+
+**VERIFIED — native offline static only:** all 31 workers pass in 76.504 seconds:
+clean pinned dependencies before/after, interaction-disabled named-keychain locked
+status before/after with unchanged metadata, public profile/certificate policy and
+23 no-network runtime static checks. All groups are quiet before reaping, roots
+are reaped and descriptors closed, with zero unresolved handles. The 31 recorded
+PIDs are absent in a separate bounded snapshot. All 24,204 pre-run private entries,
+173 sealed review hashes and four current pin files remain unchanged; source
+admission and frozen overlay reconstruction pass again. The disposable scope/root
+is not observed or recaptured and ordinary product approval remains nil.
+
+**TO PROVE / NOT GRANTED:** CMS signer authenticity, certificate trust, online
+revocation/fresh notarization/Gatekeeper, private-key availability and original-
+Mac/loaded-child/guest acceptance. The new exact receipt permits preparation of an
+attended signing plan, not execution authority. No plan/candidate build, signing,
+private-key access, Apple request, real SSH/Ansible, install, normal app/runtime
+action or VM launch occurs. Only the planned inspection output and separate private
+execution/analysis evidence are added; historical artifacts and pins stay frozen.

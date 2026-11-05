@@ -367,3 +367,8 @@ unchanged engine/resources and preservation of historical private candidate pins
 binds the merged package and matching runtime while preserving the original
 disposable scope. Source/fake checks pass; native inspection is prepared only,
 with all execution effects still NOT_GRANTED.
+
+[Fresh 007bc66 native inspection passed](DevVMMilestone6Runbook.md#fresh-007bc66-native-inspection-passed--5-november-2026):
+31 bounded workers and 23 no-network static code checks pass, with confirmed cleanup
+and artifact/pin preservation. The new consumed receipt can support a signing-plan
+review; signing/key/Apple/guest authority remains separate.

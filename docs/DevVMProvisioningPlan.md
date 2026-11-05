@@ -3781,3 +3781,29 @@ key access, Apple request, real SSH/Ansible, install, normal app/runtime action 
 VM launch occurs. All effects remain NOT_GRANTED; a successful exact-input native
 receipt and separate approval must precede any attended signing plan. See the
 [fresh 007bc66 review runbook](DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-007bc66--5-november-2026).
+
+## Fresh 007bc66 native inspection result — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** after manager `467f979` / companion `8cf7f8d`
+commit the preparation docs, the exact new review's bounded read-only inspection
+is approved. The 173 sealed files, corrected guard/composition, 32 committed
+tooling files and seventeen-file engine match. The typed in-memory inspection
+effect consumes the request once; prepared review files remain unchanged.
+
+**VERIFIED — native offline static only:** all 31 workers pass in 76.504 seconds,
+including dependency checks, interaction-disabled locked-before/after named
+keychain status, public profile/certificate checks and 23 no-network runtime
+static checks. Every group is quiet before root reaping, descriptors are closed
+and unresolved handles are zero. All 31 recorded PIDs are absent in a separate
+bounded PID-only snapshot. All 24,204 pre-run private entries, 173 sealed files
+and four current pin files remain unchanged. Source admission/frozen overlay
+reconstruction pass again. No disposable root is observed or pin recaptured;
+ordinary approval, shared package and product code/pins remain unchanged.
+
+**TO PROVE / NEXT:** CMS signer authenticity, certificate trust, online revocation,
+fresh notarization/Gatekeeper, key availability and original-Mac/loaded-child/guest
+acceptance. The new receipt can support preparation of a fresh attended signing
+plan; it grants no signing/key/Apple/guest authority. No such plan, candidate build,
+signing, private-key access, Apple request, real SSH/Ansible, install, normal app/
+runtime action or VM launch occurs. The request remains consumed without retry.
+See the [inspection result and limits](DevVMMilestone6Runbook.md#fresh-007bc66-native-inspection-passed--5-november-2026).
