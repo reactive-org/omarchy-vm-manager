@@ -119,11 +119,15 @@ test-provisioning-package: build
 test-provisioning-bundle:
 	python3 Scripts/test_provisioning_bundle.py --binaries "$$(swift build $(SWIFT_FLAGS) --show-bin-path)" --launcher-binaries "$$(swift build $(SWIFT_FLAGS) --package-path .build/provisioning-launcher-source --scratch-path "$(CURDIR)/.build/provisioning-launcher" --show-bin-path)"
 
+.PHONY: test-provisioning-bundle-dev
+test-provisioning-bundle-dev: build-dev
+	python3 Scripts/test_provisioning_bundle.py --binaries "$$(swift build $(SWIFT_FLAGS) --scratch-path .build/dev -Xswiftc -DDEVELOPMENT_CHANNEL --show-bin-path)" --launcher-binaries "$$(swift build $(SWIFT_FLAGS) --package-path .build/provisioning-launcher-source --scratch-path "$(CURDIR)/.build/provisioning-launcher" --show-bin-path)"
+
 test-build-policies: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift test $(SWIFT_FLAGS) -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
-	swift test $(SWIFT_FLAGS) -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
-	swift test $(SWIFT_FLAGS) -c release --scratch-path .build/dev -Xswiftc -DSIGNED_PRERELEASE -Xswiftc -DDEVELOPMENT_CHANNEL --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy'
+	swift test $(SWIFT_FLAGS) -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy'
+	swift test $(SWIFT_FLAGS) -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy'
+	swift test $(SWIFT_FLAGS) -c release --scratch-path .build/dev -Xswiftc -DSIGNED_PRERELEASE -Xswiftc -DDEVELOPMENT_CHANNEL --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy'
 
 fetch-kit:
 	Scripts/fetch-try-omarchy-kit.sh

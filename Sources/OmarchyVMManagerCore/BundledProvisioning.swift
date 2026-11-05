@@ -21,6 +21,8 @@ public struct ProvisioningPackageStatus: Codable, Equatable, Sendable {
 /// Package admission/offline API only. Does not create a runner, probe tools,
 /// connect to the manager socket, read a registry/credential or operate a VM.
 public enum BundledProvisioning {
+    /// Compiled build eligibility only; dependency, signature, target and consent checks still apply.
+    public static var executionEnabled: Bool { ProvisioningProductExecution.enabled }
     public static let executableNames = ["OmarchyVMProvisioningHelper", "dev-vm-process-host"]
     static func helperExecutableSHA256(_ layout: ProvisioningPackageLayout) throws -> String {
         KitVerifier.sha256(try read(layout.binaries.appendingPathComponent("OmarchyVMProvisioningHelper"), maximum: 32 * 1024 * 1024))
@@ -49,7 +51,7 @@ public enum BundledProvisioning {
             return ProvisioningPackageStatus(schemaVersion: 1, sourceRevision: ProvisioningPackagePin.revision,
                 sourceSnapshotSHA256: ProvisioningPackagePin.sourceSnapshotSHA256,
                 setupAPI: 1, resourceCount: ProvisioningPackagePin.resources.count,
-                offlinePlanningIntegrated: true, executionEnabled: false)
+                offlinePlanningIntegrated: true, executionEnabled: executionEnabled)
         } catch { throw invalid() }
     }
     static func engineDigest(_ layout: ProvisioningPackageLayout) throws -> String {

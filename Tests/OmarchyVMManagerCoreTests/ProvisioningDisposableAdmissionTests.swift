@@ -38,11 +38,16 @@ private final class DisposableFixture: Sendable {
 }
 
 @Suite("Milestone 6 disposable admission — fake runtimes/local fixtures") struct ProvisioningDisposableAdmissionTests {
-    @Test func productRemainsDisabledAndOnlyExactApprovedRootsPass() throws {
+    @Test func compiledChannelPolicyAndExactPrivateApprovalStayIndependent() throws {
         let f = try DisposableFixture()
         try f.admission.verify(vmID: f.profile.id, root: f.root)
-        #expect(!ProvisioningProductExecution.enabled && ProvisioningProductExecution.disposableApproval == nil)
-        #expect(throws: ProvisioningServiceFailure.disabled) { try ProvisioningProductExecution.admission.verify(vmID: f.profile.id, root: f.root) }
+        #expect(ProvisioningProductExecution.enabled == (AppChannel.current == .development))
+        #expect(ProvisioningProductExecution.disposableApproval == nil)
+        if AppChannel.current == .development {
+            try ProvisioningProductExecution.admission(applicationSupport: f.support).verify(vmID: f.profile.id, root: f.root)
+        } else {
+            #expect(throws: ProvisioningServiceFailure.disabled) { try ProvisioningProductExecution.admission.verify(vmID: f.profile.id, root: f.root) }
+        }
         #expect(throws: Error.self) { try f.admission.verify(vmID: UUID(), root: f.root) }
         #expect(throws: Error.self) { try f.admission.verify(vmID: f.profile.id, root: f.root.deletingLastPathComponent().appendingPathComponent(UUID().uuidString)) }
         #expect(!String(reflecting: f.admission).contains(f.root.path))
@@ -199,4 +204,58 @@ private final class DisposableFixture: Sendable {
         #expect(stale.denial == .ownership)
         #expect(await hub.handle(t.packet(.read, id: viewer)).denial == nil)
     }
+    @Test func compiledProvisioningExecutionPolicy() throws {
+        #expect(ProvisioningProductExecution.enabled == (AppChannel.current == .development))
+        #expect(BundledProvisioning.executionEnabled == (AppChannel.current == .development))
+        #expect(ProvisioningProductExecution.disposableApproval == nil)
+        let missing = URL(fileURLWithPath: "/private/tmp/missing-development-policy-" + UUID().uuidString)
+        _ = ProvisioningProductExecution.admission(applicationSupport: missing)
+        #expect(!FileManager.default.fileExists(atPath: missing.path))
+    }
+    @Test(arguments: ["stable-root", "wrong-id", "marker", "storage-marker", "mode", "symlink", "retained", "foreign-base", "duplicate-marker"])
+    func normalDevAdmissionRejectsUnownedOrDamagedRoots(kind: String) throws {
+        let f = try DisposableFixture()
+        let policy = ProvisioningDevelopmentAdmission(applicationSupport: f.support)
+        #expect(!String(reflecting: policy).contains(f.support.path))
+        guard AppChannel.current == .development else {
+            #expect(throws: ProvisioningServiceFailure.disabled) { try policy.verify(vmID: f.profile.id, root: f.root) }
+            return
+        }
+        try policy.verify(vmID: f.profile.id, root: f.root)
+        var root = f.root, id = f.profile.id
+        if kind == "stable-root" { root = try fixtureApprovedRoot(f.profile, support: f.support, channel: .stable).root }
+        if kind == "wrong-id" { id = UUID() }
+        if kind == "marker" { try Data("{}".utf8).write(to: root.appendingPathComponent(".omarchy-vm-manager.json")) }
+        if kind == "duplicate-marker" { try Data(("{\"schemaVersion\":1,\"schemaVersion\":1,\"id\":\"" + id.uuidString + "\"}").utf8).write(to: root.appendingPathComponent(".omarchy-vm-manager.json")) }
+        if kind == "storage-marker" { try Data("foreign".utf8).write(to: root.appendingPathComponent(".omarchy-qemu-storage")) }
+        if kind == "mode" { #expect(chmod(root.path, 0o755) == 0) }
+        if kind == "symlink" {
+            let held = root.appendingPathExtension("held")
+            try FileManager.default.moveItem(at: root, to: held)
+            try FileManager.default.createSymbolicLink(at: root, withDestinationURL: held)
+        }
+        if kind == "retained" { id = POCProfiles.ids.first! }
+        if kind == "foreign-base" {
+            #expect(throws: Error.self) { try ProvisioningDevelopmentAdmission(applicationSupport: f.support.appendingPathComponent("other")).verify(vmID: id, root: root) }
+        } else { #expect(throws: Error.self) { try policy.verify(vmID: id, root: root) } }
+    }
+    @Test func normalDevPolicyRunsOnlyReviewedFakeWorkAndHelperChecksItsOwnRoot() async throws {
+        guard AppChannel.current == .development else { return }
+        let policy: @Sendable (VMProfile, URL) throws -> ProvisioningExecutionAdmission = { profile, support in
+            _ = try fixtureApprovedRoot(profile, support: support)
+            return .development(.init(applicationSupport: support))
+        }
+        let f = try await WorkflowFixture(admission: policy)
+        let id = try await f.apply(), runner = try #require(await f.launcher.runner(id))
+        #expect(await f.service.status(id)?.stage == .succeeded)
+        #expect(await runner.invocations.contains { $0.purpose == .features })
+        #expect(await f.service.status(id)?.cleanupRequired == false)
+        await f.close()
+        let wrong = try await WorkflowFixture(admission: policy, helperAdmission: { _, support in .development(.init(applicationSupport: support.appendingPathComponent("foreign"))) })
+        let rejected = try await wrong.apply(), unused = try #require(await wrong.launcher.runner(rejected))
+        #expect(await wrong.service.status(rejected)?.stage != .succeeded)
+        #expect(await unused.invocations.isEmpty && wrong.provider.builds == 0)
+        await wrong.close()
+    }
+
 }

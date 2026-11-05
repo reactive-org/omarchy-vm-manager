@@ -84,9 +84,11 @@ public actor VMManager {
     private var provisioningServiceOpening: Task<ProvisioningService, any Error>?
     private var provisioningExecutionAdmission: ProvisioningExecutionAdmission?
     private var currentProvisioningExecutionAdmission: ProvisioningExecutionAdmission? {
-        // A future scoped candidate remains restricted before service installation
-        // and after coordinator close. A test coordinator cannot widen its scope.
-        ProvisioningProductExecution.disposableApproval.map { .disposable($0) } ?? provisioningExecutionAdmission
+        // Private acceptance scope always wins. Live composition retains its
+        // channel policy before installation and after coordinator close.
+        if let scope = ProvisioningProductExecution.disposableApproval { return .disposable(scope) }
+        if enforcePOCPolicy { return ProvisioningProductExecution.admission(applicationSupport: applicationSupport) }
+        return provisioningExecutionAdmission
     }
     private var provisioningOwner: UUID?
     private var provisioningReservation: ProvisioningReservation?
@@ -1043,11 +1045,11 @@ extension VMManager {
                 environment: .init(executionEnabled: ProvisioningProductExecution.enabled, engineDigest: engine, dependencies: HomebrewProvisioningDependencies(), launcher: launcher,
                     transportPolicy: .host, admitPackage: { _ = try BundledProvisioning.inspect(layout) },
                     resolveTarget: { try await manager.resolveProvisioningTarget(vmID: $0, sessionID: $1) },
-                    executionAdmission: ProvisioningProductExecution.admission,
+                    executionAdmission: ProvisioningProductExecution.admission(applicationSupport: support),
                     makeRecoveryAdapter: { admission in
                         try ProvisioningOperationalBackends.recovery(admission: admission,
                             authority: ProvisioningRecoveryTransportAuthority(manager: manager, admission: admission, admitPackage: { _ = try BundledProvisioning.inspect(layout) }),
-                            admitPackage: { _ = try BundledProvisioning.inspect(layout) }, makeRunner: { LocalProvisioningProcessRunner() }, executionAdmission: ProvisioningProductExecution.admission)
+                            admitPackage: { _ = try BundledProvisioning.inspect(layout) }, makeRunner: { LocalProvisioningProcessRunner() }, executionAdmission: ProvisioningProductExecution.admission(applicationSupport: support))
                     }))
         }
         provisioningServiceOpening = task

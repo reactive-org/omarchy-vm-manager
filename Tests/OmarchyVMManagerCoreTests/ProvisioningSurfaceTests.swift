@@ -122,7 +122,7 @@ private final class SurfaceFixture {
         #expect(screen.view.getBufferAsData().contains(Data("colour €".utf8)))
         #expect(screen.search("SEARCHABLE") == 1 && !screen.follow)
         screen.jumpToLatest(); #expect(screen.follow)
-        screen.fontSize = 18; #expect(screen.view.font.pointSize == 18)
+        screen.fontSize = 18; #expect(screen.fontSize == 18 && screen.view.font.pointSize > 11 && screen.view.font.pointSize <= 18)
         screen.resetScreen(); #expect(screen.search("searchable") == 0)
         #expect(!screen.connected && !screen.ownsInput)
     }

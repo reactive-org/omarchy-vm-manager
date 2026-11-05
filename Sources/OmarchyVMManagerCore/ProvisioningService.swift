@@ -52,7 +52,8 @@ actor ProvisioningAdmittedSessionAuthority: ProvisioningSessionAuthority {
 }
 
 /// Manager-owned composition/lifecycle service. Viewers only observe; owned tasks
-/// survive a cancelled waiter. No public UI/CLI execution entry point is enabled.
+/// survive a cancelled waiter. Compiled Dev eligibility, review and authenticated
+/// target/helper admission gate execution; ordinary Stable execution is disabled.
 public actor ProvisioningService {
     public nonisolated let executionEnabled: Bool
     let manager: VMManager

@@ -34,7 +34,7 @@ do {
         func printSetup(_ data: Data) { FileHandle.standardOutput.write(data + Data([10])) }
         switch setup {
         case .presets:
-            printSetup(try JSONSerialization.data(withJSONObject: ["version": 1, "presets": BundledProvisioning.presets, "executionEnabled": false], options: [.sortedKeys])); exit(0)
+            printSetup(try JSONSerialization.data(withJSONObject: ["version": 1, "presets": BundledProvisioning.presets, "executionEnabled": BundledProvisioning.executionEnabled], options: [.sortedKeys])); exit(0)
         case .plan(let repository): printSetup(try BundledProvisioning.plan(repository: repository, layout: layout)); exit(0)
         case .preset(let name): printSetup(try BundledProvisioning.plan(preset: name, layout: layout)); exit(0)
         default: break

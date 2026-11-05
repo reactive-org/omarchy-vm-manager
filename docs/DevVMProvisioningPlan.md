@@ -1,6 +1,8 @@
 # Shared Swift dev-vm provisioning implementation plan
 
-Status: original milestone 1 committed as `62a4c62`; milestone 1A committed as `915642e`. Milestone 2 has started with the shared package structure and strict manifest parsing committed in dev-vm at `e86550e`. Feature/profile resolution, source snapshots and offline proposals are committed in dev-vm at `56dba82`. Adapter-only transport/authorization sequencing is committed in dev-vm at `f807104` and tested against fakes; concrete SSH/Ansible command adapters and private materialization are committed in dev-vm at `9ebaf17`, tested against fake process runners. The opt-in local runner/PTY is committed in dev-vm at `bb3fae2` with disposable-fixture coverage; the manager now links the pinned package and ships an offline-only helper/resource/launcher integration; the milestone-3 foundation includes durable inputs, admitted helper launch and helper-side sequencer activation/status/cancellation tested with fake adapters and signed local fixtures; subsequent milestone-3 service/backend coordination and milestone-4 terminal/input transport are now complete for fake/local acceptance (see the completion records below). Milestones 3/4 are committed in manager `6a71b06` and dev-vm `3d616f0`. Milestone 5 has started with the native Setup terminal, offline preset/folder previews and a separate observation/attachment CLI endpoint (see the milestone-5 record below). Product execution remains disabled.
+Status: milestones 1–5 are implemented. Ordinary Dev provisioning eligibility is now enabled for verified manager-owned Dev roots; Stable remains disabled. Latest `next` (`2c18193`) is merged. The existing disposable saved-setup happy path is verified on its earlier private candidate; fresh normal-Dev creation, revised live terminal input and remaining real-guest failure/recovery acceptance are TO PROVE. Consolidated integration checks and PR CI are in progress.
+
+Historical entries below retain the exact authorization, evidence and limitations at the time of each run; they do not grant new runtime authority.
 
 Date: 3 November 2026 (Australia/Melbourne).
 
@@ -250,7 +252,7 @@ Keep pure data planning independent of a VM connection. Add request deduplicatio
 | 3. Job coordination — complete for fake/local acceptance | Manager-owned service and strict workflow journal; SSH wait/review, admitted helper jobs, explicit restart after matching exit, fresh session rebind/check review, authenticated recovery and bounded retention; product execution disabled | Fake runtimes, local processes and signed helpers cover lifecycle, concurrency, corruption, cleanup and no replay. A fresh manager process with no original helper capability preserves cleanup holds and refuses adoption. Live terminal/input (4), UI/CLI (5), real guests (6) and release acceptance (7) remain separate |
 | 4. PTY and stream transport — complete for fake/local acceptance | Separate authenticated inherited stream; bounded byte frames, view attachments and one explicit input owner, resize, expiry/detach, visible-gap/reset contract and local TTY restoration | Disposable local processes/PTYs and signed helper fixtures prove byte fidelity, prompts, hidden input, resize, reclaim, limits and owned cleanup. Native rendering and external UI/CLI attachment commands are milestone 5; real nested SSH/guest behavior remains 6 |
 | 5. UI and CLI — complete for fake/local acceptance | Setup selection, multi-profile cards, theme/layout example cards, preview, permissions, terminal and commands | Native and CLI share frozen review/job/dependency/recovery contracts; 100 offscreen checks pass. Physical interaction and guest behavior remain TO PROVE |
-| 6. Guest acceptance — preparation only | Disposable scope admission, runbook and offline candidate preflight; no approved real scope or operational candidate | End-to-end setup, reapplication, authenticated restart, check and sudo revocation must be observed on explicitly approved guests; all real rows remain NOT RUN |
+| 6. Guest acceptance — partial real evidence | Saved-setup apply, selected tools/layout, restart and cleanup observed on one private disposable Dev candidate; normal Dev eligibility now implemented | Fresh creation across factory variants, latest click-to-type, reapply, cancellation/failure/recovery and restart/check remain TO PROVE. Later acceptance records supersede the original all-NOT-RUN baseline only for observed cases. |
 | 7. Distribution | Shared package/resource inventory, notices and authorized signing/notarization validation | Complete app/helper/resource admission; Homebrew Ansible requirement documented; no independent manager Python runtime or bundled Ansible claimed |
 
 Use Swift 6, macOS 15+, SwiftPM and make. Retain `make test-provisioning-tools`; add focused shared-package/parser/parity and terminal checks as their milestones are implemented. Run dev-vm's existing test-omarchy and syntax-check checks for migration/playbook changes. Python can remain available in the development test environment for the old-controller oracle and existing build scripts; the shipped manager must not invoke it as its host controller.
@@ -3954,3 +3956,32 @@ there are no Dev guest runtime children. No VM lifecycle/apply, real SSH/Ansible
 host install or notarization occurs. Old signed candidates and frozen pins are
 retained. Native click-to-type against a real future guest prompt remains
 TO PROVE; this update tests that path only with local fake/PTY fixtures.
+
+
+## Normal Dev enablement and next integration — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** enable ordinary Dev provisioning and run
+one consolidated integration/CI pass after merging latest next. Preserve all
+private artifacts and frozen pins. No VM launch or real signing is authorized
+in this pass; leave Main, its installed app and VMs untouched.
+
+Latest `next` at `2c18193` is merged with both independent intent records retained.
+Dev build policy admits only canonical UUID roots under the Dev manager's own
+VMs directory, with valid owner/storage markers and private directory ownership.
+Stable roots, retained POC IDs, foreign bases, symlinks and damaged markers are
+refused. This is eligibility, never execution consent: frozen review, independent
+sudo/task/Docker permissions, authenticated session/owner/key, immutable package
+and transport checks, same-team helper admission and cleanup/replay rules remain.
+Manager and helper independently enforce the same channel/root policy. A private
+acceptance overlay keeps priority and cannot be widened by normal Dev policy.
+No environment variable, CLI switch, source manifest or journal enables it.
+
+Read-only package/preset reports describe compiled build eligibility. Offline
+planning remains inert; direct helper commands still cannot run guest work.
+Ad-hoc builds retain same-team operational-helper refusal. Stable has no normal
+provisioning execution path. Normal Dev code is prepared for a later reviewed
+signed build and separately authorized guest acceptance; this pass runs only
+fake runtimes/local fixtures and no-VM CI.
+
+**TO PROVE:** signed normal-Dev runtime and fresh disposable-guest acceptance.
+Existing private candidate evidence is not transferred to the changed source.

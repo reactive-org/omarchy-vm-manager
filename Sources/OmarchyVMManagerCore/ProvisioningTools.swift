@@ -105,24 +105,28 @@ public struct ProvisioningToolReport: Codable, Equatable, Sendable {
     public let policy: String
     public init(tools: [ProvisioningToolResult]) {
         schemaVersion = 2; self.tools = tools
-        policy = "Homebrew Ansible Core 2.21.x with local CLI self-checks. No separate Python/PyYAML requirement. The pinned Swift engine supports offline helper planning; setup UI/CLI execution is disabled."
+        policy = "Homebrew Ansible Core 2.21.x with local CLI self-checks. No separate Python/PyYAML requirement. Offline planning is available in both channels. Dev can apply reviewed setup to verified Dev roots; Stable execution is disabled. Tool readiness is not consent or helper admission."
         features = ProvisioningCapability.allCases.map { capability in
             let required: [ProvisioningTool]
             switch capability {
             case .jsonPlanning, .yamlPlanning: required = []
-            case .basicProvisioning: required = [.bash, .ssh, .scp, .sftp]
-            case .developerFeatures, .externalSetup:
+            case .basicProvisioning, .developerFeatures, .externalSetup:
                 required = [.brew, .bash, .ssh, .scp, .sftp, .ansiblePlaybook, .ansibleInventory]
             case .githubStarThemes: required = [.bash, .ssh, .gh]
             case .remoteSetup, .imageBuilding: required = []
             }
             let deferred = capability == .remoteSetup || capability == .imageBuilding
             let blockers = required.filter { tool in tools.first(where: { $0.tool == tool })?.status != .available }
+            let planning = capability == .jsonPlanning || capability == .yamlPlanning
+            let enabled = !deferred && blockers.isEmpty && (planning || ProvisioningProductExecution.enabled)
+            let reason: String
+            if deferred { reason = "Deferred; dependencies are not probed." }
+            else if !blockers.isEmpty { reason = "Required tools are missing, incompatible or unverified." }
+            else if planning { reason = "Offline planning is available without external tools or guest access." }
+            else if !ProvisioningProductExecution.enabled { reason = "Tool prerequisites pass; setup execution is disabled in Stable." }
+            else { reason = "Tool prerequisites pass. Apply still requires target review, permissions and authenticated helper admission." }
             return ProvisioningFeatureGate(capability: capability, toolsReady: !deferred && blockers.isEmpty,
-                implemented: false, enabled: false, blockers: blockers,
-                reason: deferred ? "Deferred; dependencies are not probed." :
-                    (capability == .jsonPlanning || capability == .yamlPlanning ? "No external tools required; pinned offline helper APIs are integrated, while the setup UI/CLI workflow is disabled." :
-                     (blockers.isEmpty ? "Tool prerequisites pass; setup execution remains disabled." : "Required tools are missing, incompatible or unverified.")))
+                implemented: !deferred, enabled: enabled, blockers: blockers, reason: reason)
         }
     }
     public func tool(_ id: ProvisioningTool) -> ProvisioningToolResult? { tools.first { $0.tool == id } }

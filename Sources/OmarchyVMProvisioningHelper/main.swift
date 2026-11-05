@@ -1,15 +1,15 @@
 import Foundation
 import OmarchyVMManagerCore
 
-// Offline work and an inherited ownership-only control channel. No execution,
-// VM registry, Keychain, guest, tool probing or path-addressed socket surface.
+// Offline commands do not execute guest work. Operational Dev execution is
+// reachable only through the authenticated inherited manager control channel.
 func output(_ data: Data, status: Int32 = 0) -> Never {
     FileHandle.standardOutput.write(data + Data([10])); exit(status)
 }
 do {
     let args = Array(CommandLine.arguments.dropFirst())
     if args == ["--help"] {
-        output(Data("Offline provisioning helper: --verify-package-json | --validate-manifest-json FILE | --plan-json REPOSITORY [MANIFEST]\nExecution is disabled.".utf8))
+        output(Data("Provisioning helper: --verify-package-json | --validate-manifest-json FILE | --plan-json REPOSITORY [MANIFEST]\nGuest execution requires the authenticated manager channel and compiled build policy.".utf8))
     }
     if args == ["--channel-json"] {
         output(try JSONSerialization.data(withJSONObject: ["appChannel": AppChannel.current.rawValue,

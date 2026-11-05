@@ -87,15 +87,17 @@ final class ProvisioningDisposableAdmission: @unchecked Sendable, CustomStringCo
 }
 
 /// Fixture admission is trusted test composition only, never a product choice.
-/// A product build can select disabled or its reviewed disposable scope only.
+/// Product selects disabled, compiled Dev eligibility or an exact private scope.
 enum ProvisioningExecutionAdmission: Sendable {
     case disabled
     case disposable(ProvisioningDisposableAdmission)
+    case development(ProvisioningDevelopmentAdmission)
     case fixture
     func verify(vmID: UUID, root: URL) throws {
         switch self {
         case .disabled: throw ProvisioningServiceFailure.disabled
         case .disposable(let approval): try approval.verify(vmID: vmID, root: root)
+        case .development(let policy): try policy.verify(vmID: vmID, root: root)
         case .fixture: break
         }
     }
@@ -103,7 +105,7 @@ enum ProvisioningExecutionAdmission: Sendable {
         switch self {
         case .disabled: return { throw ProvisioningServiceFailure.disabled }
         case .fixture: return {}
-        case .disposable:
+        case .disposable, .development:
             guard let transport, transport.target == input.request.target else { throw ProvisioningJobFailure.targetChanged }
             let vmID = input.request.target.vmID, root = URL(fileURLWithPath: transport.selection.endpoint.root)
             let check: @Sendable () throws -> Void = { try self.verify(vmID: vmID, root: root) }

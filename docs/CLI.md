@@ -229,14 +229,14 @@ connection; mutations are never automatically replayed. The endpoint admits
 only same-user peers, at most eight connections and one viewer per connection,
 with a 15-second activity lease. Inactive clients must poll or heartbeat.
 
-The frozen review/consent contract is described below. Ordinary product prepare/apply returns `failure: "disabled"` even when tools are ready; workflow restart/check/recover use the separately reviewed, execution-gated contract below. New VM can now save a frozen selection without authorizing execution, as described below. No product job is submitted. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
+The frozen review/consent contract is described below. Stable prepare/apply returns `failure: "disabled"` even when tools are ready. Dev supports reviewed execution for verified manager-owned Dev roots; workflow restart/check/recover use the separate reviewed contracts below. New VM can now save a frozen selection without authorizing execution, as described below. Saving a New VM selection alone submits no guest job. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
 for validation and the remaining acceptance boundary.
 
 ### Frozen preview and separate task trust
 
-This uninstalled worktree adds review/submission contracts on the separate setup
-endpoint. Product execution remains disabled; the operational path is exercised
-only with fake runtimes and fixture adapters.
+The separate setup endpoint supports review/submission in Dev, subject to root,
+session, dependency, same-team helper and permission checks. Stable execution
+remains disabled. Offline preview and saving selection grant no execution authority.
 
 ```sh
 omarchy-vm setup preview VM_UUID --from /absolute/folder --preview-id PREVIEW_UUID
@@ -278,9 +278,9 @@ identical consent retrieves the original acceptance result; status tracks its
 current outcome. A failed submission is not retried by reconnecting. Changes to
 frozen private data, session or tool pins require explicit fresh review. Submission
 rechecks package/resources and current dependencies before the existing helper
-admission path. A disconnected CLI leaves manager-owned work intact. The product
-returns `failure: "disabled"` before target/dependency probes for prepare/apply;
-it does not infer a guest UID or install a runner. See the
+admission path. A disconnected CLI leaves manager-owned work intact. Stable returns `failure: "disabled"` before target/dependency probes for
+prepare/apply. Dev verifies the actual guest/session/UID and admitted transport
+before constructing its owned runner. See the
 [frozen review validation record](DevVMProvisioningPlan.md#milestone-5-frozen-preview-apply-submission-and-task-trust--3-november-2026).
 
 ### Reviewed restart, post-restart check and cleanup recovery
@@ -323,9 +323,9 @@ or restart a guest. Failed revocation retains Cleanup required and the VM hold.
 A changed checkpoint/attempt invalidates another prepared recovery review.
 `ownership-unverified` is a fixed failure code; no raw diagnostics are returned.
 
-Both preparation and submission remain disabled in the product (`failure:
-"disabled"`) before target/dependency/adapter work. Tests exercise the native
-service API and actual CLI socket with fake runtimes/adapters only. See the
+Stable preparation/submission remains disabled (`failure: "disabled"`). Dev
+uses the same explicit action-review and authenticated ownership contracts. The
+current no-VM integration pass tests these paths with fake runtimes/adapters. See the
 [action validation record](DevVMProvisioningPlan.md#milestone-5-reviewed-restart-check-and-cleanup-recovery--3-november-2026).
 
 ### Native features and saving a New VM setup selection

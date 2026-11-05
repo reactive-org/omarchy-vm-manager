@@ -144,8 +144,8 @@ final class ProvisioningHelperIPCServer: Sendable {
     }
 }
 
-/// Ordinary builds serve ownership only. A future acceptance candidate requires
-/// its own compiled approval in addition to inherited ownership/frozen transport.
+/// Dev builds admit verified Dev roots through inherited ownership/frozen
+/// transport. Stable remains disabled; private overlays retain exact scope.
 /// No public argument or received packet can install an execution policy.
 public enum ProvisioningHelperControl {
     public static func serveInheritedOwnershipChannel(descriptor: Int32, layout: ProvisioningPackageLayout) async throws {

@@ -4,12 +4,22 @@ import Foundation
 /// Build-time acceptance gate only. No environment, manifest, tool readiness,
 /// command-line option or saved receipt can enable product execution.
 enum ProvisioningProductExecution {
-    // No approved candidate is installed. A future private acceptance build must
-    // embed the SAME reviewed identity pins in manager and helper, never observe
-    // fresh pins at each launch or load an approval from writable guest metadata.
+    // Optional private acceptance overlays retain their exact original scope,
+    // even in Dev. Ordinary Dev builds use verified manager-owned Dev roots.
+    // Neither policy can be chosen from writable metadata or a received packet.
     static let disposableApproval: ProvisioningDisposableAdmission? = nil
-    static var enabled: Bool { disposableApproval != nil }
-    static var admission: ProvisioningExecutionAdmission { disposableApproval.map { .disposable($0) } ?? .disabled }
+    static var enabled: Bool { disposableApproval != nil || AppChannel.current == .development }
+    static func admission(applicationSupport: URL) -> ProvisioningExecutionAdmission {
+        if let disposableApproval { return .disposable(disposableApproval) }
+        guard AppChannel.current == .development else { return .disabled }
+        return .development(.init(applicationSupport: applicationSupport))
+    }
+    static var admission: ProvisioningExecutionAdmission {
+        if let disposableApproval { return .disposable(disposableApproval) }
+        guard AppChannel.current == .development,
+              let support = try? ProvisioningDevelopmentAdmission.accountApplicationSupport() else { return .disabled }
+        return admission(applicationSupport: support)
+    }
 }
 
 struct ProvisioningRecoveryTransportAuthority: ProvisioningSessionAuthority {

@@ -33,9 +33,9 @@ private final class ProvisioningPackageFixture {
     @Test(arguments: [false, true]) func exactResourceLayouts(nested: Bool) throws {
         let fixture = try ProvisioningPackageFixture(nested: nested)
         let status = try BundledProvisioning.inspect(fixture.layout)
-        #expect(status.sourceRevision == "5770d0fde0355be6dade6b306d03661a5b8e616a")
+        #expect(status.sourceRevision == ProvisioningPackagePin.revision)
         #expect(status.sourceSnapshotSHA256 == ProvisioningPackagePin.sourceSnapshotSHA256)
-        #expect(status.setupAPI == 1 && status.offlinePlanningIntegrated && !status.executionEnabled)
+        #expect(status.setupAPI == 1 && status.offlinePlanningIntegrated && status.executionEnabled == (AppChannel.current == .development))
         #expect(status.resourceCount == ProvisioningPackagePin.resources.count)
     }
     @Test(arguments: ["resource", "extra", "lock", "launcher", "distribution", "symlink", "ambiguous"])
@@ -72,7 +72,7 @@ private final class ProvisioningPackageFixture {
         #expect(document.object?["plan_digest"]?.string?.count == 64)
         #expect(document.object?["tasks"] == .array([]))
     }
-    @Test func productCompositionIsSharedAndExecutionRemainsDisabled() async throws {
+    @Test func productCompositionIsSharedAndUsesCompiledChannelPolicy() async throws {
         let f = try ProvisioningPackageFixture()
         let support = f.root.appendingPathComponent("manager-state")
         try PrivateFiles.directory(support, create: true)
@@ -82,7 +82,7 @@ private final class ProvisioningPackageFixture {
         async let first = manager.installProvisioningService(layout: layout)
         async let second = manager.installProvisioningService(layout: layout)
         let (a, b) = try await (first, second)
-        #expect(a === b && !a.executionEnabled)
+        #expect(a === b && a.executionEnabled == (AppChannel.current == .development))
         #expect(await a.statuses().isEmpty)
         #expect(runtime.startRequests.isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: AppChannel.current.directory(in: support).appendingPathComponent("Provisioning/control").path).isEmpty)

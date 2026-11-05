@@ -188,7 +188,7 @@ private actor IdentityMonitorRecorder {
         await f.probe.send(.init(readiness: .connecting))
         await #expect(throws: Error.self) { _ = try await adapter.perform(.init(id: UUID(), context: context, operation: .quiesceOwnedWork, mode: .apply, inputLeaseID: nil, timeoutSeconds: 10, plan: nil, tasks: [], conflictPolicy: .fail)) }
         #expect(await runner.invocations.count == 1)
-        #expect(!ProvisioningProductExecution.enabled)
+        #expect(ProvisioningProductExecution.enabled == (AppChannel.current == .development))
         await f.close()
     }
     @Test func operationalAuthorityRejectsBindingAndDigestChangesBeforeAnyFakeCommand() async throws {

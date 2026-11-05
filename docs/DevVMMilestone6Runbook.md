@@ -2452,3 +2452,30 @@ there are no Dev guest runtime children. No VM lifecycle/apply, real SSH/Ansible
 host install or notarization occurs. Old signed candidates and frozen pins are
 retained. Native click-to-type against a real future guest prompt remains
 TO PROVE; this update tests that path only with local fake/PTY fixtures.
+
+
+## Normal Dev source enablement — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** merge latest next and prepare normal
+Dev enablement plus consolidated fake/local and CI checks. No VM launch or real
+signing is authorized in this pass. Main's app/VMs and all private artifacts and
+frozen pins are preserved. Latest next `2c18193` is integrated; both independent
+intent records and branch/PR defaults remain.
+
+Ordinary Dev eligibility verifies its own canonical manager-owned UUID roots,
+private ownership/mode and exact storage/UUID markers. Stable remains disabled;
+private candidate overlays retain their original narrower scope. Fresh review,
+separate execution permissions, authenticated session/key/UID, immutable
+package/resources/dependencies, same-team helper and cleanup rules still apply.
+The helper resolves the account home from the OS account database despite its
+isolated HOME; environment/source/IPC cannot select a different root policy.
+Tool reports now distinguish implemented offline planning, eligible Dev execution,
+missing prerequisites and deferred capabilities. No report grants consent.
+
+**TO PROVE:** a newly signed normal-Dev candidate and fresh real-guest acceptance.
+Earlier successful private one-root candidates do not validate this changed
+source. Hosted CI requires explicit authorization to publish both feature
+branches; automatic review rejected the companion push pending that permission.
+No rejected push was retried. Local consolidated results are recorded below when
+complete. No direct push/merge to next or main, real signing or new VM operation
+is part of this pass.

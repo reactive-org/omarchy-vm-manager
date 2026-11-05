@@ -118,8 +118,13 @@ def run_checks(binaries, launcher_binaries):
                 process.stdout.close(); process.stderr.close()
 
         try:
+            account = subprocess.run([str(binaries / "OmarchyProvisioningLaunchFixture"), "--development-policy-environment"],
+                                     env=environment, cwd=root, capture_output=True, timeout=10)
+            package.require(account.returncode == 0 and not account.stderr and
+                            json.loads(account.stdout) == {"environmentIgnored": True, "policyMatchesChannel": True},
+                            "Compiled root policy followed the isolated HOME")
             status = invoke("--verify-package-json")
-            package.require(status["sourceRevision"] == package.read_lock()[1]["revision"] and status["executionEnabled"] is False)
+            package.require(status["sourceRevision"] == package.read_lock()[1]["revision"] and status["executionEnabled"] is (identity["appChannel"] == "development"))
             validated = invoke("--validate-manifest-json", source / "vm.yml")
             package.require(validated["structure_valid"] is True and validated["execution_available"] is False)
             plan = invoke("--plan-json", source)
@@ -145,7 +150,7 @@ def run_checks(binaries, launcher_binaries):
                                 (value.get("registered") and value.get("reconciled") and value.get("exited") and value.get("executionEnabled") is False))
             # Separate, explicitly re-signed fixture app: replace only its helper
             # with the excluded debug fixture binary, which hosts a fake engine
-            # factory. The actual product helper above has no execution backend.
+            # factory. Product helper execution remains channel/root/signature gated.
             engine_app = root / "EngineFixture.app"
             shutil.copytree(relocated, engine_app)
             for path in [engine_app, *engine_app.rglob("*")]:
@@ -204,7 +209,7 @@ def run_checks(binaries, launcher_binaries):
             for path in relocated.rglob("*"):
                 if path.is_dir(): path.chmod(0o755)
                 else: path.chmod(0o644)
-    print("provisioning-package: PASS; relocated/read-only helper, authenticated inherited ownership IPC, exact resources, disabled execution, no host state")
+    print("provisioning-package: PASS; relocated/read-only helper, authenticated inherited ownership IPC, exact resources, compiled channel policy, isolated HOME, no guest operations")
 
 
 if __name__ == "__main__":

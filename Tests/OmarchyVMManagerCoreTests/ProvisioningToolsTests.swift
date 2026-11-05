@@ -89,7 +89,10 @@ struct ProvisioningToolsTests {
         #expect(report.tool(.ansiblePlaybook)?.version == "2.21.5")
         #expect(report.tool(.ansibleInventory)?.installation?.path == fixture.prefix)
         #expect(report.features.first { $0.capability == .developerFeatures }?.toolsReady == true)
-        #expect(report.features.allSatisfy { !$0.enabled && !$0.implemented })
+        #expect(report.features.first { $0.capability == .jsonPlanning }?.enabled == true)
+        #expect(report.features.first { $0.capability == .developerFeatures }?.enabled == (AppChannel.current == .development))
+        #expect(report.features.first { $0.capability == .remoteSetup }?.implemented == false)
+        #expect(report.features.first { $0.capability == .githubStarThemes }?.enabled == false)
         #expect(report.tool(.gh)?.status == .needsAuthentication)
         #expect(!fixture.files.queries.contains { $0.contains("python") || $0.contains("yaml") })
         let requests = await probes.requests
@@ -107,16 +110,16 @@ struct ProvisioningToolsTests {
         let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as! [String: Any]
         let tools = object["tools"] as! [[String: Any]]
         #expect(tools.allSatisfy { $0["interpreter"] == nil && !["python", "yaml"].contains($0["tool"] as? String ?? "") })
-        #expect((object["features"] as! [[String: Any]]).allSatisfy { $0["enabled"] as? Bool == false })
+        #expect((object["features"] as! [[String: Any]]).contains { $0["enabled"] as? Bool == true })
     }
 
-    @Test("data planning has no external blockers when every tool is absent but remains unimplemented")
+    @Test("offline planning remains available without tools while execution prerequisites fail closed")
     func noExternalTools() async throws {
         let files = ProvisioningFakeFiles(), probes = ProvisioningFakeProbes { _ in .init(status: 99) }
         let report = try await HomebrewProvisioningDependencies(configuration: .init(homebrewDirectories: []), files: files, probes: probes).inspect()
         for capability in [ProvisioningCapability.jsonPlanning, .yamlPlanning] {
             let gate = try #require(report.features.first { $0.capability == capability })
-            #expect(gate.toolsReady && gate.blockers.isEmpty && !gate.enabled && !gate.implemented)
+            #expect(gate.toolsReady && gate.blockers.isEmpty && gate.enabled && gate.implemented)
         }
         #expect(report.features.first { $0.capability == .developerFeatures }?.toolsReady == false)
         #expect((await probes.requests).isEmpty)
@@ -144,7 +147,8 @@ struct ProvisioningToolsTests {
         let report = try await fixture.provider(probes, overrides: scenario == "brew" ? [.brew: "/missing/brew"] : [:]).inspect()
         #expect(report.tool(.ansiblePlaybook)?.status != .available)
         #expect(!(await probes.requests).contains { $0.executable.path.contains("ansible-") })
-        #expect(report.features.first { $0.capability == .basicProvisioning }?.toolsReady == true)
+        #expect(report.features.first { $0.capability == .basicProvisioning }?.toolsReady == false)
+        #expect(report.features.first { $0.capability == .basicProvisioning }?.enabled == false)
         #expect(report.features.first { $0.capability == .yamlPlanning }?.toolsReady == true)
     }
 
@@ -365,7 +369,8 @@ struct ProvisioningProcessTests {
         #expect(report.schemaVersion == 2)
         #expect(report.tool(.ansiblePlaybook)?.status == .available)
         #expect(report.tool(.ansibleInventory)?.status == .available)
-        #expect(report.features.allSatisfy { !$0.enabled })
+        #expect(report.features.first { $0.capability == .developerFeatures }?.enabled == (AppChannel.current == .development))
+        #expect(report.features.first { $0.capability == .githubStarThemes }?.enabled == false)
     }
     @Test("replacement and cancellation prevent stale or lingering probe results")
     func changedAndCancelled() async throws {

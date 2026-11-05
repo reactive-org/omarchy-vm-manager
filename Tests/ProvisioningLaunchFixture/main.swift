@@ -9,6 +9,18 @@ import DevVMProvisioningCore
 var fixtureStep = "arguments"
 do {
     let args = Array(CommandLine.arguments.dropFirst())
+    if args == ["--development-policy-environment"] {
+        let support = try ProvisioningDevelopmentAdmission.accountApplicationSupport()
+        let isolated = URL(fileURLWithPath: ProcessInfo.processInfo.environment["HOME"] ?? "/nonexistent").appendingPathComponent("Library/Application Support")
+        let matches: Bool
+        switch ProvisioningProductExecution.admission {
+        case .development(let policy): matches = AppChannel.current == .development && policy.applicationSupport == support
+        case .disabled: matches = AppChannel.current == .stable
+        default: matches = false
+        }
+        let output = try JSONSerialization.data(withJSONObject: ["environmentIgnored": support.path != isolated.path, "policyMatchesChannel": matches], options: [.sortedKeys])
+        FileHandle.standardOutput.write(output); exit(0)
+    }
     if args.count == 2, args[0] == "--ownership-channel-fd", let descriptor = Int32(args[1]), let executable = Bundle.main.executableURL {
         let layout = ProvisioningPackageLayout(contents: executable.deletingLastPathComponent().deletingLastPathComponent())
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("fixture-inputs")

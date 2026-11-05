@@ -2,14 +2,19 @@
 
 Milestone 1A implements the Homebrew Ansible CLI dependency contract from the [shared Swift provisioning plan](DevVMProvisioningPlan.md). The native **Provisioning tools** page and local **setup tools** command report schema 2. The CLI does not open the app, access the registry or connect to a guest.
 
-The pinned Swift package now provides offline parsing/planning and an internal
-coordinator/helper foundation with private frozen-input delivery and independent
-helper-side context validation, concrete adapter construction and fresh manager
-session authority checks, with managed-SSH/Homebrew resource admission and private
-helper handoff. Product setup execution, job UI/CLI attachment
-and the live terminal remain unavailable. Every dependency-report feature still
-reports `implemented: false` and `enabled: false`, even when `toolsReady` is true.
-Normal VM management does not depend on these checks.
+The pinned Swift package provides offline planning in both app channels and
+reviewed setup execution in Dev for verified manager-owned Dev roots. Stable
+execution remains disabled. The report marks implemented capabilities available
+only when their prerequisites and compiled channel policy allow them; remote
+setup retrieval and image building remain deferred. Apply additionally requires
+an exact frozen review, separate execution permissions, fresh authenticated
+session/transport evidence and same-team helper admission. A ready report grants
+no authority, installs no tool and performs no guest operation. Normal VM
+management does not depend on these checks.
+
+The historical milestone records below retain the limits at the time of each
+implementation slice. The [normal Dev integration record](DevVMProvisioningPlan.md#normal-dev-enablement-and-next-integration--6-november-2026)
+supersedes their earlier product-disabled status for ordinary Dev builds.
 
 See the [current milestone-3 handoff](DevVMProvisioningPlan.md#milestone-3-transport-resource-admission-and-private-handoff--3-november-2026).
 The helper validates frozen reviewed inputs before acknowledgement, but the product

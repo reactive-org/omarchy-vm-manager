@@ -1,5 +1,20 @@
 # Omarchy VM Manager — implementation intent
 
+## Normal Dev provisioning — user authorization, 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** merge latest next and enable normal Dev
+provisioning eligibility for verified manager-owned Dev UUID roots. Stable stays
+disabled. This replaces the private single-VM overlay requirement for ordinary
+Dev builds; it does not change the scope of any preserved private candidate.
+Explicit frozen review/permissions, authenticated session/transport, same-team
+helper, owned cleanup and no replay remain mandatory. Root metadata alone grants
+no authority. No environment or wire switch selects the policy.
+
+The current pass permits source integration and fake/local/CI validation only.
+No VM launch, real signing, host installation, Main app or Main VM operation is
+authorized. **TO PROVE:** fresh signed normal-Dev and real-guest acceptance after
+this change. Existing frozen artifacts/pins are preserved, not refreshed.
+
 ## Dev draft publication recovery — user authorization, 5 November 2026
 
 **USER AUTHORIZATION:** fix draft lookup in a PR targeting `next`, then recover and publish the exact retained Dev release without rebuilding it. Leave installed apps and all running work VMs untouched. No local signing identity, credential import, notarization submission, permission grant, installation or guest operation is needed.

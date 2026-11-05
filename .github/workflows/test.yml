@@ -17,7 +17,7 @@ jobs:
       - name: Manager and artifact contracts
         run: make test
       - name: Isolated Dev channel build and no-VM contracts
-        run: make test-dev build-dev
+        run: make test-dev test-provisioning-bundle-dev build-dev
       - name: Optimized release and signed-prerelease admission
         run: make test-build-policies
       - name: Build app, CLI and storage helper
@@ -25,7 +25,7 @@ jobs:
       - name: Render and validate native app icon
         run: make icon
       - name: Exact patched upstream suite
-        run: make test-upstream
+        run: make test-upstream TEST_JOBS=1
 
   managed-ssh:
     runs-on: ubuntu-24.04
