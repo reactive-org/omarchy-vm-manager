@@ -22,6 +22,11 @@ The Mac needs Apple Silicon and an already installed Docker CLI with a running
 ARM64 Linux engine exposed through a local Unix socket. Readiness checks install
 nothing and reject remote engines. They verify the pinned embedded runtime,
 reviewed recipe, CLI identity, engine identity and available artifact storage.
+Factory host tools admit executables up to 128 MiB, including Docker Desktop's
+larger CLI. SHA-256 verification reads 1 MiB chunks and still rechecks symlinks,
+file metadata and permissions around execution. SSH/Ansible retain their 32 MiB
+limit. Readiness inspects only context metadata and local engine information;
+passing it authorizes no Docker build or resource mutation.
 The initial floor is image capacity + 4 GiB on the artifact volume; Docker needs
 at least 3 GiB scratch capacity separately. Package caches and live repository
 contents may require more. Before preparation/import, the manager checks space
@@ -48,7 +53,8 @@ waits for process/resource cleanup before continuing.
 ## Ownership, interruption and library admission
 
 On `codex/factory-image-builder`, the active package is pinned to companion
-`codex/swift-factory-builder` revision `5d0abc3`. These follow the previously tested
+`codex/swift-factory-builder` revision `5d0abc3`, with the checksum-pinned
+`dev-vm-factory-executable-size.patch` integration fix. These follow the previously tested
 provisioning branches. Draft publication runs only the bounded test paths below.
 
 One shared service serializes UI and CLI work with a private filesystem lock.
@@ -199,3 +205,39 @@ Factory-branch push events now skip the duplicate Mac test job; the PR event run
 the complete suite. Other branches, including normal `next`/`main` CI policy, are
 unchanged. Hosted results for this follow-up are tracked in the PR. The active
 public package pin remains `5d0abc3`; no frozen pins or recipe bytes change.
+
+## Local executable-size repair and readiness — 6 November 2026
+
+**VERIFIED — failure and fix:** local readiness rejected the 43,052,752-byte
+Docker CLI before contacting its engine because the generic executable pin had a
+32 MiB cap. The factory-specific 128 MiB policy now applies both when admitting
+Docker and when the host process runner rechecks it. Hashing uses bounded chunks;
+the default provisioning limit, permissions, symlinks, file stamps and repeated
+hash verification remain enforced. The active export includes a checksum-pinned
+source/test/engine-inventory patch over `5d0abc3`. No frozen candidate pin,
+runtime pin or factory recipe/archive bytes are rewritten.
+
+**VERIFIED — fake/local validation:** 97 shared Swift test functions, 542 Dev
+manager tests and 340 script tests pass. New cases exercise 32 MiB and 128 MiB
+boundaries, the observed Docker size, whole-file digest equality, changed bytes,
+unsafe permissions, symlink retargeting and a large disposable shell script in
+the actual host runner. All Docker build/download adapters in these tests are
+fake. Initial sandbox runs could not bind fixture sockets/read volume capacity
+and timed out two existing PTY fixtures; unchanged tests pass outside the sandbox
+with unchanged deadlines.
+
+**VERIFIED — bounded read-only host checks:** the installed Docker CLI is admitted;
+the selected engine uses a local Unix socket, reports ARM64 Linux and passes
+identity revalidation. Available artifact storage exceeds the default 24 GiB
+floor. A fresh ad-hoc Dev candidate passes bundle-only verification without being
+installed or opened; it reuses the exact pinned runtime and preserves its
+signatures. Diagnostics perform no host preflight or VM launch. Main metadata,
+the previous private candidate, all 86,034 older private artifact entries and the
+other configuration pins remain unchanged. Private candidate paths, inventories
+and readiness receipts stay outside Git.
+
+**TO PROVE:** engine-internal scratch free space was not independently measured.
+No real Docker build, source download, resource mutation, image import, signing
+credential use, installation or VM launch was performed. Real factory and guest
+acceptance still require their separately scoped run; an ad-hoc candidate does
+not satisfy same-team operational provisioning-helper admission.

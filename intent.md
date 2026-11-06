@@ -41,6 +41,24 @@ Private artifacts and frozen candidate pins remain preserved. Main and its VMs
 are untouched; real Docker, downloads, signing credentials, installs and guest
 launches remain outside this repair.
 
+## Docker executable admission repair — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** repair the factory host executable
+limit, test with fake adapters/local fixtures, prepare a separate ad-hoc Dev
+candidate and inspect readiness without building or launching anything. Factory
+host tools use a 128 MiB cap with 1 MiB hashing chunks; SSH/Ansible retain 32 MiB.
+Symlink, owner, permission, file-stamp and hash checks stay mandatory. The active
+package records a checksum-pinned integration patch over the unchanged upstream
+base; existing private artifacts, frozen candidate pins and runtime pins remain
+preserved. Main and its VMs are untouched.
+
+**VERIFIED / TO PROVE:** 97 shared Swift tests, 542 Dev manager tests and 340
+script tests pass. Read-only local ARM64 Linux engine inspection and identity
+revalidation pass. Fresh candidate verification and preservation evidence are
+recorded in [factory building](docs/FactoryBuilding.md). No Docker build,
+download, signing credential, install or VM launch is authorized here. Engine
+scratch capacity, real factory build/import and guest acceptance remain TO PROVE.
+
 ## Normal Dev provisioning — user authorization, 6 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** merge latest next and enable normal Dev

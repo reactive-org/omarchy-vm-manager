@@ -51,7 +51,7 @@ public final class LocalFactoryBuildProcess: FactoryBuildProcessRunning, @unchec
         guard (1...14400).contains(command.timeoutSeconds), command.arguments.count < 256,
               values.reduce(0, { $0 + $1.utf8.count }) < 128 * 1024, values.allSatisfy({ !$0.contains("\0") }),
               command.executable.isFileURL, command.directory.isFileURL, !cancellation.cancelled else { throw FactoryBuildFailure.cancelled }
-        let executable = try ProvisioningExecutablePin(command.executable).verify()
+        let executable = try ProvisioningExecutablePin(command.executable, purpose: .factoryHost).verify()
         let args = ([executable.path] + command.arguments).map { value in value.withCString { strdup($0) } } + [nil]
         let env = command.environment.keys.sorted().map { key in (key + "=" + command.environment[key]!).withCString { strdup($0) } } + [nil]
         defer { for p in args + env { free(p) } }

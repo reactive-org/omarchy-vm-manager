@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -82,30 +83,44 @@ func fileStamp(_ url: URL) throws -> FileStamp {
           s.st_uid == getuid() || s.st_uid == 0 else { throw SequencingFailure.dependencyChanged }
     return FileStamp(s)
 }
-private func pinnedBytes(_ url: URL, stamp: FileStamp) throws -> Data {
+private func pinnedSHA256(_ url: URL, stamp: FileStamp) throws -> String {
     let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
     guard fd >= 0 else { throw SequencingFailure.dependencyChanged }
     defer { close(fd) }
     var before = stat(), after = stat()
     guard fstat(fd, &before) == 0, FileStamp(before) == stamp else { throw SequencingFailure.dependencyChanged }
-    let data = try FileHandle(fileDescriptor: fd, closeOnDealloc: false).read(upToCount: 32 * 1024 * 1024 + 1) ?? Data()
-    guard data.count == stamp.size, fstat(fd, &after) == 0, FileStamp(after) == stamp else { throw SequencingFailure.dependencyChanged }
-    return data
+    let file = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
+    var remaining = stamp.size, hash = SHA256()
+    while remaining > 0 {
+        let data = try file.read(upToCount: Int(min(remaining, 1024 * 1024))) ?? Data()
+        guard !data.isEmpty else { throw SequencingFailure.dependencyChanged }
+        remaining -= off_t(data.count); hash.update(data: data)
+    }
+    guard (try file.read(upToCount: 1) ?? Data()).isEmpty,
+          fstat(fd, &after) == 0, FileStamp(after) == stamp else { throw SequencingFailure.dependencyChanged }
+    return hash.finalize().map { String(format: "%02x", $0) }.joined()
 }
 /// Captures an admitted executable without running a version/import probe.
 /// Symlink entry and canonical target are rechecked before every invocation.
 public struct ProvisioningExecutablePin: Sendable {
+    // Docker's macOS CLI exceeds 32 MiB. Only factory host commands opt into
+    // this larger, still bounded policy; guest provisioning keeps its limit.
+    enum Purpose { case provisioning, factoryHost }
     let entry: URL, target: URL, stamp: FileStamp, sha256: String
     public init(_ url: URL) throws {
+        try self.init(url, purpose: .provisioning)
+    }
+    init(_ url: URL, purpose: Purpose) throws {
         try transportPath(url)
         entry = url; target = url.resolvingSymlinksInPath()
         stamp = try fileStamp(target)
-        guard stamp.mode & 0o022 == 0, stamp.mode & 0o111 != 0, stamp.size <= 32 * 1024 * 1024 else { throw SequencingFailure.invalidRequest }
-        sha256 = digest(try pinnedBytes(target, stamp: stamp))
+        let maximumBytes = (purpose == .factoryHost ? 128 : 32) * 1024 * 1024
+        guard stamp.mode & 0o022 == 0, stamp.mode & 0o111 != 0, stamp.size <= maximumBytes else { throw SequencingFailure.invalidRequest }
+        sha256 = try pinnedSHA256(target, stamp: stamp)
     }
     func verify() throws -> URL {
         guard entry.resolvingSymlinksInPath() == target, try fileStamp(target) == stamp,
-              digest(try pinnedBytes(target, stamp: stamp)) == sha256 else { throw SequencingFailure.dependencyChanged }
+              try pinnedSHA256(target, stamp: stamp) == sha256 else { throw SequencingFailure.dependencyChanged }
         // Preserve launcher/argv[0] identity (Ansible commands may share a
         // symlink target but dispatch differently). Pin the target, execute entry.
         return entry

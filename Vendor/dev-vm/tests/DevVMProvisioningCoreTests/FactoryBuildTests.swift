@@ -35,6 +35,78 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
     func download(_ input: FactoryRecipe.Download, to destination: URL) async throws { try Data("fixture".utf8).write(to: destination); chmod(destination.path, 0o600) }
 }
 @Suite("Factory builder — fake Docker and disposable local files", .serialized) struct FactoryBuildTests {
+    private func executableFixture(in root: URL, size: Int, name: String = "docker-fixture") throws -> URL {
+        let url = root.appendingPathComponent(name)
+        // Sparse padding is synthetic data. Never invoke a real Docker binary.
+        try Data("#!/bin/sh\nprintf 'large fixture\\n'\nexit 0\n".utf8).write(to: url)
+        let file = try FileHandle(forWritingTo: url)
+        defer { try? file.close() }
+        try file.truncate(atOffset: UInt64(size))
+        guard chmod(url.path, 0o700) == 0 else { throw FactoryBuildFailure.invalidRequest }
+        return url
+    }
+    @Test(arguments: [33_554_432, 33_554_433, 43_052_752, 134_217_728, 134_217_729])
+    func dockerExecutableAdmissionHasItsOwnBoundedLimit(_ size: Int) async throws {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-size-" + UUID().uuidString)
+        try factoryDirectory(root, create: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = try executableFixture(in: root, size: size)
+        let fake = FactoryFakeProcess(root: root, jobID: UUID())
+        if size > 32 * 1024 * 1024 {
+            #expect(throws: SequencingFailure.invalidRequest) { _ = try ProvisioningExecutablePin(executable) }
+        } else { _ = try ProvisioningExecutablePin(executable).verify() }
+        if size > 128 * 1024 * 1024 {
+            #expect(throws: SequencingFailure.invalidRequest) { _ = try FactoryDockerClient(executable: executable, home: root, runner: fake) }
+            #expect(await fake.commands.isEmpty)
+        } else {
+            let client = try FactoryDockerClient(executable: executable, home: root, runner: fake)
+            let admission = try await client.inspect()
+            try await client.revalidate(admission)
+            #expect(await fake.commands.count == 4)
+            #expect(client.pin.sha256 == digest(try Data(contentsOf: executable)))
+        }
+    }
+    @Test(arguments: [0, 1_048_583, 43_052_751])
+    func largeDockerExecutableMutationRefusesNextFakeCommand(_ offset: Int) async throws {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-tamper-" + UUID().uuidString)
+        try factoryDirectory(root, create: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = try executableFixture(in: root, size: 43_052_752)
+        let fake = FactoryFakeProcess(root: root, jobID: UUID())
+        let client = try FactoryDockerClient(executable: executable, home: root, runner: fake)
+        let admission = try await client.inspect()
+        let file = try FileHandle(forWritingTo: executable)
+        try file.seek(toOffset: UInt64(offset)); try file.write(contentsOf: Data([88])); try file.close()
+        await #expect(throws: SequencingFailure.dependencyChanged) { try await client.revalidate(admission) }
+        #expect(await fake.commands.count == 3)
+    }
+    @Test func largeDockerStillRejectsUnsafePermissionsAndRetargetedSymlinks() async throws {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-permissions-" + UUID().uuidString)
+        try factoryDirectory(root, create: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = try executableFixture(in: root, size: 43_052_752)
+        let fake = FactoryFakeProcess(root: root, jobID: UUID())
+        chmod(executable.path, 0o777)
+        #expect(throws: SequencingFailure.invalidRequest) { _ = try FactoryDockerClient(executable: executable, home: root, runner: fake) }
+        chmod(executable.path, 0o700)
+        let alias = root.appendingPathComponent("docker-alias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: executable)
+        let client = try FactoryDockerClient(executable: alias, home: root, runner: fake)
+        let admission = try await client.inspect()
+        let replacement = try executableFixture(in: root, size: 43_052_752, name: "replacement")
+        try FileManager.default.removeItem(at: alias)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: replacement)
+        await #expect(throws: SequencingFailure.dependencyChanged) { try await client.revalidate(admission) }
+        #expect(await fake.commands.count == 3)
+    }
+    @Test func factoryHostRunnerUsesTheLargerPolicyForADisposableScript() async throws {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-host-size-" + UUID().uuidString)
+        try factoryDirectory(root, create: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = try executableFixture(in: root, size: 43_052_752)
+        let result = try await LocalFactoryBuildProcess().run(.init(executable: executable, arguments: [], directory: root, environment: ["PATH": "/usr/bin:/bin"], timeoutSeconds: 5), output: { _ in })
+        #expect(result.status == 0 && result.output == Data("large fixture\n".utf8))
+    }
     @Test(arguments: ["flat", "contents", "missing", "tampered"])
     func recipeBundleLayoutsRetainExactPins(_ layout: String) throws {
         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-bundle-" + UUID().uuidString)

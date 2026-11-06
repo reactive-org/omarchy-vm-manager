@@ -13,7 +13,7 @@ public struct FactoryDockerClient: Sendable {
     let runner: any FactoryBuildProcessRunning
     let home: URL
     public init(executable: URL, home: URL, runner: any FactoryBuildProcessRunning) throws {
-        self.executable = executable; pin = try .init(executable); self.home = home; self.runner = runner
+        self.executable = executable; pin = try .init(executable, purpose: .factoryHost); self.home = home; self.runner = runner
     }
     var environment: [String: String] { ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin", "HOME": home.path, "LC_ALL": "C", "DOCKER_CLI_HINTS": "false"] }
     func command(_ arguments: [String], directory: URL, timeout: Int = 30, stream: Bool = false, output: @escaping @Sendable (Data) -> Void = { _ in }) async throws -> Data {
