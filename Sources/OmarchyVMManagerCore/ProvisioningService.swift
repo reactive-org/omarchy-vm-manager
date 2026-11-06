@@ -243,15 +243,13 @@ public actor ProvisioningService {
         return row.snapshot
     }
     private func runOwned(_ id: UUID, prepared: ProvisioningPreparedJob, approval: ProvisioningApproval, check: Bool) async {
+        var inertRetirementAttempted = false
         do {
             try current(id)
             try await coordinator.registerHelperWorker(prepared.request, approval: approval, launcher: environment.launcher, transport: prepared.transport)
             if cancelled.contains(id) {
+                inertRetirementAttempted = true
                 _ = try await coordinator.abandonPreparedWorker(prepared.request.jobID)
-                unconfirmedExits.insert(id)
-                guard let record = try jobs.load().first(where: { $0.jobID == prepared.request.jobID }), let helper = record.helperIdentity,
-                      await environment.launcher.waitForExit(jobID: record.jobID, identity: helper, timeout: .seconds(5)) else { throw ProvisioningServiceFailure.unavailable }
-                unconfirmedExits.remove(id)
                 try update(id, stage: .cancelled, risk: false)
                 await manager.setProvisioningWorkflowHold(id, vmID: prepared.request.target.vmID, required: false)
                 busyID = nil; return
@@ -280,7 +278,13 @@ public actor ProvisioningService {
                 await manager.setProvisioningWorkflowHold(id, vmID: result.vmID, required: false)
             }
             if rows[id]?.stage != .restartRequired { busyID = nil }
-        } catch { await fail(id, error: error) }
+        } catch {
+            // Shutdown can also win between registration's lease release and
+            // activation. Only a never-activated original worker may be retired;
+            // any lost acknowledgement/exit or accepted activation retains risk.
+            if !inertRetirementAttempted { _ = try? await coordinator.abandonPreparedWorker(prepared.request.jobID) }
+            await fail(id, error: error)
+        }
     }
     func restartReview(_ id: UUID) throws -> ProvisioningRestartReview {
         guard let row = rows[id], row.stage == .restartRequired, let review = row.reviewDigest, !row.cleanupRequired else { throw ProvisioningServiceFailure.reviewRequired }

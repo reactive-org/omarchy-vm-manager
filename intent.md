@@ -1,5 +1,50 @@
 # Omarchy VM Manager — implementation intent
 
+## PR #10 merge-review corrections — 6 November 2026
+
+**USER AUTHORIZATION:** inspect PR #11 before fixing both PR #10 review findings,
+add regression coverage and push to PR #10 only after local checks pass. This is
+source/test work, not a merge, release, installation or real-guest approval.
+
+**VERIFIED — source comparison:** PR #11 at `62f2e22` retains PR #10's unchanged
+coordinator, service, frozen-input tree and saved-selection implementation and
+associated workflow/selection tests; it has not addressed either finding.
+
+**FIX / DESIGN DECISION:** an authenticated never-activated helper may be retired
+locally when shutdown revokes registration admission, including the interval
+between registration and activation. Verify the original worker's exact scope,
+permanent fence and matching owned exit before clearing its risk and releasing a
+pending shutdown. Lost registration/fencing/exit proof, any accepted activation
+or failed journal persistence keeps protection. Do not repeat an uncertain inert
+retirement. No guest command or new execution authority is needed for this path.
+
+**FIX / DESIGN DECISION:** restore saved nested manifests by their full relative
+paths through a bounded descriptor-relative walk of the retained source tree.
+Reject linked/special entries and retain all plan/input/engine receipt checks;
+restoration supplies no session, helper, task or sudo authority. Existing frozen
+source formats, private candidates, dependency/runtime pins and Stable/Dev gates
+are unchanged.
+
+**VERIFIED — fake/local checks:** `make test test-dev test-build-policies`
+passes 538 Swift tests in 70 suites per channel, 337 script tests, 140 offscreen
+UI checks/27 PNGs and three policy tests in each of the three optimized modes.
+After the final retained-tree discovery adjustment, `make test-provisioning-tools
+test-provisioning-bundle-dev` passes all 279 provisioning tests in 28 suites and
+the relocated/read-only Dev helper checks. Stable's relocated helper checks also
+pass. Six added test functions cover both original reproductions, the
+registration/activation interval, missing registration/fencing/exit proof,
+journal failure/no reconciliation replay, and nested manifest restoration plus
+changed bytes/modes/links. Whitespace checks pass. Logs are retained privately as
+`.build/pr10-review-fixes-validation.log` and
+`.build/pr10-review-fixes-final.log`. Hosted CI on the new commit remains pending
+until observed; earlier CI success applies only to its recorded source commit.
+
+**TO PROVE:** fresh signed normal-Dev, native helper/guest cancellation and
+recovery, and prior focus/sleep/wake/crash cases retain their existing evidence
+boundaries. Fake/local checks do not establish these behaviors. No real VM,
+factory download, installed manager, macOS permission or signing credential is
+used or changed in this correction pass.
+
 ## Normal Dev provisioning — user authorization, 6 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** merge latest next and enable normal Dev
