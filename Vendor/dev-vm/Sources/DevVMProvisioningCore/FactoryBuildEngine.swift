@@ -39,8 +39,18 @@ public struct FactoryBuildEngine: Sendable {
             }
             try await stage(.packages)
             let upstream = input.appendingPathComponent("upstream"), imageFile = workspace.appendingPathComponent("builder.id")
-            _ = try await docker.run(admission, ["build", "--platform", "linux/arm64", "--iidfile", imageFile.path,
+            let configuration = workspace.appendingPathComponent("docker-config")
+            try factoryDirectory(configuration, create: true)
+            let configFile = configuration.appendingPathComponent("config.json")
+            // An empty Hub entry also suppresses Docker's automatic native
+            // credential-store discovery. Never copy the user's auth config.
+            let anonymousConfig = Data("{\"auths\":{\"https://index.docker.io/v1/\":{}}}\n".utf8)
+            try anonymousConfig.write(to: configFile, options: .withoutOverwriting)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configFile.path)
+            guard try factoryFileHash(configFile) == digest(anonymousConfig) else { throw FactoryBuildFailure.inputsChanged }
+            _ = try await docker.run(admission, ["--config", configuration.path, "build", "--platform", "linux/arm64", "--iidfile", imageFile.path,
                 "--label", "dev.omarchy.factory-build=" + token, "-f", upstream.appendingPathComponent("guest/factory/Containerfile").path, upstream.path], directory: workspace, timeout: 3600, stream: true, output: emit)
+            guard try factoryFileHash(configFile) == digest(anonymousConfig) else { throw FactoryBuildFailure.inputsChanged }
             let imageID = try String(contentsOf: imageFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
             guard matches(imageID, "sha256:[a-f0-9]{64}") else { throw FactoryBuildFailure.invalidArtifact }
             try recipe.verifyStaged(input)
@@ -51,7 +61,7 @@ public struct FactoryBuildEngine: Sendable {
             guard String(data: createdVolume, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) == volume else { throw FactoryBuildFailure.cleanupRequired }
             creationUnconfirmed = false
             try await stage(.image)
-            var args = ["create", "--name", container, "--label", "dev.omarchy.factory-build=" + token, "--platform", "linux/arm64", "--privileged"]
+            var args = ["create", "--pull=never", "--name", container, "--label", "dev.omarchy.factory-build=" + token, "--platform", "linux/arm64", "--privileged"]
             for (source, destination, readOnly) in [(upstream.path, "/workspace", true), (input.appendingPathComponent("profile").path, "/input-profile", true), (downloads.path, "/downloads", true), (workspace.appendingPathComponent("factory-work").path, "/factory-work", false), (cache.path, "/factory-work/pacman-cache", false), (workspace.appendingPathComponent("output").path, "/output", false)] {
                 guard !source.contains(",") else { throw FactoryBuildFailure.invalidRequest }
                 args += ["--mount", "type=bind,src=" + source + ",dst=" + destination + (readOnly ? ",readonly" : "")]

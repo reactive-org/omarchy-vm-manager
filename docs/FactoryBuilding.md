@@ -241,3 +241,61 @@ No real Docker build, source download, resource mutation, image import, signing
 credential use, installation or VM launch was performed. Real factory and guest
 acceptance still require their separately scoped run; an ad-hoc candidate does
 not satisfy same-team operational provisioning-helper admission.
+
+## First authorized real build and anonymous registry configuration
+
+**USER AUTHORIZATION — 6 November 2026:** run the default 20 GiB lean factory in
+Dev, including the reviewed downloads, an owned privileged Docker container and
+verified import. No credentials, host installs, VM launch or Main operation is
+authorized. Preserve old candidates, build artifacts and frozen pins.
+
+**VERIFIED — first attempt:** the three checksum-pinned downloads passed. Docker
+then failed while resolving its public Alpine base because the user's configured
+`docker-credential-desktop` helper was absent from the controller's restricted
+PATH. The job ended failed, without importing an image or creating the privileged
+image container. Job-scoped cleanup completed. The failed workspace/downloads are
+retained. No helper was installed or added to PATH, and no credential was obtained.
+
+**DESIGN DECISION / IMPLEMENTED:** the image-builder invocation uses a new private
+`docker-config` inside its job workspace. It contains only an empty Docker Hub
+auth entry, with no copied user configuration, credential helpers or auth values.
+The explicit `--config` selects it; its bytes are checked before and after the
+build. Docker's [config loader](https://github.com/docker/cli/blob/master/cli/config/config.go)
+and [ContainsAuth implementation](https://github.com/docker/cli/blob/master/cli/config/configfile/file.go)
+explain why the nonempty map containing an empty entry suppresses automatic native
+credential-store discovery. The owned image container additionally uses
+`--pull=never` with the acknowledged local image ID. Context/engine admission and
+ownership-checked cleanup remain unchanged. The original source/recipe pins and
+prior app packages remain intact; only the active package gains a separately
+checksummed integration patch. Fake cases verify the private configuration,
+unchanged synthetic user config, local-image-only create and tamper rejection.
+
+**VERIFIED — real acceptance:** after the anonymous-config repair, the next job
+failed on the mirror's ten-second low-speed timeout while downloading a package
+signature. A fresh job using the unchanged recipe succeeded. It built and
+imported **Lean Omarchy Dev acceptance**, with a 20 GiB disk and a 1,716,254,279-byte
+compressed image. The native service prepared and independently admitted the
+format-2 bundle; a subsequent Dev catalog listing reverified its payloads and
+matched its identity to the schema-2 import receipt. Sealed-image checks passed;
+provenance explicitly retains `guest_boot_tested: false`.
+
+The one privileged container had exactly six job-scoped bind mounts and one
+owned work volume, no Main mounts and no restart policy. The same local engine
+identity was revalidated after completion. Read-only label queries for all three
+attempts found zero remaining owned containers or volumes; images, caches,
+downloads, failed workspaces and successful output were retained. The recipe's
+3 GiB work-volume check and real loop/mount/seal/compress path completed. Private
+receipts, identities, paths and hashes stay outside Git.
+
+The repair passes 97 shared Swift functions (including the new anonymous-config
+parameter case), 542 Dev Swift tests, 340 script tests, the final 27 focused
+factory/tool tests, eight export tests and relocated/read-only helper checks.
+The fresh ad-hoc candidate passes bundle-only checks with the original runtime
+signatures retained. Only the idle Dev app started by this run was replaced; both
+Dev guests were stopped. Main and existing VM processes were left running.
+
+**TO PROVE:** hosted CI for this follow-on anonymous-config repair, real
+cancellation/recovery and disposable-guest boot/account setup/graphics. No
+credentials, host install or VM launch was performed. One prior
+unfrozen local test log was reused accidentally; candidate payloads and frozen
+pins were not changed, and subsequent retry logs use a fresh private directory.

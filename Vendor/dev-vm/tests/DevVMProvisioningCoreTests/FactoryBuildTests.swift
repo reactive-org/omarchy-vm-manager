@@ -6,21 +6,34 @@ import Testing
 private actor FactoryFakeProcess: FactoryBuildProcessRunning {
     var commands: [[String]] = []
     var remote = false, wrongArch = false, failImage = false, foreign = false, lostCreate = false, renamed = false, changedEngine = false
-    var volume = false, container = false
+    var volume = false, container = false, tamperConfiguration = false
     let root: URL
     let token: String
     init(root: URL, jobID: UUID) { self.root = root; token = jobID.uuidString.lowercased() }
-    func configure(remote: Bool = false, wrongArch: Bool = false, failImage: Bool = false, foreign: Bool = false, lostCreate: Bool = false, renamed: Bool = false, changedEngine: Bool = false) { self.lostCreate = lostCreate; self.renamed = renamed; self.changedEngine = changedEngine; self.remote = remote; self.wrongArch = wrongArch; self.failImage = failImage; self.foreign = foreign }
+    func configure(remote: Bool = false, wrongArch: Bool = false, failImage: Bool = false, foreign: Bool = false, lostCreate: Bool = false, renamed: Bool = false, changedEngine: Bool = false, tamperConfiguration: Bool = false) { self.tamperConfiguration = tamperConfiguration; self.lostCreate = lostCreate; self.renamed = renamed; self.changedEngine = changedEngine; self.remote = remote; self.wrongArch = wrongArch; self.failImage = failImage; self.foreign = foreign }
     func run(_ command: FactoryBuildCommand, output: @escaping @Sendable (Data) -> Void) async throws -> FactoryBuildCommandResult {
         if command.executable.path == "/usr/bin/tar" { return try await LocalFactoryBuildProcess().run(command, output: output) }
         commands.append(command.arguments)
         var a = command.arguments
         if a.first == "--host" { a.removeFirst(2) }
+        var configuration: URL?
+        if a.first == "--config" {
+            configuration = URL(fileURLWithPath: a[1]); a.removeFirst(2)
+            guard configuration == command.directory.appendingPathComponent("docker-config"),
+                  command.environment["DOCKER_CONFIG"] == nil,
+                  try Data(contentsOf: configuration!.appendingPathComponent("config.json")) == Data("{\"auths\":{\"https://index.docker.io/v1/\":{}}}\n".utf8),
+                  try configuration!.appendingPathComponent("config.json").resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true,
+                  (try FileManager.default.attributesOfItem(atPath: configuration!.appendingPathComponent("config.json").path)[.posixPermissions] as? NSNumber)?.intValue == 0o600 else { throw FactoryBuildFailure.invalidRequest }
+        }
         func response(_ object: Any) throws -> FactoryBuildCommandResult { .init(status: 0, output: try JSONSerialization.data(withJSONObject: object, options: [.fragmentsAllowed])) }
         if a == ["context", "show"] { return .init(status: 0, output: Data("fixture\n".utf8)) }
         if a.starts(with: ["context", "inspect"]) { return try response(remote ? "tcp://example.invalid:2375" : "unix:///private/tmp/fixture.sock") }
         if a.first == "info" { return try response(["architecture": wrongArch ? "amd64" : "aarch64", "os": "linux", "id": changedEngine ? "changed-engine" : "synthetic-engine"]) }
-        if a.first == "build" { let i = a.firstIndex(of: "--iidfile")!; try Data(("sha256:" + String(repeating: "a", count: 64)).utf8).write(to: URL(fileURLWithPath: a[i+1])); return .init(status: 0) }
+        if a.first == "build" {
+            guard let configuration else { throw FactoryBuildFailure.invalidRequest }
+            if tamperConfiguration { try Data("{\"credsStore\":\"synthetic-helper\"}".utf8).write(to: configuration.appendingPathComponent("config.json")) }
+            let i = a.firstIndex(of: "--iidfile")!; try Data(("sha256:" + String(repeating: "a", count: 64)).utf8).write(to: URL(fileURLWithPath: a[i+1])); return .init(status: 0)
+        }
         if a.starts(with: ["volume", "create"]) { volume = true; return .init(status: 0, output: Data(("omarchy-factory-" + token).utf8)) }
         if a.first == "create" { container = true; if lostCreate { throw FactoryBuildFailure.cancelled }; return .init(status: 0, output: Data(String(repeating: "b", count: 64).utf8)) }
         if a.first == "start" { output(Data("synthetic image output\n".utf8)); return .init(status: failImage ? 1 : 0) }
@@ -150,10 +163,14 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
         await #expect(throws: FactoryBuildFailure.self) { _ = try await client.inspect() }
         #expect(await fake.commands.allSatisfy { !$0.contains("build") && !$0.contains("run") })
     }
-    @Test(arguments: ["success", "failed", "foreign", "lost-create", "renamed"])
+    @Test(arguments: ["success", "failed", "foreign", "lost-create", "renamed", "config-tamper"])
     func pipelineHasExplicitScopeAndOnlyCleansOwnedResources(kind: String) async throws {
         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-test-" + UUID().uuidString)
         try factoryDirectory(root, create: true); defer { try? FileManager.default.removeItem(at: root) }
+        let userConfig = root.appendingPathComponent(".docker/config.json")
+        try FileManager.default.createDirectory(at: userConfig.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let originalConfig = Data("{\"credsStore\":\"synthetic-forbidden-helper\",\"auths\":{}}".utf8)
+        try originalConfig.write(to: userConfig)
         let input = root.appendingPathComponent("fixture-input"); try factoryDirectory(input, create: true)
         let file = input.appendingPathComponent("upstream/test"); try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("template".utf8).write(to: file); chmod(file.path, 0o644)
@@ -163,16 +180,20 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
         let recipeData = try JSONSerialization.data(withJSONObject: ["format": 1, "templateSHA256": try factoryFileHash(archive), "files": ["upstream/test": ["sha256": digest(Data("template".utf8)), "mode": 420]], "downloads": (1...3).map { ["name": "input-\($0)", "url": "https://nodejs.org/fixture", "sha256": digest(Data("fixture".utf8))] }, "provenance": ["try_commit": String(repeating: "a", count: 40)]])
         let recipe = try FactoryRecipe(archive: archive, data: recipeData, expected: digest(recipeData)), id = UUID()
         try factoryDirectory(root.appendingPathComponent(id.uuidString), create: true)
-        let fake = FactoryFakeProcess(root: root, jobID: id); await fake.configure(failImage: kind == "failed" || kind == "foreign", foreign: kind == "foreign", lostCreate: kind == "lost-create", renamed: kind == "renamed")
+        let fake = FactoryFakeProcess(root: root, jobID: id); await fake.configure(failImage: kind == "failed" || kind == "foreign", foreign: kind == "foreign", lostCreate: kind == "lost-create", renamed: kind == "renamed", tamperConfiguration: kind == "config-tamper")
         let docker = try FactoryDockerClient(executable: URL(fileURLWithPath: "/bin/echo"), home: root, runner: fake), admission = try await docker.inspect()
         let engine = FactoryBuildEngine(docker: docker, recipe: recipe, downloader: FactoryFakeDownload()), output = FactoryBuildOutput()
         do {
             let result = try await engine.build(.init(fixtureRecipe: digest(recipeData)), jobID: id, root: root, admission: admission, output: output, stage: { _ in })
             #expect(kind == "success" || kind == "renamed")
             #expect(FileManager.default.fileExists(atPath: result.appendingPathComponent("image-build.json").path))
-        } catch { #expect(kind != "success" && kind != "renamed"); if kind == "foreign" || kind == "lost-create" { #expect(error as? FactoryBuildFailure == .cleanupRequired) } }
+        } catch { #expect(kind != "success" && kind != "renamed"); if kind == "foreign" || kind == "lost-create" { #expect(error as? FactoryBuildFailure == .cleanupRequired) }; if kind == "config-tamper" { #expect(error as? FactoryBuildFailure == .inputsChanged) } }
         let commands = await fake.commands
-        #expect(commands.contains { $0.contains("--privileged") && $0.contains("linux/arm64") })
+        #expect(try Data(contentsOf: userConfig) == originalConfig)
+        let imageBuilds = commands.filter { $0.contains("build") && !$0.contains("create") }
+        #expect(imageBuilds.count == 1 && imageBuilds.allSatisfy { $0.contains("--config") })
+        if kind == "config-tamper" { #expect(!commands.contains { $0.contains("create") }) }
+        else { #expect(commands.contains { $0.contains("--privileged") && $0.contains("linux/arm64") && $0.contains("--pull=never") }) }
         #expect(!commands.contains { $0.contains("prune") })
         if kind == "lost-create" {
             #expect(!commands.contains { $0.contains("start") })

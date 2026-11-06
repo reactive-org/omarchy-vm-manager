@@ -1,5 +1,29 @@
 # Omarchy VM Manager — implementation intent
 
+## Real Dev factory build and import — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** execute the reviewed lean factory
+recipe in Dev, allowing downloads and one owned privileged Docker container,
+then independently verify/import its output. No credentials, host installs,
+VM launches or Main operations are authorized. Existing artifacts and frozen
+candidate pins remain preserved; a necessary integration repair advances only
+the active public package export with a separate checksum-pinned source patch.
+
+**VERIFIED:** the first attempt failed before privileged-container creation on
+Docker's unavailable configured credential helper. A private anonymous build
+config and local-image-only container creation repair that integration without
+using a credential store. One subsequent mirror timeout failed closed; the next
+job built/imported **Lean Omarchy Dev acceptance** (20 GiB disk;
+1,716,254,279-byte compressed image). Format-2 admission, schema-2 receipt, catalog
+readback, scoped mounts, unchanged engine identity and zero remaining owned
+containers/volumes for all three jobs are observed. See [factory acceptance and
+limits](docs/FactoryBuilding.md#first-authorized-real-build-and-anonymous-registry-configuration).
+Local fake validation passes 97 shared, 542 Dev and 340 script tests plus final
+export/helper checks. One prior unfrozen local test log was reused accidentally;
+app payloads and frozen candidate pins remain unchanged, and further logs are
+isolated. **TO PROVE:** hosted CI for the repair, real cancellation/recovery and
+guest boot/account/graphics acceptance. No VM was created or launched here.
+
 ## Native lean factory builder — approved prototype, 6 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** implement the approved native Factory
