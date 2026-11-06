@@ -1,5 +1,25 @@
 # Omarchy VM Manager — implementation intent
 
+## Update-before-setup CI fixture correction — 7 November 2026
+
+**VERIFIED — hosted failure:** manager run `42295151880` on `288c82c` passes all
+559 Swift and 340 script tests, then fails relocated helper dispatch because its
+excluded debug fixture still expects `applied`. The helper returns the correct
+`appliedRestartRequired` with confirmed cleanup and no primary failure. Companion
+PR #10 run `42295108340` is green on `1c08131`.
+
+**FIX / DESIGN DECISION:** require the exact restart-required outcome for successful
+fixture dispatch; keep cancellation, terminal completion, cleanup, reconciliation,
+matching exit and existing time bounds unchanged. No product code, shared export,
+resource, runtime or frozen candidate pin changes. The local checks use fake
+runtimes/adapters and fresh scratch storage without explicit signing commands.
+Seven local fake helper-engine tests pass and the corrected excluded fixture
+compiles. Relocated bundle fixtures ad-hoc sign their disposable containers, so
+their full rerun is reserved for hosted CI. The user explicitly allows normal
+hosted workflows after merge, including runner-only Ansible installation and the
+normal next Dev signing/notarization release; this Mac remains untouched. Hosted
+success on the correction remains TO PROVE; the failed run above remains a failure.
+
 ## Update before Developer setup — 7 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** restore the original dev-vm bootstrap

@@ -201,7 +201,7 @@ do {
                 }
             }
             guard status.terminal, !status.cleanupRequired,
-                  status.outcome == (args[2].hasSuffix("-cancel") ? .cancelled : .applied) else {
+                  status.outcome == (args[2].hasSuffix("-cancel") ? .cancelled : .appliedRestartRequired) else {
                 fixtureStep = "dispatch-" + status.phase.rawValue + "-" + (status.outcome?.rawValue ?? "pending") + (status.cleanupRequired ? "-risk" : "-clean") + "-" + (status.primaryFailure?.rawValue ?? "none")
                 throw ProvisioningJobFailure.invalidRequest
             }
