@@ -400,3 +400,20 @@ already merged. Both factory PRs remain drafts; no merge or release is performed
 by this review. Fresh CI on the repaired heads is required before approval.
 Real builder cancellation/recovery, graphics-startup repeatability and the prior
 unexercised guest checks retain their stated acceptance limits.
+
+
+### Hosted CI execution budget
+
+The first repaired-head run (`4122a31`, run `42202384549`) passed every test step:
+556 Swift tests per channel, 340 script tests, both relocated bundle checks,
+140 Setup/New VM checks, 32 factory UI checks, four policy tests in each of three
+optimized modes, app/CLI/helper/icon builds and 566 pinned-upstream Swift tests
+plus shell/package contracts. Its overall result is **CANCELLED**, not green:
+GitHub annotated the job as exceeding its 40-minute execution limit; the cold
+ARM64 run completed its steps in approximately 43 minutes.
+
+The bounded Mac test-job limit is now 50 minutes. Test fixture/process deadlines,
+coverage, Docker/SSH exclusions and release/signing gates are unchanged. A fresh
+run on that workflow head must pass before the PR is considered checked. Synthetic
+signing/notary notices in unit-test output use fake adapters and fixture IDs;
+no signing credential or Apple service was used by this test-only run.

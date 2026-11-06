@@ -22,6 +22,12 @@ hosted checks and real cancellation/recovery as separate proof obligations.
 No review result authorizes a merge/release or extends a prior candidate's real
 boot acceptance to this new source revision.
 
+**VERIFIED — hosted budget:** all checks on `4122a31` passed their steps, including
+556 Swift tests per channel, but run `42202384549` is cancelled for exceeding the
+40-minute job limit. Raise only the bounded Mac job budget to 50 minutes; retain
+all individual deadlines, coverage and real-execution exclusions. Fresh hosted
+success remains TO PROVE.
+
 ## Factory PR integration refresh — 6 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** publish the factory acceptance docs and
