@@ -93,6 +93,17 @@ Explicit frozen review/permissions, authenticated session/transport, same-team
 helper, owned cleanup and no replay remain mandatory. Root metadata alone grants
 no authority. No environment or wire switch selects the policy.
 
+**DESIGN DECISION — user direction, 7 November 2026:** same-team helper signing
+stays mandatory for stable and for signed Dev prereleases. Local Dev builds
+(compiled with `DEVELOPMENT_CHANNEL` and without `SIGNED_PRERELEASE`) also admit
+a matching ad-hoc app/helper pair, so setup can be tested without a signing
+identity. A team-signed app still needs its same-team helper; mixed or
+cross-team pairs are refused. The choice is compiled, not switched at runtime.
+Ad-hoc mode keeps the pinned helper hash, private single-link executable checks,
+running-child cdHash match, authenticated inherited channel, root admission,
+explicit consent and owned cleanup; it gives up only the external team anchor,
+which an ad-hoc build cannot have. See [Validation](docs/Validation.md#local-ad-hoc-dev-setup--7-november-2026).
+
 The current pass permits source integration and fake/local/CI validation only.
 No VM launch, real signing, host installation, Main app or Main VM operation is
 authorized. **TO PROVE:** fresh signed normal-Dev and real-guest acceptance after

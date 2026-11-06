@@ -26,7 +26,7 @@ actor ProvisioningHelperLauncher: ProvisioningServiceLaunching, ProvisioningTerm
     private let policy: ProvisioningHelperSigningPolicy
     private var entries: [UUID: Entry] = [:]
     private var preparing = false
-    init(layout: ProvisioningPackageLayout, directory: URL, policy: ProvisioningHelperSigningPolicy = .sameApplicationTeam) throws {
+    init(layout: ProvisioningPackageLayout, directory: URL, policy: ProvisioningHelperSigningPolicy) throws {
         self.layout = layout; self.directory = directory; self.policy = policy
         try PrivateFiles.directory(directory, create: true)
     }

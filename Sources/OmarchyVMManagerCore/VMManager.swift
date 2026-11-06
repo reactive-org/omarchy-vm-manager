@@ -1040,7 +1040,7 @@ extension VMManager {
                 for row in rows where row.cleanupRequired { await manager.setProvisioningWorkflowHold(row.id, vmID: row.vmID, required: true) }
             } catch { await manager.markProvisioningStorageUnknown(); throw ProvisioningJobFailure.journalUnavailable }
             let engine = try BundledProvisioning.engineDigest(layout)
-            let launcher = try ProvisioningHelperLauncher(layout: layout, directory: directory.appendingPathComponent("control"))
+            let launcher = try ProvisioningHelperLauncher(layout: layout, directory: directory.appendingPathComponent("control"), policy: .product)
             return try await ProvisioningService.open(manager: manager, directory: directory,
                 environment: .init(executionEnabled: ProvisioningProductExecution.enabled, engineDigest: engine, dependencies: HomebrewProvisioningDependencies(), launcher: launcher,
                     transportPolicy: .host, admitPackage: { _ = try BundledProvisioning.inspect(layout) },

@@ -3983,7 +3983,8 @@ No environment variable, CLI switch, source manifest or journal enables it.
 
 Read-only package/preset reports describe compiled build eligibility. Offline
 planning remains inert; direct helper commands still cannot run guest work.
-Ad-hoc builds retain same-team operational-helper refusal. Stable has no normal
+Ad-hoc builds retain same-team operational-helper refusal (superseded for local
+Dev builds on 7 November 2026; see intent.md). Stable has no normal
 provisioning execution path. Normal Dev code is prepared for a later reviewed
 signed build and separately authorized guest acceptance; this pass runs only
 fake runtimes/local fixtures and no-VM CI.
