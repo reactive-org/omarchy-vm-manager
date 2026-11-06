@@ -21,6 +21,18 @@ struct AppChannelTests {
         #expect(stable.guestName("Work") == "Work")
     }
 
+    @Test("Setup sockets are isolated by channel while stable keeps its endpoint")
+    func setupSocketIsolation() {
+        let support = URL(fileURLWithPath: "/private/tmp/setup-channel-fixture")
+        let stable = ManagerCommandEndpoint(applicationSupport: support, channel: .stable)
+        let dev = ManagerCommandEndpoint(applicationSupport: support, channel: .development)
+        #expect(stable.provisioning.socket != dev.provisioning.socket)
+        #expect(stable.provisioning.directory == stable.directory)
+        #expect(dev.provisioning.directory == dev.directory)
+        #expect(stable.provisioning.socket.lastPathComponent == "setup-v1.sock")
+        #expect(dev.provisioning.socket.lastPathComponent == "setup-v1.sock")
+    }
+
     @Test("both managers can hold their own locks; Dev deletion preserves stable registry and root")
     func storageIsolation() throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
@@ -86,12 +98,12 @@ struct AppChannelTests {
     func defaultsIsolation() throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let stable = OwnerDefaultsStore(applicationSupport: f.support, vault: MemoryOwnerVault(), channel: .stable)
-        _ = try stable.save(enabled: true, configuration: OwnerConfiguration(username: "work"), password: Data("synthetic-password".utf8))
+        _ = try stable.save(configuration: OwnerConfiguration(username: "work"), password: Data("synthetic-password".utf8))
         let stableFile = AppChannel.stable.directory(in: f.support).appendingPathComponent("guest-defaults.json")
         let before = try PrivateFiles.read(stableFile)
         let dev = OwnerDefaultsStore(applicationSupport: f.support, vault: MemoryOwnerVault(), channel: .development)
         #expect(try !dev.load().enabled)
-        _ = try dev.save(enabled: true, configuration: OwnerConfiguration(username: "testing"), password: Data("synthetic-dev-password".utf8))
+        _ = try dev.save(configuration: OwnerConfiguration(username: "testing"), password: Data("synthetic-dev-password".utf8))
         #expect(try PrivateFiles.read(stableFile) == before)
         let stableDisks = DiskDefaultsStore(applicationSupport: f.support, channel: .stable)
         let devDisks = DiskDefaultsStore(applicationSupport: f.support, channel: .development)

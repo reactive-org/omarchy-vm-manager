@@ -17,7 +17,7 @@ for argument in sys.argv[1:]:
     channel = info["OmarchyAppChannel"]
     cli = "omarchy-vm-dev" if channel == "development" else "omarchy-vm"
     other_id = "dev.omarchy.vm-manager" if channel == "development" else "dev.omarchy.vm-manager.dev"
-    for name, option in ((cli, "--version"), ("OmarchyVMStorageHelper", "--channel-json")):
+    for name, option in ((cli, "--version"), ("OmarchyVMStorageHelper", "--channel-json"), ("OmarchyVMProvisioningHelper", "--channel-json")):
         result = subprocess.run([str(app / "Contents/MacOS" / name), option], check=True, capture_output=True, text=True)
         assert json.loads(result.stdout)["appChannel"] == channel
     with tempfile.TemporaryDirectory(prefix="omarchy-channel-bundle-") as scratch:
@@ -30,7 +30,8 @@ for argument in sys.argv[1:]:
         }))
         # There is deliberately no manager binary. If the CLI identity guard
         # regresses, its missing-app guard still prevents a real command.
-        for name, arguments in ((cli, ["list"]), ("OmarchyVMStorageHelper", [])):
+        for name, arguments in ((cli, ["list"]), ("OmarchyVMStorageHelper", []),
+                                ("OmarchyVMProvisioningHelper", ["--ownership-channel-fd", "-1"])):
             target = fixture / "MacOS" / name
             shutil.copy2(app / "Contents/MacOS" / name, target)
             result = subprocess.run([str(target), *arguments], capture_output=True, text=True)

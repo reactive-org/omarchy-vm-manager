@@ -1,0 +1,34 @@
+{
+  "baseCommit": "c51c004",
+  "date": "2026-11-03",
+  "limitations": [
+    "No physical mouse/keyboard, native dialogs, VoiceOver or focus acceptance",
+    "Summaries describe resolved configuration, not observed guest state",
+    "Card icons are native symbols and a Python monogram, not downloaded brand assets",
+    "No real SSH/Ansible, installs, factory downloads or VM launches"
+  ],
+  "scope": "Source/profile UI and shared offline projection; synthetic service captures, no physical input or real guest",
+  "sha256": {
+    "new-vm-proposal.json": "6ae9dbaf25dd7b9f782456f64ab395a1532b03ca6e370aee2bd8d32d8c0c23a5",
+    "new-vm-resources-dark.png": "533dffc332fb57d3e445d2c9b0b3b5aedaf065ab7e5601124dd2cc23017e3e42",
+    "new-vm-resources-light.png": "1002db3fcc85ba1c85ae63e27c3c577b34558264f7f0cd5ce56e18025d451d7e",
+    "new-vm-review-dark.png": "9b6fc44a51830897452497461bf6b6f877a8ce4e00922d5af81f5b9eb39c416e",
+    "new-vm-review-light.png": "04322b1df6b2d207dff593c79d8d7e0d400651d465488e549d510efaf9fab85b",
+    "report.json": "3131a35fa93742f46d6d03d31a54b353c5eb45a025b011733416e70fae09e5a2",
+    "setup-fake-consent-dark.png": "9559429183cdca069e4db21a6ecab65323d8af55332fd7a9287829d59a3e3c5c",
+    "setup-handoff-dark.png": "9390071bfcae6473ebe2f95063adf26185ebf609003cf8de5f8fe8bbb7e4ea45",
+    "setup-handoff-light.png": "dd5318ae140b56471d519073dff1d540a1675482270336fd8efc1666f807dff0",
+    "setup-terminal-dark.png": "ca85640e20ab118878e71a0e5312eaad10592d10d1f5241cc0ea3bf88b63717a"
+  },
+  "validation": {
+    "profileSelectionFunctions": 8,
+    "releaseCompilation": "passed; no real signing identity",
+    "screenChecks": 62,
+    "scriptTests": 52,
+    "selectionFunctionsIncludingExisting": 24,
+    "signedLocalHelperFixtures": "passed",
+    "swiftFunctions": 448,
+    "swiftSuites": 58
+  },
+  "visualReview": "Eight PNGs inspected in light/dark; selected cards, readable derived summaries, saved-profile names, consent/resources and synthetic terminal retained; captures show current scroll viewport"
+}

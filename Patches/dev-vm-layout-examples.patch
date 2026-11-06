@@ -1,0 +1,495 @@
+--- /dev/null
++++ b/Sources/DevVMProvisioningCore/LayoutExamples.swift
+@@ -0,0 +1,57 @@
++import Foundation
++
++public enum LayoutExampleID: String, Codable, CaseIterable, Sendable {
++    case fourTerminals = "four-terminals"
++    case terminalBrowser = "terminal-browser"
++    case vscodeBrowser = "vscode-browser"
++    case claudeWorkspace = "claude-two-terminals-browser"
++}
++public struct LayoutExampleWindow: Decodable, Sendable {
++    public enum Kind: String, Decodable, Sendable { case terminal, browser, editor, claude }
++    public let label: String
++    public let kind: Kind
++    public let x: Double, y: Double, width: Double, height: Double
++    public let floating: Bool?
++}
++public struct LayoutExample: Decodable, Identifiable, Sendable {
++    public let id: LayoutExampleID
++    public let title: String
++    public let summary: String
++    public let applications: [String]
++    public let windows: [LayoutExampleWindow]
++    public let file: String
++    public let sourceSHA256: String
++    enum CodingKeys: String, CodingKey { case id, title, summary, applications, windows, file; case sourceSHA256 = "sha256" }
++}
++/// Maintained descriptions/wireframes of the bundled, hash-admitted Lua files.
++/// These are illustrations of intended geometry, never observed guest state.
++public enum LayoutExamples {
++    static let directory = "Resources/Provisioning/omarchy/examples/layouts"
++    public static func catalogue() throws -> [LayoutExample] {
++        _ = try SetupPlanner.engine()
++        guard let url = Bundle.module.url(forResource: "catalogue", withExtension: "json", subdirectory: directory) else { throw ManifestError(.resource) }
++        struct Catalogue: Decodable { let schema_version: Int; let examples: [LayoutExample] }
++        let value = try JSONDecoder().decode(Catalogue.self, from: Data(contentsOf: url))
++        guard value.schema_version == 1, value.examples.map(\.id) == LayoutExampleID.allCases else { throw ManifestError(.resource) }
++        for example in value.examples {
++            guard example.file == example.id.rawValue + ".lua", boundedText(example.title, bytes: 80), boundedText(example.summary, bytes: 200),
++                  !example.applications.isEmpty, example.applications.count <= 8, example.applications.allSatisfy({ boundedText($0, bytes: 64) }),
++                  (1...8).contains(example.windows.count) else { throw ManifestError(.resource) }
++            guard let file = Bundle.module.url(forResource: example.id.rawValue, withExtension: "lua", subdirectory: directory),
++                  let data = try? Data(contentsOf: file), !data.isEmpty, data.count <= 256 * 1024,
++                  String(data: data, encoding: .utf8) != nil, digest(data) == example.sourceSHA256 else { throw ManifestError(.resource) }
++            for window in example.windows {
++                guard boundedText(window.label, bytes: 64), [window.x, window.y, window.width, window.height].allSatisfy(\.isFinite),
++                      window.x >= 0, window.y >= 0, window.width > 0, window.height > 0,
++                      window.x + window.width <= 1, window.y + window.height <= 1 else { throw ManifestError(.resource) }
++            }
++        }
++        return value.examples
++    }
++    public static func source(_ id: LayoutExampleID) throws -> Data {
++        _ = try catalogue()
++        guard let url = Bundle.module.url(forResource: id.rawValue, withExtension: "lua", subdirectory: directory),
++              let data = try? Data(contentsOf: url), !data.isEmpty, data.count <= 256 * 1024, String(data: data, encoding: .utf8) != nil else { throw ManifestError(.resource) }
++        return data
++    }
++}
+--- a/Sources/DevVMProvisioningCore/Resources/Provisioning/inventory.json
++++ b/Sources/DevVMProvisioningCore/Resources/Provisioning/inventory.json
+@@ -1,5 +1,10 @@
+ {
+   "group_vars/all.yml": "b9e7ebfe844765f1e33910ce33d59fc77c67ae28bea621c2c7a7f30bb6bec03e",
++  "omarchy/examples/layouts/catalogue.json": "e4dea68118b92c8a4a21e9df6381214f68bcfb067cb77bd0e682f5d0a48e3cc8",
++  "omarchy/examples/layouts/claude-two-terminals-browser.lua": "d8deb32ae7bc50424c1e7b52a0dc571e17fb3f49f5e153ec16304ece28cf398d",
++  "omarchy/examples/layouts/four-terminals.lua": "6289607b1be0fd8bd49c45449df0b69ba62e2ed2e0336c20be23f3b083ef96ad",
++  "omarchy/examples/layouts/terminal-browser.lua": "da18bb3a01c584ad35aaf7e96c423f1b7b1ba21189ca1725db8638bf457efac1",
++  "omarchy/examples/layouts/vscode-browser.lua": "67fd8bd91c2dc515142579dacbfe44aca2209a44761940511d81b7379f5812c3",
+   "omarchy/features/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
+   "omarchy/guest/apply-dotfiles.py": "d8af806b4d47c855d3464bf67bac41239285bf3bdfb193218c86f7fbd0b4b9d9",
+   "omarchy/guest/apply-features.py": "4b1da230dab0ea886e1e9bff41268ddd655ad16b817567e00c0993f7d7f1fd76",
+--- a/Sources/DevVMProvisioningCore/Resources/engine-identity.json
++++ b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
+@@ -20,6 +20,7 @@
+     "Sources/DevVMProvisioningCore/FrozenInputsArchive.swift": "66e4e9e9c60b879faf8bb1e973979c23daf5217329723b6b860737ae56a683c2",
+     "Sources/DevVMProvisioningCore/GuestTransport.swift": "9d69f781897fe8e0fbeef4cc1f285f596b7bf12b6cd2788335718e9257c89a55",
+     "Sources/DevVMProvisioningCore/JSONGrammar.swift": "6b3782b50a9014cf48e283b811e35b9aced5737dec81bea343f00cf88b406111",
++    "Sources/DevVMProvisioningCore/LayoutExamples.swift": "4b58d15eb759273af5c84c08c57da4afeeaa75524e390b8c3b89065c30ec47a9",
+     "Sources/DevVMProvisioningCore/LeanDeveloperPolicy.swift": "7e95594d6985d3fb18f18c276841a6a69d3561657abc2d568cd6dfde5270f878",
+     "Sources/DevVMProvisioningCore/LocalProvisioningProcessRunner.swift": "613add4a5978c1ea26c8fcae1d9e33f15d3ab43f541e68c8f49e48b1df4feac1",
+     "Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift": "666dfb614c00fc5ebe0a4f7e69089f1336ac6a95ad7639d4291a880c22e5c3cd",
+@@ -30,7 +31,12 @@
+     "Sources/DevVMProvisioningCore/ProvisioningTransportReference.swift": "5867342ff27614b2f5310983c26b8e64e5df817f5f7f4f219074329ab290c3ee",
+     "Sources/DevVMProvisioningCore/Resources/LibYAML-LICENSE.txt": "c40112449f254b9753045925248313e9270efa36d226b22d82d4cc6c43c57f29",
+     "Sources/DevVMProvisioningCore/Resources/Provisioning/group_vars/all.yml": "b9e7ebfe844765f1e33910ce33d59fc77c67ae28bea621c2c7a7f30bb6bec03e",
+-    "Sources/DevVMProvisioningCore/Resources/Provisioning/inventory.json": "70ed577dd06afb52761447a667b6064ddf6a299a73e9b09e77e68b76cfd008ab",
++    "Sources/DevVMProvisioningCore/Resources/Provisioning/inventory.json": "b5339883dd094acf4f19e522bec4382bddcd90f7500cda8dfdd4040a0042b41e",
++    "Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/catalogue.json": "e4dea68118b92c8a4a21e9df6381214f68bcfb067cb77bd0e682f5d0a48e3cc8",
++    "Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/claude-two-terminals-browser.lua": "d8deb32ae7bc50424c1e7b52a0dc571e17fb3f49f5e153ec16304ece28cf398d",
++    "Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/four-terminals.lua": "6289607b1be0fd8bd49c45449df0b69ba62e2ed2e0336c20be23f3b083ef96ad",
++    "Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/terminal-browser.lua": "da18bb3a01c584ad35aaf7e96c423f1b7b1ba21189ca1725db8638bf457efac1",
++    "Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/vscode-browser.lua": "67fd8bd91c2dc515142579dacbfe44aca2209a44761940511d81b7379f5812c3",
+     "Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/features/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
+     "Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/guest/apply-dotfiles.py": "d8af806b4d47c855d3464bf67bac41239285bf3bdfb193218c86f7fbd0b4b9d9",
+     "Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/guest/apply-features.py": "4b1da230dab0ea886e1e9bff41268ddd655ad16b817567e00c0993f7d7f1fd76",
+--- /dev/null
++++ b/tests/DevVMProvisioningCoreTests/LayoutExamplesTests.swift
+@@ -0,0 +1,27 @@
++import Foundation
++import Testing
++@testable import DevVMProvisioningCore
++
++@Test func bundledLayoutExamplesBindTheFourOriginalLuaFilesAndIllustrations() throws {
++    let examples = try LayoutExamples.catalogue()
++    #expect(examples.map(\.id) == [.fourTerminals, .terminalBrowser, .vscodeBrowser, .claudeWorkspace])
++    #expect(examples.map { $0.windows.count } == [4, 2, 2, 4])
++    for example in examples {
++        let bytes = try LayoutExamples.source(example.id)
++        #expect(digest(bytes) == example.sourceSHA256)
++        #expect(String(decoding: bytes, as: UTF8.self).contains("o.exec_on_start"))
++        #expect(example.file == example.id.rawValue + ".lua")
++        #expect(!example.applications.isEmpty)
++    }
++    #expect(examples[0].applications == ["Foot"])
++    #expect(examples[1].windows[0].width < examples[1].windows[1].width)
++    #expect(examples[2].windows[0].width > examples[2].windows[1].width)
++    let floating = try #require(examples[3].windows.last)
++    #expect(floating.kind == .browser && floating.floating == true)
++    #expect(floating.x < examples[3].windows[2].x && floating.x + floating.width > examples[3].windows[2].x)
++}
++@Test(arguments: ["../file", "four-terminals.lua", "unknown", "FOUR-TERMINALS", "https://example.com/layout.lua"])
++func layoutExampleIdentifiersCannotNameFilesOrURLs(_ value: String) throws {
++    #expect(LayoutExampleID(rawValue: value) == nil)
++    #expect(throws: Error.self) { _ = try JSONDecoder().decode(LayoutExampleID.self, from: JSONEncoder().encode(value)) }
++}
+--- /dev/null
++++ b/Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/catalogue.json
+@@ -0,0 +1,154 @@
++{
++  "schema_version": 1,
++  "examples": [
++    {
++      "id": "four-terminals",
++      "title": "Four terminals",
++      "summary": "Four equal windows in a 2 \u00d7 2 grid.",
++      "file": "four-terminals.lua",
++      "applications": [
++        "Foot"
++      ],
++      "windows": [
++        {
++          "label": "Terminal 1",
++          "kind": "terminal",
++          "x": 0.02,
++          "y": 0.04,
++          "width": 0.47,
++          "height": 0.44
++        },
++        {
++          "label": "Terminal 2",
++          "kind": "terminal",
++          "x": 0.51,
++          "y": 0.04,
++          "width": 0.47,
++          "height": 0.44
++        },
++        {
++          "label": "Terminal 3",
++          "kind": "terminal",
++          "x": 0.02,
++          "y": 0.52,
++          "width": 0.47,
++          "height": 0.44
++        },
++        {
++          "label": "Terminal 4",
++          "kind": "terminal",
++          "x": 0.51,
++          "y": 0.52,
++          "width": 0.47,
++          "height": 0.44
++        }
++      ],
++      "sha256": "6289607b1be0fd8bd49c45449df0b69ba62e2ed2e0336c20be23f3b083ef96ad"
++    },
++    {
++      "id": "terminal-browser",
++      "title": "Terminal + browser",
++      "summary": "Terminal on the left 40%, browser on the right 60%.",
++      "file": "terminal-browser.lua",
++      "applications": [
++        "Foot",
++        "Chromium"
++      ],
++      "windows": [
++        {
++          "label": "Terminal",
++          "kind": "terminal",
++          "x": 0.02,
++          "y": 0.04,
++          "width": 0.37,
++          "height": 0.92
++        },
++        {
++          "label": "Browser",
++          "kind": "browser",
++          "x": 0.41,
++          "y": 0.04,
++          "width": 0.57,
++          "height": 0.92
++        }
++      ],
++      "sha256": "da18bb3a01c584ad35aaf7e96c423f1b7b1ba21189ca1725db8638bf457efac1"
++    },
++    {
++      "id": "vscode-browser",
++      "title": "VS Code + browser",
++      "summary": "Editor on the left 60%, browser on the right 40%.",
++      "file": "vscode-browser.lua",
++      "applications": [
++        "VS Code",
++        "Chromium"
++      ],
++      "windows": [
++        {
++          "label": "VS Code",
++          "kind": "editor",
++          "x": 0.02,
++          "y": 0.04,
++          "width": 0.57,
++          "height": 0.92
++        },
++        {
++          "label": "Browser",
++          "kind": "browser",
++          "x": 0.61,
++          "y": 0.04,
++          "width": 0.37,
++          "height": 0.92
++        }
++      ],
++      "sha256": "67fd8bd91c2dc515142579dacbfe44aca2209a44761940511d81b7379f5812c3"
++    },
++    {
++      "id": "claude-two-terminals-browser",
++      "title": "Claude workspace",
++      "summary": "Two terminals left, Claude right, with a floating browser.",
++      "file": "claude-two-terminals-browser.lua",
++      "applications": [
++        "Claude Desktop",
++        "Foot",
++        "Chromium"
++      ],
++      "windows": [
++        {
++          "label": "Terminal 1",
++          "kind": "terminal",
++          "x": 0.02,
++          "y": 0.04,
++          "width": 0.37,
++          "height": 0.44
++        },
++        {
++          "label": "Terminal 2",
++          "kind": "terminal",
++          "x": 0.02,
++          "y": 0.52,
++          "width": 0.37,
++          "height": 0.44
++        },
++        {
++          "label": "Claude",
++          "kind": "claude",
++          "x": 0.41,
++          "y": 0.04,
++          "width": 0.57,
++          "height": 0.92
++        },
++        {
++          "label": "Browser",
++          "kind": "browser",
++          "x": 0.27,
++          "y": 0.18,
++          "width": 0.46,
++          "height": 0.62,
++          "floating": true
++        }
++      ],
++      "sha256": "d8deb32ae7bc50424c1e7b52a0dc571e17fb3f49f5e153ec16304ece28cf398d"
++    }
++  ]
++}
+--- /dev/null
++++ b/Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/four-terminals.lua
+@@ -0,0 +1,46 @@
++-- Example per-VM layout: four Foot terminals in an equal 2x2 grid on
++-- workspace 1. Pass this file with OMARCHY_VM_LAYOUT_FILE; it is not
++-- installed by default.
++
++local function workstation_window(class, move)
++  o.window({ class = class }, {
++    float = true,
++    workspace = "1 silent",
++    size = { "(monitor_w*0.50-18)", "(monitor_h*0.50-31)" },
++    move = move,
++    persistent_size = true,
++  })
++end
++
++-- Keep the usual outer gaps, panel clearance and 12-pixel inner gaps.
++-- Dedicated Foot app IDs give each terminal a stable corner.
++workstation_window("^org\\.omarchy\\.dev-vm-terminal-top-left$", { 12, 38 })
++workstation_window(
++  "^org\\.omarchy\\.dev-vm-terminal-top-right$",
++  { "(monitor_w*0.50+6)", 38 }
++)
++workstation_window(
++  "^org\\.omarchy\\.dev-vm-terminal-bottom-left$",
++  { 12, "(monitor_h*0.50+19)" }
++)
++workstation_window(
++  "^org\\.omarchy\\.dev-vm-terminal-bottom-right$",
++  { "(monitor_w*0.50+6)", "(monitor_h*0.50+19)" }
++)
++
++o.exec_on_start(o.launch_sole(
++  "org.omarchy.dev-vm-terminal-top-left",
++  "foot --app-id=org.omarchy.dev-vm-terminal-top-left --title='Top left terminal'"
++))
++o.exec_on_start(o.launch_sole(
++  "org.omarchy.dev-vm-terminal-top-right",
++  "foot --app-id=org.omarchy.dev-vm-terminal-top-right --title='Top right terminal'"
++))
++o.exec_on_start(o.launch_sole(
++  "org.omarchy.dev-vm-terminal-bottom-left",
++  "foot --app-id=org.omarchy.dev-vm-terminal-bottom-left --title='Bottom left terminal'"
++))
++o.exec_on_start(o.launch_sole(
++  "org.omarchy.dev-vm-terminal-bottom-right",
++  "foot --app-id=org.omarchy.dev-vm-terminal-bottom-right --title='Bottom right terminal'"
++))
+--- /dev/null
++++ b/Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/terminal-browser.lua
+@@ -0,0 +1,34 @@
++-- Example per-VM layout: a Foot terminal on the left (40%) and Chromium on
++-- the right (60%). Pass this file with OMARCHY_LAYOUT_FILE; it is not
++-- installed by default.
++
++local function workstation_window(class, size, move)
++  o.window({ class = class }, {
++    float = true,
++    workspace = "1 silent",
++    size = size,
++    move = move,
++    persistent_size = true,
++  })
++end
++
++-- Both windows occupy the full usable height, with the usual outer gaps.
++workstation_window(
++  "^org\\.omarchy\\.dev-vm-terminal$",
++  { "(monitor_w*0.40-18)", "(monitor_h-50)" },
++  { 12, 38 }
++)
++workstation_window(
++  "^omarchy-work-browser$",
++  { "(monitor_w*0.60-18)", "(monitor_h-50)" },
++  { "(monitor_w*0.40+6)", 38 }
++)
++
++o.exec_on_start(o.launch_sole(
++  "org.omarchy.dev-vm-terminal",
++  "foot --app-id=org.omarchy.dev-vm-terminal --title='Work terminal'"
++))
++o.exec_on_start(o.launch_sole(
++  "omarchy-work-browser",
++  "chromium --class=omarchy-work-browser --new-window"
++))
+--- /dev/null
++++ b/Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/vscode-browser.lua
+@@ -0,0 +1,34 @@
++-- Example per-VM layout: VS Code on the left (60%) and Chromium on the
++-- right (40%). Pass this file with OMARCHY_LAYOUT_FILE; it is not
++-- installed by default.
++
++-- VS Code uses its desktop app ID on native Wayland and Code/code on XWayland.
++local vscode_class = "^([Cc]ode|com[.]microsoft[.]VSCode)$"
++
++local function workstation_window(class, size, move)
++  o.window({ class = class }, {
++    float = true,
++    workspace = "1 silent",
++    size = size,
++    move = move,
++    persistent_size = true,
++  })
++end
++
++-- Both windows occupy the full usable height, with the usual outer gaps.
++workstation_window(
++  vscode_class,
++  { "(monitor_w*0.60-18)", "(monitor_h-50)" },
++  { 12, 38 }
++)
++workstation_window(
++  "^omarchy-work-browser$",
++  { "(monitor_w*0.40-18)", "(monitor_h-50)" },
++  { "(monitor_w*0.60+6)", 38 }
++)
++
++o.exec_on_start(o.launch_sole(vscode_class, "code --new-window"))
++o.exec_on_start(o.launch_sole(
++  "omarchy-work-browser",
++  "chromium --class=omarchy-work-browser --new-window"
++))
+--- /dev/null
++++ b/Sources/DevVMProvisioningCore/Resources/Provisioning/omarchy/examples/layouts/claude-two-terminals-browser.lua
+@@ -0,0 +1,85 @@
++-- Example per-VM layout: Claude on the right, two Foot terminals on the left,
++-- and a floating Chromium window. Pass this file with
++-- OMARCHY_LAYOUT_FILE; it is not installed by default.
++
++local function workstation_window(class, size, move)
++  o.window({ class = class }, {
++    float = true,
++    workspace = "1 silent",
++    size = size,
++    move = move,
++    persistent_size = true,
++  })
++end
++
++-- Claude occupies the full usable height of the right 60%.
++workstation_window(
++  "^com\\.anthropic\\.Claude$",
++  { "(monitor_w*0.60-18)", "(monitor_h-50)" },
++  { "(monitor_w*0.40+6)", 38 }
++)
++
++-- Dedicated Foot app IDs make the upper and lower left positions stable.
++workstation_window(
++  "^org\\.omarchy\\.dev-vm-terminal-top$",
++  { "(monitor_w*0.40-18)", "(monitor_h*0.50-31)" },
++  { 12, 38 }
++)
++workstation_window(
++  "^org\\.omarchy\\.dev-vm-terminal-bottom$",
++  { "(monitor_w*0.40-18)", "(monitor_h*0.50-31)" },
++  { 12, "(monitor_h*0.50+6)" }
++)
++
++-- Chromium overlaps the base layout and remembers manual resizing.
++workstation_window(
++  "^omarchy-work-browser$",
++  { "monitor_w*0.46", "monitor_h*0.62" },
++  { "monitor_w*0.27", "monitor_h*0.18" }
++)
++
++-- Reopen missing layout terminals with their dedicated IDs. Once both slots
++-- exist (or on another workspace), keep Omarchy's normal terminal launcher.
++local regular_terminal = o.launch_terminal()
++function o.launch_workstation_terminal()
++  local workspace = hl.get_active_workspace()
++  if not workspace or workspace.id ~= 1 then
++    return regular_terminal()
++  end
++
++  local occupied = {}
++  for _, window in ipairs(hl.get_windows()) do
++    if window.class then occupied[window.class] = true end
++  end
++  for _, slot in ipairs({
++    { "org.omarchy.dev-vm-terminal-top", "Top terminal" },
++    { "org.omarchy.dev-vm-terminal-bottom", "Bottom terminal" },
++  }) do
++    if not occupied[slot[1]] then
++      local active = hl.get_active_window()
++      local pid = active and tonumber(active.pid)
++      local directory = ' --working-directory="$(omarchy-cmd-terminal-cwd'
++        .. (pid and " " .. math.floor(pid) or "") .. ')"'
++      hl.exec_cmd(o.launch_sole(slot[1],
++        "foot --app-id=" .. slot[1] .. " --title=" .. o.shell_quote(slot[2]) .. directory))
++      return
++    end
++  end
++  regular_terminal()
++end
++o.bind_expressions[o.launch_workstation_terminal] = "o.launch_workstation_terminal"
++o.rebind("SUPER + RETURN", "Terminal", o.launch_workstation_terminal)
++
++o.exec_on_start(o.launch_sole(
++  "org.omarchy.dev-vm-terminal-top",
++  "foot --app-id=org.omarchy.dev-vm-terminal-top --title='Top terminal'"
++))
++o.exec_on_start(o.launch_sole(
++  "org.omarchy.dev-vm-terminal-bottom",
++  "foot --app-id=org.omarchy.dev-vm-terminal-bottom --title='Bottom terminal'"
++))
++o.exec_on_start(o.launch_sole("com.anthropic.Claude", "claude-desktop"))
++o.exec_on_start(o.launch_sole(
++  "omarchy-work-browser",
++  "chromium --class=omarchy-work-browser --new-window"
++))

@@ -58,7 +58,7 @@ public enum PrivateFiles {
 }
 
 public final class RegistryStore: @unchecked Sendable {
-    public static let supportedSchemaVersions = 1...6
+    public static let supportedSchemaVersions = 1...7
     public let directory: URL
     private let channel: AppChannel
     private let lockFD: Int32
@@ -177,7 +177,15 @@ public final class RegistryStore: @unchecked Sendable {
         } else if PrivateFiles.exists(file) { throw PrivateFiles.failure("A registry appeared during initialization. It was preserved.") }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let nextPending = pending.intersection(Set(profiles.map(\.id)))
-        let nextSchema = max(profiles.contains(where: { $0.homeDisk != nil }) ? 6 : schemaVersion, profiles.contains(where: { $0.sharedFolder != nil }) ? 5 : (profiles.contains(where: { $0.diskGiB != nil }) ? 4 : (profiles.contains(where: { $0.ownerSetup != nil }) ? 3 : (profiles.contains(where: { $0.ssh != nil }) ? 2 : 1))))
+        // next used schema 6 for home disks; protect Setup data from its
+        // older readers while retaining both historical schema-6 payloads.
+        let requiredSchema = profiles.contains(where: { $0.developerSetup != nil }) ? 7 :
+            profiles.contains(where: { $0.homeDisk != nil }) ? 6 :
+            profiles.contains(where: { $0.sharedFolder != nil }) ? 5 :
+            profiles.contains(where: { $0.diskGiB != nil }) ? 4 :
+            profiles.contains(where: { $0.ownerSetup != nil }) ? 3 :
+            profiles.contains(where: { $0.ssh != nil }) ? 2 : 1
+        let nextSchema = max(schemaVersion, requiredSchema)
         let data = try encoder.encode(Registry(schemaVersion: nextSchema, profiles: profiles, pendingDeletions: nextPending))
         guard data.count <= 1_048_576 else { throw PrivateFiles.failure("The registry is too large.") }
         try PrivateFiles.write(data, name: "registry.json", in: directory, exclusively: revision == nil)
@@ -187,6 +195,7 @@ public final class RegistryStore: @unchecked Sendable {
     static func validate(_ profiles: [VMProfile]) throws {
         guard profiles.count <= 1000, Set(profiles.map(\.id)).count == profiles.count,
               Set(profiles.map { $0.name.lowercased() }).count == profiles.count,
+              Set(profiles.compactMap { $0.developerSetup?.reviewID }).count == profiles.compactMap({ $0.developerSetup }).count,
               Set(profiles.compactMap { $0.ssh?.hostPort }).count == profiles.compactMap({ $0.ssh?.hostPort }).count else {
             throw PrivateFiles.failure("The registry contains duplicate profiles or too many entries.")
         }
@@ -197,10 +206,11 @@ public final class RegistryStore: @unchecked Sendable {
         if let poc = POCProfiles.all.first(where: { $0.id == profile.id }) {
             guard profile.name == poc.name, profile.memoryMiB == poc.memoryMiB, profile.cpus == poc.cpus,
                   profile.diskGiB == nil, profile.homeDisk == nil, profile.clipboardEnabled == poc.clipboardEnabled, profile.immersiveMode == nil,
-                  profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil, profile.factory == nil, profile.sharedFolder == nil else {
+                  profile.settingsFingerprint == nil, profile.ssh == nil, profile.ownerSetup == nil, profile.factory == nil, profile.sharedFolder == nil, profile.developerSetup == nil else {
                 throw PrivateFiles.failure("Retained POC metadata is protected. Restore its original profile; its disk was preserved.")
             }
         }
+        try profile.developerSetup?.validate(vmID: profile.id)
         try profile.sharedFolder?.validate()
         if profile.sharedFolder?.enabled == true, profile.ssh == nil { throw SharedFolderPolicy.failure("Native sharing requires managed SSH to verify the guest mount.") }
         try profile.factory?.validate()

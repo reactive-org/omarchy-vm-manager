@@ -1,0 +1,207 @@
+---
+- name: Apply selected Omarchy workstation features
+  hosts: omarchy
+  become: false
+  gather_facts: true
+
+  pre_tasks:
+    - name: Validate the Omarchy owner and architecture
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['system'] == 'Linux'
+          - ansible_facts['architecture'] == 'aarch64'
+          - ansible_facts['user_id'] != 'root'
+        fail_msg: Use the non-root owner of a managed Omarchy ARM64 guest.
+      tags: [always]
+
+    - name: Require native Omarchy and VM integration packages
+      ansible.builtin.command:
+        argv: [pacman, -Qq, try-omarchy]
+      changed_when: false
+      check_mode: false
+      tags: [always]
+
+    - name: Validate selected feature names
+      ansible.builtin.assert:
+        that:
+          - omarchy_features is sequence
+          - omarchy_features is not string
+          - omarchy_features | difference(omarchy_supported_features + (omarchy_extensions | map(attribute='name') | list)) | length == 0
+        fail_msg: Select documented built-in features or explicitly loaded extension IDs.
+      tags: [always]
+
+    - name: Resolve independently selected features and tags
+      ansible.builtin.set_fact:
+        omarchy_selected_features: "{{ omarchy_features | union(ansible_run_tags | intersect(omarchy_supported_features + (omarchy_extensions | map(attribute='name') | list))) }}"
+      tags: [always]
+
+  tasks:
+    - name: Apply features with a temporary owner-owned payload
+      block:
+        - name: Create temporary feature payload
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: dev-omarchy-features.
+          register: omarchy_payload
+          check_mode: false
+          changed_when: false
+          tags: [always]
+
+        - name: Stage the reviewed guest helpers
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/omarchy/guest/{{ item }}"
+            dest: "{{ omarchy_payload.path }}/{{ item }}"
+            mode: "0600"
+          loop:
+            - apply-features.py
+            - feature_contract.py
+            - apply-workstation.sh
+            - apply-theme.sh
+            - repair-try-omarchy-black-screen.sh
+          check_mode: false
+          changed_when: false
+          tags: [always]
+
+        - name: Stage the built-in feature contract
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/omarchy/features/catalogue.json"
+            dest: "{{ omarchy_payload.path }}/catalogue.json"
+            mode: "0600"
+          check_mode: false
+          changed_when: false
+          tags: [always]
+
+        - name: Preflight all resolved feature requirements before application
+          ansible.builtin.command:
+            argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--preflight-plan'] + (['--check'] if ansible_check_mode else []) }}"
+            stdin: "{{ omarchy_resolved_plan | to_json }}"
+          when: omarchy_resolved_plan | length > 0
+          check_mode: false
+          changed_when: false
+          tags: [always]
+
+        - name: Stage the explicitly selected workstation layout
+          ansible.builtin.copy:
+            src: "{{ omarchy_layout_file }}"
+            dest: "{{ omarchy_payload.path }}/selected-layout.lua"
+            mode: "0600"
+          when:
+            - "'workstation' in omarchy_selected_features"
+            - omarchy_layout_file | length > 0
+          check_mode: false
+          changed_when: false
+          tags: [always]
+
+        - name: Apply workstation feature
+          ansible.builtin.import_role:
+            name: omarchy_workstation
+          when: "'workstation' in omarchy_selected_features"
+          tags: [workstation]
+
+        - name: Apply browsers feature
+          ansible.builtin.import_role:
+            name: omarchy_browsers
+          when: "'browsers' in omarchy_selected_features"
+          tags: [browsers]
+
+        - name: Apply docker feature
+          ansible.builtin.import_role:
+            name: omarchy_docker
+          when: "'docker' in omarchy_selected_features"
+          tags: [docker]
+
+        - name: Apply languages feature
+          ansible.builtin.import_role:
+            name: omarchy_languages
+          when: "'languages' in omarchy_selected_features"
+          tags: [languages]
+
+        - name: Apply agents feature
+          ansible.builtin.import_role:
+            name: omarchy_agents
+          when: "'agents' in omarchy_selected_features"
+          tags: [agents]
+
+        - name: Apply toolchain feature
+          ansible.builtin.import_role:
+            name: omarchy_toolchain
+          when: "'toolchain' in omarchy_selected_features"
+          tags: [toolchain]
+
+        - name: Apply credentials feature
+          ansible.builtin.import_role:
+            name: omarchy_credentials
+          when: "'credentials' in omarchy_selected_features"
+          tags: [credentials]
+
+        - name: Apply keyring feature
+          ansible.builtin.import_role:
+            name: omarchy_keyring
+          when: "'keyring' in omarchy_selected_features"
+          tags: [keyring]
+
+        - name: Apply cli feature
+          ansible.builtin.import_role:
+            name: omarchy_cli
+          when: "'cli' in omarchy_selected_features"
+          tags: [cli]
+
+        - name: Apply vcs feature
+          ansible.builtin.import_role:
+            name: omarchy_vcs
+          when: "'vcs' in omarchy_selected_features"
+          tags: [vcs]
+
+        - name: Apply editors feature
+          ansible.builtin.import_role:
+            name: omarchy_editors
+          when: "'editors' in omarchy_selected_features"
+          tags: [editors]
+
+        - name: Apply build feature
+          ansible.builtin.import_role:
+            name: omarchy_build
+          when: "'build' in omarchy_selected_features"
+          tags: [build]
+
+        - name: Apply databases feature
+          ansible.builtin.import_role:
+            name: omarchy_databases
+          when: "'databases' in omarchy_selected_features"
+          tags: [databases]
+
+        - name: Apply api feature
+          ansible.builtin.import_role:
+            name: omarchy_api
+          when: "'api' in omarchy_selected_features"
+          tags: [api]
+
+        - name: Apply quality feature
+          ansible.builtin.import_role:
+            name: omarchy_quality
+          when: "'quality' in omarchy_selected_features"
+          tags: [quality]
+
+        - name: Apply explicitly loaded data-only extensions
+          ansible.builtin.include_tasks:
+            file: roles/omarchy_extension/tasks/main.yml
+            apply:
+              tags: "{{ omarchy_extension.name }}"
+          loop: "{{ omarchy_extensions }}"
+          loop_control:
+            loop_var: omarchy_extension
+            label: "{{ omarchy_extension.name }}"
+          when:
+            - omarchy_extension.name in omarchy_selected_features
+            - "'all' in ansible_run_tags or omarchy_extension.name in ansible_run_tags"
+          tags: [always]
+
+      always:
+        - name: Remove the temporary feature payload
+          ansible.builtin.file:
+            path: "{{ omarchy_payload.path }}"
+            state: absent
+          when: omarchy_payload.path is defined
+          check_mode: false
+          changed_when: false
+          tags: [always]

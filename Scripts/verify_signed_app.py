@@ -12,6 +12,7 @@ from release_metadata import channel_spec
 from kit_artifacts import ROOT
 from ticket_network import run_ticket_checked
 from keychain_profile import verify_keychain_profile
+import provisioning_package
 
 
 def run(*arguments):
@@ -36,7 +37,8 @@ def verify(app):
     assert verify_keychain_profile(app, team), "signed release is missing its Touch ID provisioning profile"
     kit = app / "Contents/Helpers/TryOmarchyKit.bundle"
     run("python3", ROOT / "Vendor/try-omarchy/scripts/kit_signature.py", "verify", "--team", team, "--require-notarization", kit)
-    for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", cli_name):
+    provisioning_package.verify(app / "Contents")
+    for name in ("OmarchyVMManager", "OmarchyVMStorageHelper", cli_name) + provisioning_package.EXECUTABLES:
         executable = app / "Contents/MacOS" / name
         details = run("codesign", "-dv", "--verbose=4", executable).stderr
         assert "Authority=Developer ID Application: " in details

@@ -1,4 +1,5 @@
 import Darwin
+@testable import DevVMProvisioningCore
 import Foundation
 import Testing
 @testable import OmarchyVMManagerCore
@@ -85,8 +86,19 @@ struct GuestHomeBackupTests {
         await manager.receiveSSH(.ready(user: "owner", command: "fixture"), vmID: p.id, sessionID: session)
         #expect(await eventually { await manager.snapshots()[0].canBackUpHome })
         await #expect(throws: VMFailure.self) { try await manager.beginHomeBackup(p.id, confirmed: false) }
+        let coordinator = UUID()
+        try await manager.installProvisioningCoordinator(coordinator, blocked: [p.id])
+        await #expect(throws: VMFailure.self) { try await manager.beginHomeBackup(p.id, confirmed: true) }
+        await manager.clearUnstartedProvisioningHold(vmID: p.id)
         try await manager.beginHomeBackup(p.id, confirmed: true)
         #expect(await eventually { await worker.started() })
+        let target = try GuestBinding(vmID: p.id, sessionID: session, owner: "owner", ownerUID: 1000, hostKeyDigest: String(repeating: "a", count: 64))
+        await #expect(throws: ProvisioningJobFailure.self) {
+            _ = try await manager.reserveProvisioning(owner: coordinator, jobID: UUID(), target: target, cancel: { _ in })
+        }
+        await #expect(throws: ProvisioningJobFailure.self) {
+            _ = try await manager.reserveProvisioningPreparation(owner: coordinator, jobID: UUID(), target: target, cancel: {})
+        }
         #expect(await manager.snapshots()[0].homeBackup.isBusy)
         #expect(await manager.activeSessionCount == 1)
         #expect(await manager.allocatedMemoryMiB == 4096)

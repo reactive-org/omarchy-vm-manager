@@ -46,6 +46,16 @@ struct OmarchyVMManagerApp: App {
     private let instanceLock: ManagerInstanceLock
 
     init() {
+        #if DEBUG
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--accept-setup-screens" {
+            do { try SetupScreenAcceptance.run(output: URL(fileURLWithPath: CommandLine.arguments[2])); exit(0) }
+            catch { FileHandle.standardError.write(Data("Setup screen acceptance failed.\n".utf8)); exit(1) }
+        }
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--render-setup-component-fixture" {
+            do { try SetupComponentPreview.render(to: URL(fileURLWithPath: CommandLine.arguments[2])); exit(0) }
+            catch { FileHandle.standardError.write(Data("Offscreen setup fixture could not be rendered.\n".utf8)); exit(1) }
+        }
+        #endif
         do {
             try AppChannel.current.validateBundle(identifier: Bundle.main.bundleIdentifier, layoutPreview: AppModel.layoutPreview)
         } catch {
@@ -55,6 +65,7 @@ struct OmarchyVMManagerApp: App {
         if bundleOnly || CommandLine.arguments.contains("--diagnostics-json") {
             do {
                 let value = try AppModel.inspect(preflight: { bundleOnly ? nil : VMRunClient.preflight() })
+                let provisioning = try BundledProvisioning.inspect(ProvisioningPackageLayout(contents: Bundle.main.bundleURL.appendingPathComponent("Contents")))
                 let json: [String: Any] = [
                     "appChannel": AppChannel.current.rawValue,
                     "bundleIdentifier": AppChannel.current.bundleIdentifier,
@@ -66,6 +77,9 @@ struct OmarchyVMManagerApp: App {
                     "touchIDProtectedStorageAvailable": KeychainOwnerSecretStore.supportsProtectedStorage,
                     "developmentKeychainCompatibility": KeychainOwnerSecretStore.usesDevelopmentKeychain,
                     "hostPreflightPerformed": !bundleOnly,
+                    "provisioningSourceRevision": provisioning.sourceRevision,
+                    "provisioningSourceSnapshotSHA256": provisioning.sourceSnapshotSHA256,
+                    "provisioningExecutionEnabled": provisioning.executionEnabled,
                     "preflight": bundleOnly ? "not performed (bundle verification only)" : (value.preflightFailure ?? "passed"),
                     "vmLaunchEnabled": !bundleOnly && !AppModel.layoutPreview, "launchScope": AppModel.layoutPreview ? "synthetic-layout-preview" : "registered-manager-owned-private-build"
                 ]

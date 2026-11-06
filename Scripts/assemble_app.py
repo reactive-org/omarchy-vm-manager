@@ -12,6 +12,7 @@ import subprocess
 from kit_artifacts import ROOT, digest
 from build_patched_kit import inventory
 from keychain_profile import stage_keychain_profile, verify_keychain_profile
+import provisioning_package
 from release_metadata import release_info
 
 
@@ -54,7 +55,7 @@ def assemble():
         assert args.preserve_runtime_signatures and lock["signingTeamID"] == os.environ["APPLE_TEAM_ID"]
         assert identity.startswith("Developer ID Application:") and identity.endswith("(" + lock["signingTeamID"] + ")")
     build_arguments = ["--scratch-path", str(ROOT / ".build/dev"), "-Xswiftc", "-DDEVELOPMENT_CHANNEL"] if development else []
-    binaries = Path(subprocess.check_output(["swift", "build", "--disable-sandbox", "-c", configuration, *build_arguments, "--show-bin-path"], cwd=ROOT, text=True).strip())
+    binaries = Path(subprocess.check_output(["swift", "build", *provisioning_package.swift_flags(), "-c", configuration, *build_arguments, "--show-bin-path"], cwd=ROOT, text=True).strip())
     channel = "development" if development else "stable"
     name = "Omarchy VM Manager Layout Preview" if args.layout_preview else ("Omarchy VM Manager Dev" if development else "Omarchy VM Manager")
     cli_name = "omarchy-vm-dev" if development else "omarchy-vm"
@@ -71,6 +72,10 @@ def assemble():
         assert resources.is_dir() and not resources.is_symlink(), "missing core resource bundle"
         assert all(not entry.is_symlink() for entry in resources.rglob("*")), "linked core resource entry"
         shutil.copytree(resources, stage / "Contents/Resources" / resources.name)
+        launcher_binaries = Path(subprocess.check_output(["swift", "build", *provisioning_package.swift_flags(),
+            "--package-path", str(ROOT / ".build/provisioning-launcher-source"), "--scratch-path", str(ROOT / ".build/provisioning-launcher"),
+            "-c", configuration, "--show-bin-path"], cwd=ROOT, text=True).strip())
+        provisioning_package.stage(binaries, launcher_binaries, stage / "Contents")
         if args.layout_preview:
             info["CFBundleIdentifier"] = "dev.omarchy.vm-manager.layout-preview"
             info["CFBundleName"] = info["CFBundleDisplayName"] = "Omarchy VM Manager Layout Preview"
@@ -112,13 +117,18 @@ def assemble():
             signing += ["--options", "runtime", "--timestamp"]
         run(*signing, "--identifier", info["CFBundleIdentifier"] + ".storage", stage / "Contents/MacOS/OmarchyVMStorageHelper")
         run(*signing, "--identifier", info["CFBundleIdentifier"] + ".cli", stage / "Contents/MacOS" / cli_name)
+        for name in provisioning_package.EXECUTABLES:
+            run(*signing, "--identifier", info["CFBundleIdentifier"] + "." + name, stage / "Contents/MacOS" / name)
+        provisioning_package.seal(stage / "Contents")
         run(*signing, "--identifier", info["CFBundleIdentifier"],
             "--entitlements", entitlements_path, stage)
         run("codesign", "--verify", "--deep", "--strict", stage)
         verify_keychain_profile(stage, lock.get("signingTeamID", ""))
-        for executable, argument in (("OmarchyVMManager", "--verify-bundle-json"), (cli_name, "--version"), ("OmarchyVMStorageHelper", "--channel-json")):
+        for executable, argument in (("OmarchyVMManager", "--verify-bundle-json"), (cli_name, "--version"), ("OmarchyVMStorageHelper", "--channel-json"), ("OmarchyVMProvisioningHelper", "--channel-json")):
             diagnostic = json.loads(subprocess.check_output([str(stage / "Contents/MacOS" / executable), argument], text=True))
             assert diagnostic["appChannel"] == channel, "mixed app-channel executables refused"
+        run(stage / "Contents/MacOS/OmarchyVMProvisioningHelper", "--verify-package-json")
+        provisioning_package.verify(stage / "Contents")
         if app.exists():
             assert app.is_dir() and not app.is_symlink()
             shutil.rmtree(app)

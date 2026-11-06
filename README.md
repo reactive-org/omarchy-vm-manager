@@ -22,7 +22,7 @@ Use **Omarchy VM Manager → Check for Updates…** to check published releases 
 
 For side-by-side development while your existing work VMs keep running, use `make app-dev verify-dev`, then `make run-dev`. Dev has its own app identity, VMs, defaults, credentials, caches and CLI (`bin/omarchy-vm-dev`). Your existing app and data stay stable. See [Stable and Dev](docs/DevelopmentChannels.md) for paths, build commands and validation limits.
 
-Use Swift 6 and Python 3.10+ on Apple Silicon. Run `make prepare-source` before opening `Package.swift` in Xcode so the client SDK resolves to the reviewed runtime source:
+Use Swift 6.2+ (the pinned native terminal requires Swift tools 6.2) and Python 3.10+ on Apple Silicon. Run `make prepare-source` before opening `Package.swift` in Xcode so the client SDK resolves to the reviewed runtime source:
 
 ```sh
 git submodule update --init
@@ -153,6 +153,24 @@ it blocks removal, even while stopped. Removal moves the imported bundle and
 receipt to recoverable Trash. The official factory is protected.
 
 The CLI opens the manager in the background when needed and shares its existing lifecycle owner. Replies are concise JSON, including state/config and an authenticated SSH endpoint plus guest IPs when ready. NAT guests can share a private IP; use the returned localhost SSH port and generated `ssh.command`. Configuration updates refuse running guests and apply next start; delete uses guarded recoverable Trash. Saved Guest Defaults apply to new guests unless disabled. See [the full CLI contract and validation](docs/CLI.md).
+
+## Developer setup in Dev
+
+Build with Swift 6.2+ and macOS 15+; the bundled terminal requires that toolchain.
+CI selects a compatible preinstalled Xcode without installing host tools.
+
+The Dev app can configure verified manager-owned Dev guests from bundled profiles
+or a local setup folder. New VM saves the selected setup with the profile; the
+Setup tab provides preview, explicit permissions, progress and the actual live
+terminal. Click inside the terminal to type; Follow output starts on. Existing
+Homebrew Ansible is required for apply, with missing tools shown under
+Provisioning tools. The app does not install host dependencies.
+
+Provisioning requires the signed app/helper's same-team admission as well as the
+reviewed plan and an authenticated guest session. Ad-hoc builds support offline
+preview and validation but do not satisfy operational-helper signing admission.
+Stable retains preview support with execution disabled. See [the CLI contract](docs/CLI.md)
+and [current implementation/acceptance status](docs/DevVMProvisioningPlan.md).
 
 ## Pause and resume
 

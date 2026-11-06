@@ -1,0 +1,812 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "catalogues": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*(?:\\.[a-z][a-z0-9_-]*)?$"
+      },
+      "uniqueItems": true
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*(?:\\.[a-z][a-z0-9_-]*)?$"
+          },
+          "uniqueItems": true
+        },
+        "disable": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*(?:\\.[a-z][a-z0-9_-]*)?$"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "workstation": {
+          "type": "object",
+          "properties": {
+            "shell": {
+              "enum": [
+                "zsh",
+                "bash",
+                "keep"
+              ]
+            },
+            "oh_my_zsh": {
+              "type": "boolean"
+            },
+            "starship": {
+              "type": "boolean"
+            },
+            "oh_my_zsh_plugins": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+              }
+            },
+            "oh_my_zsh_update_mode": {
+              "enum": [
+                "",
+                "prompt",
+                "auto",
+                "reminder",
+                "disabled"
+              ]
+            },
+            "starship_config": {
+              "type": "string",
+              "maxLength": 65536
+            },
+            "font_size": {
+              "type": "string",
+              "pattern": "^(?:[6-9]|[12][0-9]|3[0-2])(?:\\.[0-9]+)?$"
+            },
+            "idle_mode": {
+              "enum": [
+                "host",
+                "guest",
+                "keep"
+              ]
+            },
+            "theme": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "remove_layout": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.workstation": {
+          "type": "object",
+          "properties": {
+            "shell": {
+              "enum": [
+                "zsh",
+                "bash",
+                "keep"
+              ]
+            },
+            "oh_my_zsh": {
+              "type": "boolean"
+            },
+            "starship": {
+              "type": "boolean"
+            },
+            "oh_my_zsh_plugins": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+              }
+            },
+            "oh_my_zsh_update_mode": {
+              "enum": [
+                "",
+                "prompt",
+                "auto",
+                "reminder",
+                "disabled"
+              ]
+            },
+            "starship_config": {
+              "type": "string",
+              "maxLength": 65536
+            },
+            "font_size": {
+              "type": "string",
+              "pattern": "^(?:[6-9]|[12][0-9]|3[0-2])(?:\\.[0-9]+)?$"
+            },
+            "idle_mode": {
+              "enum": [
+                "host",
+                "guest",
+                "keep"
+              ]
+            },
+            "theme": {
+              "type": "string"
+            },
+            "layout": {
+              "type": "string"
+            },
+            "remove_layout": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "browsers": {
+          "type": "object",
+          "properties": {
+            "browsers": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "chromium",
+                  "firefox"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.browsers": {
+          "type": "object",
+          "properties": {
+            "browsers": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "chromium",
+                  "firefox"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "docker": {
+          "type": "object",
+          "properties": {
+            "access": {
+              "enum": [
+                "native",
+                "sudoless"
+              ]
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.docker": {
+          "type": "object",
+          "properties": {
+            "access": {
+              "enum": [
+                "native",
+                "sudoless"
+              ]
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "languages": {
+          "type": "object",
+          "properties": {
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.languages": {
+          "type": "object",
+          "properties": {
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "toolchain": {
+          "type": "object",
+          "properties": {
+            "prerequisites": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "ruby",
+                  "python"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.toolchain": {
+          "type": "object",
+          "properties": {
+            "prerequisites": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "ruby",
+                  "python"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "agents": {
+          "type": "object",
+          "properties": {
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "claude",
+                  "codex",
+                  "opencode",
+                  "pi",
+                  "copilot",
+                  "amp",
+                  "crush"
+                ]
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.agents": {
+          "type": "object",
+          "properties": {
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "claude",
+                  "codex",
+                  "opencode",
+                  "pi",
+                  "copilot",
+                  "amp",
+                  "crush"
+                ]
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "credentials": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "1password",
+                  "1password-cli",
+                  "github-cli"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.credentials": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "1password",
+                  "1password-cli",
+                  "github-cli"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "keyring": {
+          "type": "object",
+          "properties": {
+            "seahorse": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.keyring": {
+          "type": "object",
+          "properties": {
+            "seahorse": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "cli": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.cli": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "vcs": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.vcs": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "editors": {
+          "type": "object",
+          "properties": {
+            "editors": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "neovim",
+                  "vscode"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.editors": {
+          "type": "object",
+          "properties": {
+            "editors": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "neovim",
+                  "vscode"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "build": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.build": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "databases": {
+          "type": "object",
+          "properties": {
+            "clients": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "sqlite",
+                  "postgresql",
+                  "mysql"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.databases": {
+          "type": "object",
+          "properties": {
+            "clients": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "sqlite",
+                  "postgresql",
+                  "mysql"
+                ]
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "api": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.api": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "quality": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "builtin.quality": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": {
+        "^(?!builtin\\.)[a-z][a-z0-9_-]*\\.[a-z][a-z0-9_-]*$": {
+          "type": "object",
+          "properties": {
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9@._+\\-]*$"
+              },
+              "uniqueItems": true
+            },
+            "tools": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?:|[A-Za-z0-9][A-Za-z0-9._+\\-]*)$"
+              }
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version"
+  ],
+  "additionalProperties": false
+}

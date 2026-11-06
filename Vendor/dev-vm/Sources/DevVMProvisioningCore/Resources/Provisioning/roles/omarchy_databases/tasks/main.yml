@@ -1,0 +1,12 @@
+---
+- name: Ensure selected databases configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'databases'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ omarchy_databases | to_json }}"
+  register: omarchy_databases_result
+  changed_when: (omarchy_databases_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report databases actions
+  ansible.builtin.debug:
+    var: omarchy_databases_result.stdout

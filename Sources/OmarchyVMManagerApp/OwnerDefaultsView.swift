@@ -4,7 +4,6 @@ import SwiftUI
 
 struct OwnerDefaultsView: View {
     @ObservedObject var model: AppModel
-    @State private var enabled = false
     @State private var configuration = OwnerConfiguration()
     @State private var password = ""
     @State private var confirmation = ""
@@ -26,7 +25,7 @@ struct OwnerDefaultsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Guest Defaults").font(.largeTitle.bold())
-            Text("Configure owner setup once for new virtual machines. Each new guest keeps its own snapshot; changing defaults leaves existing guests unchanged.").foregroundStyle(.secondary)
+            Text("Save your account details once and they apply automatically to new virtual machines. You can choose manual account setup for an individual VM. Existing guests keep their saved settings.").foregroundStyle(.secondary)
             if let failure = model.defaultsError { Text(failure).foregroundStyle(.red) }
             Form {
                 Section("New guest disks") {
@@ -39,10 +38,6 @@ struct OwnerDefaultsView: View {
                         Task { disksSaved = await model.saveDiskDefaults(disks); if !disksSaved { error = model.defaultsError }; saving = false }
                     }
                     .onChange(of: disks) { disksSaved = false }
-                }
-                Section {
-                    Toggle("Set up new guests automatically", isOn: $enabled)
-                    Text("You can choose manual setup when creating a guest.").font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Owner") {
                     TextField("Username", text: $configuration.username)
@@ -103,14 +98,14 @@ struct OwnerDefaultsView: View {
             }.formStyle(.grouped).fixedSize(horizontal: false, vertical: true).disabled(saving)
             if let error { Text(error).foregroundStyle(.red) }
             HStack {
-                if saved, configuration == model.ownerDefaults?.configuration, enabled == model.ownerDefaults?.enabled, publicKey == model.ownerDefaults?.sshPublicKey, password.isEmpty, confirmation.isEmpty { Label("Defaults saved", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
+                if saved, configuration == model.ownerDefaults?.configuration, publicKey == model.ownerDefaults?.sshPublicKey, password.isEmpty, confirmation.isEmpty { Label("Defaults saved", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
                 Spacer()
                 Button(saving ? "Saving…" : "Save Defaults") {
                     error = nil; saved = false
                     guard password == confirmation else { error = "The passwords do not match."; return }
                     saving = true
                     Task {
-                        if await model.saveDefaults(enabled: enabled, configuration: configuration, password: password.isEmpty ? nil : Data(password.utf8), publicKey: publicKey) {
+                        if await model.saveDefaults(configuration: configuration, password: password.isEmpty ? nil : Data(password.utf8), publicKey: publicKey) {
                             password = ""; confirmation = ""; saved = true
                         } else { error = model.defaultsError }
                         saving = false
@@ -120,7 +115,7 @@ struct OwnerDefaultsView: View {
             Text("Automatic setup supports the reviewed prepared factory image. Disk partitioning, encryption and Tailscale settings from the ISO guide are outside this flow. If the image’s setup scripts change, the guest returns to normal setup and the manager reports why.").font(.callout).foregroundStyle(.secondary)
             Link("Omarchy’s unattended-install guide", destination: URL(string: "https://omarchy.org/manual/unattended-installs/")!)
         }
-        .task { await model.loadDefaults(); disks = model.diskDefaults; if let value = model.ownerDefaults { enabled = value.enabled; configuration = value.configuration; publicKey = value.sshPublicKey } }
+        .task { await model.loadDefaults(); disks = model.diskDefaults; if let value = model.ownerDefaults { configuration = value.configuration; publicKey = value.sshPublicKey } }
         .onDisappear { password = ""; confirmation = "" }
     }
 }

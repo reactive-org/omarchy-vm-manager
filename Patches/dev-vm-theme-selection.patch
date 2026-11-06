@@ -1,0 +1,230 @@
+--- a/Sources/DevVMProvisioningCore/Resources/engine-identity.json
++++ b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
+@@ -71,6 +71,7 @@
+     "Sources/DevVMProvisioningCore/SetupManifest.swift": "52f0af5aa6a65cc5a61ea72cd37491e52ffaafad3e687d27ffd820d2371420a2",
+     "Sources/DevVMProvisioningCore/SetupPlanner.swift": "acd8f8f5b0fe461b6ab29af0f96eb8637fef00f756b7649cd89ad01704c24a96",
+     "Sources/DevVMProvisioningCore/SourceSnapshot.swift": "95ba352a7fe6b33664ff177b2326dbf774bfd05b7f93ab5dc1b837d11314fd5e",
++    "Sources/DevVMProvisioningCore/ThemeSelection.swift": "e8ac8e76327c4c80cd574972086272a6fefdc5791d95c1d127a914e68b21b1cb",
+     "Sources/DevVMProvisioningCore/TransportWorkspace.swift": "9b4f0f736beb3708506435236cbaf4ea9105fd78d50ed4ac6c3326136101acf8",
+     "Sources/dev-vm-process-host/main.c": "f9f5f3afb88d54d466dd10d183bf3323a17712c29932ad38d5289e8a67ac02aa",
+     "Sources/dev-vm/main.swift": "550c97f885f3326477fea78cca65c93d7ee25ad9d7c9ad55a2cd3692f2cda681",
+--- /dev/null
++++ b/Sources/DevVMProvisioningCore/ThemeSelection.swift
+@@ -0,0 +1,92 @@
++import Foundation
++
++public enum ThemeSelectionFailure: String, Error, Sendable {
++    case invalidSelector, inaccessible, catalogue, starsUnavailable, noEligibleThemes, responseTooLarge
++}
++public struct ThemeHTTPResponse: Sendable {
++    public let status: Int
++    public let url: URL
++    public let data: Data
++    public init(status: Int, url: URL, data: Data = Data()) { self.status = status; self.url = url; self.data = data }
++}
++public protocol ThemeHTTPFetching: Sendable {
++    /// A GET, never a clone. Body capture is needed only for the public catalogue.
++    func get(_ url: URL, body: Bool) async throws -> ThemeHTTPResponse
++}
++public protocol ThemeStarProviding: Sendable {
++    /// Missing/deleted repositories may be omitted; other incomplete results fail.
++    func counts(for repositories: [String]) async throws -> [String: Int]
++}
++public enum ThemeSelection {
++    public static let catalogueURL = URL(string: "https://raw.githubusercontent.com/omacom/omarchy-site/master/themes/index.html")!
++    public static let markers = ["random", "most-starred"]
++    public static func repository(_ input: String) throws -> String {
++        guard input.utf8.count <= 2048, matches(input, "https://github\\.com/([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9_][A-Za-z0-9._+\\-]*)/?") else { throw ThemeSelectionFailure.invalidSelector }
++        let parts = input.trimmingCharacters(in: CharacterSet(charactersIn: "/")).split(separator: "/")
++        var name = String(parts.last!)
++        if name.hasSuffix(".git") { name = String(name.dropLast(4)) }
++        guard !name.hasSuffix(".git") else { throw ThemeSelectionFailure.invalidSelector }
++        var theme = name
++        if theme.hasPrefix("omarchy-") { theme = String(theme.dropFirst(8)) }
++        if theme.hasSuffix("-theme") { theme = String(theme.dropLast(6)) }
++        guard matches(theme.lowercased(), "[a-z0-9_][a-z0-9._+\\-]*") else { throw ThemeSelectionFailure.invalidSelector }
++        return "https://github.com/" + parts[parts.count - 2] + "/" + name
++    }
++    public static func validate(_ input: String) throws {
++        guard !markers.contains(input) else { return }; _ = try repository(input)
++    }
++    /// Extract only repository links inside the upstream catalogue's theme figures.
++    public static func catalogue(_ bytes: Data) throws -> [String] {
++        guard bytes.count <= 2 * 1024 * 1024, let html = String(data: bytes, encoding: .utf8) else { throw ThemeSelectionFailure.catalogue }
++        let tags = try NSRegularExpression(pattern: "<[^>]+>", options: [.caseInsensitive])
++        let attributes = try NSRegularExpression(pattern: "(?:^|\\s)([A-Za-z][A-Za-z0-9:_-]*)\\s*=\\s*[\"']([^\"']*)[\"']")
++        var inside = false, urls: [String: String] = [:]
++        for match in tags.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
++            let tag = (html as NSString).substring(with: match.range), lower = tag.lowercased()
++            if lower.hasPrefix("</figure") { inside = false; continue }
++            var fields: [String: String] = [:]
++            for item in attributes.matches(in: tag, range: NSRange(tag.startIndex..., in: tag)) {
++                fields[(tag as NSString).substring(with: item.range(at: 1)).lowercased()] = (tag as NSString).substring(with: item.range(at: 2))
++            }
++            if lower.hasPrefix("<figure ") || lower.hasPrefix("<figure>") { inside = fields["class"]?.split(whereSeparator: { $0.isWhitespace }).contains("themes__theme") == true }
++            if inside, lower.hasPrefix("<a "), let href = fields["href"], let url = try? repository(href) { urls[url.lowercased()] = urls[url.lowercased()] ?? url }
++        }
++        guard !urls.isEmpty, urls.count <= 1024 else { throw ThemeSelectionFailure.catalogue }
++        return urls.values.sorted { $0.lowercased() < $1.lowercased() }
++    }
++}
++public struct ThemeResolver: Sendable {
++    let http: any ThemeHTTPFetching
++    let stars: any ThemeStarProviding
++    let choose: @Sendable (Int) -> Int
++    public init(http: any ThemeHTTPFetching, stars: any ThemeStarProviding, choose: @escaping @Sendable (Int) -> Int = { Int.random(in: 0..<$0) }) {
++        self.http = http; self.stars = stars; self.choose = choose
++    }
++    /// Resolve once before offline planning; the returned URL is frozen in the plan.
++    public func resolve(_ selector: String, minimumStars: Int = 10) async throws -> String {
++        try Task.checkCancellation(); try ThemeSelection.validate(selector)
++        guard minimumStars >= 0 else { throw ThemeSelectionFailure.invalidSelector }
++        let selected: String
++        if ThemeSelection.markers.contains(selector) {
++            let response = try await http.get(ThemeSelection.catalogueURL, body: true)
++            guard response.status == 200, response.url == ThemeSelection.catalogueURL else { throw ThemeSelectionFailure.catalogue }
++            let urls = try ThemeSelection.catalogue(response.data)
++            let eligible: [String]
++            if selector == "most-starred" || minimumStars > 0 {
++                let counts = try await stars.counts(for: urls)
++                guard Set(counts.keys).isSubset(of: Set(urls)), counts.values.allSatisfy({ $0 >= 0 }) else { throw ThemeSelectionFailure.starsUnavailable }
++                if selector == "most-starred" {
++                    eligible = counts.keys.sorted { counts[$0]! == counts[$1]! ? $0.lowercased() < $1.lowercased() : counts[$0]! > counts[$1]! }.prefix(1).map { $0 }
++                } else { eligible = urls.filter { counts[$0].map { $0 >= minimumStars } == true } }
++            } else { eligible = urls }
++            guard !eligible.isEmpty else { throw ThemeSelectionFailure.noEligibleThemes }
++            let index = selector == "most-starred" ? 0 : choose(eligible.count)
++            guard eligible.indices.contains(index) else { throw ThemeSelectionFailure.noEligibleThemes }
++            selected = eligible[index]
++        } else { selected = try ThemeSelection.repository(selector) }
++        try Task.checkCancellation()
++        let response = try await http.get(URL(string: selected)!, body: false)
++        guard (200..<300).contains(response.status), let canonical = try? ThemeSelection.repository(response.url.absoluteString) else { throw ThemeSelectionFailure.inaccessible }
++        try Task.checkCancellation(); return canonical
++    }
++}
+--- /dev/null
++++ b/tests/DevVMProvisioningCoreTests/ThemeSelectionTests.swift
+@@ -0,0 +1,77 @@
++import Foundation
++import Testing
++@testable import DevVMProvisioningCore
++
++private let firstTheme = "https://github.com/example/omarchy-alpha-theme"
++private let secondTheme = "https://github.com/example/omarchy-beta-theme"
++private let themeCatalogue = Data("""
++<a href="https://github.com/example/not-a-theme">ignore</a>
++<figure class="themes__theme other"><a href="https://github.com/example/omarchy-beta-theme.git/">Beta</a></figure>
++<figure class='themes__theme'><a href='https://github.com/example/omarchy-alpha-theme'>Alpha</a></figure>
++<figure class="other"><a href="https://github.com/example/ignored">ignore</a></figure>
++""".utf8)
++private actor ThemeHTTPFixture: ThemeHTTPFetching {
++    var calls: [(URL, Bool)] = []
++    let status: Int
++    let final: URL?
++    let catalogue: Data
++    init(status: Int = 200, final: URL? = nil, catalogue: Data = themeCatalogue) { self.status = status; self.final = final; self.catalogue = catalogue }
++    func get(_ url: URL, body: Bool) async throws -> ThemeHTTPResponse {
++        calls.append((url, body))
++        return .init(status: status, url: final ?? url, data: body ? catalogue : Data())
++    }
++}
++private actor ThemeStarsFixture: ThemeStarProviding {
++    var calls = 0
++    let values: [String: Int]
++    init(_ values: [String: Int] = [:]) { self.values = values }
++    func counts(for repositories: [String]) -> [String: Int] { calls += 1; return values }
++}
++@Test(arguments: ["http://github.com/example/theme", "https://example.com/a/b", "https://github.com/example/theme/tree/main", "https://github.com/example/theme?token=secret", "https://user@github.com/example/theme", "https://github.com/example/theme.git.git", "https://github.com/example/omarchy--theme", "random;true", "RANDOM", "https://github.com:443/example/theme"])
++func unsafeThemeSelectorsAreRefusedBeforeAnyGET(_ value: String) async throws {
++    let http = ThemeHTTPFixture(), stars = ThemeStarsFixture()
++    await #expect(throws: ThemeSelectionFailure.invalidSelector) { _ = try await ThemeResolver(http: http, stars: stars).resolve(value) }
++    #expect(await http.calls.isEmpty)
++    #expect(await stars.calls == 0)
++}
++@Test func directThemeURLNormalizesAndRequiresSuccessfulRepositoryGETOnly() async throws {
++    let http = ThemeHTTPFixture(), stars = ThemeStarsFixture()
++    let value = try await ThemeResolver(http: http, stars: stars).resolve(firstTheme + ".git/")
++    #expect(value == firstTheme)
++    let calls = await http.calls
++    #expect(calls.count == 1 && calls[0].0.absoluteString == firstTheme && !calls[0].1)
++    #expect(await stars.calls == 0)
++}
++@Test func catalogueMarkersResolveOnceWithLegacyStarThresholdAndStableTies() async throws {
++    let http = ThemeHTTPFixture(), stars = ThemeStarsFixture([firstTheme: 10, secondTheme: 9])
++    let random = try await ThemeResolver(http: http, stars: stars, choose: { _ in 0 }).resolve("random")
++    #expect(random == firstTheme)
++    let tied = ThemeStarsFixture([firstTheme: 20, secondTheme: 20])
++    #expect(try await ThemeResolver(http: http, stars: tied).resolve("most-starred") == firstTheme)
++    let unfiltered = ThemeStarsFixture()
++    #expect(try await ThemeResolver(http: http, stars: unfiltered, choose: { _ in 1 }).resolve("random", minimumStars: 0) == secondTheme)
++    #expect(await unfiltered.calls == 0)
++    let calls = await http.calls
++    #expect(calls.count == 6 && calls.filter(\.1).count == 3)
++}
++@Test(arguments: [301, 401, 403, 404, 429, 500])
++func inaccessibleRepositoryNeverPassesThemeValidation(_ status: Int) async throws {
++    await #expect(throws: ThemeSelectionFailure.inaccessible) { _ = try await ThemeResolver(http: ThemeHTTPFixture(status: status), stars: ThemeStarsFixture()).resolve(firstTheme) }
++}
++@Test func themeRedirectsCannotTurnIntoLoginOrArbitraryDestinations() async throws {
++    for target in ["https://github.com/login", "https://example.com/a/b", "http://github.com/example/theme", "https://github.com/example/theme?auth=x"] {
++        await #expect(throws: ThemeSelectionFailure.inaccessible) { _ = try await ThemeResolver(http: ThemeHTTPFixture(final: URL(string: target)!), stars: ThemeStarsFixture()).resolve(firstTheme) }
++    }
++    let renamed = "https://github.com/example/omarchy-renamed-theme"
++    #expect(try await ThemeResolver(http: ThemeHTTPFixture(final: URL(string: renamed)!), stars: ThemeStarsFixture()).resolve(firstTheme) == renamed)
++}
++@Test func malformedEmptyAndOversizedCataloguesAndUnusableRankingsAreRefused() async throws {
++    for data in [Data(), Data([255]), Data("<a href='https://github.com/example/theme'>outside</a>".utf8), Data(repeating: 32, count: 2 * 1024 * 1024 + 1)] {
++        #expect(throws: ThemeSelectionFailure.catalogue) { _ = try ThemeSelection.catalogue(data) }
++    }
++    for values in [[:], [firstTheme: 0]] {
++        await #expect(throws: ThemeSelectionFailure.noEligibleThemes) { _ = try await ThemeResolver(http: ThemeHTTPFixture(), stars: ThemeStarsFixture(values)).resolve("random") }
++    }
++    await #expect(throws: ThemeSelectionFailure.starsUnavailable) { _ = try await ThemeResolver(http: ThemeHTTPFixture(), stars: ThemeStarsFixture([firstTheme: -1])).resolve("most-starred") }
++    #expect(try ThemeSelection.catalogue(themeCatalogue) == [firstTheme, secondTheme])
++}
+--- a/tests/DevVMProvisioningCoreTests/TransportTests.swift
++++ b/tests/DevVMProvisioningCoreTests/TransportTests.swift
+@@ -101,7 +101,7 @@
+     let authority: SessionAuthority
+     let plan: SetupPlan
+     let key: URL
+-    init(trim: Bool = false, onlyTrim: Bool = false) throws {
++    init(trim: Bool = false, onlyTrim: Bool = false, appearance: Bool = false) throws {
+         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+         let wire = Data([0,0,0,11] + Array("ssh-ed25519".utf8) + [0,0,0,32] + Array(repeating: UInt8(7), count: 32))
+         binding = try GuestBinding(vmID: UUID(), sessionID: UUID(), owner: "owner", ownerUID: 1000, hostKeyDigest: digest(wire))
+@@ -129,6 +129,10 @@
+         tasks: [{name: custom, file: tasks.yml}]
+         vars: {secret: synthetic-secret-never-log}
+         """
++        if appearance {
++            manifest = manifest.replacingOccurrences(of: "docker: {access: sudoless}", with: "workstation: {theme: 'https://github.com/example/omarchy-fixture-theme', layout: chosen.lua}\n    docker: {access: sudoless}")
++            try Data("-- FROZEN SYNTHETIC LAYOUT\nreturn {}\n".utf8).write(to: repository.appendingPathComponent("chosen.lua"))
++        }
+         if trim { manifest = manifest.replacingOccurrences(of: "vm: {packages:", with: "vm: {lean_developer: true, packages:") }
+         if onlyTrim { manifest = "schema_version: 1\nid: trim-fixture\nvm: {lean_developer: true}\n" }
+         try Data(manifest.utf8).write(to: repository.appendingPathComponent("vm.yml"))
+@@ -424,3 +428,22 @@
+     #expect(keep.contains("obsidian"))
+     #expect(try !LeanDeveloperPolicy.candidates(keeping: keep).contains("obsidian"))
+ }
++
++@Test func themeAndLayoutReachAnsibleFromFrozenFilesWithoutExecutingEither() async throws {
++    for check in [false, true] {
++        let fixture = try TransportFixture(appearance: true), runner = FakeProcessRunner(), request = try fixture.request(check: check)
++        let adapter = try fixture.adapter(runner)
++        let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
++        #expect(result.primaryFailure == nil)
++        let calls = await runner.invocations
++        let features = try #require(calls.first { $0.purpose == .features })
++        let varsFile = try #require(features.arguments.first { $0.hasSuffix("-vars.json") })
++        let variables = try jsonFile(URL(fileURLWithPath: String(varsFile.dropFirst())))
++        #expect(variables["omarchy_theme"] == .string("https://github.com/example/omarchy-fixture-theme"))
++        let layoutPath = try #require(variables["omarchy_layout_file"]?.string)
++        #expect(layoutPath.hasPrefix(features.workingDirectory.path + "/repository/"))
++        #expect(try Data(contentsOf: URL(fileURLWithPath: layoutPath)) == fixture.plan.snapshot.data(for: "chosen.lua"))
++        #expect(features.arguments.contains("--check") == check)
++        #expect(!calls.contains { $0.arguments.first == "git" || $0.arguments.first == "lua" })
++    }
++}

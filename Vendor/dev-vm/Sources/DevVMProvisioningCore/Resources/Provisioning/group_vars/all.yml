@@ -1,0 +1,33 @@
+---
+omarchy_catalogue: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/omarchy/features/catalogue.json') | from_json }}"
+omarchy_supported_features: "{{ omarchy_catalogue.features.keys() | list }}"
+omarchy_features: [workstation]
+omarchy_extensions: []
+omarchy_resolved_plan: []
+omarchy_browsers: "{{ omarchy_catalogue.features.browsers.defaults.browsers }}"
+omarchy_languages: "{{ omarchy_catalogue.features.languages.defaults.tools }}"
+omarchy_toolchain: "{{ omarchy_catalogue.features.toolchain.defaults }}"
+omarchy_docker: "{{ omarchy_catalogue.features.docker.defaults }}"
+# Only the launcher defers access verification until native interactive consent.
+omarchy_defer_docker_access: false
+omarchy_agents: "{{ omarchy_catalogue.features.agents.defaults.tools }}"
+omarchy_credential_packages: "{{ omarchy_catalogue.features.credentials.defaults.packages }}"
+omarchy_keyring: "{{ omarchy_catalogue.features.keyring.defaults }}"
+omarchy_shell: "{{ omarchy_catalogue.features.workstation.defaults.shell }}"
+omarchy_oh_my_zsh: "{{ omarchy_catalogue.features.workstation.defaults.oh_my_zsh }}"
+omarchy_oh_my_zsh_plugins: "{{ omarchy_catalogue.features.workstation.defaults.oh_my_zsh_plugins }}"
+omarchy_oh_my_zsh_update_mode: "{{ omarchy_catalogue.features.workstation.defaults.oh_my_zsh_update_mode }}"
+omarchy_starship: "{{ omarchy_catalogue.features.workstation.defaults.starship }}"
+omarchy_starship_config: "{{ omarchy_catalogue.features.workstation.defaults.starship_config }}"
+omarchy_foot_font_size: "{{ omarchy_catalogue.features.workstation.defaults.font_size }}"
+omarchy_idle_mode: "{{ omarchy_catalogue.features.workstation.defaults.idle_mode }}"
+omarchy_theme: "{{ omarchy_catalogue.features.workstation.defaults.theme }}"
+omarchy_layout_file: "{{ omarchy_catalogue.features.workstation.defaults.layout }}"
+omarchy_remove_layout: "{{ omarchy_catalogue.features.workstation.defaults.remove_layout }}"
+omarchy_cli: "{{ omarchy_catalogue.features.cli.defaults }}"
+omarchy_vcs: "{{ omarchy_catalogue.features.vcs.defaults }}"
+omarchy_editors: "{{ omarchy_catalogue.features.editors.defaults }}"
+omarchy_build: "{{ omarchy_catalogue.features.build.defaults }}"
+omarchy_databases: "{{ omarchy_catalogue.features.databases.defaults }}"
+omarchy_api: "{{ omarchy_catalogue.features.api.defaults }}"
+omarchy_quality: "{{ omarchy_catalogue.features.quality.defaults }}"

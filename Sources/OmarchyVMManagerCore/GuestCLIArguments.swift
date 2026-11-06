@@ -10,6 +10,30 @@ public struct GuestCLIInvocation: Sendable {
       factories                    List verified imported factories and official
       factory-import PATH          Verify and import a prepared factory bundle
       factory-delete SHA256        Move an unused imported factory to Trash
+      setup tools [--tool TOOL=/absolute/path]
+                                   Check host provisioning dependencies locally
+      setup presets                List bundled offline setup presets
+      setup plan --preset NAME     Preview a bundled setup without a VM
+      setup plan --from /folder    Preview local vm.yml without a VM
+      setup preview VM_UUID --from /folder|--preset NAME --preview-id UUID
+                                   Freeze a manager-owned preview; retain its UUID
+      setup prepare-create UUID --from /folder|--preset NAME [--enable FEATURE] [--disable FEATURE]
+                                   Freeze a selection before creating a VM
+      setup creation UUID          Read a frozen New VM selection
+      setup preview UUID           Read an existing frozen preview
+      setup task-source UUID NAME [--offset N]
+                                   Explicitly inspect a frozen task (4096-byte chunk)
+      setup prepare-apply UUID     Review target/dependencies (execution gate applies)
+      setup apply UUID --review SHA256 --ack-sudo [--trust-tasks SHA256] [--ack-docker-root]
+                                   Submit exact reviewed inputs, with separate task trust
+      setup prepare-restart|prepare-check|prepare-recover UUID --review-id UUID
+                                   Review an existing workflow action (execution gated)
+      setup restart|check|recover UUID --review-id UUID --review SHA256 --ack
+                                   Perform only the exact acknowledged workflow action
+      setup capabilities|list      Discover setup protocol / list workflows
+      setup status UUID [--events] Read status / structured NDJSON (no terminal)
+      setup attach UUID [--input]  View original live terminal; opt in to input
+      setup cancel UUID            Cancel job with cleanup (detach does not cancel)
       list                         List guests
       get ID                       Show config, state and SSH/network details
       create NAME [options]        Create a guest with saved owner defaults
@@ -30,6 +54,8 @@ public struct GuestCLIInvocation: Sendable {
     Creation only: --factory official|MANIFEST_SHA256, --ssh on|off, --owner-defaults on|off, --public-key FILE.pub
             --separate-home on|off (default on), --reuse-home-from UUID
             --inherit-default-public-key on|off (default on)
+            --setup-review-id UUID --setup-review SHA256 --ack-setup-selection
+            (save a frozen selection; use a separate start command)
     Reuse copies a stopped guest's home disk on first launch using APFS cloning;
     the original VM is preserved. Omitted disk capacities use Guest Defaults.
     Use --inherit-default-public-key off to omit the saved personal SSH key;
@@ -51,13 +77,13 @@ public struct GuestCLIInvocation: Sendable {
         guard let command = GuestCommand(rawValue: aliases[arguments[0]] ?? arguments[0]) else { throw commandFailure("usage", "Unknown command. Run omarchy-vm --help.") }
         var config = GuestConfigurationPatch(), selector: String?, positional: String?
         var values: [String: String] = [:], flags: Set<String> = [], index = 1
-        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--system-disk", "--home-disk", "--home-disk-gib", "--separate-home", "--reuse-home-from", "--clipboard", "--guest-touch-id", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard", "--share", "--share-path"]
+        let options: Set<String> = ["--config", "--name", "--memory", "--memory-mib", "--cpus", "--disk", "--disk-gib", "--system-disk", "--home-disk", "--home-disk-gib", "--separate-home", "--reuse-home-from", "--clipboard", "--guest-touch-id", "--immersive", "--ssh", "--owner-defaults", "--public-key", "--inherit-default-public-key", "--factory", "--timeout", "--for", "--username", "--full-name", "--email", "--hostname-prefix", "--timezone", "--keyboard", "--share", "--share-path", "--setup-review-id", "--setup-review"]
         while index < arguments.count {
             let key = arguments[index]; index += 1
             if key == "--wait" {
                 guard flags.insert(key).inserted else { throw commandFailure("usage", "Duplicate option.") }
                 if index < arguments.count, GuestWaitCondition(rawValue: arguments[index]) != nil { values[key] = arguments[index]; index += 1 }
-            } else if ["--start", "--force"].contains(key) {
+            } else if ["--start", "--force", "--ack-setup-selection"].contains(key) {
                 guard flags.insert(key).inserted else { throw commandFailure("usage", "Duplicate option.") }
             } else if options.contains(key) {
                 guard index < arguments.count, !arguments[index].hasPrefix("--"), values[key] == nil else { throw commandFailure("usage", "An option is duplicated or missing its value.") }
@@ -120,6 +146,11 @@ public struct GuestCLIInvocation: Sendable {
         let configOptions = Set(values.keys).subtracting(["--timeout", "--for", "--wait"])
         guard configOptions.isEmpty || command == .create || command == .update else { throw commandFailure("usage", "Configuration options apply only to create or update.") }
         var request = GuestCommandRequest(command: command, selector: selector, config: command == .create || command == .update ? config : nil)
+        if values["--setup-review-id"] != nil || values["--setup-review"] != nil || flags.contains("--ack-setup-selection") {
+            guard let token = values["--setup-review-id"], let id = UUID(uuidString: token), let identity = values["--setup-review"],
+                  flags.contains("--ack-setup-selection") else { throw commandFailure("usage", "Supply --setup-review-id UUID --setup-review SHA256 --ack-setup-selection together.") }
+            request.setupConsent = .init(reviewID: id, reviewIdentity: identity, acknowledged: true)
+        }
         request.start = flags.contains("--start"); request.force = flags.contains("--force")
         request.details = command == .get
         if let timeout = values["--timeout"] { request.timeoutSeconds = try positiveInteger(timeout) }

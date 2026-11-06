@@ -1,0 +1,12 @@
+---
+- name: Ensure selected extension packages and mise tools through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', omarchy_extension.name, '--extension'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ omarchy_extension.config | to_json }}"
+  register: omarchy_extension_result
+  changed_when: (omarchy_extension_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report extension actions
+  ansible.builtin.debug:
+    var: omarchy_extension_result.stdout

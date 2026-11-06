@@ -1,0 +1,12 @@
+---
+- name: Ensure selected editors configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'editors'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ omarchy_editors | to_json }}"
+  register: omarchy_editors_result
+  changed_when: (omarchy_editors_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report editors actions
+  ansible.builtin.debug:
+    var: omarchy_editors_result.stdout

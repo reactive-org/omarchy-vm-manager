@@ -14,13 +14,13 @@ Use an Apple Silicon Mac running macOS 15 or later. Open **Omarchy VM Manager.ap
 
 Choose **Guest Defaults** in the sidebar to reuse your preferred owner setup for future guests:
 
-1. Turn on **Set up new guests automatically**.
-2. Enter a username and password. Add a full name and Git email if wanted.
-3. Choose a hostname prefix, time zone and keyboard.
-4. Optionally choose an existing SSH **public** key using **Choose .pub…**.
-5. Click **Save Defaults**.
+1. Enter a username and password. Add a full name and Git email if wanted.
+2. Choose a hostname prefix, time zone and keyboard.
+3. Optionally choose an existing SSH **public** key using **Choose .pub…**.
+4. Click **Save Defaults**. Saved account values apply automatically to new VMs;
+   there is no separate global enable checkbox.
 
-The password stays in the manager's scoped macOS Keychain storage. Development builds can use saved login-Keychain credentials; provisioned builds use protected credentials and may need an explicit upgrade of older passwords. See [Touch ID setup and build requirements](TouchID.md). New guests receive a snapshot of these settings and a unique hostname suffix; changing defaults leaves existing guests unchanged. You can choose manual setup separately for each new guest.
+The password stays in the manager's scoped macOS Keychain storage. Development builds can use saved login-Keychain credentials; provisioned builds use protected credentials and may need an explicit upgrade of older passwords. See [Touch ID setup and build requirements](TouchID.md). New guests receive a snapshot of these settings and a unique hostname suffix; changing defaults leaves existing guests unchanged. To opt out for one new guest, select **Set up account manually** in its New VM form. With no saved password, the form explains that account setup will be manual. Older saved defaults apply even if their former global enable flag was off; existing guest snapshots are never changed.
 
 For different owner settings on just one VM, the updated CLI supports [per-VM owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm). It inherits the saved password and any omitted settings without saving changes to Guest Defaults. These flags require a matching manager and CLI build, included in the local 0.9.4 (17) update; the pictured New VM form does not expose individual owner overrides.
 
@@ -39,11 +39,25 @@ Give the guest a distinct name, such as **Development**, then choose its options
 | Memory and processor cores | Start with 4 GiB and four cores; allocate more when needed and within your Mac's available budget |
 | Clipboard integration | Share text with the Mac while this guest is focused |
 | Immersive Mode | Open full screen with the Mac menu bar and Dock hidden |
-| Use saved owner setup defaults | Apply your saved setup automatically; turn it off for the normal first-boot wizard |
+| Set up account manually | Optional opt-out from saved account defaults for this VM; leave off to use the saved username, password, keyboard and system settings |
 | Enable SSH from this Mac | Provision separate guest keys and a unique localhost connection port; enabled by default |
 | Personal public key | Optionally enroll your existing `.pub` key alongside the manager's key |
 
 Click **Create VM**. This saves the profile; the guest disk is created on its first launch. SSH enrollment and owner setup are chosen at creation and cannot be changed through the current configuration form.
+
+In builds with **Developer setup**, Source **None** creates a VM without a setup
+selection. For **Bundled configuration** or a **Local setup folder**, choose the
+profiles and optional theme/layout, then click **Create VM**. This action validates
+and saves a copy of the selected inputs with the profile. There is no separate
+Review setup action or selection-confirmation checkbox in New VM. Creation does
+not run setup or grant task trust, sudo or Docker permissions; those are reviewed
+separately before execution.
+
+If **Create VM** is disabled, the message above the buttons explains the missing
+name, folder or profiles, invalid theme/layout choice, or unavailable setup service.
+While creation prepares inputs, the form shows progress and prevents duplicate
+submissions. Preparation errors appear in the form without creating a VM; correct
+the selections and try Create VM again.
 
 ## Launch and connect
 

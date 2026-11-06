@@ -1,0 +1,43 @@
+{
+  "execution_available" : false,
+  "features" : {
+    "features" : [
+      "cli"
+    ],
+    "options" : {
+      "workstation" : {
+        "layout" : ".omarchy-manager-layout.lua",
+        "remove_layout" : false,
+        "theme" : "https:\/\/github.com\/example\/omarchy-fixture-theme"
+      }
+    },
+    "profiles" : [
+      "developer",
+      "web"
+    ]
+  },
+  "id" : "synthetic-ui-only",
+  "input_digest" : "1a22b7cad4ca2016d96e52eac1540889395065b76b64c64c073327f943ec9461",
+  "plan_digest" : "04f017df786f125d47b82d6176590bd831d37596956f2aea3a4e5ff39750e229",
+  "requirements" : {
+    "desktop_restart_required" : true,
+    "removals" : [
+
+    ],
+    "update_policy" : "No implicit removal or update"
+  },
+  "schema_version" : 1,
+  "tasks" : [
+    {
+      "file" : "fixture-task.yml",
+      "name" : "synthetic"
+    }
+  ],
+  "vm" : {
+    "cpus" : 8,
+    "disk_gib" : 256,
+    "lean_developer" : true,
+    "memory_gib" : 16,
+    "name" : "Source proposal only"
+  }
+}

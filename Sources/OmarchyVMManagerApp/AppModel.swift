@@ -40,13 +40,45 @@ final class AppModel: ObservableObject {
     @Published var homeBackupReview: VMSnapshot?
     @Published var configurationError: String?
     @Published var deletionReview: DeletionReview?
-    @Published var accessibilityTrusted = AXIsProcessTrusted()
+    @Published var accessibilityTrusted = false
     @Published var storageBytes: [UUID: Int64] = [:]
     let manager: VMManager
     private let support: URL
     private var observedFactoryRevision: UUID?
     private var factoryImportID: UUID?
     private var commandServer: ManagerCommandServer?
+    private var provisioningService: ProvisioningService?
+    private var setupServer: ProvisioningExternalServer?
+    @Published var setupWorkflows: [ProvisioningWorkflowSnapshot] = []
+    @Published var setupJobs: [UUID: ProvisioningJobSnapshot] = [:]
+    #if DEBUG
+    private var isolatedService: (any ProvisioningObserving)?
+    private var isolatedSave: (@MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile)?
+    private var isolated = false
+    init(isolatedManager: VMManager, support: URL, snapshots: [VMSnapshot], service: (any ProvisioningObserving)?,
+         save: @escaping @MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile) {
+        manager = isolatedManager; self.support = support; self.snapshots = snapshots
+        isolatedService = service; isolatedSave = save; isolated = true; checking = false; isLoading = false
+    }
+    #endif
+    var setupService: (any ProvisioningObserving)? {
+        #if DEBUG
+        if isolated { return isolatedService }
+        #endif
+        return provisioningService
+    }
+    func setupSummary(for vmID: UUID) -> (title: String, cleanupRequired: Bool)? {
+        let rows = setupWorkflows.filter { $0.vmID == vmID }
+        guard let row = rows.first(where: { $0.cleanupRequired }) ?? rows.first(where: { $0.canCancel }) ?? rows.first else { return nil }
+        // UUID ordering is not chronology. Never present an arbitrary historical
+        // failure as the current result when several completed runs exist.
+        let title = rows.count > 1 && !row.cleanupRequired && !row.canCancel ? "Setup history (\(rows.count) runs)" : row.title
+        return (title, row.cleanupRequired)
+    }
+    func cancelSetup(_ id: UUID) async {
+        do { try await setupService?.cancel(id) }
+        catch { actionError = "Setup cancellation could not be confirmed. Check its job state and cleanup requirement." }
+    }
     private var lastReportID: UUID?
     private var lastAccessibilityTrusted: Bool?
     private var lastOwnerStates: [UUID: OwnerSetupReadiness] = [:]
@@ -62,6 +94,7 @@ final class AppModel: ObservableObject {
     }
 
     init() {
+        accessibilityTrusted = AXIsProcessTrusted()
         if Self.layoutPreview {
             support = FileManager.default.temporaryDirectory.appendingPathComponent("omarchy-layout-preview")
             manager = VMManager(runtime: FakeRuntime(), profiles: [], applicationSupport: support)
@@ -88,6 +121,9 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() async {
+        #if DEBUG
+        if isolated { return }
+        #endif
         checking = true
         let result = await Task.detached { Result { try AppModel.inspect() } }.value
         switch result {
@@ -114,9 +150,20 @@ final class AppModel: ObservableObject {
     }
 
     func observe() async {
+        #if DEBUG
+        if isolated { return }
+        #endif
         await refresh()
         guard !Task.isCancelled else { return }
+        if !Self.layoutPreview, registryError == nil, provisioningService == nil {
+            do { provisioningService = try await manager.installProvisioningService(layout: .init(contents: Bundle.main.bundleURL.appendingPathComponent("Contents"))) }
+            catch { actionError = "Setup coordination is unavailable. Recovery metadata was preserved." }
+        }
         startCommandServer()
+        if let provisioningService, setupServer == nil {
+            do { setupServer = try ProvisioningExternalServer(endpoint: ManagerCommandEndpoint(applicationSupport: support), service: provisioningService) }
+            catch { actionError = "Setup CLI endpoint unavailable. Existing job metadata was preserved." }
+        }
         // An empty snapshot list is meaningful only after the first full refresh.
         isLoading = false
         while !Task.isCancelled {
@@ -134,16 +181,39 @@ final class AppModel: ObservableObject {
             }
         } catch { actionError = "CLI command server unavailable: " + error.localizedDescription }
     }
-    func stopCommandServer() { commandServer?.stop(); commandServer = nil }
+    func stopCommandServer() { commandServer?.stop(); commandServer = nil; setupServer?.stop(); setupServer = nil }
 
     func save(_ profile: VMProfile?, name: String, memoryGiB: Int, cpus: Int, diskGiB: Int,
-              clipboard: Bool, guestTouchID: Bool, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath,
-              separateHome: Bool = true, homeDiskGiB: Int = 64, reuseHomeFrom: UUID? = nil) async -> UUID? {
+              clipboard: Bool, guestTouchID: Bool = false, immersive: Bool, sshEnabled: Bool, publicKey: String?, useOwnerDefaults: Bool, factory: String = "official", share: Bool = false, sharePath: String = SharedFolderMapping.defaultPath,
+              separateHome: Bool = true, homeDiskGiB: Int = 64, reuseHomeFrom: UUID? = nil, setupSource: ProvisioningSetupSource? = nil, setupRequestID: UUID? = nil) async -> UUID? {
         guard registryError == nil else { return nil }
         configurationError = nil
+        var preparingSetup = false
         do {
+            let setupConsent: ProvisioningCreationConsent?
+            if let setupSource {
+                preparingSetup = true
+                guard profile == nil, let setupRequestID,
+                      let planner = setupService as? any ProvisioningCreationPlanning else { throw ProvisioningReviewFailure.unavailable }
+                let review = try await planner.prepareCreation(id: setupRequestID, source: setupSource)
+                // The primary Create action confirms the inputs it just froze.
+                // This consent saves metadata only; it grants no execution rights.
+                setupConsent = .init(reviewID: review.id, reviewIdentity: review.reviewIdentity, acknowledged: true)
+                preparingSetup = false
+            } else { setupConsent = nil }
+            #if DEBUG
+            if isolated {
+                guard profile == nil, let isolatedSave else { throw ProvisioningReviewFailure.invalid }
+                let config = GuestConfigurationPatch(name: name, memoryMiB: memoryGiB * 1024, cpus: cpus, diskGiB: diskGiB,
+                    clipboard: clipboard, immersive: immersive, guestTouchID: guestTouchID, ssh: sshEnabled, ownerDefaults: useOwnerDefaults,
+                    publicKey: publicKey, factory: factory, inheritDefaultPublicKey: false, share: share, sharePath: sharePath, separateHome: separateHome, homeDiskGiB: separateHome ? homeDiskGiB : nil, reuseHomeFrom: reuseHomeFrom)
+                let saved = try await isolatedSave(config, setupConsent)
+                if !snapshots.contains(where: { $0.id == saved.id }) { snapshots.append(.init(profile: saved, state: .stopped)) }; return saved.id
+            }
+            #endif
             let id: UUID
             if var profile {
+                guard setupConsent == nil else { throw ProvisioningReviewFailure.invalid }
                 profile.name = name; profile.memoryMiB = memoryGiB * 1024; profile.cpus = cpus; profile.diskGiB = diskGiB
                 profile.guestTouchIDEnabled = guestTouchID
                 if profile.homeDisk != nil { profile.homeDisk?.sizeGiB = homeDiskGiB }
@@ -155,11 +225,22 @@ final class AppModel: ObservableObject {
                                               clipboardEnabled: clipboard, guestTouchIDEnabled: guestTouchID, immersiveMode: immersive, sshEnabled: sshEnabled,
                                               publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, inheritDefaultPublicKey: false, factory: factory,
                                               sharedFolder: share ? try SharedFolderPolicy.mapping(path: sharePath) : nil,
-                                              separateHome: separateHome, homeDiskGiB: separateHome ? homeDiskGiB : nil, reuseHomeFrom: reuseHomeFrom)
+                                              separateHome: separateHome, homeDiskGiB: separateHome ? homeDiskGiB : nil, reuseHomeFrom: reuseHomeFrom, setupConsent: setupConsent)
             }
             storageRefreshed = .distantPast
             await update(); return id
-        } catch { configurationError = error.localizedDescription; return nil }
+        } catch {
+            if preparingSetup {
+                if error as? ProvisioningReviewFailure == .conflictingProfiles {
+                    configurationError = "These profiles have conflicting settings. Choose a compatible combination or resolve the settings in a local vm.yml."
+                } else if error as? ProvisioningReviewFailure == .unavailable {
+                    configurationError = "Developer setup is unavailable. Choose Source: None to create this VM without it."
+                } else {
+                    configurationError = ProvisioningAppearance.failureMessage(error) ?? "Could not prepare developer setup. Check the configuration and referenced files, then try Create VM again. No VM was created."
+                }
+            } else { configurationError = error.localizedDescription }
+            return nil
+        }
     }
 
     func importFactory(from url: URL) async throws -> FactoryIdentity {
@@ -197,9 +278,9 @@ final class AppModel: ObservableObject {
         do { try await manager.saveDiskDefaults(value); diskDefaults = value; defaultsError = nil; return true }
         catch { defaultsError = error.localizedDescription; return false }
     }
-    func saveDefaults(enabled: Bool, configuration: OwnerConfiguration, password: Data?, publicKey: String?) async -> Bool {
+    func saveDefaults(configuration: OwnerConfiguration, password: Data?, publicKey: String?) async -> Bool {
         do {
-            ownerDefaults = try await manager.saveGuestDefaults(enabled: enabled, configuration: configuration, password: password, sshPublicKey: publicKey)
+            ownerDefaults = try await manager.saveGuestDefaults(configuration: configuration, password: password, sshPublicKey: publicKey)
             defaultsError = nil; return true
         } catch { defaultsError = error.localizedDescription; return false }
     }
@@ -278,12 +359,21 @@ final class AppModel: ObservableObject {
     }
 
     private func update() async {
+        #if DEBUG
+        if isolated { return }
+        #endif
         let observation = await manager.observation()
         if observedFactoryRevision != observation.factoryRevision {
             observedFactoryRevision = observation.factoryRevision
             Task { await loadFactories() }
         }
         snapshots = observation.snapshots; records = observation.records
+        if let provisioningService {
+            setupWorkflows = await provisioningService.statuses()
+            var jobs: [UUID: ProvisioningJobSnapshot] = [:]
+            for workflow in setupWorkflows { jobs[workflow.id] = await provisioningService.jobStatus(workflow.id) }
+            setupJobs = jobs
+        }
         accessibilityTrusted = AXIsProcessTrusted()
         if Date().timeIntervalSince(storageRefreshed) > 10 {
             storageRefreshed = Date()

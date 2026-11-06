@@ -42,7 +42,7 @@ Factory selection, SSH and owner setup are creation-only. New guests inherit sav
 
 ### Per-VM owner overrides
 
-For one guest, override the saved owner settings with `--username`, `--full-name`, `--email`, `--hostname-prefix`, `--timezone` or `--keyboard`. Unspecified fields and the saved password reference are inherited from enabled, saved Guest Defaults. Overrides never save changes to Guest Defaults or alter existing profiles. Empty strings clear the optional full name or email. Hostnames keep the stable per-VM UUID suffix; `--hostname-prefix` changes only the prefix. Timezone accepts a supported zone such as `Australia/Melbourne`, `UTC`, or `Same as macOS`; keyboard uses the exact Guest Defaults layout label, such as `English (US)` or `English (UK)`.
+For one guest, override the saved owner settings with `--username`, `--full-name`, `--email`, `--hostname-prefix`, `--timezone` or `--keyboard`. Unspecified fields and the saved password reference are inherited from saved Guest Defaults. Overrides never save changes to Guest Defaults or alter existing profiles. Empty strings clear the optional full name or email. Hostnames keep the stable per-VM UUID suffix; `--hostname-prefix` changes only the prefix. Timezone accepts a supported zone such as `Australia/Melbourne`, `UTC`, or `Same as macOS`; keyboard uses the exact Guest Defaults layout label, such as `English (US)` or `English (UK)`.
 
 | Creation flag | Key inside `ownerOverrides` | Example value |
 | --- | --- | --- |
@@ -92,9 +92,15 @@ The second command inherits the file's full name, hostname prefix, timezone and 
 ./bin/omarchy-vm create private-work --full-name "" --email ""
 ```
 
-Explicit owner flags override individual fields in `ownerOverrides`, preserving its other fields. The object must contain at least one supported text field. Invalid owner values, unknown/secret fields, nulls, updates, `--owner-defaults off`, disabled/missing defaults and unavailable protected credentials are rejected before a profile is saved. This feature adds no password input or credential upgrade path; first-launch authentication retains its existing policy. Build the manager and CLI together with `make app verify-app`; an older running manager rejects the new configuration field.
+Explicit owner flags override individual fields in `ownerOverrides`, preserving its other fields. The object must contain at least one supported text field. Invalid owner values, unknown/secret fields, nulls, updates, `--owner-defaults off`, missing/incomplete defaults and unavailable protected credentials are rejected before a profile is saved. This feature adds no password input or credential upgrade path; first-launch authentication retains its existing policy. Build the manager and CLI together with `make app verify-app`; an older running manager rejects the new configuration field.
 
 Development compatibility builds can reuse saved login-Keychain credentials. Protected Touch ID credentials require a provisioned build; ad-hoc app assembly does not enable their use. Upgrade older saved passwords only through the explicit Guest Defaults action in a compatible build. See [Touch ID requirements](TouchID.md) and [override troubleshooting](troubleshooting.md#cli-owner-overrides-are-rejected).
+
+Saved account values now apply without a global enable switch, including older
+schema-1 defaults whose former `enabled` field is false but whose password
+reference is present. `--owner-defaults off` remains the explicit per-VM manual
+setup choice. No password is read at creation, and existing guest snapshots stay
+unchanged.
 
 ### Personal SSH public-key inheritance
 
@@ -183,3 +189,208 @@ Prepared bundles may explicitly select the reviewed `lean-e4fffc6` owner contrac
 `factory-delete MANIFEST_SHA256` moves an unused verified imported bundle and its receipt together to Trash and returns its identity in `deletedFactory`. Use the exact lowercase manifest digest from `factories`. The official factory is protected (`factory-protected`); any reference from an existing profile or pending creation blocks removal (`factory-in-use`), including stopped and metadata-only guests. There is no force override or guest reassignment. No guest disk, profile, original prepared source or official download cache is changed.
 
 Import and deletion serialize (`factory-busy`), and new creation cannot select a factory being deleted. Damaged, unregistered or runtime-incompatible factories are preserved for manual review. The command waits for the recoverable Trash operation, remains manager-owned after CLI disconnect, and is not retried automatically. See [factory deletion and recovery](CustomFactories.md#delete-an-unused-factory) for failure codes and recovery folders. The app refreshes its picker after CLI factory changes.
+
+## Developer setup (uninstalled milestone-5 worktree)
+
+`setup tools` retains its local Homebrew report. New offline commands are
+`setup presets`, `setup plan --preset developer|web|python|project-managed` and
+`setup plan --from /absolute/folder` (reads `vm.yml`). Plans invoke the pinned
+Swift planner, need the admitted app resources, and start no VM or helper.
+The proposal is not permission to execute or overwrite manager resource settings.
+
+With the manager already running:
+
+```sh
+omarchy-vm setup capabilities
+omarchy-vm setup list
+omarchy-vm setup status WORKFLOW_UUID
+omarchy-vm setup status WORKFLOW_UUID --events
+omarchy-vm setup attach WORKFLOW_UUID
+omarchy-vm setup attach WORKFLOW_UUID --input
+omarchy-vm setup cancel WORKFLOW_UUID
+```
+
+These use a separate protocol-1 `setup-v1.sock`, never the existing control
+socket. Ordinary setup commands emit one JSON reply and exit 0/1. `--events`
+emits changed workflow status as NDJSON until a non-active result; it contains
+no terminal bytes. `attach` requires a TTY, renders filtered ANSI/UTF-8 output
+on an alternate screen and is view-only by default. `--input` deliberately
+requests the single input lease. Another viewer must release its lease before
+a new owner can claim it. Ctrl-] detaches (follow with Return in view-only
+canonical mode); detaching does not cancel setup. Use the separate cancel
+command for cleanup-aware cancellation. No password flag is accepted.
+
+The CLI restores its duplicated original TTY and scoped signal handlers on
+detach, cooperative cancellation and connection failure; a hard kill/crash is
+outside that guarantee. A displayed output gap resets to the future live tail,
+releases input and does not reconstruct the prior screen. Detach and use
+`--input` again for a deliberate reclaim. Losing an acknowledgement closes the
+connection; mutations are never automatically replayed. The endpoint admits
+only same-user peers, at most eight connections and one viewer per connection,
+with a 15-second activity lease. Inactive clients must poll or heartbeat.
+
+The frozen review/consent contract is described below. Stable prepare/apply returns `failure: "disabled"` even when tools are ready. Dev supports reviewed execution for verified manager-owned Dev roots; workflow restart/check/recover use the separate reviewed contracts below. New VM can now save a frozen selection without authorizing execution, as described below. Saving a New VM selection alone submits no guest job. See the [milestone-5 record](DevVMProvisioningPlan.md#milestone-5-uicli-terminal-slice--3-november-2026)
+for validation and the remaining acceptance boundary.
+
+### Frozen preview and separate task trust
+
+The separate setup endpoint supports review/submission in Dev, subject to root,
+session, dependency, same-team helper and permission checks. Stable execution
+remains disabled. Offline preview and saving selection grant no execution authority.
+
+```sh
+omarchy-vm setup preview VM_UUID --from /absolute/folder --preview-id PREVIEW_UUID
+omarchy-vm setup preview VM_UUID --preset project-managed --preview-id PREVIEW_UUID
+omarchy-vm setup preview PREVIEW_UUID
+omarchy-vm setup task-source PREVIEW_UUID TASK_NAME --offset 0
+omarchy-vm setup prepare-apply PREVIEW_UUID
+omarchy-vm setup apply PREVIEW_UUID --review REVIEW_DIGEST --ack-sudo
+```
+
+Choose/retain the preview UUID before capture. A repeated UUID looks up its exact
+frozen inputs; it does not reread an edited source folder. A changed target/selection
+under that UUID is refused. Create a new preview to capture edits. `setup plan`
+remains a standalone proposal and cannot be supplied as an apply receipt. Preview
+capture starts no VM/helper and runs no dependency probe. After manager restart, a saved New VM selection can restore its exact preview
+from manager-owned retained files only when plan, input and engine hashes match
+the profile receipt. It does not restore consent, session, helper or execution
+authority; prepare/apply still requires fresh admission. Other transient previews
+remain process-local.
+
+Review replies expose exact plan/input hashes, task entrypoint names/hashes and
+target review identity. Task-source reads are explicit 4096-byte chunks, encoded
+as `taskSource.bytes` (base64) with name/hash/offset/total. Normal status and
+preview metadata do not contain task code. Native inspection displays complete
+UTF-8 task files up to 64 KiB; larger task files can be inspected through repeated
+CLI offsets. Trust covers the complete frozen snapshot and referenced assets.
+Custom Ansible can run on the Mac and use controller credentials; it is not a guest
+sandbox. Inspect and trust the source independently of general Apply approval.
+
+For selected custom tasks, add `--trust-tasks TASK_TRUST_DIGEST` using the exact
+`applyReview.taskTrustIdentity`. It binds the reviewed request, all frozen input
+hashes and selected tasks; `true`, a stale digest or a general approval is refused.
+`--ack-sudo` separately acknowledges a persistent grant until cleanup is confirmed.
+Add `--ack-docker-root` only for the separately reviewed Docker root-equivalent
+access. No flag is inferred and no password/keystroke automation flag is accepted.
+
+Preparation and submission deduplicate by the preview/workflow UUID. Repeating
+identical consent retrieves the original acceptance result; status tracks its
+current outcome. A failed submission is not retried by reconnecting. Changes to
+frozen private data, session or tool pins require explicit fresh review. Submission
+rechecks package/resources and current dependencies before the existing helper
+admission path. A disconnected CLI leaves manager-owned work intact. Stable returns `failure: "disabled"` before target/dependency probes for
+prepare/apply. Dev verifies the actual guest/session/UID and admitted transport
+before constructing its owned runner. See the
+[frozen review validation record](DevVMProvisioningPlan.md#milestone-5-frozen-preview-apply-submission-and-task-trust--3-november-2026).
+
+### Reviewed restart, post-restart check and cleanup recovery
+
+The uninstalled worktree adds these two-step workflow actions:
+
+```sh
+omarchy-vm setup prepare-restart WORKFLOW_UUID --review-id REVIEW_UUID
+omarchy-vm setup restart WORKFLOW_UUID --review-id REVIEW_UUID --review REVIEW_DIGEST --ack
+omarchy-vm setup prepare-check WORKFLOW_UUID --review-id CHECK_REVIEW_UUID
+omarchy-vm setup check WORKFLOW_UUID --review-id CHECK_REVIEW_UUID --review CHECK_DIGEST --ack
+omarchy-vm setup prepare-recover WORKFLOW_UUID --review-id RECOVERY_REVIEW_UUID
+omarchy-vm setup recover WORKFLOW_UUID --review-id RECOVERY_REVIEW_UUID --review RECOVERY_DIGEST --ack
+```
+
+Choose and retain each review UUID. Preparation returns a correlated
+`workflowActionReview` containing the action, workflow/VM/session/job IDs,
+sequence and input/dependency/review hashes. Submission requires that exact digest
+and explicit `--ack`; Apply/task trust and another action’s consent are insufficient.
+Reusing an ID for a different workflow/action is refused. Exact duplicates retrieve
+the original operation/acceptance, while failures are cached and not replayed.
+A deliberate new attempt after failure needs a fresh review UUID. Reviews are
+memory-only; reopening cannot restore consent or create helper ownership from a PID.
+
+Restart is available only for a clean restart-required setup. It gracefully stops
+that exact guest and waits for matching `.exited` before a new session starts.
+An `.error` diagnostic is not exit proof. No check is automatic. `prepare-check`
+requires the recorded replacement session, the original owner/UID/host key and
+fresh dependency admission; `check` uses frozen inputs, excludes custom tasks,
+passes Ansible check mode and grants no interactive authorization input. It is
+not a general standalone check of any guest or a sandbox guarantee.
+
+Recovery is only for a finished/uncertain workflow with unresolved original
+cleanup, not an active apply’s provisional cleanup flag. It must verify and fence
+the original authenticated worker before any adapter is constructed or command
+is sent. Saved metadata alone is insufficient after capability loss. The approved
+scope is identity verification, quiescence, revocation/cache clear/inactive proof
+and payload removal; it cannot reapply setup, grant authorization, execute tasks
+or restart a guest. Failed revocation retains Cleanup required and the VM hold.
+A changed checkpoint/attempt invalidates another prepared recovery review.
+`ownership-unverified` is a fixed failure code; no raw diagnostics are returned.
+
+Stable preparation/submission remains disabled (`failure: "disabled"`). Dev
+uses the same explicit action-review and authenticated ownership contracts. The
+current no-VM integration pass tests these paths with fake runtimes/adapters. See the
+[action validation record](DevVMProvisioningPlan.md#milestone-5-reviewed-restart-check-and-cleanup-recovery--3-november-2026).
+
+### Native features and saving a New VM setup selection
+
+The uninstalled worktree now accepts common built-ins through repeated distinct
+`--enable FEATURE` / `--disable FEATURE` flags on manager-owned preview capture
+and `prepare-create`. Supported names are `workstation`, `cli`, `vcs`, `editors`,
+`docker`, `build`, `toolchain`, `languages`, `browsers`, `databases`, `api`, `quality`.
+Omitting a choice preserves the source; disabling does not uninstall packages.
+Advanced profiles/catalogues/options remain in the source manifest. Resolution is
+still performed by the pinned shared planner, which may reject dependencies or
+conflicts. The manager writes a private generated manifest and preserves the
+original source bytes. New file references must already be selected or declared
+as assets in the original source.
+
+```sh
+omarchy-vm setup prepare-create REVIEW_UUID --preset developer --disable docker
+omarchy-vm setup creation REVIEW_UUID
+omarchy-vm create work --memory 8GiB --cpus 4 --disk 128GiB --factory official \
+  --setup-review-id REVIEW_UUID --setup-review REVIEW_DIGEST --ack-setup-selection
+omarchy-vm setup preview REVIEW_UUID
+omarchy-vm setup preview VM_UUID --from /absolute/folder --preview-id NEW_UUID \
+  --enable cli --disable docker
+```
+
+Choose/retain `REVIEW_UUID` before capture. Preparation returns `creationReview`
+with its UUID, exact proposal, plan/input/engine hashes and `reviewIdentity`;
+use that identity for `REVIEW_DIGEST`. It starts no VM/helper, probes no host tools
+and requires the running manager. Creation uses its explicit manager resource and
+factory settings, saves a non-secret `developerSetup` receipt and leaves the guest
+stopped. `--ack-setup-selection` saves the selection only. It never acknowledges
+custom tasks, sudo or Apply. All three creation flags are required together;
+`--start`, `--wait` and connection-detail probes are refused with a setup selection.
+
+An exact repeat of the same creation consent and settings looks up the saved VM
+UUID; changed creation settings are refused. A consumed reservation with uncertain
+registry outcome is not retried with another UUID. Inspect `list`/`get` and registry
+state before a fresh explicit review. After manager restart, saved receipts provide
+metadata lookup only: frozen preview/apply handles are not reconstructed, and a
+fresh review is required. Registry schema 6 protects receipts from older-build
+writes. Product execution remains disabled independently of Homebrew readiness.
+See [the handoff implementation and evidence](DevVMProvisioningPlan.md#milestone-5-native-features-and-new-vm-handoff--3-november-2026).
+
+### Authenticated identity preparation
+
+Provisioning targets now resolve from ephemeral evidence retained by the manager's
+normal authenticated SSH monitor, including the UID, exact VM/session, port and
+host/client-key references. A username shown as Ready, a saved creation receipt
+or a manifest cannot supply that identity. Evidence expires after 45 monotonic
+seconds and is cleared by retry, pause, shutdown or exit; late callbacks are fenced.
+Strict parsing and before/after pin checks refuse changed or malformed replies.
+No UID override, password automation or product-execution flag was added.
+
+Identity and lazy worker/recovery constructors are wired behind a fixed-false
+build-time acceptance gate. Prepare/apply/workflow actions remain disabled before
+tools or factories run; Homebrew readiness cannot enable them. Fake/local evidence
+and the remaining guest acceptance are recorded in
+[the milestone-6 preparation record](DevVMProvisioningPlan.md#milestone-6-preparation-authenticated-identity-and-dormant-backends--3-november-2026).
+
+### Setup CLI routing and saved selections — 5 November 2026
+
+`setup tools` parsing now defers other `setup` commands to the setup parser, so
+preview/apply/capabilities requests reach the dedicated manager endpoint. A saved
+New VM selection survives a manager restart through bounded retained-input lookup
+and exact plan/input/engine receipt matching. Changed bytes, modes, missing inputs,
+wrong receipts and changed engines are refused. Recovery restores no old consent
+or execution capability. Validation passes 71 focused fake/local tests and 130
+offscreen UI checks; the ordinary execution gate remains disabled.

@@ -50,7 +50,7 @@ Read the guest's error and **Session activity** before retrying. If files or set
 
 Use a matching updated manager and CLI. A newer CLI connected to an older running manager gets an unsupported configuration error; rebuilding the CLI alone does not update that manager. The local 0.9.4 (17) app and CLI include the flags and pass installation checks; real creation/boot with overrides remains untested.
 
-For `invalid-owner-defaults`, check that Guest Defaults is enabled and saved, the username is not reserved, and the timezone and keyboard use supported values. Overrides require saved defaults even when all six owner fields are supplied: the password still comes from the saved credential. `--owner-defaults off` cannot be combined with overrides. Use `""` only to clear optional full name/email; JSON `null` is rejected.
+For `invalid-owner-defaults`, check that Guest Defaults contains saved account details and a password, the username is not reserved, and the timezone and keyboard use supported values. Overrides require saved defaults even when all six owner fields are supplied: the password still comes from the saved credential. `--owner-defaults off` cannot be combined with overrides. Use `""` only to clear optional full name/email; JSON `null` is rejected.
 
 For `creation-only`, supply overrides to `create`, not `update`. Owner setup is fixed when the profile is created. For `invalid-config`, check the [flag/JSON mapping](CLI.md#per-vm-owner-overrides); `--keyboard` maps to `keyboardID` inside `ownerOverrides`. Unknown keys and password/credential fields are refused.
 

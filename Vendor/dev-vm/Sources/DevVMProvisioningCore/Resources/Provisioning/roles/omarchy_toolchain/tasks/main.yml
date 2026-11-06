@@ -1,0 +1,12 @@
+---
+- name: Ensure selected toolchain configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'toolchain'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ omarchy_toolchain | to_json }}"
+  register: omarchy_toolchain_result
+  changed_when: (omarchy_toolchain_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report toolchain actions
+  ansible.builtin.debug:
+    var: omarchy_toolchain_result.stdout
