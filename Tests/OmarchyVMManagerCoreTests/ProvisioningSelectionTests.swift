@@ -244,6 +244,54 @@ final class CreationFixture: Sendable {
             "--preset", "developer", "--manifest", "retained-inputs.json", "--preview-id", id.uuidString]) }
         await f.assertInert(); await f.close()
     }
+    @Test(arguments: ["config/vm.yml", "config/nested/vm.yaml", "inputs.json"])
+    func nestedSavedManifestRestoresExactRelativePathWithoutExecutionAuthority(manifest: String) async throws {
+        let f = try await CreationFixture()
+        let path = f.source.appendingPathComponent(manifest)
+        try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let value = try PlainDataParser.read(f.source.appendingPathComponent("vm.yml"))
+        try helperJSON(value).write(to: path)
+        let review = try await f.service.prepareCreation(id: UUID(), source: .init(directory: f.source.path, manifest: manifest))
+        let id = try await f.create(review), profile = try #require(await f.manager.snapshots().first?.profile)
+        try await f.service.closeForReopen()
+        let reopened = VMManager(runtime: f.runtime, profiles: [profile], applicationSupport: f.root, hostMemoryMiB: 32768, logicalCPUs: 8, registry: f.registry, portProbe: TransportFixturePorts())
+        let next = try await ProvisioningService.open(manager: reopened, directory: f.state, environment: .init(executionEnabled: false,
+            engineDigest: f.engine, dependencies: f.dependencies, launcher: f.launcher, transportPolicy: .fixture(f.provider.root), admitPackage: {}))
+        let restored = try await next.preview(review.id)
+        #expect(restored.vmID == id && restored.planDigest == review.planDigest && restored.inputDigest == review.inputDigest)
+        #expect(restored.sessionID == nil && restored.proposal == review.proposal)
+        #expect(await next.drafts[review.id]?.plan.manifestPath == manifest)
+        await #expect(throws: ProvisioningServiceFailure.disabled) { _ = try await next.prepareApply(review.id) }
+        try await next.closeForReopen(); await f.assertInert(); await f.close()
+    }
+    @Test(arguments: ["bytes", "mode", "file-link", "directory-link"])
+    func nestedSavedManifestRefusesChangedOrLinkedInputs(kind: String) async throws {
+        let f = try await CreationFixture(), relative = "config/vm.yml"
+        let directory = f.source.appendingPathComponent("config"), file = directory.appendingPathComponent("vm.yml")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        try Data(contentsOf: f.source.appendingPathComponent("vm.yml")).write(to: file)
+        let review = try await f.service.prepareCreation(id: UUID(), source: .init(directory: f.source.path, manifest: relative))
+        _ = try await f.create(review)
+        let draft = try #require(await f.service.creations[review.id]), profile = try #require(await f.manager.snapshots().first?.profile)
+        let retained = draft.frozen.storage.directory.appendingPathComponent(relative)
+        try await f.service.closeForReopen()
+        if kind == "bytes" { try Data("schema_version: 1\nid: changed\n".utf8).write(to: retained) }
+        if kind == "mode" { #expect(chmod(retained.path, 0o640) == 0) }
+        if kind == "file-link" {
+            try FileManager.default.removeItem(at: retained) // Disposable source fixture only.
+            try FileManager.default.createSymbolicLink(at: retained, withDestinationURL: file)
+        }
+        if kind == "directory-link" {
+            let parent = retained.deletingLastPathComponent(), moved = f.root.appendingPathComponent("retained-config")
+            try FileManager.default.moveItem(at: parent, to: moved)
+            try FileManager.default.createSymbolicLink(at: parent, withDestinationURL: moved)
+        }
+        let reopened = VMManager(runtime: f.runtime, profiles: [profile], applicationSupport: f.root, hostMemoryMiB: 32768, logicalCPUs: 8, registry: f.registry, portProbe: TransportFixturePorts())
+        let next = try await ProvisioningService.open(manager: reopened, directory: f.state, environment: .init(executionEnabled: false,
+            engineDigest: f.engine, dependencies: f.dependencies, launcher: f.launcher, transportPolicy: .fixture(f.provider.root), admitPackage: {}))
+        await #expect(throws: Error.self) { _ = try await next.preview(review.id) }
+        try await next.closeForReopen(); await f.assertInert(); await f.close()
+    }
     @Test(arguments: ["changed-bytes", "changed-mode", "missing", "other-receipt", "changed-engine"])
     func restartedSavedSelectionRefusesChangedOrMissingInputs(kind: String) async throws {
         let f = try await CreationFixture(), p = try await f.prepare(), _ = try await f.create(p)

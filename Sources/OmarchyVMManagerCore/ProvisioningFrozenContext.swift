@@ -93,6 +93,57 @@ final class ProvisioningPrivateInputTree: @unchecked Sendable {
               lstat(directory.path, &r) == 0, r.st_ino == rootInode, r.st_dev == device,
               fstat(rootFD, &held) == 0, held.st_ino == rootInode, held.st_dev == device else { throw ProvisioningJobFailure.artifactUnavailable }
     }
+    /// Discover legacy saved manifests at their original relative paths. Walk
+    /// only held directory descriptors, never links; planning still independently
+    /// verifies the complete source snapshot and all saved receipt hashes.
+    func manifestPaths() throws -> [String] {
+        try verifyRoot()
+        var paths: [String] = [], files = 0, directories = 0
+        func walk(_ fd: Int32, prefix: String, depth: Int) throws {
+            guard depth <= 64 else { throw ProvisioningReviewFailure.quota }
+            let copy = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard copy >= 0 else { throw ProvisioningReviewFailure.changed }
+            guard let stream = fdopendir(copy) else { Darwin.close(copy); throw ProvisioningReviewFailure.changed }
+            defer { closedir(stream) }
+            while true {
+                errno = 0
+                guard let entry = readdir(stream) else {
+                    guard errno == 0 else { throw ProvisioningReviewFailure.changed }; break
+                }
+                let name = withUnsafePointer(to: &entry.pointee.d_name) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: 256) { String(validatingCString: $0) }
+                }
+                guard let name else { throw ProvisioningReviewFailure.changed }
+                if name == "." || name == ".." { continue }
+                let path = prefix + name
+                _ = try frozenRelativeComponents(path)
+                var info = stat()
+                guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_uid == getuid() else { throw ProvisioningReviewFailure.changed }
+                switch info.st_mode & S_IFMT {
+                case S_IFREG:
+                    files += 1
+                    // Original frozen inputs can coexist with the projected
+                    // manifest/layout even when the new plan drops old assets.
+                    guard files <= SourceSnapshot.maximumFiles + 2, info.st_nlink == 1, info.st_size >= 0,
+                          info.st_size <= SourceSnapshot.maximumBytes else { throw ProvisioningReviewFailure.quota }
+                    if ["json", "yaml", "yml"].contains(URL(fileURLWithPath: path).pathExtension.lowercased()) { paths.append(path) }
+                case S_IFDIR:
+                    directories += 1
+                    guard directories <= 4096 else { throw ProvisioningReviewFailure.quota }
+                    let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    guard child >= 0 else { throw ProvisioningReviewFailure.changed }
+                    defer { Darwin.close(child) }
+                    var held = stat()
+                    guard fstat(child, &held) == 0, info.st_dev == held.st_dev, info.st_ino == held.st_ino else { throw ProvisioningReviewFailure.changed }
+                    try walk(child, prefix: path + "/", depth: depth + 1)
+                default: throw ProvisioningReviewFailure.changed
+                }
+            }
+        }
+        try walk(rootFD, prefix: "", depth: 0)
+        try verifyRoot()
+        return paths
+    }
     func writeSelectionManifest(_ data: Data, name: String) throws {
         guard (name == ProvisioningService.selectionManifest && data.count <= PlainDataParser.maximumBytes) || (name == ProvisioningService.selectionLayout && data.count <= 256 * 1024) else { throw ProvisioningJobFailure.artifactUnavailable }
         try verifyRoot()

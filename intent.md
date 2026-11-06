@@ -1,5 +1,18 @@
 # Omarchy VM Manager — implementation intent
 
+## Factory PR integration refresh — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** publish the factory acceptance docs and
+complete test-only CI, preserving private artifacts, frozen pins, Main and
+existing VMs. The updated PR conflicts with `next`; integrate `a2ff8da` on the
+factory feature branch and retain both documentation histories. Its inert-helper
+shutdown and nested saved-selection corrections join the factory changes; no
+package, runtime or candidate pin changes are needed.
+
+**TO PROVE:** fresh hosted checks on the merged source. This integration does not
+authorize signing, installs, factory/runtime downloads or VM launches, and does
+not extend the preceding real-guest acceptance to this new source revision.
+
 ## Disposable lean factory boot acceptance — 6 November 2026
 
 **USER AUTHORIZATION:** boot one new disposable Dev VM from the imported lean
@@ -106,6 +119,88 @@ revalidation pass. Fresh candidate verification and preservation evidence are
 recorded in [factory building](docs/FactoryBuilding.md). No Docker build,
 download, signing credential, install or VM launch is authorized here. Engine
 scratch capacity, real factory build/import and guest acceptance remain TO PROVE.
+## Authorized PR #10 merge gate and terminal backport — 6 November 2026
+
+**USER AUTHORIZATION:** merge PR #10 into `next` once its reviewed source and all
+applicable hosted checks are ready. This permits the existing Dev release
+workflow after merge, not a merge into `main`, local signing, installation,
+permission changes, factory downloads or real-VM operations.
+
+**VERIFIED — CI blocker:** the PR-event run `42179249963` on `98caa99` passes its
+Stable checks but fails Dev's `nativeViewerClaimsRendersReleasesAndDetachesWithoutCancelling`
+at the immediate ownership-release assertion. Both managed-SSH checks pass;
+the separate push run is still completing its optimized policy checks. Neither
+an old green result nor a missing required-check setting authorizes merging.
+
+**FIX / PRIVATE COUPLING:** PR #11 already contains the terminal correction in
+`91ec718`. Backport only its exact terminal screen and surface-test changes.
+An already-dispatched read may republish owned-input state while release waits
+for idle; clear input state again after that read finishes and before suspending
+on the release RPC. Keep the authenticated attachment, command sequencing and
+single-writer lease unchanged. Its internal read seam lets a synthetic test
+hold that ownership page across explicit release, without changing the wire.
+No factory-builder implementation, package/resource pin or other PR #11 change
+is included.
+
+**VERIFIED — fake/local:** the deterministic `inputReleaseFencesAnAlreadyReadOwnershipPage`
+regression fails with only the four-line ownership correction withheld and passes
+with the exact PR #11 implementation. `make test-provisioning-ui-cli
+test-provisioning-terminal test-provisioning-screens` passes 15 surface/planning
+tests, three terminal-vendor script tests, 16 terminal/UI tests and 140 offscreen
+Setup/New VM checks/27 PNGs. A Dev build of the combined surface/terminal filter
+passes 30 tests. Diff checks pass. Evidence is retained privately in
+`.build/pr10-terminal-before.log` and `.build/pr10-terminal-validation.log`.
+Fresh hosted CI on the backported source remains pending until observed; the
+failed run above remains a failure.
+
+**TO PROVE:** native input/focus and actual guest behavior retain their prior
+boundaries. This pass opens no on-display window, runs no VM, accesses no real
+credential, and changes no installed application, runtime or factory artifact.
+
+## PR #10 merge-review corrections — 6 November 2026
+
+**USER AUTHORIZATION:** inspect PR #11 before fixing both PR #10 review findings,
+add regression coverage and push to PR #10 only after local checks pass. This is
+source/test work, not a merge, release, installation or real-guest approval.
+
+**VERIFIED — source comparison:** PR #11 at `62f2e22` retains PR #10's unchanged
+coordinator, service, frozen-input tree and saved-selection implementation and
+associated workflow/selection tests; it has not addressed either finding.
+
+**FIX / DESIGN DECISION:** an authenticated never-activated helper may be retired
+locally when shutdown revokes registration admission, including the interval
+between registration and activation. Verify the original worker's exact scope,
+permanent fence and matching owned exit before clearing its risk and releasing a
+pending shutdown. Lost registration/fencing/exit proof, any accepted activation
+or failed journal persistence keeps protection. Do not repeat an uncertain inert
+retirement. No guest command or new execution authority is needed for this path.
+
+**FIX / DESIGN DECISION:** restore saved nested manifests by their full relative
+paths through a bounded descriptor-relative walk of the retained source tree.
+Reject linked/special entries and retain all plan/input/engine receipt checks;
+restoration supplies no session, helper, task or sudo authority. Existing frozen
+source formats, private candidates, dependency/runtime pins and Stable/Dev gates
+are unchanged.
+
+**VERIFIED — fake/local checks:** `make test test-dev test-build-policies`
+passes 538 Swift tests in 70 suites per channel, 337 script tests, 140 offscreen
+UI checks/27 PNGs and three policy tests in each of the three optimized modes.
+After the final retained-tree discovery adjustment, `make test-provisioning-tools
+test-provisioning-bundle-dev` passes all 279 provisioning tests in 28 suites and
+the relocated/read-only Dev helper checks. Stable's relocated helper checks also
+pass. Six added test functions cover both original reproductions, the
+registration/activation interval, missing registration/fencing/exit proof,
+journal failure/no reconciliation replay, and nested manifest restoration plus
+changed bytes/modes/links. Whitespace checks pass. Logs are retained privately as
+`.build/pr10-review-fixes-validation.log` and
+`.build/pr10-review-fixes-final.log`. Hosted CI on the new commit remains pending
+until observed; earlier CI success applies only to its recorded source commit.
+
+**TO PROVE:** fresh signed normal-Dev, native helper/guest cancellation and
+recovery, and prior focus/sleep/wake/crash cases retain their existing evidence
+boundaries. Fake/local checks do not establish these behaviors. No real VM,
+factory download, installed manager, macOS permission or signing credential is
+used or changed in this correction pass.
 
 ## Normal Dev provisioning — user authorization, 6 November 2026
 

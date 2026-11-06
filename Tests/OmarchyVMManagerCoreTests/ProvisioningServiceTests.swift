@@ -21,13 +21,18 @@ actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     private var runners: [UUID: SessionFixtureRunner] = [:]
     private var gate: IPCWorkerGate?
     private var registrationGate: IPCWorkerGate?
-    private var denyExit = false
+    private var exitGate: IPCWorkerGate?
+    private var denyExit = false, loseRegistration = false, denyFence = false
+    private(set) var reconciliations = 0
     var uncertain = false
     init(provider: SessionFixtureProvider, executionAdmission: ProvisioningExecutionAdmission = .fixture) { self.provider = provider; self.executionAdmission = executionAdmission }
     func interceptFeatures(_ hook: @escaping @Sendable () async -> Void) { featureHook = hook }
     func pause(_ gate: IPCWorkerGate) { self.gate = gate }
     func pauseRegistration(_ gate: IPCWorkerGate) { registrationGate = gate }
     func withholdExitProof() { denyExit = true }
+    func pauseExitProof(_ gate: IPCWorkerGate) { exitGate = gate }
+    func loseRegistrationReply() { loseRegistration = true }
+    func withholdFenceProof() { denyFence = true }
     func uncertainNext() { uncertain = true }
     var launches: Int { children.count }
     func runner(_ id: UUID) -> SessionFixtureRunner? { runners[id] }
@@ -45,16 +50,25 @@ actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     func launch(_ ticket: ProvisioningHelperLaunchTicket) async throws -> ProvisioningHelperRegistrationReceipt {
         let receipt = try await selected(ticket.registration.scope.jobID).launch(ticket)
         if let registrationGate { self.registrationGate = nil; await registrationGate.wait() }
+        if loseRegistration { throw ProvisioningHelperIPCFailure.unavailable }
         return receipt
     }
     private func selected(_ id: UUID) throws -> LocalTransportLauncher { guard let child = children[id] else { throw ProvisioningHelperIPCFailure.ownership }; return child }
     func bindSessionAuthority(_ activation: ProvisioningHelperActivation, check: @escaping ProvisioningManagerSessionCheck) async throws { try await selected(activation.scope.jobID).bindSessionAuthority(activation, check: check) }
     func dispatch(_ kind: ProvisioningHelperDispatchKind, activation: ProvisioningHelperActivation) async throws -> ProvisioningHelperWorkerSnapshot { try await selected(activation.scope.jobID).dispatch(kind, activation: activation) }
-    func reconcile(_ expected: ProvisioningRecoveryExpectation) async throws -> ProvisioningRecoveryPermit { try await selected(expected.jobID).reconcile(expected) }
+    func reconcile(_ expected: ProvisioningRecoveryExpectation) async throws -> ProvisioningRecoveryPermit {
+        reconciliations += 1
+        if denyFence { return .init(expectation: expected, priorWorker: .unknown) }
+        return try await selected(expected.jobID).reconcile(expected)
+    }
     func releaseAfterCleanup(jobID: UUID, helperIdentity: ProvisioningHelperIdentity) async { try? await selected(jobID).releaseAfterCleanup(jobID: jobID, helperIdentity: helperIdentity) }
     func abort(_ activation: ProvisioningHelperActivation) async { try? await selected(activation.scope.jobID).abort(activation) }
     func abandon(_ ticket: ProvisioningHelperLaunchTicket) async { try? await selected(ticket.registration.scope.jobID).abandon(ticket) }
-    func waitForExit(jobID: UUID, identity: ProvisioningHelperIdentity, timeout: Duration) async -> Bool { if denyExit { return false }; return (try? await selected(jobID).waitForExit(jobID: jobID, identity: identity, timeout: timeout)) ?? false }
+    func waitForExit(jobID: UUID, identity: ProvisioningHelperIdentity, timeout: Duration) async -> Bool {
+        if let exitGate { self.exitGate = nil; await exitGate.wait() }
+        if denyExit { return false }
+        return (try? await selected(jobID).waitForExit(jobID: jobID, identity: identity, timeout: timeout)) ?? false
+    }
     func close() async { for child in children.values { await child.close() } }
 }
 final class WorkflowFixture: Sendable {
@@ -212,6 +226,98 @@ final class WorkflowFixture: Sendable {
         let runner = try #require(await f.launcher.runner(p.request.jobID))
         #expect(await runner.invocations.isEmpty)
         try await f.assertCanPause()
+        await f.close()
+    }
+    @Test func shutdownDuringInertRegistrationWaitsForFencingAndExitBeforeReleasingHold() async throws {
+        let f = try await WorkflowFixture(), p = try await f.preview()
+        let registration = IPCWorkerGate(), exit = IPCWorkerGate()
+        await f.launcher.pauseRegistration(registration); await f.launcher.pauseExitProof(exit)
+        try await f.service.approve(p.workflowID, approval: f.approval(p))
+        #expect(await eventually { await registration.entered })
+        await f.manager.shutDown(f.profile.id)
+        await registration.release()
+        #expect(await eventually { await exit.entered })
+        #expect(f.runtime.startedHandles[0].shutdownCount == 0)
+        #expect(await f.service.status(p.workflowID)?.cleanupRequired == true)
+        #expect(await f.service.coordinator.status(p.request.jobID)?.cleanupRequired == true)
+        await exit.release()
+        let result = try await f.service.wait(p.workflowID)
+        #expect(!result.cleanupRequired && result.stage == .failed)
+        let records = try await f.service.jobs.load()
+        let record = try #require(records.first)
+        #expect(record.state == .cleanupConfirmed && record.helperActivationID == nil && !record.cleanupRequired)
+        let runner = try #require(await f.launcher.runner(p.request.jobID))
+        #expect(await runner.invocations.isEmpty)
+        #expect(await f.launcher.reconciliations == 1)
+        #expect(f.runtime.startedHandles[0].shutdownCount == 1)
+        f.runtime.startedHandles[0].emit(.exited(status: 0))
+        #expect(await eventually { await f.manager.activeSessionCount == 0 })
+        try await f.manager.start(f.profile.id)
+        #expect(f.runtime.startedHandles.count == 2)
+        await f.close()
+    }
+    @Test(arguments: ["registration", "fence", "exit"])
+    func uncertainInertRetirementKeepsShutdownCleanupHoldWithoutReplay(kind: String) async throws {
+        let f = try await WorkflowFixture(), p = try await f.preview(), gate = IPCWorkerGate()
+        if kind == "registration" { await f.launcher.loseRegistrationReply() }
+        if kind == "fence" { await f.launcher.withholdFenceProof() }
+        if kind == "exit" { await f.launcher.withholdExitProof() }
+        await f.launcher.pauseRegistration(gate)
+        try await f.service.approve(p.workflowID, approval: f.approval(p))
+        #expect(await eventually { await gate.entered })
+        await f.manager.shutDown(f.profile.id)
+        await gate.release()
+        #expect(try await f.service.wait(p.workflowID).cleanupRequired)
+        let records = try await f.service.jobs.load()
+        let record = try #require(records.first)
+        #expect(record.cleanupRequired && record.helperActivationID == nil)
+        let runner = try #require(await f.launcher.runner(p.request.jobID))
+        #expect(await runner.invocations.isEmpty)
+        #expect(await f.launcher.reconciliations == (kind == "registration" ? 0 : 1))
+        #expect(f.runtime.startedHandles[0].shutdownCount == 1)
+        f.runtime.startedHandles[0].emit(.exited(status: 0))
+        #expect(await eventually { await f.manager.activeSessionCount == 0 })
+        await #expect(throws: VMFailure.self) { try await f.manager.start(f.profile.id) }
+        await f.close()
+    }
+    @Test func shutdownBetweenRegistrationAndActivationRetiresOnlyTheOriginalInertWorker() async throws {
+        let f = try await WorkflowFixture(), p = try await f.preview()
+        // Stop exactly between the two coordinator calls used by runOwned.
+        try await f.service.coordinator.registerHelperWorker(p.request, approval: f.approval(p), launcher: f.launcher, transport: p.transport)
+        await f.manager.shutDown(f.profile.id)
+        try await f.service.approve(p.workflowID, approval: f.approval(p))
+        #expect(try await f.service.wait(p.workflowID).cleanupRequired == false)
+        let records = try await f.service.jobs.load()
+        let record = try #require(records.first)
+        #expect(record.state == .cleanupConfirmed && record.helperActivationID == nil)
+        let runner = try #require(await f.launcher.runner(p.request.jobID))
+        #expect(await runner.invocations.isEmpty)
+        #expect(await f.launcher.reconciliations == 1)
+        f.runtime.startedHandles[0].emit(.exited(status: 0))
+        #expect(await eventually { await f.manager.activeSessionCount == 0 })
+        try await f.manager.start(f.profile.id)
+        await f.close()
+    }
+    @Test(arguments: ["fence", "journal"])
+    func cancellingInertRegistrationDoesNotReplayAnUnconfirmedRetirement(kind: String) async throws {
+        let f = try await WorkflowFixture(), p = try await f.preview(), gate = IPCWorkerGate(), exit = IPCWorkerGate()
+        if kind == "fence" { await f.launcher.withholdFenceProof() }
+        if kind == "journal" { await f.launcher.pauseExitProof(exit) }
+        await f.launcher.pauseRegistration(gate)
+        try await f.service.approve(p.workflowID, approval: f.approval(p))
+        #expect(await eventually { await gate.entered })
+        try await f.service.cancel(p.workflowID)
+        await gate.release()
+        if kind == "journal" {
+            #expect(await eventually { await exit.entered })
+            let journal = await f.service.jobs
+            try Data("external-fixture-edit".utf8).write(to: journal.directory.appendingPathComponent("jobs.json"))
+            await exit.release()
+        }
+        #expect(try await f.service.wait(p.workflowID).cleanupRequired)
+        #expect(await f.service.coordinator.status(p.request.jobID)?.cleanupRequired == true)
+        #expect(await f.launcher.reconciliations == 1)
+        await #expect(throws: VMFailure.self) { try await f.manager.pause(f.profile.id) }
         await f.close()
     }
     @Test func lostExitProofRetainsWorkflowHoldEvenAfterCleanEngineResult() async throws {

@@ -194,6 +194,7 @@ public actor ProvisioningCoordinator {
         }
         let lease = try await reserve(request.jobID, target: request.target, generation: UUID())
         var ticket: ProvisioningHelperLaunchTicket?
+        var registrationAuthenticated = false
         do {
             try await manager.validateProvisioning(lease, cleanup: false)
             guard let artifacts else { throw ProvisioningJobFailure.artifactUnavailable }
@@ -242,6 +243,7 @@ public actor ProvisioningCoordinator {
             let receipt = try await launcher.launch(prepared)
             guard receipt.identity == prepared.identity, receipt.registrationDigest == record.helperRegistrationDigest,
                   receipt.state == "registered", receipt.deliveryDigest == record.helperDelivery?.sha256, receipt.transportDigest == record.helperTransport?.sha256 else { throw ProvisioningJobFailure.ownershipUnverified }
+            registrationAuthenticated = true // Ephemeral proof, never inferred from a journal.
             do { try admitPackage() } catch { throw ProvisioningJobFailure.invalidRequest }
             if record.helperDelivery != nil { try artifacts.verifyDelivery(record) }
             else { try request.plan.verify(in: request.repository) }
@@ -252,6 +254,14 @@ public actor ProvisioningCoordinator {
             await manager.releaseProvisioning(lease, cleanupRequired: true)
             return record.snapshot
         } catch {
+            // A shutdown may revoke body admission while launch is awaiting its
+            // inert registration receipt. Retire that exact acknowledged worker
+            // locally before releasing the pending shutdown; no guest is needed.
+            if registrationAuthenticated, !storageFailed,
+               (try? await retireInertHelper(request.jobID, launcher: launcher)) != nil {
+                await manager.releaseProvisioning(lease, cleanupRequired: false)
+                throw error
+            }
             if let ticket { await launcher.abandon(ticket) }
             if var record = jobs[request.jobID] {
                 record.state = .cleanupRequired; record.cleanupRequired = true; record.workerOutstanding = false
@@ -267,18 +277,37 @@ public actor ProvisioningCoordinator {
     /// without remote cleanup. An accepted activation marker forbids this path.
     func abandonPreparedWorker(_ jobID: UUID) async throws -> ProvisioningJobSnapshot {
         guard !closed, !storageFailed, active == nil, helperActive == nil, !admitting,
-              var row = jobs[jobID], row.helperRegistered == true, row.helperActivationID == nil,
-              let identity = row.helperIdentity, let worker = row.workerToken, let payload = row.payloadID,
-              let checkpoint = row.cleanupCheckpointSHA256, let launcher = helperAuthorities[jobID] else { throw ProvisioningJobFailure.ownershipUnverified }
+              jobs[jobID]?.helperRegistered == true, let launcher = helperAuthorities[jobID]
+        else { throw ProvisioningJobFailure.ownershipUnverified }
         admitting = true; defer { admitting = false }
+        return try await retireInertHelper(jobID, launcher: launcher)
+    }
+    /// Called only while admission is reserved, either after an authenticated
+    /// launch receipt or for an original registered worker. Fencing alone does
+    /// not clear risk: retain it until this launcher observes its matching exit.
+    private func retireInertHelper(_ jobID: UUID, launcher: any ProvisioningRecoveryAuthorizing) async throws -> ProvisioningJobSnapshot {
+        guard !closed, !storageFailed, admitting, active == nil, helperActive == nil,
+              var row = jobs[jobID], row.cleanupRequired, row.helperActivationID == nil,
+              let identity = row.helperIdentity, let worker = row.workerToken, let payload = row.payloadID,
+              let checkpoint = row.cleanupCheckpointSHA256,
+              let lifecycle = launcher as? any ProvisioningHelperLifecycleObserving
+        else { throw ProvisioningJobFailure.ownershipUnverified }
         let scope = ProvisioningRecoveryExpectation(challenge: UUID(), jobID: jobID, vmID: row.vmID, sessionID: row.sessionID,
             payloadID: payload, workerToken: worker, engineDigest: row.engineDigest, dependencyDigest: row.dependencyDigest,
             bindingDigest: row.bindingDigest, reviewDigest: row.reviewDigest, checkpointDigest: checkpoint, helperIdentity: identity)
         let permit = try await launcher.reconcile(scope)
-        guard permit.expectation == scope, permit.priorWorker == .stoppedAndFenced, jobs[jobID]?.helperActivationID == nil else { throw ProvisioningJobFailure.ownershipUnverified }
-        row.cleanupRequired = false; row.workerOutstanding = false; row.state = .cleanupConfirmed; row.outcome = .cleanupConfirmed
-        try advance(&row); try persist(row)
+        guard permit.expectation == scope, permit.priorWorker == .stoppedAndFenced,
+              !storageFailed, jobs[jobID] == row else { throw ProvisioningJobFailure.ownershipUnverified }
         await launcher.releaseAfterCleanup(jobID: jobID, helperIdentity: identity)
+        guard await lifecycle.waitForExit(jobID: jobID, identity: identity, timeout: .seconds(5)),
+              !storageFailed, jobs[jobID] == row else { throw ProvisioningJobFailure.ownershipUnverified }
+        row.cleanupRequired = false; row.workerOutstanding = false; row.state = .cleanupConfirmed; row.outcome = .cleanupConfirmed
+        do { try advance(&row); try persist(row) }
+        catch {
+            row.cleanupRequired = true; row.state = .cleanupRequired; row.outcome = .cleanupRequired; row.failure = .journalUnavailable
+            jobs[jobID] = row // A failed journal cannot clear even the in-memory hold.
+            throw error
+        }
         helperAuthorities.removeValue(forKey: jobID)
         if !jobs.values.contains(where: { $0.vmID == row.vmID && $0.cleanupRequired }) {
             await manager.clearUnstartedProvisioningHold(vmID: row.vmID)

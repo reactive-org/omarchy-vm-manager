@@ -15,16 +15,14 @@ extension ProvisioningService {
         guard trees.count <= 128 else { throw ProvisioningReviewFailure.quota }
         for directory in trees.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             guard let storage = try? ProvisioningPrivateInputTree(retained: directory, parent: sourceDirectory) else { continue }
-            let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-            guard files.count <= SourceSnapshot.maximumFiles else { throw ProvisioningReviewFailure.quota }
-            let manifests = files.filter { ["json", "yaml", "yml"].contains($0.pathExtension) }.sorted {
-                if $0.lastPathComponent == $1.lastPathComponent { return false }
-                if $0.lastPathComponent == Self.selectionManifest { return true }
-                if $1.lastPathComponent == Self.selectionManifest { return false }
-                return $0.lastPathComponent < $1.lastPathComponent
+            let manifests = try storage.manifestPaths().sorted {
+                if $0 == $1 { return false }
+                if $0 == Self.selectionManifest { return true }
+                if $1 == Self.selectionManifest { return false }
+                return $0 < $1
             }
             for manifest in manifests {
-                guard let plan = try? SetupPlanner.plan(repository: directory, manifest: manifest.lastPathComponent),
+                guard let plan = try? SetupPlanner.plan(repository: directory, manifest: manifest),
                       plan.identity == receipt.planDigest, plan.snapshot.identity == receipt.inputDigest,
                       try ProvisioningCoordinator.engineIdentity(plan) == receipt.engineDigest else { continue }
                 try storage.verifyRoot(); try plan.verify(in: directory)
@@ -42,7 +40,7 @@ extension ProvisioningService {
                     proposal: try helperJSON(plan), tasks: tasks,
                     restartRequired: requirements["desktop_restart_required"] == .bool(true))
                 try preview.validate(); try reviewAvailable(); try storage.verifyRoot(); try plan.verify(in: directory)
-                drafts[id] = .init(selection: .init(directory: directory.path), preview: preview, storage: storage, plan: plan)
+                drafts[id] = .init(selection: .init(directory: directory.path, manifest: manifest), preview: preview, storage: storage, plan: plan)
                 return
             }
         }
