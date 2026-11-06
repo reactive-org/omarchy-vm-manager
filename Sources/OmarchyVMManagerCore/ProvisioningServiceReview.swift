@@ -64,10 +64,13 @@ extension ProvisioningService: ProvisioningReviewing {
         let prepared = try await prepared(id)
         try enabled(); try verify(draft)
         let request = prepared.request
+        guard case .object(let document) = request.plan.document, case .object(let requirements) = document["requirements"],
+              requirements["system_update_required"] == .bool(true), requirements["system_restart_required"] == .bool(true) else { throw ProvisioningReviewFailure.invalid }
         let trust = request.selectedTasks.isEmpty ? nil : KitVerifier.sha256(try helperJSON(["custom-task-trust-v1", request.reviewIdentity, draft.preview.inputDigest] + request.selectedTasks))
         let review = ProvisioningApplyReview(previewID: id, vmID: binding.vmID, sessionID: binding.sessionID, planDigest: draft.preview.planDigest,
             inputDigest: draft.preview.inputDigest, dependencyDigest: request.dependencyDigest, reviewIdentity: request.reviewIdentity, taskTrustIdentity: trust,
-            persistentGrantRequired: true, dockerRootAccessRequired: draft.preview.restartRequired)
+            systemUpdateRequired: true, persistentGrantRequired: true,
+            dockerRootAccessRequired: requirements["desktop_restart_required"] == .bool(true))
         try review.validate(); applyReviews[id] = review; return review
     }
     public func apply(_ id: UUID, consent: ProvisioningApplyConsent) async throws -> ProvisioningWorkflowSnapshot {

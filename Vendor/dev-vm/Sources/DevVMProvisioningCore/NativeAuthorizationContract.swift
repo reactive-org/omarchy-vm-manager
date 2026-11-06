@@ -5,7 +5,7 @@ import Foundation
 /// A future transport must route through the pinned non-root guest connection,
 /// quote argv correctly at the SSH boundary, and use the approved input lease.
 public struct NativeGuestInvocation: Sendable {
-    public static let contractVersion = 1
+    public static let contractVersion = 2
     public let arguments: [String]
     public let requiresInteractiveTerminal: Bool
     public let acceptsNonterminalInput: Bool
@@ -25,6 +25,10 @@ extension GuestOperation {
             script = "omarchy sudo passwordless permanent"
         case .verifyGrantActive:
             script = "omarchy sudo passwordless --active && sudo -kn true"
+        case .updateSystem:
+            // Match the original bootstrap: Omarchy owns repository refresh,
+            // full upgrades and migrations. Never substitute pacman -Sy.
+            script = "omarchy update -y"
         case .verifyGrantInactive:
             // The compound observation also reconciles lost disable/clear replies.
             script = "omarchy sudo passwordless --disable && sudo -K && if omarchy sudo passwordless --active; then exit 1; else test \"$?\" -eq 1; fi"

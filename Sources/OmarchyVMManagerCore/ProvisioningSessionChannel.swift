@@ -28,7 +28,7 @@ struct ProvisioningSessionRequest: Codable, Equatable, Sendable {
         }
     }
     static let cleanupOperations: Set<GuestOperation> = [.verifyIdentity, .quiesceOwnedWork, .revokeGrant, .clearAuthenticationCache, .verifyGrantInactive, .removePayload, .verifyOwnerDockerAccess]
-    static let applyOperations: Set<GuestOperation> = [.resetGrant, .clearAuthenticationCache, .requestPersistentGrant, .verifyGrantActive, .installManifestPackages, .configureDockerOwnerAccess, .revokeGrant, .verifyGrantInactive]
+    static let applyOperations: Set<GuestOperation> = [.resetGrant, .clearAuthenticationCache, .requestPersistentGrant, .verifyGrantActive, .updateSystem, .installManifestPackages, .configureDockerOwnerAccess, .revokeGrant, .verifyGrantInactive]
     static func purposes(_ operation: GuestOperation) -> Set<ProvisioningProcessPurpose> {
         switch operation {
         case .verifyIdentity: [.identity]
@@ -36,6 +36,7 @@ struct ProvisioningSessionRequest: Codable, Equatable, Sendable {
         case .configureFeatures: [.features]
         case .configureRepository: [.repository]
         case .installManifestPackages: [.packages]
+        case .updateSystem: [.systemUpdate]
         case .quiesceOwnedWork: [.quiesce]
         case .removePayload: [.remove]
         default: [.native]

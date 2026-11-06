@@ -38,7 +38,7 @@ extension ProvisioningService {
                 let preview = ProvisioningPlanPreview(id: id, vmID: receipt.vmID, sessionID: nil,
                     planDigest: receipt.planDigest, inputDigest: receipt.inputDigest, engineDigest: receipt.engineDigest,
                     proposal: try helperJSON(plan), tasks: tasks,
-                    restartRequired: requirements["desktop_restart_required"] == .bool(true))
+                    restartRequired: requirements["desktop_restart_required"] == .bool(true) || requirements["system_restart_required"] == .bool(true))
                 try preview.validate(); try reviewAvailable(); try storage.verifyRoot(); try plan.verify(in: directory)
                 drafts[id] = .init(selection: .init(directory: directory.path, manifest: manifest), preview: preview, storage: storage, plan: plan)
                 return

@@ -260,7 +260,7 @@ public actor ProvisioningService {
             if cancelled.contains(id) { try await coordinator.cancel(prepared.request.jobID) }
             let result = try await coordinator.wait(prepared.request.jobID)
             if result.cleanupRequired {
-                try update(id, stage: .cleanupRequired, failure: .childFailed, risk: true)
+                try update(id, stage: .cleanupRequired, failure: workflowFailure(result), risk: true)
             } else {
                 unconfirmedExits.insert(id)
                 guard let record = try jobs.load().first(where: { $0.jobID == prepared.request.jobID }), let helper = record.helperIdentity,
@@ -274,7 +274,7 @@ public actor ProvisioningService {
                 case .cancelled: stage = .cancelled
                 default: stage = .failed
                 }
-                try update(id, stage: stage, failure: stage == .failed ? .childFailed : nil, risk: false)
+                try update(id, stage: stage, failure: stage == .failed ? workflowFailure(result) : nil, risk: false)
                 await manager.setProvisioningWorkflowHold(id, vmID: result.vmID, required: false)
             }
             if rows[id]?.stage != .restartRequired { busyID = nil }
@@ -285,6 +285,11 @@ public actor ProvisioningService {
             if !inertRetirementAttempted { _ = try? await coordinator.abandonPreparedWorker(prepared.request.jobID) }
             await fail(id, error: error)
         }
+    }
+    private func workflowFailure(_ result: ProvisioningJobSnapshot) -> ProvisioningWorkflowFailure {
+        if result.engineFailure == .systemUpdateFailed { return .systemUpdateFailed }
+        if result.failure == .helperUnavailable { return .helperUnavailable }
+        return .childFailed
     }
     func restartReview(_ id: UUID) throws -> ProvisioningRestartReview {
         guard let row = rows[id], row.stage == .restartRequired, let review = row.reviewDigest, !row.cleanupRequired else { throw ProvisioningServiceFailure.reviewRequired }
@@ -406,7 +411,8 @@ public actor ProvisioningService {
         let childRisk = if let childID { await coordinator.status(childID)?.cleanupRequired ?? false } else { false }
         let risk = childRisk || unconfirmedExits.contains(id) || (failed && row.cleanupRequired)
         let failure: ProvisioningWorkflowFailure = error as? ProvisioningServiceFailure == .timedOut ? (row.restartID == nil ? .sshTimeout : .restartTimeout) :
-            cancelled.contains(id) ? .cancelled : error as? ProvisioningJobFailure == .sourceChanged ? .sourceChanged : .childFailed
+            cancelled.contains(id) ? .cancelled : error as? ProvisioningJobFailure == .sourceChanged ? .sourceChanged :
+            error as? ProvisioningJobFailure == .helperUnavailable ? .helperUnavailable : .childFailed
         try? update(id, stage: risk ? .cleanupRequired : cancelled.contains(id) ? .cancelled : .failed, failure: failure, risk: risk)
         if let lease = preparations.removeValue(forKey: id) { await coordinator.endPreparation(lease) }
         if let lease = restarts.removeValue(forKey: id) { await coordinator.cancelRestart(lease) }

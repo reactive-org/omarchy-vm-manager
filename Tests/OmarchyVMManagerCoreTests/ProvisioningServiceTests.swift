@@ -23,6 +23,7 @@ actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     private var registrationGate: IPCWorkerGate?
     private var exitGate: IPCWorkerGate?
     private var denyExit = false, loseRegistration = false, denyFence = false
+    private var updateStatus: Int32 = 0
     private(set) var reconciliations = 0
     var uncertain = false
     init(provider: SessionFixtureProvider, executionAdmission: ProvisioningExecutionAdmission = .fixture) { self.provider = provider; self.executionAdmission = executionAdmission }
@@ -34,13 +35,14 @@ actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     func loseRegistrationReply() { loseRegistration = true }
     func withholdFenceProof() { denyFence = true }
     func uncertainNext() { uncertain = true }
+    func failUpdate() { updateStatus = 1 }
     var launches: Int { children.count }
     func runner(_ id: UUID) -> SessionFixtureRunner? { runners[id] }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperLaunchTicket { throw ProvisioningServiceFailure.unavailable }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource) async throws -> ProvisioningHelperLaunchTicket { throw ProvisioningServiceFailure.unavailable }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource, transport: ProvisioningTransportHandoff) async throws -> ProvisioningHelperLaunchTicket {
         guard children[registration.scope.jobID] == nil else { throw ProvisioningJobFailure.jobConflict }
-        let runner = SessionFixtureRunner(uncertainFeatures: uncertain); uncertain = false
+        let runner = SessionFixtureRunner(uncertainFeatures: uncertain, updateStatus: updateStatus); uncertain = false; updateStatus = 0
         let child = LocalTransportLauncher(provider: provider, processRunner: runner, executionAdmission: executionAdmission)
         if let featureHook { self.featureHook = nil; await child.checks.interceptFeatures(featureHook) }
         if let gate { self.gate = nil; await child.checks.pause(gate) }
@@ -125,6 +127,23 @@ final class WorkflowFixture: Sendable {
     func close() async { try? await service.closeForReopen(); await launcher.close() }
 }
 @Suite("Milestone 3 workflow completion — fake runtimes/local fixtures") struct ProvisioningServiceTests {
+    @Test func updateFailureSurvivesAuthenticatedHelperAndJournalReopen() async throws {
+        let f = try await WorkflowFixture()
+        await f.launcher.failUpdate()
+        let id = try await f.apply(), result = try await f.service.wait(id)
+        #expect(result.stage == .failed && result.failure == .systemUpdateFailed && !result.cleanupRequired)
+        #expect(result.title == "Omarchy update failed" && result.failureExplanation?.contains("fresh setup review") == true)
+        let child = try #require(await f.service.jobStatus(id))
+        #expect(child.engineFailure == .systemUpdateFailed && !child.workerOutstanding && !child.cleanupRequired)
+        let runner = try #require(await f.launcher.runner(id)), calls = await runner.invocations
+        #expect(!calls.contains { [.packages, .features, .repository].contains($0.purpose) })
+        #expect(calls.contains { $0.purpose == .quiesce } && calls.last?.purpose == .remove)
+        #expect(f.runtime.startedHandles.count == 1 && f.runtime.startedHandles[0].shutdownCount == 0)
+        await f.close()
+        let journal = try ProvisioningWorkflowJournal(directory: f.state.appendingPathComponent("workflows"))
+        #expect(try journal.load().first?.snapshot.failure == .systemUpdateFailed)
+        journal.close()
+    }
     @Test func productGateRejectsBeforeProbesOrHelperConstruction() async throws {
         let f = try await WorkflowFixture(enabled: false)
         await #expect(throws: ProvisioningServiceFailure.disabled) { _ = try await f.service.prepare(plan: f.plan, repository: f.source, target: f.target) }
@@ -146,11 +165,11 @@ final class WorkflowFixture: Sendable {
         #expect(try await viewer.value.stage == .readyForReview)
         let p = try await f.service.prepared(id)
         try await f.service.approve(id, approval: f.approval(p))
-        #expect(try await f.service.wait(id).stage == .succeeded)
+        #expect(try await f.service.wait(id).stage == .restartRequired)
         _ = try await f.service.approve(id, approval: f.approval(p))
         #expect(await f.launcher.launches == 1)
         try await f.service.cancel(id)
-        #expect(await f.service.status(id)?.stage == .succeeded)
+        #expect(await f.service.status(id)?.stage == .cancelled)
         let report = try await f.service.retention(); #expect(report.retainedFiles == 3 && !report.automaticEviction && report.unresolvedJobs == 0)
         await f.close()
     }
@@ -414,7 +433,7 @@ final class WorkflowFixture: Sendable {
         async let a = f.service.approve(p.workflowID, approval: approval)
         async let b = f.service.approve(p.workflowID, approval: approval)
         _ = try await (a, b)
-        #expect(try await f.service.wait(p.workflowID).stage == .succeeded)
+        #expect(try await f.service.wait(p.workflowID).stage == .restartRequired)
         #expect(await f.launcher.launches == 1)
         await f.close()
     }

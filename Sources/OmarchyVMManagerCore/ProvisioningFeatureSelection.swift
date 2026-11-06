@@ -150,7 +150,7 @@ extension ProvisioningService {
         }
         try environment.admitPackage()
         let value = ProvisioningFrozenSelection(selection: source, storage: storage, plan: plan, proposal: try helperJSON(plan), tasks: tasks,
-            restartRequired: requirements["desktop_restart_required"] == .bool(true))
+            restartRequired: requirements["desktop_restart_required"] == .bool(true) || requirements["system_restart_required"] == .bool(true))
         // Same review bounds for attached and not-yet-created guests.
         _ = try value.preview(id: UUID(), vmID: UUID(), sessionID: nil, engine: environment.engineDigest)
         return value

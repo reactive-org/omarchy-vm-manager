@@ -108,7 +108,7 @@ private final class DisposableFixture: Sendable {
         try policy.verify(vmID: f.profile.id, root: expected)
         _ = try await f.manager.provisioningSSHAdmission(f.target)
         let id = try await f.apply(), runner = try #require(await f.launcher.runner(id))
-        #expect(await f.service.status(id)?.stage == .succeeded)
+        #expect(await f.service.status(id)?.stage == .restartRequired)
         #expect(await runner.invocations.contains { $0.purpose == .features })
         #expect(f.runtime.startRequests.count == 1)
         await f.close()
@@ -116,7 +116,8 @@ private final class DisposableFixture: Sendable {
     @Test func helperIndependentlyRejectsAnUnlistedGuestDespiteManagerApproval() async throws {
         let f = try await WorkflowFixture(admission: disposableFixtureAdmission, helperAdmission: unrelatedFixtureAdmission)
         let id = try await f.apply(), runner = try #require(await f.launcher.runner(id))
-        #expect(await f.service.status(id)?.stage != .succeeded)
+        let stage = await f.service.status(id)?.stage
+        #expect(stage != .succeeded && stage != .restartRequired)
         #expect(await runner.invocations.isEmpty && f.provider.builds == 0)
         await f.close()
     }
@@ -247,13 +248,14 @@ private final class DisposableFixture: Sendable {
         }
         let f = try await WorkflowFixture(admission: policy)
         let id = try await f.apply(), runner = try #require(await f.launcher.runner(id))
-        #expect(await f.service.status(id)?.stage == .succeeded)
+        #expect(await f.service.status(id)?.stage == .restartRequired)
         #expect(await runner.invocations.contains { $0.purpose == .features })
         #expect(await f.service.status(id)?.cleanupRequired == false)
         await f.close()
         let wrong = try await WorkflowFixture(admission: policy, helperAdmission: { _, support in .development(.init(applicationSupport: support.appendingPathComponent("foreign"))) })
         let rejected = try await wrong.apply(), unused = try #require(await wrong.launcher.runner(rejected))
-        #expect(await wrong.service.status(rejected)?.stage != .succeeded)
+        let rejectedStage = await wrong.service.status(rejected)?.stage
+        #expect(rejectedStage != .succeeded && rejectedStage != .restartRequired)
         #expect(await unused.invocations.isEmpty && wrong.provider.builds == 0)
         await wrong.close()
     }
