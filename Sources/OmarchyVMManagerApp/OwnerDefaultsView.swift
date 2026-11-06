@@ -28,6 +28,7 @@ struct OwnerDefaultsView: View {
             ScreenHeader("Guest Defaults", subtitle: "Save your account details once and they apply automatically to new virtual machines. You can choose manual account setup for an individual VM. Existing guests keep their saved settings.")
             if let failure = model.defaultsError { Text(failure).foregroundStyle(.red) }
             AnyLayout(wide ? AnyLayout(HStackLayout(alignment: .top, spacing: Theme.gap)) : AnyLayout(VStackLayout(spacing: Theme.gap))) {
+                VStack(spacing: Theme.gap) {
                 SpecPane("owner") {
                     SpecRow("username") { TextField("Username", text: $configuration.username).labelsHidden().specField().frame(maxWidth: 260) }
                     SpecRow("full name") { TextField("Full name", text: $configuration.fullName).labelsHidden().specField().frame(maxWidth: 260) }
@@ -60,6 +61,20 @@ struct OwnerDefaultsView: View {
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                     .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
                 }
+                    SpecPane("ssh public key") {
+                    SpecRow("login key", note: "Optional") {
+                        Button("Choose .pub…") {
+                            do { if let key = try PublicKeyPicker.choose() { publicKey = key; saved = false } }
+                            catch { self.error = error.localizedDescription }
+                        }
+                    }
+                    if let publicKey, let fingerprint = try? SSHPublicKey.fingerprint(publicKey) {
+                        SpecNote(fingerprint).textSelection(.enabled)
+                        Button("Remove Key") { self.publicKey = nil; saved = false }
+                    }
+                    SpecNote("Added to new SSH-enabled guests alongside the manager’s own per-guest key. Private keys are never imported.").padding(.vertical, 6)
+                    }
+                }
                 VStack(spacing: Theme.gap) {
                     SpecPane("system") {
                     SpecRow("hostname") { TextField("Hostname prefix", text: $configuration.hostnamePrefix).labelsHidden().specField().frame(maxWidth: 260) }
@@ -76,19 +91,6 @@ struct OwnerDefaultsView: View {
                             ForEach(OwnerSetupContract.current.keyboards) { Text($0.id).tag($0.id) }
                         }.frame(maxWidth: 240)
                     }
-                    }
-                    SpecPane("ssh public key") {
-                    SpecRow("login key", note: "Optional") {
-                        Button("Choose .pub…") {
-                            do { if let key = try PublicKeyPicker.choose() { publicKey = key; saved = false } }
-                            catch { self.error = error.localizedDescription }
-                        }
-                    }
-                    if let publicKey, let fingerprint = try? SSHPublicKey.fingerprint(publicKey) {
-                        SpecNote(fingerprint).textSelection(.enabled)
-                        Button("Remove Key") { self.publicKey = nil; saved = false }
-                    }
-                    SpecNote("Added to new SSH-enabled guests alongside the manager’s own per-guest key. Private keys are never imported.").padding(.vertical, 6)
                     }
                     SpecPane("new guest disks") {
                     SpecToggleRow("separate home", isOn: $disks.separateHome)
