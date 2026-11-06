@@ -51,7 +51,12 @@ import SwiftTerm
     private var pendingBytes = 0
     private var sentSize = (30, 120)
     private var size = (30, 120)
-    public override init() {
+    private let readPage: @MainActor (ProvisioningTerminalAttachment) async throws -> ProvisioningTerminalPage
+    public override convenience init() { self.init(readPage: { try await $0.poll() }) }
+    /// Internal read seam lets local fixtures hold a reply across a control
+    /// transition without changing the authenticated attachment or its commands.
+    init(readPage: @escaping @MainActor (ProvisioningTerminalAttachment) async throws -> ProvisioningTerminalPage) {
+        self.readPage = readPage
         // Pipe-based Ansible output uses LF; PTY output may already use CRLF.
         // The display must start both at column zero without modifying job bytes.
         view = ClickableProvisioningTerminal(frame: .init(x: 0, y: 0, width: 800, height: 420), options: .init(cols: 120, rows: 30, convertEol: true))
@@ -94,7 +99,7 @@ import SwiftTerm
         guard !operation, !controlPending, let attachment else { return }
         operation = true; defer { operation = false }
         do {
-            let page = try await attachment.poll()
+            let page = try await readPage(attachment)
             guard self.generation == generation else { return }
             if page.resetRequired {
                 resetScreen()
@@ -177,6 +182,10 @@ import SwiftTerm
         let generation = generation
         guard await idle(generation) else { await attachment.detach(); return }
         operation = true; defer { operation = false }
+        // An already-dispatched poll may have published its old ownership while
+        // idle() yielded. Clear again after it finishes, before releasing the
+        // lease; controlPending/operation now prevent another poll or input send.
+        ownsInput = false; acceptsInput = false; pendingInput.removeAll(); pendingBytes = 0
         do { try await beforeDispatchBusy { try await attachment.releaseInput() }; message = "Click in the terminal to type." } catch { await attachment.detach() }
     }
     public func jumpToLatest() { follow = true; view.scroll(toPosition: 1) }

@@ -66,6 +66,22 @@ private final class SurfaceFixture {
     return false
 }
 
+@MainActor private final class SurfaceReadGate {
+    var armed = false
+    private(set) var held = false
+    private var waiter: CheckedContinuation<Void, Never>?
+    func read(_ attachment: ProvisioningTerminalAttachment) async throws -> ProvisioningTerminalPage {
+        let page = try await attachment.poll()
+        if armed && page.ownsInput {
+            armed = false; held = true
+            await withCheckedContinuation { waiter = $0 }
+            held = false
+        }
+        return page
+    }
+    func resume() { let current = waiter; waiter = nil; current?.resume() }
+}
+
 @Suite("Provisioning UI and CLI surfaces", .serialized) struct ProvisioningSurfaceTests {
     @Test func incrementalDisplayAllowsPresentationAndDropsEveryHostAction() {
         let safe = "\u{1b}[32mready €雪🙂\u{1b}[0m\rnext\n\u{1b}[2K\u{1b}[1;3H\u{1b}[?25l\u{1b}[?1049h"
@@ -165,6 +181,32 @@ private final class SurfaceFixture {
         #expect(!screen.view.getBufferAsData().contains(Data("synthetic-native-keystrokes".utf8)))
         await screen.detach()
         #expect(!screen.connected && !screen.ownsInput)
+        #expect(await f.service.cancellations == 0)
+        #expect(f.f.terminal.snapshot().activeInvocationID == invocation.id)
+        f.f.terminal.end(invocation.id)
+    }
+    @Test @MainActor func inputReleaseFencesAnAlreadyReadOwnershipPage() async throws {
+        let f = try SurfaceFixture(), invocation = try f.f.invocation()
+        _ = try f.f.terminal.begin(invocation)
+        _ = NSApplication.shared
+        let gate = SurfaceReadGate()
+        defer { gate.resume() }
+        let screen = ProvisioningTerminalScreen(readPage: { try await gate.read($0) })
+        await screen.attach(service: f.service, workflowID: f.f.request.jobID)
+        await screen.takeInput()
+        try #require(screen.ownsInput && screen.acceptsInput)
+        gate.armed = true
+        try #require(await surfaceEventually { gate.held })
+        // The poll already owns a reply saying true, but its delivery is held
+        // until releaseInput has cleared local input and is waiting for idle.
+        let release = Task { await screen.releaseInput() }
+        defer { release.cancel() }
+        try #require(await surfaceEventually { !screen.ownsInput })
+        gate.resume()
+        await release.value
+        #expect(!screen.ownsInput && !screen.acceptsInput)
+        #expect(!f.f.terminal.snapshot().acceptsInput)
+        await screen.detach()
         #expect(await f.service.cancellations == 0)
         #expect(f.f.terminal.snapshot().activeInvocationID == invocation.id)
         f.f.terminal.end(invocation.id)

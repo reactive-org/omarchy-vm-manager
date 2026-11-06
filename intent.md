@@ -1,5 +1,43 @@
 # Omarchy VM Manager — implementation intent
 
+## Authorized PR #10 merge gate and terminal backport — 6 November 2026
+
+**USER AUTHORIZATION:** merge PR #10 into `next` once its reviewed source and all
+applicable hosted checks are ready. This permits the existing Dev release
+workflow after merge, not a merge into `main`, local signing, installation,
+permission changes, factory downloads or real-VM operations.
+
+**VERIFIED — CI blocker:** the PR-event run `42179249963` on `98caa99` passes its
+Stable checks but fails Dev's `nativeViewerClaimsRendersReleasesAndDetachesWithoutCancelling`
+at the immediate ownership-release assertion. Both managed-SSH checks pass;
+the separate push run is still completing its optimized policy checks. Neither
+an old green result nor a missing required-check setting authorizes merging.
+
+**FIX / PRIVATE COUPLING:** PR #11 already contains the terminal correction in
+`91ec718`. Backport only its exact terminal screen and surface-test changes.
+An already-dispatched read may republish owned-input state while release waits
+for idle; clear input state again after that read finishes and before suspending
+on the release RPC. Keep the authenticated attachment, command sequencing and
+single-writer lease unchanged. Its internal read seam lets a synthetic test
+hold that ownership page across explicit release, without changing the wire.
+No factory-builder implementation, package/resource pin or other PR #11 change
+is included.
+
+**VERIFIED — fake/local:** the deterministic `inputReleaseFencesAnAlreadyReadOwnershipPage`
+regression fails with only the four-line ownership correction withheld and passes
+with the exact PR #11 implementation. `make test-provisioning-ui-cli
+test-provisioning-terminal test-provisioning-screens` passes 15 surface/planning
+tests, three terminal-vendor script tests, 16 terminal/UI tests and 140 offscreen
+Setup/New VM checks/27 PNGs. A Dev build of the combined surface/terminal filter
+passes 30 tests. Diff checks pass. Evidence is retained privately in
+`.build/pr10-terminal-before.log` and `.build/pr10-terminal-validation.log`.
+Fresh hosted CI on the backported source remains pending until observed; the
+failed run above remains a failure.
+
+**TO PROVE:** native input/focus and actual guest behavior retain their prior
+boundaries. This pass opens no on-display window, runs no VM, accesses no real
+credential, and changes no installed application, runtime or factory artifact.
+
 ## PR #10 merge-review corrections — 6 November 2026
 
 **USER AUTHORIZATION:** inspect PR #11 before fixing both PR #10 review findings,
