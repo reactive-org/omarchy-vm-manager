@@ -2,6 +2,7 @@
 import AppKit
 import DevVMProvisioningCore
 import Foundation
+import OmarchyProvisioningTerminalUI
 import OmarchyVMManagerCore
 import SwiftUI
 
@@ -48,7 +49,11 @@ import SwiftUI
         NSApplication.shared.setActivationPolicy(.prohibited)
         var checks: [String] = []
         func check(_ condition: @autoclosure () -> Bool, _ label: String) throws { guard condition() else { throw AcceptanceFailure.check }; checks.append(label) }
-        var images = 0
+        var captures: [String: [String: Double]] = [:]
+        func capture(_ host: SetupScreenAcceptance.Host, _ url: URL, screen: ProvisioningTerminalScreen? = nil) throws {
+            try host.capture(url, screen: screen)
+            captures[url.lastPathComponent] = ["widthPoints": Double(host.view.bounds.width), "heightPoints": Double(host.view.bounds.height)]
+        }
         for dark in [false, true] {
             let suffix = dark ? "dark" : "light", service = FactoryScreenService(), runtime = FakeRuntime()
             let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: output)
@@ -63,19 +68,19 @@ import SwiftUI
             defer { host.window.close() }
             try SetupScreenAcceptance.until { driver.scopes["factory"] != nil }
             try check(driver.state("factory", "stage") == "none", suffix + "-library")
-            try host.capture(output.appendingPathComponent("factory-library-" + suffix + ".png")); images += 1
+            try capture(host, output.appendingPathComponent("factory-library-" + suffix + ".png"))
             service.blocked = true
             let sheetDriver = SetupUIAcceptanceDriver()
             let sheet = SetupScreenAcceptance.Host(FactoryBuildSheet(builder: model.factoryBuilder), driver: sheetDriver, width: 640, height: 850, dark: dark)
             defer { sheet.window.close() }
             try SetupScreenAcceptance.until { sheetDriver.state("factory-sheet", "error").contains("Docker is not installed") }
             try check(sheetDriver.state("factory-sheet", "ready") == "false", suffix + "-missing-docker-blocks")
-            try sheet.capture(output.appendingPathComponent("factory-missing-docker-" + suffix + ".png")); images += 1
+            try capture(sheet, output.appendingPathComponent("factory-missing-docker-" + suffix + ".png"))
             service.blocked = false
             try sheetDriver.send("factory-sheet", .name("Reviewed UI foundation"))
             try SetupScreenAcceptance.until { sheetDriver.state("factory-sheet", "ready") == "true" }
             try check(service.starts == 0, suffix + "-readiness-does-not-build")
-            try sheet.capture(output.appendingPathComponent("factory-build-sheet-" + suffix + ".png")); images += 1
+            try capture(sheet, output.appendingPathComponent("factory-build-sheet-" + suffix + ".png"))
             try sheetDriver.send("factory-sheet", .save)
             try SetupScreenAcceptance.until { driver.state("factory", "stage") == "downloading" }
             try check(service.starts == 1, suffix + "-one-explicit-build")
@@ -88,10 +93,10 @@ import SwiftUI
             try check(runtime.startRequests.isEmpty, suffix + "-no-vm-start")
             try check(model.factoryBuilder.terminal.search("Synthetic factory build") > 0, suffix + "-actual-terminal-render")
             model.factoryBuilder.terminal.jumpToLatest()
-            try host.capture(output.appendingPathComponent("factory-build-running-" + suffix + ".png"), screen: model.factoryBuilder.terminal); images += 1
+            try capture(host, output.appendingPathComponent("factory-build-running-" + suffix + ".png"), screen: model.factoryBuilder.terminal)
             try service.finish()
             try SetupScreenAcceptance.until { driver.state("factory", "stage") == "succeeded" }
-            try host.capture(output.appendingPathComponent("factory-ready-" + suffix + ".png"), screen: model.factoryBuilder.terminal); images += 1
+            try capture(host, output.appendingPathComponent("factory-ready-" + suffix + ".png"), screen: model.factoryBuilder.terminal)
             try driver.send("factory", .save)
             try check(selected != nil, suffix + "-use-built-factory")
             let editorDriver = SetupUIAcceptanceDriver()
@@ -106,13 +111,13 @@ import SwiftUI
             try check(runtime.startRequests.isEmpty, suffix + "-newvm-never-launches")
             service.rows[0].stage = .cleanupRequired; service.rows[0].factory = nil
             try SetupScreenAcceptance.until { driver.state("factory", "stage") == "cleanupRequired" }
-            try host.capture(output.appendingPathComponent("factory-cleanup-" + suffix + ".png")); images += 1
+            try capture(host, output.appendingPathComponent("factory-cleanup-" + suffix + ".png"))
             try driver.send("factory", .inspect)
             try SetupScreenAcceptance.until { service.recoveries == 1 }
             try check(service.starts == 1, suffix + "-cleanup-does-not-rebuild")
         }
-        try JSONSerialization.data(withJSONObject: ["checks": checks, "screenshots": images, "runtimeStarts": 0, "dockerCommands": 0], options: [.sortedKeys]).write(to: output.appendingPathComponent("result.json"))
-        print("factory-screen-acceptance: PASS (\(checks.count) checks; \(images) PNGs; fake services only)")
+        try JSONSerialization.data(withJSONObject: ["checks": checks, "screenshots": captures.count, "captures": captures, "runtimeStarts": 0, "dockerCommands": 0], options: [.sortedKeys]).write(to: output.appendingPathComponent("result.json"))
+        print("factory-screen-acceptance: PASS (\(checks.count) checks; \(captures.count) PNGs; fake services only)")
     }
 }
 #endif

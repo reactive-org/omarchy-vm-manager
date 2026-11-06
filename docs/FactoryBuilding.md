@@ -146,7 +146,7 @@ guest acceptance have not run. Main, installed Dev and their VMs were untouched.
 
 ### Factory-branch CI boundary
 
-For `codex/factory-image-builder`, push and PR events run manager, script,
+For `codex/factory-image-builder`, PR events run manager, script,
 offscreen UI, optimized-policy and upstream source checks. The managed-SSH job
 is skipped for this branch because its synthetic fixture still builds and runs
 a real Docker image. Release/signing jobs remain restricted to pushes to `next`
@@ -186,3 +186,16 @@ Local checks passed: 15 terminal/UI/CLI tests, 27 factory/dependency tests, and
 authenticated local terminal fixtures and disposable filesystem/process inputs.
 The branch guards continue excluding Docker fixtures, installers and release/
 signing jobs. Real factory and guest acceptance remain TO PROVE.
+
+The next hosted run passed all 542 Swift tests in both Stable and Dev, the
+relocated bundles and all 32 native factory UI checks, but its PNG wrapper still
+assumed large Retina pixel dimensions for every component. Factory captures now
+record their actual logical view bounds. The wrapper verifies component minimum
+sizes and requires the PNG pixels to match those bounds at 1x or 2x backing
+scale, including sheet layouts. Three unit tests accept both scales and reject
+cropped, distorted or undersized captures. Functional checks are unchanged.
+
+Factory-branch push events now skip the duplicate Mac test job; the PR event runs
+the complete suite. Other branches, including normal `next`/`main` CI policy, are
+unchanged. Hosted results for this follow-up are tracked in the PR. The active
+public package pin remains `5d0abc3`; no frozen pins or recipe bytes change.
