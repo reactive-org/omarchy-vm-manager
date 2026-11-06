@@ -65,10 +65,12 @@ public enum SetupPlanner {
             "inputs": .array(inputs), "input_digest": .string(snapshot.identity), "execution_available": .bool(false),
             "custom_task_effects": .string("Opaque trusted Ansible code; may execute on the host as well as the guest"),
             "requirements": .object(["planning_tools": .array([]),
-                "application_tools": .array((features.features.isEmpty && dotfiles.isEmpty && tasks.isEmpty && !manifest.vm.leanDeveloper ? [] : ["bash", "ssh", "scp", "sftp", "ansible-playbook", "ansible-inventory"]).map(ManifestValue.string)),
+                "application_tools": .array(["bash", "ssh", "scp", "sftp", "ansible-playbook", "ansible-inventory"].map(ManifestValue.string)),
                 "trusted_tasks_required": .bool(!tasks.isEmpty), "desktop_restart_required": .bool(restart),
+                "system_update_required": .bool(true), "system_restart_required": .bool(true),
                 "guest_state": .string("not_observed"), "dotfile_conflicts": .string("not_checked"),
-                "removals": .array(removals.map(ManifestValue.string)), "update_policy": .string(manifest.vm.leanDeveloper ? "Opt-in optional-app trim through Omarchy; candidates only, installed state and dependency safety checked in the guest; selected software and required components retained; no implicit update" : "Native Omarchy/mise ownership; no implicit removal or update"),
+                "removals": .array(removals.map(ManifestValue.string)),
+                "update_policy": .string("Apply updates Omarchy and all system packages through omarchy update -y before installing selected software; restart and check are reviewed afterward. Check mode never updates. " + (manifest.vm.leanDeveloper ? "Opt-in optional-app trim through Omarchy; candidates only, installed state and dependency safety checked in the guest; selected software and required components retained." : "Native Omarchy/mise ownership; no implicit removal.")),
                 "factory_admission": .string("manager_verification_required")])]
         document["plan_digest"] = .string(digest(try canonicalData(ManifestValue.object(document))))
         return SetupPlan(document: .object(document), snapshot: snapshot, manifestPath: path)

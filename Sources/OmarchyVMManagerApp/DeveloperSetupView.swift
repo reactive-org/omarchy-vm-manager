@@ -81,7 +81,7 @@ struct DeveloperSetupView: View {
                     }
                     if source != "none" { ProvisioningAppearanceSelectionView(draft: $appearance).disabled(planning || preparingApply || submitting || applyReview != nil) }
                     if let folder, source == "local" { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
-                    Text("Preview software, removals, update policy, dotfiles and restart requirements before applying. Custom tasks require separate trust tied to the frozen inputs.").font(.callout).foregroundStyle(.secondary)
+                    Text("Setup updates Omarchy and system packages before applying your selections. Review software, removals, dotfiles and the restart requirement below. Custom tasks require separate trust.").font(.callout).foregroundStyle(.secondary)
                     Text(executionEnabled ? "Applying setup requires a target review and the permissions shown below. A preview does not change this VM." : "Setup execution is disabled in this build. A preview does not change this VM or its resource settings.").font(.callout).foregroundStyle(.secondary)
                     DisclosureGroup("Details") {
                         VStack(alignment: .leading, spacing: 8) {
@@ -127,6 +127,7 @@ struct DeveloperSetupView: View {
             }
             if let workflow {
                 Text(workflow.title).font(.title2.bold())
+                if let explanation = workflow.failureExplanation { Text(explanation).font(.callout).foregroundStyle(.orange) }
                 HStack(spacing: 14) {
                     ForEach(ProvisioningSetupPhase.allCases, id: \.self) { phase in
                         Label(phase.rawValue, systemImage: currentPhase(workflow) == phase ? "circle.inset.filled" : "circle").foregroundStyle(currentPhase(workflow) == phase ? Color.accentColor : Color.secondary)
@@ -213,7 +214,7 @@ struct DeveloperSetupView: View {
                     case .confirmCancel: if confirmCancel { confirmCancel = false; cancelConfirmed() }
                     default: break
                     }
-                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "cancelPending": String(confirmCancel), "continuation": continuationMessage] })
+                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "updateReviewed": String(applyReview?.systemUpdateRequired == true), "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "cancelPending": String(confirmCancel), "continuation": continuationMessage] })
             } }
             #endif
         }
@@ -357,6 +358,11 @@ struct DeveloperSetupView: View {
                 }
             }
             if let review = applyReview {
+                if review.systemUpdateRequired {
+                    Label("Update Omarchy, then apply setup", systemImage: "arrow.triangle.2.circlepath").font(.headline)
+                    Text("Updates Omarchy and all system packages using its native updater before installing your selected software. Output appears in the live terminal. After cleanup, review a restart and configuration check to finish.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 if review.persistentGrantRequired {
                     Toggle("Allow admin access during setup", isOn: $grantConsent)
                         .help("Allow a sudo grant in this VM across setup steps, until cleanup revokes it. Unconfirmed cleanup keeps the job marked Cleanup required.")

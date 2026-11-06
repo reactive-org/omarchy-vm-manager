@@ -16,11 +16,13 @@ actor SessionFixtureRunner: ProvisioningProcessRunner, ProvisioningLocalCleanupR
     private(set) var interrupts: [UUID] = []
     let gate: IPCWorkerGate?
     private let uncertainFeatures: Bool
+    private let updateStatus: Int32
     private var cleanupProved = false
     private var interrupted = Set<UUID>()
-    init(gate: IPCWorkerGate? = nil, uncertainFeatures: Bool = false) { self.gate = gate; self.uncertainFeatures = uncertainFeatures }
+    init(gate: IPCWorkerGate? = nil, uncertainFeatures: Bool = false, updateStatus: Int32 = 0) { self.gate = gate; self.uncertainFeatures = uncertainFeatures; self.updateStatus = updateStatus }
     func run(_ invocation: ProvisioningProcessInvocation) async -> ProvisioningProcessResult {
         invocations.append(invocation)
+        if invocation.purpose == .systemUpdate, updateStatus != 0 { return .init(invocationID: invocation.id, termination: .exited(status: updateStatus, reason: .normal)) }
         if invocation.purpose == .features { await gate?.wait(); if uncertainFeatures { return .init(invocationID: invocation.id, termination: .cleanupUnconfirmed) } }
         var object: [String: Any] = ["protocol": 1, "job": invocation.context.jobID.uuidString.lowercased(), "payload": invocation.context.payloadID.uuidString.lowercased(), "uid": invocation.context.target.ownerUID]
         switch invocation.purpose {
@@ -214,6 +216,15 @@ private func sessionQuery(_ registration: ProvisioningHelperWorkerRegistration, 
           commandID: cleanup ? UUID() : nil, operation: cleanup ? .revokeGrant : nil, invocationID: nil, purpose: nil)
 }
 @Suite("Manager session authority — private local channels only") struct ProvisioningSessionTests {
+    @Test(arguments: ["apply", "check", "cleanup", "wrong-purpose"])
+    func systemUpdateNeedsApplyAuthorityAndItsExactProcessPurpose(kind: String) throws {
+        let (_, registration) = try sessionRegistration()
+        let query = ProvisioningSessionRequest(requestID: UUID(), registrationDigest: try registration.digest, scope: registration.scope,
+            boundary: .invocation, mode: kind == "check" ? .check : .apply, cleanup: kind == "cleanup", commandID: UUID(),
+            operation: .updateSystem, invocationID: UUID(), purpose: kind == "wrong-purpose" ? .packages : .systemUpdate)
+        if kind == "apply" { try query.validate(); #expect(try ProvisioningSessionRequest.decode(helperJSON(query)) == query) }
+        else { #expect(throws: ProvisioningHelperIPCFailure.protocolViolation) { try query.validate() } }
+    }
     @Test func bootstrapFourIsStrictAndSessionMACsCannotCrossTheControlChannel() throws {
         let (credentials, registration) = try sessionRegistration()
         let data = try credentials.privateBootstrap(), restored = try ProvisioningHelperCredentials(privateBootstrap: data)

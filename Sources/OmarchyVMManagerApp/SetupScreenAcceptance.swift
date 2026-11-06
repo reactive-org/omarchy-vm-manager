@@ -328,6 +328,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         try actionDriver.send("setup", .profiles(["web"])); tick()
         try actionDriver.send("setup", .preview); try until { !actionDriver.state("setup", "preview").isEmpty }
         try actionDriver.send("setup", .prepareApply); try until { !actionDriver.state("setup", "review").isEmpty }
+        try check(actionDriver.state("setup", "updateReviewed") == "true", "system-update-included-in-apply-review")
         try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "apply-without-grants-refused")
         try actionDriver.send("setup", .grant(true, false, true)); try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "docker-consent-independent")
         try actionDriver.send("setup", .grant(true, true, true)); try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "uninspected-task-cannot-submit")

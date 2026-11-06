@@ -27,7 +27,7 @@ public enum DotfileConflictPolicy: String, Sendable, Codable { case fail, backup
 public enum SequencingFailure: String, Error, Sendable, Codable {
     case invalidRequest, approvalRequired, taskTrustRequired, authorizationConsentRequired
     case dockerConsentRequired, authorizationRequired, alreadyUsed, sourceChanged
-    case identityMismatch, dependencyChanged, protocolViolation, adapterFailed, timedOut, cancelled
+    case identityMismatch, dependencyChanged, protocolViolation, adapterFailed, timedOut, cancelled, systemUpdateFailed
 }
 
 /// Explicit review scope. Changing mode, task selection, target, dependencies or
@@ -59,7 +59,8 @@ public struct ProvisioningRequest: Sendable, CustomStringConvertible, CustomDebu
         selectedTasks = declared.filter { names.contains($0) && (mode == .apply || includeTasksInCheck) }
         self.conflictPolicy = conflictPolicy; self.inputLeaseID = inputLeaseID
         reviewIdentity = digest(try canonicalData(ManifestValue.object([
-            "sequencing_api": .integer(1), "job": .string(jobID.uuidString), "plan": .string(plan.identity),
+            "sequencing_api": .integer(2), "system_update": .bool(mode == .apply),
+            "job": .string(jobID.uuidString), "plan": .string(plan.identity),
             "target": target.reviewValue, "dependencies": .string(dependencyDigest), "mode": .string(mode.rawValue),
             "tasks": .array(selectedTasks.map(ManifestValue.string)), "check_tasks": .bool(includeTasksInCheck),
             "conflict": .string(conflictPolicy.rawValue), "input_lease": inputLeaseID.map { .string($0.uuidString) } ?? .null])))
@@ -86,9 +87,9 @@ public struct ProvisioningApproval: Sendable {
 
 public enum GuestOperation: String, Sendable, Codable, CaseIterable {
     case verifyIdentity, stagePayload, resetGrant, clearAuthenticationCache, requestPersistentGrant, verifyGrantActive
-    case installManifestPackages, configureFeatures, configureDockerOwnerAccess, configureRepository
+    case updateSystem, installManifestPackages, configureFeatures, configureDockerOwnerAccess, configureRepository
     case quiesceOwnedWork, revokeGrant, verifyGrantInactive, removePayload, verifyOwnerDockerAccess
-    var interactive: Bool { [.requestPersistentGrant, .configureDockerOwnerAccess, .installManifestPackages].contains(self) }
+    var interactive: Bool { [.requestPersistentGrant, .updateSystem, .configureDockerOwnerAccess, .installManifestPackages].contains(self) }
     var bodyTimeoutSeconds: Int {
         if [.requestPersistentGrant, .configureDockerOwnerAccess].contains(self) { return 120 }
         if self == .verifyIdentity { return 10 }
@@ -158,7 +159,7 @@ public protocol ProvisioningGuestAdapter: Sendable {
 }
 
 public enum ProvisioningPhase: String, Sendable, Codable {
-    case idle, validating, awaitingAuthorization, staging, authorizing, applying, checking
+    case idle, validating, awaitingAuthorization, staging, authorizing, updating, applying, checking
     case quiescing, revoking, removingPayload, verifyingOwnerAccess, finished
 }
 public enum ProvisioningOutcome: String, Sendable, Codable {

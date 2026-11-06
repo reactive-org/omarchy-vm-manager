@@ -14,6 +14,25 @@ import Testing
         .init(reviewIdentity: r.reviewIdentity, taskTrustIdentity: tasks ? r.taskTrustIdentity : nil,
               persistentGrantAcknowledged: true, dockerRootAccessAcknowledged: r.dockerRootAccessRequired)
     }
+    @Test func systemUpdateIsReviewedWithoutRequiringDockerPermission() async throws {
+        let f = try await WorkflowFixture()
+        let preview = try await capture(f), review = try await f.service.prepareApply(preview.id)
+        #expect(preview.restartRequired && review.systemUpdateRequired && !review.dockerRootAccessRequired)
+        let proposal = try JSONSerialization.jsonObject(with: preview.proposal) as! [String: Any]
+        let requirements = try #require(proposal["requirements"] as? [String: Any])
+        #expect(requirements["system_update_required"] as? Bool == true)
+        #expect((requirements["update_policy"] as? String)?.contains("omarchy update -y") == true)
+        #expect(await f.launcher.launches == 0)
+        _ = try await f.service.apply(preview.id, consent: consent(review))
+        let result = try await f.service.wait(preview.id)
+        #expect(result.stage == .restartRequired && !result.cleanupRequired)
+        #expect(f.runtime.startedHandles.count == 1 && f.runtime.startedHandles[0].shutdownCount == 0)
+        let runner = try #require(await f.launcher.runner(preview.id))
+        let calls = await runner.invocations
+        #expect(try #require(calls.firstIndex { $0.purpose == .systemUpdate }) < #require(calls.firstIndex { $0.purpose == .features }))
+        #expect(calls.filter { $0.purpose == .systemUpdate }.count == 1)
+        try await f.service.cancel(preview.id); await f.close()
+    }
     @Test func productGateAllowsFrozenPreviewButRejectsApplyBeforeProbes() async throws {
         let f = try await WorkflowFixture(enabled: false, task: "- name: Synthetic review\n  ansible.builtin.debug: {msg: SYNTHETIC-PRIVATE-TASK}\n")
         let p = try await capture(f)
@@ -39,7 +58,7 @@ import Testing
         #expect(!String(reflecting: task).contains("SYNTHETIC-FROZEN-TASK"))
         let review = try await f.service.prepareApply(p.id)
         _ = try await f.service.apply(p.id, consent: consent(review))
-        #expect(try await f.service.wait(p.id).stage == .succeeded)
+        #expect(try await f.service.wait(p.id).stage == .restartRequired)
         #expect(await f.launcher.launches == 1)
         await f.close()
     }
@@ -59,7 +78,7 @@ import Testing
         async let duplicate = f.service.apply(p.id, consent: consent(review))
         let (a, b) = try await (first, duplicate)
         #expect(a.id == b.id)
-        #expect(try await f.service.wait(p.id).stage == .succeeded)
+        #expect(try await f.service.wait(p.id).stage == .restartRequired)
         #expect(await f.launcher.launches == 1)
         _ = try await f.service.apply(p.id, consent: consent(review))
         #expect(await f.launcher.launches == 1)

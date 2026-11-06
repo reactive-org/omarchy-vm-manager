@@ -7,7 +7,7 @@ public enum ProvisioningProcessInput: Sendable {
 }
 public enum ProvisioningProcessOutput: Sendable { case boundedCapture, terminalStream }
 public enum ProvisioningProcessPurpose: String, Sendable, Codable {
-    case identity, bootstrap, copyPayload, preparePayload, native, packages, features, repository, quiesce, remove
+    case identity, bootstrap, copyPayload, preparePayload, native, systemUpdate, packages, features, repository, quiesce, remove
 }
 /// Describes an exact executable/argv/environment. It has no launch method.
 public struct ProvisioningProcessInvocation: Sendable, CustomStringConvertible, CustomDebugStringConvertible {

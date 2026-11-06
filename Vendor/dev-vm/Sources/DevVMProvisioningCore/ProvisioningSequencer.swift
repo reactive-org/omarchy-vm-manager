@@ -80,6 +80,8 @@ public actor ProvisioningSequencer {
                 try await checked(.clearAuthenticationCache)
                 try await checked(.requestPersistentGrant)
                 try await checked(.verifyGrantActive)
+                transition(.updating)
+                try await checked(.updateSystem)
                 transition(.applying)
                 if !(request.plan.document.object?["vm"]?.object?["packages"]?.array ?? []).isEmpty || request.plan.document.object?["vm"]?.object?["lean_developer"] == .bool(true) {
                     try await checked(.installManifestPackages)
@@ -112,7 +114,9 @@ public actor ProvisioningSequencer {
             default: return result(.failed)
             }
         }
-        return result(request.mode == .check ? .checked : (request.dockerOptIn ? .appliedRestartRequired : .applied))
+        // A full update can replace the kernel and running desktop components.
+        // Finish through the existing separately reviewed restart/check flow.
+        return result(request.mode == .check ? .checked : .appliedRestartRequired)
     }
 
     private func cleanup(verifyOwner: Bool) async {
@@ -161,7 +165,7 @@ public actor ProvisioningSequencer {
         switch operation {
         case .stagePayload: payloadRisk = true; workRisk = true
         case .resetGrant, .requestPersistentGrant: grantRisk = true; workRisk = true
-        case .installManifestPackages, .configureFeatures, .configureDockerOwnerAccess,
+        case .updateSystem, .installManifestPackages, .configureFeatures, .configureDockerOwnerAccess,
              .configureRepository, .verifyOwnerDockerAccess: workRisk = true
         default: break
         }

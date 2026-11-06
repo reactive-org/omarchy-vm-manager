@@ -8,9 +8,9 @@ permissions:
 jobs:
   test:
     name: macOS build and tests
-    # The factory PR supplies the complete check. Avoid a duplicate push run
+    # These PRs supply the complete check. Avoid a duplicate push run
     # consuming a second Mac runner for the same head.
-    if: github.event_name != 'push' || github.ref != 'refs/heads/codex/factory-image-builder'
+    if: github.event_name != 'push' || (github.ref != 'refs/heads/codex/factory-image-builder' && github.ref != 'refs/heads/codex/setup-system-update')
     runs-on: macos-15
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
@@ -36,9 +36,11 @@ jobs:
         run: make test-upstream TEST_JOBS=1
 
   managed-ssh:
-    # Factory branch acceptance is fake/local only. This fixture builds a real
+    # These branches use fake/local acceptance only. This fixture builds a real
     # Docker image, so leave it for a separately authorized integration pass.
-    if: github.ref != 'refs/heads/codex/factory-image-builder' && github.head_ref != 'codex/factory-image-builder'
+    if: >-
+      github.ref != 'refs/heads/codex/factory-image-builder' && github.head_ref != 'codex/factory-image-builder' &&
+      github.ref != 'refs/heads/codex/setup-system-update' && github.head_ref != 'codex/setup-system-update'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

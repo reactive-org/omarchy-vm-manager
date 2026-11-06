@@ -161,6 +161,13 @@ private func jsonFile(_ url: URL) throws -> [String: ManifestValue] { try PlainD
     let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
     #expect(result.outcome == .appliedRestartRequired && result.recovery == nil)
     let invocations = await runner.invocations
+    let update = try #require(invocations.first { $0.purpose == .systemUpdate })
+    #expect(invocations.filter { $0.purpose == .systemUpdate }.count == 1)
+    #expect(update.arguments.last?.hasSuffix("'/bin/bash' '-lc' 'omarchy update -y'") == true)
+    #expect(update.timeoutSeconds == 3600 && update.arguments.contains("-tt"))
+    if case .terminalLease(let id) = update.input { #expect(id == request.inputLeaseID) } else { Issue.record("Update needs the authenticated terminal lease") }
+    if case .terminalStream = update.output {} else { Issue.record("Update must stream output") }
+    #expect(try #require(invocations.firstIndex { $0.purpose == .systemUpdate }) < #require(invocations.firstIndex { $0.purpose == .packages }))
     let first = try #require(invocations.first), root = first.workingDirectory
     let config = try String(contentsOf: root.appendingPathComponent("ssh_config"), encoding: .utf8)
     for expected in ["HostName 127.0.0.1", "StrictHostKeyChecking yes", "IdentityAgent none", "ProxyCommand none", "ProxyJump none", "EscapeChar none", "BatchMode yes", "%%h", "ControlMaster no"] { #expect(config.contains(expected)) }
@@ -202,13 +209,44 @@ private func jsonFile(_ url: URL) throws -> [String: ManifestValue] { try PlainD
     for expected in ["browser", "claude", "1password", "omarchy-pkg-add", "mise"] { #expect(installs.contains { $0.arguments.last!.contains(expected) }) }
 }
 
+@Test(arguments: [RunnerFault.status(1), .timeout, .cancelled])
+private func updateProcessFailuresNeverContinueToPackages(fault: RunnerFault) async throws {
+    let fixture = try TransportFixture(), request = try fixture.request()
+    let runner = FakeProcessRunner([.systemUpdate: [fault]]), adapter = try fixture.adapter(runner)
+    let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
+    switch fault {
+    case .status: #expect(result.primaryFailure == .systemUpdateFailed)
+    case .timeout: #expect(result.primaryFailure == .timedOut)
+    case .cancelled: #expect(result.primaryFailure == .cancelled)
+    default: Issue.record("Unexpected fixture")
+    }
+    let invocations = await runner.invocations
+    #expect(invocations.filter { $0.purpose == .systemUpdate }.count == 1)
+    #expect(!invocations.contains { [.packages, .features, .repository].contains($0.purpose) })
+    #expect(invocations.contains { $0.purpose == .quiesce } && invocations.last?.purpose == .remove)
+    #expect(result.recovery == nil)
+}
+
+@Test func adapterRejectsUpdateInCheckModeOrWithoutInputBeforeAnyProcess() async throws {
+    let fixture = try TransportFixture()
+    for mode in [ProvisioningMode.check, .apply] {
+        let request = try fixture.request(check: mode == .check), runner = FakeProcessRunner()
+        let adapter = try fixture.adapter(runner)
+        let context = GuestJobContext(jobID: request.jobID, payloadID: UUID(), target: request.target, dependencyDigest: request.dependencyDigest, mode: mode)
+        let command = GuestCommand(id: UUID(), context: context, operation: .updateSystem, mode: mode,
+            inputLeaseID: nil, timeoutSeconds: 3600, plan: request.plan, tasks: [], conflictPolicy: .fail)
+        await #expect(throws: SequencingFailure.self) { _ = try await adapter.perform(command) }
+        #expect(await runner.invocations.isEmpty)
+    }
+}
+
 @Test(arguments: [false, true]) func concreteCheckModeNeverRequestsGuestAuthorization(includeTasks: Bool) async throws {
     let fixture = try TransportFixture(), request = try fixture.request(check: true, checkTasks: includeTasks), runner = FakeProcessRunner()
     let adapter = try fixture.adapter(runner)
     let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
     #expect(result.outcome == .checked)
     for invocation in await runner.invocations {
-        #expect(invocation.purpose != .native && invocation.purpose != .packages)
+        #expect(invocation.purpose != .native && invocation.purpose != .packages && invocation.purpose != .systemUpdate)
         if [.features, .repository].contains(invocation.purpose) { #expect(invocation.arguments.last == "--check") }
         if invocation.purpose == .repository {
             let vars = try jsonFile(URL(fileURLWithPath: String(invocation.arguments[invocation.arguments.firstIndex(of: "--extra-vars")! + 1].dropFirst())))

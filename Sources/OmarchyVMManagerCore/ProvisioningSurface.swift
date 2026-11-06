@@ -14,11 +14,18 @@ extension ProvisioningService: ProvisioningObserving {}
 
 public enum ProvisioningSetupPhase: String, CaseIterable, Sendable { case review = "Review", connect = "Connect", authorize = "Authorize", configure = "Configure", cleanup = "Cleanup" }
 extension ProvisioningWorkflowSnapshot {
+    public var failureExplanation: String? {
+        switch failure {
+        case .systemUpdateFailed: "Omarchy update failed before Developer setup could be applied. Review the live terminal, resolve the update error, then prepare a fresh setup review."
+        case .helperUnavailable: "The setup helper could not be admitted. Review helper availability before preparing a fresh setup review."
+        default: nil
+        }
+    }
     public var title: String {
         switch stage {
         case .waitingForSSH: "Connecting to guest"
         case .readyForReview: "Ready for review"
-        case .running: "Configuring features"
+        case .running: "Updating and configuring guest"
         case .checking: "Checking configuration"
         case .restartRequired: "Restart required"
         case .waitingForExit, .restarting: "Restarting guest"
@@ -28,7 +35,7 @@ extension ProvisioningWorkflowSnapshot {
         case .cancelled: "Setup cancelled"
         case .interrupted: "Setup interrupted"
         case .cleanupRequired: "Cleanup required"
-        case .failed: "Setup failed"
+        case .failed: failure == .systemUpdateFailed ? "Omarchy update failed" : "Setup failed"
         }
     }
     // Workflow stages do not establish an authorization grant or cleanup proof.

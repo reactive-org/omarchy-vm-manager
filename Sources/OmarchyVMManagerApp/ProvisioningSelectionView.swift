@@ -86,7 +86,7 @@ struct NewVMSetupSelectionView: View {
                 ProvisioningProfileSelectionView(selection: $profiles, localSource: source == "local")
                 if factory == "official" { ProvisioningTrimSelectionView(selection: $trimOptionalApps) }
                 ProvisioningAppearanceSelectionView(draft: $appearance)
-                Text("Create VM validates and saves these selections with the new VM. It does not start setup. Execution and custom tasks require separate approval.")
+                Text("Setup updates Omarchy and system packages before applying these selections. Create VM saves the plan; applying it requires admin approval, followed by a reviewed restart and configuration check.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }

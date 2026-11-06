@@ -1,5 +1,66 @@
 # Omarchy VM Manager — implementation intent
 
+## Update-before-setup CI fixture correction — 7 November 2026
+
+**VERIFIED — hosted failure:** manager run `42295151880` on `288c82c` passes all
+559 Swift and 340 script tests, then fails relocated helper dispatch because its
+excluded debug fixture still expects `applied`. The helper returns the correct
+`appliedRestartRequired` with confirmed cleanup and no primary failure. Companion
+PR #10 run `42295108340` is green on `1c08131`.
+
+**FIX / DESIGN DECISION:** require the exact restart-required outcome for successful
+fixture dispatch; keep cancellation, terminal completion, cleanup, reconciliation,
+matching exit and existing time bounds unchanged. No product code, shared export,
+resource, runtime or frozen candidate pin changes. The local checks use fake
+runtimes/adapters and fresh scratch storage without explicit signing commands.
+Seven local fake helper-engine tests pass and the corrected excluded fixture
+compiles. Relocated bundle fixtures ad-hoc sign their disposable containers, so
+their full rerun is reserved for hosted CI. The user explicitly allows normal
+hosted workflows after merge, including runner-only Ansible installation and the
+normal next Dev signing/notarization release; this Mac remains untouched. Hosted
+success on the correction remains TO PROVE; the failed run above remains a failure.
+
+## Update before Developer setup — 7 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** restore the original dev-vm bootstrap
+sequence in the shared Swift engine. Every reviewed apply updates Omarchy and
+all system packages through `omarchy update -y` after verified admin access and
+before manifest packages, optional-app trimming, features, dotfiles or tasks.
+This is disclosed in New VM, the proposal and apply review; the existing apply
+confirmation authorizes the displayed update without another checkbox. Preview,
+check and cleanup recovery never update. Existing guests receive the same explicit
+apply review. Never substitute a database-only refresh or direct pacman upgrade.
+
+**PRIVATE COUPLING:** sequencing review version 2 binds update semantics; the
+authenticated helper admits only the new apply-only update operation and its
+matching process purpose. Use the existing owned guest scope, input lease,
+3600-second process deadline, live terminal and independent cleanup. A successful
+apply requests the existing separately reviewed restart/check, including when
+Docker is unselected. Update failure stops feature installation and retains a
+fixed typed reason through helper IPC and journal; cleanup does not roll back
+package changes. Old reviews/saved engine receipts cannot authorize this engine.
+Only the active public package export advances via a fourth checksummed patch;
+its base, factory recipe, runtime pins and all private frozen candidates remain.
+
+**VERIFIED — fake/local checks:** 104 shared Swift tests, 559 full manager tests
+in 72 suites, 283 Dev provisioning tests, 340 manager script tests, 239 legacy
+dev-vm tests (one existing Lua skip), 66 complete planning-oracle cases, 162 factory
+resource inputs and 141 offscreen Setup/New VM checks/27 PNGs pass. The Dev review
+render was visually inspected. Initial sandboxed PTY/socket refusals pass with
+local fixture process access. No real SSH or Ansible guest run was used.
+Eight source-export tests and twenty final Dev package/helper/review tests pass
+after the vendored test export is aligned. Generated pin and reverse-patch
+reconstruction checks pass. All 86,034 prior
+private artifact entries, eight frozen/runtime pins, imported factory/receipt,
+387 candidate payload files and thirteen Main metadata files remain unchanged.
+Frozen configuration inputs do not freeze guest repository package versions;
+the explicit native update uses the guest's configured repositories.
+
+**TO PROVE:** real fresh-official/lean guest update, mirror recovery, native
+prompts, interrupted upgrades and post-update compatibility. Validation here uses
+fake runtimes/runners and disposable local fixtures; no real guest, host install,
+credential, Apple request, app installation or VM launch is authorized.
+
 ## Factory merge-readiness repairs — 6 November 2026
 
 **USER AUTHORIZATION:** review both factory PRs and fix remaining issues with

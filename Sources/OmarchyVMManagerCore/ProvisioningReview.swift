@@ -80,12 +80,13 @@ public struct ProvisioningApplyReview: Codable, Equatable, Sendable, CustomStrin
     public let previewID: UUID, vmID: UUID, sessionID: UUID
     public let planDigest: String, inputDigest: String, dependencyDigest: String, reviewIdentity: String
     public let taskTrustIdentity: String?
+    public let systemUpdateRequired: Bool
     public let persistentGrantRequired: Bool, dockerRootAccessRequired: Bool
     public var description: String { "ProvisioningApplyReview(redacted)" }
     public var debugDescription: String { description }
     func validate() throws {
         guard [planDigest, inputDigest, dependencyDigest, reviewIdentity].allSatisfy(provisioningDigest),
-              taskTrustIdentity.map(provisioningDigest) ?? true, persistentGrantRequired else { throw ProvisioningReviewFailure.invalid }
+              taskTrustIdentity.map(provisioningDigest) ?? true, systemUpdateRequired, persistentGrantRequired else { throw ProvisioningReviewFailure.invalid }
     }
 }
 public struct ProvisioningApplyConsent: Codable, Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {

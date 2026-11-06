@@ -71,7 +71,7 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
         if let context { guard context == command.context else { throw SequencingFailure.identityMismatch } }
         else { context = command.context }
         if command.mode == .check, [.resetGrant, .clearAuthenticationCache, .requestPersistentGrant, .verifyGrantActive,
-                                    .installManifestPackages, .configureDockerOwnerAccess, .revokeGrant, .verifyGrantInactive].contains(command.operation) {
+                                    .updateSystem, .installManifestPackages, .configureDockerOwnerAccess, .revokeGrant, .verifyGrantInactive].contains(command.operation) {
             throw SequencingFailure.invalidRequest
         }
         if command.plan == nil, ![.verifyIdentity, .quiesceOwnedWork, .revokeGrant, .clearAuthenticationCache,
@@ -102,7 +102,7 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
                 guard let invocation = command.operation.nativeInvocation else { throw SequencingFailure.invalidRequest }
                 let cleanup = command.plan == nil
                 guard cleanup || staged else { throw SequencingFailure.invalidRequest }
-                let result = try await control(command, purpose: .native, action: cleanup ? "cleanup-run" : "run",
+                let result = try await control(command, purpose: command.operation == .updateSystem ? .systemUpdate : .native, action: cleanup ? "cleanup-run" : "run",
                                       arguments: invocation.arguments, streaming: invocation.requiresInteractiveTerminal,
                                       interactive: invocation.requiresInteractiveTerminal)
                 if command.operation == .verifyOwnerDockerAccess, result.stdout.isEmpty { throw SequencingFailure.adapterFailed }
@@ -158,7 +158,10 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
             case .cancelled: throw SequencingFailure.cancelled
             case .timedOut: throw SequencingFailure.timedOut
             case .outputLimit, .ioFailure: throw SequencingFailure.adapterFailed
-            case .normal: guard accepted.contains(status) else { throw SequencingFailure.adapterFailed }
+            case .normal:
+                guard accepted.contains(status) else {
+                    throw command.operation == .updateSystem ? SequencingFailure.systemUpdateFailed : .adapterFailed
+                }
             }
         }
         return result
