@@ -104,6 +104,18 @@ running-child cdHash match, authenticated inherited channel, root admission,
 explicit consent and owned cleanup; it gives up only the external team anchor,
 which an ad-hoc build cannot have. See [Validation](docs/Validation.md#local-ad-hoc-dev-setup--7-november-2026).
 
+**DESIGN DECISION — user direction, 7 November 2026 (approve at creation):** for a
+new guest created with setup, **Create, Launch & Set Up** in New VM is the explicit
+permission for one automatic first apply. The sheet states that it approves the exact
+frozen plan for this VM's first launch, including temporary admin access. The frozen
+review still runs: once the guest is SSH-ready, the manager prepares the normal apply
+review and submits it only if it matches the creation receipt's plan and input digests,
+this VM and the first session seen after launch, and needs no permission beyond
+temporary admin access. Docker root access, custom-task trust, a changed session or any
+mismatch stop with a reason and fall back to the Setup-tab review. The approval lives
+only in the running manager's memory, is used at most once and is never persisted or
+replayed. Existing guests and later runs keep the manual review.
+
 The current pass permits source integration and fake/local/CI validation only.
 No VM launch, real signing, host installation, Main app or Main VM operation is
 authorized. **TO PROVE:** fresh signed normal-Dev and real-guest acceptance after

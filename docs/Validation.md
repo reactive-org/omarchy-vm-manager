@@ -402,3 +402,10 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 
 **TO PROVE:** a real setup run in an ad-hoc Dev build needs a separately authorized disposable guest.
 
+## Approve at creation — 7 November 2026
+
+**DESIGN DECISION — user direction:** for a new guest created with setup and managed SSH, **Create, Launch & Set Up** replaces the Setup-tab approval for one automatic first apply (see `intent.md`). The sheet's setup note is the disclosure: the exact plan, this VM's first launch, temporary admin access. Once the guest is SSH-ready, the manager prepares the normal review and submits it only if it matches the creation receipt's preview, plan and input digests, this VM and the first session seen after launch, with no Docker root access or custom-task trust. Any mismatch blocks with a reason, and the tracker turns amber with Review Setup…. The approval is held in memory only, used once and never replayed. A manager restart before setup starts falls back to the manual review. Guests that use these steps show no Approve step and note that you approved at creation.
+
+**VERIFIED — fake/local:** seven new offscreen checks cover the armed tracker without an Approve step, refusal of wider permissions (Docker and task trust) with fallback to review, an admin-only submission with exact consent (grant on, Docker off, no task trust), single use across repeated refreshes, binding to the first session, and no arming without setup and SSH. Two new renders: `first-run-auto-connecting` and `first-run-auto-blocked`.
+
+**TO PROVE:** automatic apply on a real disposable guest. Setups that need Docker (Web, Project managed) or custom tasks still stop for the Setup-tab review by design, and the Docker restart is not automated.

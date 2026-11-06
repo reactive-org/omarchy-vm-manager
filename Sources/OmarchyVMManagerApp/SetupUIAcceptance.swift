@@ -32,6 +32,10 @@ enum AcceptanceFailure: Error { case check }
     nonisolated let executionEnabled: Bool
     var captures = 0, preparations = 0, submissions = 0, taskReads = 0, terminalAttempts = 0, cancellations = 0
     var holdNext = false, failNext = false
+    /// When set, apply review needs only temporary admin access (no Docker or task trust).
+    var adminOnlyReview = false
+    var lastConsent: ProvisioningApplyConsent?
+    var reviewSession: UUID?
     private var waiter: CheckedContinuation<Void, Never>?
     var waiting: Bool { waiter != nil }
     var previews: [UUID: ProvisioningPlanPreview] = [:]
@@ -85,10 +89,15 @@ enum AcceptanceFailure: Error { case check }
     func prepareApply(_ id: UUID) async throws -> ProvisioningApplyReview {
         guard executionEnabled else { throw ProvisioningReviewFailure.unavailable }
         guard let preview = previews[id] else { throw ProvisioningReviewFailure.invalid }; preparations += 1
-        return try value(["previewID": id.uuidString, "vmID": preview.vmID.uuidString, "sessionID": UUID().uuidString, "planDigest": preview.planDigest, "inputDigest": preview.inputDigest, "dependencyDigest": String(repeating: "b", count: 64), "reviewIdentity": String(repeating: "c", count: 64), "taskTrustIdentity": String(repeating: "d", count: 64), "persistentGrantRequired": true, "dockerRootAccessRequired": true])
+        var fields: [String: Any] = ["previewID": id.uuidString, "vmID": preview.vmID.uuidString, "sessionID": (reviewSession ?? UUID()).uuidString, "planDigest": preview.planDigest, "inputDigest": preview.inputDigest, "dependencyDigest": String(repeating: "b", count: 64), "reviewIdentity": String(repeating: "c", count: 64), "persistentGrantRequired": true, "dockerRootAccessRequired": !adminOnlyReview]
+        if !adminOnlyReview { fields["taskTrustIdentity"] = String(repeating: "d", count: 64) }
+        return try value(fields)
     }
     func apply(_ id: UUID, consent: ProvisioningApplyConsent) async throws -> ProvisioningWorkflowSnapshot {
-        guard executionEnabled, previews[id] != nil, consent.reviewIdentity == String(repeating: "c", count: 64), consent.persistentGrantAcknowledged, consent.dockerRootAccessAcknowledged, consent.taskTrustIdentity == String(repeating: "d", count: 64) else { throw ProvisioningReviewFailure.consentRequired }
+        lastConsent = consent
+        let wider = !adminOnlyReview
+        guard executionEnabled, previews[id] != nil, consent.reviewIdentity == String(repeating: "c", count: 64), consent.persistentGrantAcknowledged,
+              consent.dockerRootAccessAcknowledged == wider, consent.taskTrustIdentity == (wider ? String(repeating: "d", count: 64) : nil) else { throw ProvisioningReviewFailure.consentRequired }
         submissions += 1; return try row(id, stage: "running")
     }
     func save(_ config: GuestConfigurationPatch, consent: ProvisioningCreationConsent?) async throws -> VMProfile {

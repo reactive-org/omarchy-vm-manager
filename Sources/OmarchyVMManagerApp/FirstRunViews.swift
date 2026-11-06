@@ -30,22 +30,43 @@ struct FirstRunProgress: Equatable {
     var setupAction: String?
     /// The workflow whose live output Home shows, with its terminal attachment key.
     var terminal: (workflowID: UUID, key: String)?
+    /// Approved in New VM (Create, Launch & Set Up): no Approve step is shown.
+    var approvedAtCreation = false
+
+    var steps: [Step] { approvedAtCreation ? Step.allCases.filter { $0 != .approve } : Step.allCases }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.step == rhs.step && lhs.tone == rhs.tone && lhs.note == rhs.note && lhs.setupAction == rhs.setupAction && lhs.terminal?.key == rhs.terminal?.key
+            && lhs.approvedAtCreation == rhs.approvedAtCreation
     }
 
     /// Returns nil for guests without developer setup, and once any setup run has succeeded.
-    static func make(_ snapshot: VMSnapshot, workflows: [ProvisioningWorkflowSnapshot], jobs: [UUID: ProvisioningJobSnapshot]) -> FirstRunProgress? {
+    static func make(_ snapshot: VMSnapshot, workflows: [ProvisioningWorkflowSnapshot], jobs: [UUID: ProvisioningJobSnapshot],
+                     autoSetup: AutoSetupState? = nil) -> FirstRunProgress? {
         guard snapshot.profile.developerSetup != nil else { return nil }
         let rows = workflows.filter { $0.vmID == snapshot.id }
         if rows.contains(where: { [.succeeded, .checked].contains($0.stage) }) { return nil }
-        if rows.isEmpty { return guestProgress(snapshot) }
+        var value: FirstRunProgress
+        if rows.isEmpty { value = guestProgress(snapshot) }
         // UUID order is not chronology: only a live or cleanup-bound run is "current".
-        guard let row = rows.first(where: \.cleanupRequired) ?? rows.first(where: \.canCancel) ?? (rows.count == 1 ? rows.first : nil) else {
+        else if let row = rows.first(where: \.cleanupRequired) ?? rows.first(where: \.canCancel) ?? (rows.count == 1 ? rows.first : nil) {
+            value = workflowProgress(row, job: jobs[row.id])
+        } else {
             return .init(step: .installing, tone: .problem, note: "Earlier setup runs did not finish. Review their results before trying again.", setupAction: "Open Setup")
         }
-        return workflowProgress(row, job: jobs[row.id])
+        guard let autoSetup else { return value }
+        if let reason = autoSetup.blockedReason {
+            // The one-time approval no longer applies; the manual review takes over.
+            if value.step <= .approve, value.tone != .problem { value = .init(step: .approve, tone: .needsYou, note: reason, setupAction: "Review Setup…") }
+            return value
+        }
+        value.approvedAtCreation = true
+        if value.step == .connecting, value.tone == .working { value.note = "Waiting for the guest’s SSH service. Setup starts automatically when it’s ready." }
+        if value.step == .approve {
+            // Approval was given in New VM: the review is prepared and submitted automatically.
+            value = .init(step: .installing, tone: .working, note: "Starting setup. You approved it when you created this VM.", approvedAtCreation: true)
+        }
+        return value
     }
 
     private static func guestProgress(_ snapshot: VMSnapshot) -> FirstRunProgress {
@@ -120,7 +141,7 @@ struct FirstRunTracker: View {
             VStack(alignment: .leading, spacing: 12) {
                 SpecHeading("first run")
                 HStack(alignment: .top, spacing: 4) {
-                    ForEach(FirstRunProgress.Step.allCases, id: \.self) { step in
+                    ForEach(progress.steps, id: \.self) { step in
                         VStack(alignment: .leading, spacing: 8) {
                             StepBar(color: color(step), pulsing: step == progress.step && progress.tone == .working)
                             Text(step.title)
@@ -130,7 +151,7 @@ struct FirstRunTracker: View {
                     }
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("First run, step \(progress.step.rawValue + 1) of \(FirstRunProgress.Step.allCases.count): \(progress.step.title)")
+                .accessibilityLabel("First run, step \((progress.steps.firstIndex(of: progress.step) ?? 0) + 1) of \(progress.steps.count): \(progress.step.title)")
                 HStack(alignment: .center, spacing: 12) {
                     if progress.tone == .working, progress.step < .approve { FrameMark(size: 28, tracer: Theme.green) }
                     Text(progress.note).font(Theme.sans(13)).foregroundStyle(progress.tone == .problem ? Theme.amber : .secondary)
@@ -140,6 +161,10 @@ struct FirstRunTracker: View {
                         else { Button(action, action: openSetup).buttonStyle(.quietAction) }
                     }
                 }.accessibilityElement(children: .contain)
+                if progress.approvedAtCreation {
+                    Label("Approved when you created this VM, including temporary admin access.", systemImage: "checkmark")
+                        .font(Theme.note).foregroundStyle(.secondary).labelStyle(ApprovedLabelStyle())
+                }
             }.padding(.horizontal, 20).padding(.vertical, 16)
         }
         .overlay(RoundedRectangle(cornerRadius: Theme.paneRadius).strokeBorder(progress.tone == .needsYou ? Theme.amber.opacity(0.55) : .clear))
@@ -167,6 +192,12 @@ struct FirstRunTracker: View {
 
 extension FirstRunProgress.Step: Comparable {
     static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+private struct ApprovedLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) { configuration.icon.foregroundStyle(Theme.green).font(.system(size: 10, weight: .bold)); configuration.title }
+    }
 }
 
 private struct StepBar: View {

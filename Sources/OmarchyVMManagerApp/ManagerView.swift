@@ -133,7 +133,8 @@ struct ManagerView: View {
                 focusGuest(id)
                 editor = nil
                 // Create and Launch is the user's explicit request to start this new guest.
-                if launch { Task { await model.start(id) } }
+                // With a setup selected it is also the one-time first-run approval.
+                if launch { model.armAutoSetup(id); Task { await model.start(id) } }
             }
         }
         .sheet(isPresented: $model.shuttingDown) { ProgressView("Shutting down VMs…").padding(40).interactiveDismissDisabled() }
@@ -290,7 +291,7 @@ struct ManagerView: View {
     }
 
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
-        let firstRun = FirstRunProgress.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs)
+        let firstRun = FirstRunProgress.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id])
         return VStack(alignment: .leading, spacing: Theme.gap) {
             if let firstRun {
                 FirstRunTracker(progress: firstRun) { page = .setup }
@@ -727,7 +728,7 @@ struct VMEditor: View {
                     // Plain Create stays available; launching is a separate, explicit choice.
                     if launchAvailable {
                         Button("Create") { save() }.accessibilityIdentifier("new-vm.create").disabled(!canSave)
-                        Button("Create and Launch") { save(launch: true) }
+                        Button(setupSource != nil && sshEnabled ? "Create, Launch & Set Up" : "Create and Launch") { save(launch: true) }
                             .accessibilityIdentifier("new-vm.create-launch").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
                     } else {
                         Button("Create and Launch") {}.disabled(true).help("Launching is unavailable right now. Create the VM, then launch it from its page.")

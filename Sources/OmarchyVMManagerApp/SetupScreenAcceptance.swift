@@ -426,6 +426,51 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); try capture(pageHost, name); pageHost.close(); tick()
         }
+        // Approve at creation: one automatic first apply, admin access only, single use.
+        let autoID = UUID()
+        let autoPreview = try run { try await enabled.preview(id: autoID, vmID: profile.id, source: .init(preset: "developer")) }
+        var autoProfile = profile
+        autoProfile.ssh = SSHOptions(hostPort: 2222)
+        autoProfile.developerSetup = try JSONDecoder().decode(ProvisioningSelectionReceipt.self, from: JSONSerialization.data(withJSONObject: [
+            "reviewID": autoID.uuidString, "vmID": profile.id.uuidString, "reviewIdentity": digest, "planDigest": autoPreview.planDigest,
+            "inputDigest": autoPreview.inputDigest, "engineDigest": autoPreview.engineDigest, "configurationDigest": digest]))
+        let ready = SSHReadiness.ready(user: "fixture_owner", command: "synthetic-unused")
+        func autoSnapshot(_ session: UUID?, _ ssh: SSHReadiness) -> VMSnapshot { .init(profile: autoProfile, state: session == nil ? .stopped : .running, sessionID: session, sshReadiness: ssh) }
+        func renderAuto(_ name: String) throws {
+            let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+            tick(); try capture(pageHost, name); pageHost.close(); tick()
+        }
+        enabledModel.setupWorkflows = []; enabledModel.setupJobs = [:]; enabledModel.autoSetup = [:]
+        let submissionsBefore = enabled.submissions
+        enabled.reviewSession = session
+        enabledModel.snapshots = [autoSnapshot(session, .connecting)]
+        enabledModel.armAutoSetup(profile.id); enabledModel.advanceAutoSetup()
+        let armed = FirstRunProgress.make(enabledModel.snapshots[0], workflows: [], jobs: [:], autoSetup: enabledModel.autoSetup[profile.id])
+        try check(armed?.approvedAtCreation == true && armed?.steps.contains(.approve) == false && armed?.step == .connecting, "auto-setup-armed-has-no-approve-step")
+        try renderAuto("first-run-auto-connecting-dark.png")
+        enabledModel.snapshots = [autoSnapshot(session, ready)]; enabledModel.advanceAutoSetup()
+        try until { enabledModel.autoSetup[profile.id] != .applying }
+        try check(enabledModel.autoSetup[profile.id]?.blockedReason?.contains("Docker") == true && enabled.submissions == submissionsBefore, "auto-setup-refuses-wider-permissions")
+        let blocked = FirstRunProgress.make(enabledModel.snapshots[0], workflows: [], jobs: [:], autoSetup: enabledModel.autoSetup[profile.id])
+        try check(blocked?.step == .approve && blocked?.tone == .needsYou && blocked?.setupAction != nil, "auto-setup-blocked-falls-back-to-review")
+        try renderAuto("first-run-auto-blocked-dark.png")
+        enabled.adminOnlyReview = true; enabled.reviewSession = session; enabled.lastConsent = nil
+        enabledModel.autoSetup = [:]; enabledModel.snapshots = [autoSnapshot(session, .connecting)]
+        enabledModel.armAutoSetup(profile.id); enabledModel.advanceAutoSetup()
+        enabledModel.snapshots = [autoSnapshot(session, ready)]; enabledModel.advanceAutoSetup()
+        try until { enabledModel.autoSetup[profile.id] != .applying && enabled.lastConsent != nil }
+        try check(enabled.submissions == submissionsBefore + 1 && enabled.lastConsent?.persistentGrantAcknowledged == true
+                  && enabled.lastConsent?.dockerRootAccessAcknowledged == false && enabled.lastConsent?.taskTrustIdentity == nil, "auto-setup-submits-admin-only-consent")
+        enabledModel.advanceAutoSetup(); tick()
+        try check(enabled.submissions == submissionsBefore + 1 && enabledModel.autoSetup[profile.id] == .consumed, "auto-setup-single-use")
+        enabledModel.autoSetup = [:]; enabledModel.snapshots = [autoSnapshot(session, .connecting)]
+        enabledModel.armAutoSetup(profile.id); enabledModel.advanceAutoSetup()
+        enabledModel.snapshots = [autoSnapshot(UUID(), ready)]; enabledModel.advanceAutoSetup(); tick()
+        try check(enabledModel.autoSetup[profile.id]?.blockedReason?.contains("restarted") == true && enabled.submissions == submissionsBefore + 1, "auto-setup-bound-to-first-session")
+        enabledModel.autoSetup = [:]; enabledModel.snapshots = [.init(profile: profile, state: .running, sessionID: session, sshReadiness: ready)]
+        enabledModel.armAutoSetup(profile.id)
+        try check(enabledModel.autoSetup.isEmpty, "auto-setup-needs-setup-and-ssh")
+        enabled.adminOnlyReview = false; enabled.reviewSession = nil
         enabledModel.setupWorkflows = []; enabledModel.setupJobs = [:]
         enabledModel.snapshots = [.init(profile: profile, state: .stopped), .init(profile: downloading, state: .downloading(phase: .downloading, percent: 48), sessionID: UUID()),
             .init(profile: failed, state: .failed(VMFailure(code: "synthetic", message: "The download could not finish.")), lastFailure: VMFailure(code: "synthetic", message: "The download could not finish."))]

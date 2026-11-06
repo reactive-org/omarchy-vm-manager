@@ -75,6 +75,9 @@ final class AppModel: ObservableObject {
         let title = rows.count > 1 && !row.cleanupRequired && !row.canCancel ? "Setup history (\(rows.count) runs)" : row.title
         return (title, row.cleanupRequired)
     }
+    /// One-time first-run approvals given by Create, Launch & Set Up. Memory only:
+    /// never persisted, used at most once. See AutoSetup.swift.
+    @Published var autoSetup: [UUID: AutoSetupState] = [:]
     /// Guests whose setup was observed finishing while this manager ran. Home
     /// shows a dismissible completion line for these; nothing is persisted.
     @Published var setupCompletedThisRun: Set<UUID> = []
@@ -385,6 +388,7 @@ final class AppModel: ObservableObject {
             for workflow in setupWorkflows { jobs[workflow.id] = await provisioningService.jobStatus(workflow.id) }
             setupJobs = jobs
         }
+        advanceAutoSetup()
         accessibilityTrusted = AXIsProcessTrusted()
         if Date().timeIntervalSince(storageRefreshed) > 10 {
             storageRefreshed = Date()

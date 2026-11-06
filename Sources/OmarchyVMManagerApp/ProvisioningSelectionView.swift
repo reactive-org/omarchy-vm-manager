@@ -89,7 +89,7 @@ struct NewVMSetupSelectionView: View {
                 ProvisioningProfileSelectionView(selection: $profiles, localSource: source == "local")
                 if factory == "official" { ProvisioningTrimSelectionView(selection: $trimOptionalApps) }
                 ProvisioningAppearanceSelectionView(draft: $appearance)
-                SpecNote("Creating saves these reviewed selections with the new VM. Create and Launch then follows first boot on its page. Nothing installs until you approve setup there; custom tasks need separate approval.")
+                SpecNote("Create, Launch & Set Up approves this exact plan for this VM’s first launch, including temporary admin access while setup runs. If anything changes before setup starts, it pauses on the guest’s page and asks again. Create alone saves the plan for a later review.")
             }
         }
         .background {
