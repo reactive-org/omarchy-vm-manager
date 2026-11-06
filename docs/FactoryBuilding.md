@@ -299,3 +299,54 @@ cancellation/recovery and disposable-guest boot/account setup/graphics. No
 credentials, host install or VM launch was performed. One prior
 unfrozen local test log was reused accidentally; candidate payloads and frozen
 pins were not changed, and subsequent retry logs use a fresh private directory.
+
+## Disposable Dev boot, account and graphics acceptance — 6 November 2026
+
+**USER AUTHORIZATION:** boot one new manager-owned disposable Dev VM from
+**Lean Omarchy Dev acceptance** and verify account setup and graphics, preserving
+Main, all existing VMs, artifacts and frozen pins. No signing, host installs or
+downloads are authorized. This is factory boot acceptance, not a provisioning
+playbook or full milestone-6 execution run.
+
+**VERIFIED — target and launch:** one fresh UUID was created with 4 CPUs,
+8 GiB RAM and the manager's minimum 64 GiB system disk, without a separate home,
+personal SSH-key inheritance, clipboard, sharing or guest Touch ID. Saved Dev
+account settings were snapshotted. The user completed macOS's secure saved-guest-
+password access prompt. The initial CLI connection timed out while waiting;
+inspection of the same UUID established the pending launch had continued, so no
+duplicate creation or start was issued. The new root's owner, mode 0700, marker
+and session were checked; the imported factory remained unchanged.
+
+**VERIFIED — account:** thirteen checks passed: configured username, non-root UID,
+home ownership, full name, Git name/email, hostname, timezone, console keymap,
+wheel membership, matching native completion identity, removed password seed and
+removed launch manifest. The desktop keyboard layout also matched, and the system
+locale was `en_US.UTF-8`. Managed SSH used the new disposable's key and pinned host
+identity, with personal SSH-agent access and forwarding disabled. No password or
+personal account values are included in committed evidence.
+
+**VERIFIED — graphics:** native Wayland EGL and the active Hyprland renderer both
+reported hardware-backed VirGL on Apple GPU hardware, with no llvmpipe/softpipe
+renderer detected. One active output reported 2688×1512, scale 2 and approximately
+120 Hz with DPMS on. Scoped Mac guest-window captures showed a normally rendered
+wallpaper, panel, clock and notification text before and after diagnostics. The
+compositor log includes GLES 3.2 context creation failures followed by a GLES 3.0
+retry; the observed renderer remained VirGL. No software fallback or graphics
+configuration change was applied.
+
+**VERIFIED — cleanup:** graceful stop produced the exact session's `Exited (0)`;
+the manager released its session, SSH listener closed and runtime lock was
+available. No new manager/runtime processes remained, and all eighteen recorded
+preexisting processes were still present. The stopped disposable disk was retained.
+Private receipts bind these observations to the exact imported factory and
+candidate. Frozen factory manifests, including their original unbooted build-time
+provenance, are preserved rather than rewritten to record this later observation.
+
+**LIMITS / TO PROVE:** one successful fresh boot does not close the known
+intermittent graphics-startup issue. Password-based login was not separately
+exercised. GLX was unavailable in the SSH environment; native Wayland EGL and
+compositor evidence establish the renderer instead. An optional Foot-window
+fixture did not run because its dispatch calls were incompatible with the
+installed Lua dispatcher API; no app-window/shortcut, resize, sleep/wake,
+clipboard or crash acceptance is claimed. Real builder cancellation/recovery and
+developer provisioning remain separately scoped.

@@ -1,5 +1,29 @@
 # Omarchy VM Manager — implementation intent
 
+## Disposable lean factory boot acceptance — 6 November 2026
+
+**USER AUTHORIZATION:** boot one new disposable Dev VM from the imported lean
+factory and verify account setup and graphics. Preserve Main, existing VMs,
+artifacts and frozen pins; no signing, host installs or downloads.
+
+**VERIFIED:** one fresh manager-owned UUID booted with saved account defaults,
+4 CPUs, 8 GiB RAM and a 64 GiB system disk. After the user completed secure
+guest-password authorization, inspection joined the original pending launch
+without creating or starting another guest. Thirteen account checks, desktop
+keyboard matching, native completion and seed removal passed. Native Wayland EGL
+and the active compositor reported hardware-backed VirGL; scoped Mac-window
+observations showed a healthy desktop at 2688×1512, scale 2, about 120 Hz.
+Graceful shutdown produced the matching `Exited (0)`, released the listener/lock
+and left no new runtime processes. The stopped disk is retained. No factory
+manifest or frozen pin is rewritten by this later observation. [Checks and
+limits](docs/FactoryBuilding.md#disposable-dev-boot-account-and-graphics-acceptance--6-november-2026)
+distinguish this factory acceptance from developer provisioning.
+
+**TO PROVE:** repeatability of the known intermittent graphics-startup issue,
+password login, application/shortcut/resize/sleep/crash acceptance and real
+builder cancellation/recovery. GLX and an optional Foot-dispatch fixture were
+unavailable; native Wayland EGL, compositor and visible desktop checks passed.
+
 ## Real Dev factory build and import — 6 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** execute the reviewed lean factory
