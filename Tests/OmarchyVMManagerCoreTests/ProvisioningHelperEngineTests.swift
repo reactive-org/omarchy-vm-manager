@@ -191,7 +191,7 @@ private final class EngineFixture: Sendable {
         _ = try await f.launcher.dispatch(.activate, activation: f.activation)
         _ = try await f.launcher.dispatch(.activate, activation: f.activation)
         let done = try await f.terminal()
-        #expect(done.outcome == (mode == .apply ? .applied : .checked) && !done.cleanupRequired)
+        #expect(done.outcome == (mode == .apply ? .appliedRestartRequired : .checked) && !done.cleanupRequired)
         #expect(await f.factory.prepares == 1)
         let commands = await f.guest.commands
         #expect(commands.allSatisfy { $0.context.payloadID == f.activation.scope.payloadID && $0.context.target == f.request.target })

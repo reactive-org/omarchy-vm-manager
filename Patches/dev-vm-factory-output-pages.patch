@@ -1,0 +1,89 @@
+--- a/Sources/DevVMProvisioningCore/FactoryBuild.swift
++++ b/Sources/DevVMProvisioningCore/FactoryBuild.swift
+@@ -56,16 +56,28 @@
+         lock.withLock {
+             for start in stride(from: 0, to: data.count, by: 8192) {
+                 let part = data.subdata(in: start..<min(start + 8192, data.count))
+-                sequence += 1; frames.append((sequence, part)); bytes += part.count
++                sequence += UInt64(part.count); frames.append((sequence, part)); bytes += part.count
+                 while bytes > 256 * 1024, !frames.isEmpty { bytes -= frames.removeFirst().1.count }
+             }
+         }
+     }
+     public func page(after cursor: UInt64) -> FactoryBuildOutputPage {
+         lock.withLock {
+-            let reset = cursor > sequence || (frames.first.map { cursor + 1 < $0.0 } ?? false)
+-            let selected = frames.filter { $0.0 > cursor }.prefix(8)
+-            return .init(sequence: selected.last?.0 ?? sequence, bytes: selected.reduce(into: Data()) { $0.append($1.1) }, reset: reset)
++            // Byte cursors allow exactly bounded pages across arbitrarily
++            // fragmented writes. Four pages can drain the retained 256 KiB.
++            let earliest = frames.first.map { $0.0 - UInt64($0.1.count) } ?? sequence
++            let reset = cursor > sequence || cursor < earliest
++            let start = reset ? earliest : cursor
++            var data = Data(), next = start
++            for (end, frame) in frames where end > start {
++                let begin = end - UInt64(frame.count)
++                let offset = Int(max(start, begin) - begin)
++                let count = min(frame.count - offset, 65_536 - data.count)
++                data.append(frame.subdata(in: offset..<(offset + count)))
++                next = begin + UInt64(offset + count)
++                if data.count == 65_536 { break }
++            }
++            return .init(sequence: next, bytes: data, reset: reset)
+         }
+     }
+ }
+--- a/Sources/DevVMProvisioningCore/Resources/engine-identity.json
++++ b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
+@@ -15,7 +15,7 @@
+     "Sources/CDevVMYAML/vendor/scanner.c": "338ee97fc97aa97c08a74cd3349462bea4e1f7ce836e4c7b04334fa1c74031c0",
+     "Sources/CDevVMYAML/vendor/yaml_private.h": "2e2f7887f27da6bff518db117d358f708c1af30ebabdeeea612e628b9ed18841",
+     "Sources/DevVMProvisioningCore/CleanupCheckpoint.swift": "614d16980e78f279c27bad28cf0437c5fb3b6ae9cc77106496963760b21c17e8",
+-    "Sources/DevVMProvisioningCore/FactoryBuild.swift": "21ccdfe275cc9e6604b1d919313e82e9b6fa9859707f65aa4e9881543a97fcea",
++    "Sources/DevVMProvisioningCore/FactoryBuild.swift": "f00db89e0dde5e0bd099c4ef2055756cb9ce25a98ff4c87d1fdb5ad39cab27cc",
+     "Sources/DevVMProvisioningCore/FactoryBuildEngine.swift": "1473ac1f9f41102fb43fdcc03f36985396e3e95e30a316d9f40413bb380a9b1c",
+     "Sources/DevVMProvisioningCore/FactoryDocker.swift": "e35e0dea86a5df83e17cab9da5ada444a57ae9d364581e592959202c3d11c231",
+     "Sources/DevVMProvisioningCore/FactoryHostProcess.swift": "6320cf530e73292fd44024534fa85e6765eafdbbf33e7cc1c6e9d0be70f366d1",
+--- a/tests/DevVMProvisioningCoreTests/FactoryBuildTests.swift
++++ b/tests/DevVMProvisioningCoreTests/FactoryBuildTests.swift
+@@ -217,6 +217,40 @@
+         let page = output.page(after: 0)
+         #expect(page.reset && page.bytes.count <= 65536)
+     }
++    @Test(arguments: [17, 3007, 8191])
++    func fragmentedOutputSnapshotRetainsItsTailWithinFourBoundedPages(_ fragmentSize: Int) {
++        let output = FactoryBuildOutput()
++        var expected = Data()
++        for index in 0..<(200_000 / fragmentSize) {
++            let fragment = Data(repeating: UInt8(index % 251), count: fragmentSize)
++            expected.append(fragment); output.append(fragment)
++        }
++        var cursor: UInt64 = 0, actual = Data()
++        for _ in 0..<4 {
++            let page = output.page(after: cursor)
++            #expect(!page.reset && page.bytes.count <= 65_536)
++            actual.append(page.bytes); cursor = page.sequence
++        }
++        #expect(actual == expected)
++        #expect(output.page(after: cursor).bytes.isEmpty)
++    }
++    @Test func byteCursorResetsGapsAndFutureCursorsWithoutLosingTheRetainedTail() {
++        let output = FactoryBuildOutput(), expected = Data((0..<400_000).map { UInt8($0 % 251) })
++        output.append(expected)
++        let first = output.page(after: 0)
++        #expect(first.reset && first.bytes.count == 65_536)
++        let future = output.page(after: UInt64.max)
++        #expect(future.reset && future.bytes == first.bytes && future.sequence == first.sequence)
++        var cursor: UInt64 = 0, actual = Data()
++        for _ in 0..<4 {
++            let page = output.page(after: cursor)
++            actual.append(page.bytes); cursor = page.sequence
++        }
++        #expect(actual.count > 254 * 1024 && actual.count <= 256 * 1024)
++        #expect(actual == expected.suffix(actual.count) && cursor == UInt64(expected.count))
++        let end = output.page(after: cursor)
++        #expect(!end.reset && end.bytes.isEmpty && end.sequence == cursor)
++    }
+     @Test func hostProcessesCancelAndBoundMetadataWithoutLeavingTheirGroup() async throws {
+         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+         let runner = LocalFactoryBuildProcess()

@@ -8,7 +8,7 @@ public enum ProvisioningWorkflowStage: String, Codable, Sendable {
     var unfinished: Bool { [.waitingForSSH, .readyForReview, .running, .waitingForExit, .restarting, .waitingForRebind, .readyForCheck, .checking].contains(self) }
 }
 public enum ProvisioningWorkflowFailure: String, Codable, Sendable {
-    case disabled, cancelled, invalidReview, targetChanged, dependencyChanged, sourceChanged, sshTimeout, restartTimeout, helperUnavailable, journalUnavailable, processInterrupted, childFailed
+    case disabled, cancelled, invalidReview, targetChanged, dependencyChanged, sourceChanged, sshTimeout, restartTimeout, helperUnavailable, journalUnavailable, processInterrupted, childFailed, systemUpdateFailed
 }
 public struct ProvisioningWorkflowSnapshot: Codable, Equatable, Sendable {
     public let id: UUID, vmID: UUID, originalSessionID: UUID

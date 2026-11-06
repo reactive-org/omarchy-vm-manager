@@ -1,0 +1,362 @@
+diff --git a/Sources/DevVMProvisioningCore/GuestTransport.swift b/Sources/DevVMProvisioningCore/GuestTransport.swift
+index 5e59a84..54f8701 100644
+--- a/Sources/DevVMProvisioningCore/GuestTransport.swift
++++ b/Sources/DevVMProvisioningCore/GuestTransport.swift
+@@ -27,7 +27,7 @@ public enum DotfileConflictPolicy: String, Sendable, Codable { case fail, backup
+ public enum SequencingFailure: String, Error, Sendable, Codable {
+     case invalidRequest, approvalRequired, taskTrustRequired, authorizationConsentRequired
+     case dockerConsentRequired, authorizationRequired, alreadyUsed, sourceChanged
+-    case identityMismatch, dependencyChanged, protocolViolation, adapterFailed, timedOut, cancelled
++    case identityMismatch, dependencyChanged, protocolViolation, adapterFailed, timedOut, cancelled, systemUpdateFailed
+ }
+ 
+ /// Explicit review scope. Changing mode, task selection, target, dependencies or
+@@ -59,7 +59,8 @@ public struct ProvisioningRequest: Sendable, CustomStringConvertible, CustomDebu
+         selectedTasks = declared.filter { names.contains($0) && (mode == .apply || includeTasksInCheck) }
+         self.conflictPolicy = conflictPolicy; self.inputLeaseID = inputLeaseID
+         reviewIdentity = digest(try canonicalData(ManifestValue.object([
+-            "sequencing_api": .integer(1), "job": .string(jobID.uuidString), "plan": .string(plan.identity),
++            "sequencing_api": .integer(2), "system_update": .bool(mode == .apply),
++            "job": .string(jobID.uuidString), "plan": .string(plan.identity),
+             "target": target.reviewValue, "dependencies": .string(dependencyDigest), "mode": .string(mode.rawValue),
+             "tasks": .array(selectedTasks.map(ManifestValue.string)), "check_tasks": .bool(includeTasksInCheck),
+             "conflict": .string(conflictPolicy.rawValue), "input_lease": inputLeaseID.map { .string($0.uuidString) } ?? .null])))
+@@ -86,9 +87,9 @@ public struct ProvisioningApproval: Sendable {
+ 
+ public enum GuestOperation: String, Sendable, Codable, CaseIterable {
+     case verifyIdentity, stagePayload, resetGrant, clearAuthenticationCache, requestPersistentGrant, verifyGrantActive
+-    case installManifestPackages, configureFeatures, configureDockerOwnerAccess, configureRepository
++    case updateSystem, installManifestPackages, configureFeatures, configureDockerOwnerAccess, configureRepository
+     case quiesceOwnedWork, revokeGrant, verifyGrantInactive, removePayload, verifyOwnerDockerAccess
+-    var interactive: Bool { [.requestPersistentGrant, .configureDockerOwnerAccess, .installManifestPackages].contains(self) }
++    var interactive: Bool { [.requestPersistentGrant, .updateSystem, .configureDockerOwnerAccess, .installManifestPackages].contains(self) }
+     var bodyTimeoutSeconds: Int {
+         if [.requestPersistentGrant, .configureDockerOwnerAccess].contains(self) { return 120 }
+         if self == .verifyIdentity { return 10 }
+@@ -158,7 +159,7 @@ public protocol ProvisioningGuestAdapter: Sendable {
+ }
+ 
+ public enum ProvisioningPhase: String, Sendable, Codable {
+-    case idle, validating, awaitingAuthorization, staging, authorizing, applying, checking
++    case idle, validating, awaitingAuthorization, staging, authorizing, updating, applying, checking
+     case quiescing, revoking, removingPayload, verifyingOwnerAccess, finished
+ }
+ public enum ProvisioningOutcome: String, Sendable, Codable {
+diff --git a/Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift b/Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift
+index c1572ef..eeba56a 100644
+--- a/Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift
++++ b/Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift
+@@ -5,7 +5,7 @@ import Foundation
+ /// A future transport must route through the pinned non-root guest connection,
+ /// quote argv correctly at the SSH boundary, and use the approved input lease.
+ public struct NativeGuestInvocation: Sendable {
+-    public static let contractVersion = 1
++    public static let contractVersion = 2
+     public let arguments: [String]
+     public let requiresInteractiveTerminal: Bool
+     public let acceptsNonterminalInput: Bool
+@@ -25,6 +25,10 @@ extension GuestOperation {
+             script = "omarchy sudo passwordless permanent"
+         case .verifyGrantActive:
+             script = "omarchy sudo passwordless --active && sudo -kn true"
++        case .updateSystem:
++            // Match the original bootstrap: Omarchy owns repository refresh,
++            // full upgrades and migrations. Never substitute pacman -Sy.
++            script = "omarchy update -y"
+         case .verifyGrantInactive:
+             // The compound observation also reconciles lost disable/clear replies.
+             script = "omarchy sudo passwordless --disable && sudo -K && if omarchy sudo passwordless --active; then exit 1; else test \"$?\" -eq 1; fi"
+diff --git a/Sources/DevVMProvisioningCore/ProvisioningProcess.swift b/Sources/DevVMProvisioningCore/ProvisioningProcess.swift
+index 123233c..e54b0f6 100644
+--- a/Sources/DevVMProvisioningCore/ProvisioningProcess.swift
++++ b/Sources/DevVMProvisioningCore/ProvisioningProcess.swift
+@@ -7,7 +7,7 @@ public enum ProvisioningProcessInput: Sendable {
+ }
+ public enum ProvisioningProcessOutput: Sendable { case boundedCapture, terminalStream }
+ public enum ProvisioningProcessPurpose: String, Sendable, Codable {
+-    case identity, bootstrap, copyPayload, preparePayload, native, packages, features, repository, quiesce, remove
++    case identity, bootstrap, copyPayload, preparePayload, native, systemUpdate, packages, features, repository, quiesce, remove
+ }
+ /// Describes an exact executable/argv/environment. It has no launch method.
+ public struct ProvisioningProcessInvocation: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+diff --git a/Sources/DevVMProvisioningCore/ProvisioningSequencer.swift b/Sources/DevVMProvisioningCore/ProvisioningSequencer.swift
+index d6d0ca0..3b16f25 100644
+--- a/Sources/DevVMProvisioningCore/ProvisioningSequencer.swift
++++ b/Sources/DevVMProvisioningCore/ProvisioningSequencer.swift
+@@ -80,6 +80,8 @@ public actor ProvisioningSequencer {
+                 try await checked(.clearAuthenticationCache)
+                 try await checked(.requestPersistentGrant)
+                 try await checked(.verifyGrantActive)
++                transition(.updating)
++                try await checked(.updateSystem)
+                 transition(.applying)
+                 if !(request.plan.document.object?["vm"]?.object?["packages"]?.array ?? []).isEmpty || request.plan.document.object?["vm"]?.object?["lean_developer"] == .bool(true) {
+                     try await checked(.installManifestPackages)
+@@ -112,7 +114,9 @@ public actor ProvisioningSequencer {
+             default: return result(.failed)
+             }
+         }
+-        return result(request.mode == .check ? .checked : (request.dockerOptIn ? .appliedRestartRequired : .applied))
++        // A full update can replace the kernel and running desktop components.
++        // Finish through the existing separately reviewed restart/check flow.
++        return result(request.mode == .check ? .checked : .appliedRestartRequired)
+     }
+ 
+     private func cleanup(verifyOwner: Bool) async {
+@@ -161,7 +165,7 @@ public actor ProvisioningSequencer {
+         switch operation {
+         case .stagePayload: payloadRisk = true; workRisk = true
+         case .resetGrant, .requestPersistentGrant: grantRisk = true; workRisk = true
+-        case .installManifestPackages, .configureFeatures, .configureDockerOwnerAccess,
++        case .updateSystem, .installManifestPackages, .configureFeatures, .configureDockerOwnerAccess,
+              .configureRepository, .verifyOwnerDockerAccess: workRisk = true
+         default: break
+         }
+diff --git a/Sources/DevVMProvisioningCore/Resources/engine-identity.json b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
+index 8518a86..2ee7cb9 100644
+--- a/Sources/DevVMProvisioningCore/Resources/engine-identity.json
++++ b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
+@@ -23,15 +23,15 @@
+     "Sources/DevVMProvisioningCore/FeatureContract.swift": "037bb4b8c8e700f0b8c30c00ce8945a06af61fb5fc4fcd6bd860b681440372ad",
+     "Sources/DevVMProvisioningCore/FeaturePlanner.swift": "5e7fab041c36b3afc4380fb4aeb32629f0840d34e85dcd96b7dc3fca94388501",
+     "Sources/DevVMProvisioningCore/FrozenInputsArchive.swift": "66e4e9e9c60b879faf8bb1e973979c23daf5217329723b6b860737ae56a683c2",
+-    "Sources/DevVMProvisioningCore/GuestTransport.swift": "9d69f781897fe8e0fbeef4cc1f285f596b7bf12b6cd2788335718e9257c89a55",
++    "Sources/DevVMProvisioningCore/GuestTransport.swift": "6a2ba6c43337567c83700f24688fb40d900ca8befcd48ca8d091124d929bc4e3",
+     "Sources/DevVMProvisioningCore/JSONGrammar.swift": "6b3782b50a9014cf48e283b811e35b9aced5737dec81bea343f00cf88b406111",
+     "Sources/DevVMProvisioningCore/LayoutExamples.swift": "4b58d15eb759273af5c84c08c57da4afeeaa75524e390b8c3b89065c30ec47a9",
+     "Sources/DevVMProvisioningCore/LeanDeveloperPolicy.swift": "7e95594d6985d3fb18f18c276841a6a69d3561657abc2d568cd6dfde5270f878",
+     "Sources/DevVMProvisioningCore/LocalProvisioningProcessRunner.swift": "613add4a5978c1ea26c8fcae1d9e33f15d3ab43f541e68c8f49e48b1df4feac1",
+-    "Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift": "666dfb614c00fc5ebe0a4f7e69089f1336ac6a95ad7639d4291a880c22e5c3cd",
++    "Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift": "8165d7bfcfc6d562e34582a9c21fdf49a0173159d0aa3cbc82ea30992a2194ff",
+     "Sources/DevVMProvisioningCore/PlainData.swift": "71a28c2c8da37a9e44ee296c60976cbb2b98d3bc5eaa2eb3260c996ee73b5dd5",
+-    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "2b43a3a4661cd84db35ce3e05754ae75973bb3ccf2992211cc65f9f4a6c3dfee",
+-    "Sources/DevVMProvisioningCore/ProvisioningSequencer.swift": "cacb41f99ca871da940a6d4d2e20fbebdc38e03567651cdf6865c8d5d966095d",
++    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "1640ba3fe3b2c751749b7903c7d07bc9b90c20407ebc1b4d79918ce2a68b2ed8",
++    "Sources/DevVMProvisioningCore/ProvisioningSequencer.swift": "343619934d2c747cd98cb5e2ff3389ae2599dae1f4dd85642787df3d71b2ef17",
+     "Sources/DevVMProvisioningCore/ProvisioningTerminal.swift": "3824a14387ced38fc2774a23e71b7ec67b4d81115129c6653402d2a386d078ac",
+     "Sources/DevVMProvisioningCore/ProvisioningTransportReference.swift": "5867342ff27614b2f5310983c26b8e64e5df817f5f7f4f219074329ab290c3ee",
+     "Sources/DevVMProvisioningCore/Resources/FactoryBuild/recipe.json": "3fdb8b968565c0e2c83ac86da2adda7a822617c87c6f0f31576deceb768aabfc",
+@@ -79,10 +79,10 @@
+     "Sources/DevVMProvisioningCore/Resources/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
+     "Sources/DevVMProvisioningCore/Resources/catalogue.schema.json": "234128f6847d0b5b428d5b063261d4aa6f50129c13846d41d10812783b787ea6",
+     "Sources/DevVMProvisioningCore/Resources/selection.schema.json": "351a0754a2b9091a806e1e1237485cfd251e82e018610f0e1831ba3a049d17c9",
+-    "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "410c8b692ce9708039e18d5273dab2fdf2ebc9f9fa602d03ea366e55fb4b9e22",
++    "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "2831b8b62f7ecf011acb337b87d576b276f5914d7df8cf4ec2b9ac1e48ce6300",
+     "Sources/DevVMProvisioningCore/SelectionSchema.swift": "e46a8ee4a2f81c17c3f33cb2ff0e7cf9ad5f6e70d32c79fc5021976c32eca29d",
+     "Sources/DevVMProvisioningCore/SetupManifest.swift": "52f0af5aa6a65cc5a61ea72cd37491e52ffaafad3e687d27ffd820d2371420a2",
+-    "Sources/DevVMProvisioningCore/SetupPlanner.swift": "acd8f8f5b0fe461b6ab29af0f96eb8637fef00f756b7649cd89ad01704c24a96",
++    "Sources/DevVMProvisioningCore/SetupPlanner.swift": "495888a83e8b30e311a05ec98d8bf3c2b0a7a2ce36c07d83a45931d456d8daec",
+     "Sources/DevVMProvisioningCore/SourceSnapshot.swift": "95ba352a7fe6b33664ff177b2326dbf774bfd05b7f93ab5dc1b837d11314fd5e",
+     "Sources/DevVMProvisioningCore/ThemeSelection.swift": "e8ac8e76327c4c80cd574972086272a6fefdc5791d95c1d127a914e68b21b1cb",
+     "Sources/DevVMProvisioningCore/TransportWorkspace.swift": "d95e9873cd1d7911076239117b4fd3a16123355bad8af09d740074f2856eec8c",
+diff --git a/Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift b/Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift
+index a48aeb9..f0167a2 100644
+--- a/Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift
++++ b/Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift
+@@ -71,7 +71,7 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
+         if let context { guard context == command.context else { throw SequencingFailure.identityMismatch } }
+         else { context = command.context }
+         if command.mode == .check, [.resetGrant, .clearAuthenticationCache, .requestPersistentGrant, .verifyGrantActive,
+-                                    .installManifestPackages, .configureDockerOwnerAccess, .revokeGrant, .verifyGrantInactive].contains(command.operation) {
++                                    .updateSystem, .installManifestPackages, .configureDockerOwnerAccess, .revokeGrant, .verifyGrantInactive].contains(command.operation) {
+             throw SequencingFailure.invalidRequest
+         }
+         if command.plan == nil, ![.verifyIdentity, .quiesceOwnedWork, .revokeGrant, .clearAuthenticationCache,
+@@ -102,7 +102,7 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
+                 guard let invocation = command.operation.nativeInvocation else { throw SequencingFailure.invalidRequest }
+                 let cleanup = command.plan == nil
+                 guard cleanup || staged else { throw SequencingFailure.invalidRequest }
+-                let result = try await control(command, purpose: .native, action: cleanup ? "cleanup-run" : "run",
++                let result = try await control(command, purpose: command.operation == .updateSystem ? .systemUpdate : .native, action: cleanup ? "cleanup-run" : "run",
+                                       arguments: invocation.arguments, streaming: invocation.requiresInteractiveTerminal,
+                                       interactive: invocation.requiresInteractiveTerminal)
+                 if command.operation == .verifyOwnerDockerAccess, result.stdout.isEmpty { throw SequencingFailure.adapterFailed }
+@@ -158,7 +158,10 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
+             case .cancelled: throw SequencingFailure.cancelled
+             case .timedOut: throw SequencingFailure.timedOut
+             case .outputLimit, .ioFailure: throw SequencingFailure.adapterFailed
+-            case .normal: guard accepted.contains(status) else { throw SequencingFailure.adapterFailed }
++            case .normal:
++                guard accepted.contains(status) else {
++                    throw command.operation == .updateSystem ? SequencingFailure.systemUpdateFailed : .adapterFailed
++                }
+             }
+         }
+         return result
+diff --git a/Sources/DevVMProvisioningCore/SetupPlanner.swift b/Sources/DevVMProvisioningCore/SetupPlanner.swift
+index b5ef5fd..6a143df 100644
+--- a/Sources/DevVMProvisioningCore/SetupPlanner.swift
++++ b/Sources/DevVMProvisioningCore/SetupPlanner.swift
+@@ -65,10 +65,12 @@ public enum SetupPlanner {
+             "inputs": .array(inputs), "input_digest": .string(snapshot.identity), "execution_available": .bool(false),
+             "custom_task_effects": .string("Opaque trusted Ansible code; may execute on the host as well as the guest"),
+             "requirements": .object(["planning_tools": .array([]),
+-                "application_tools": .array((features.features.isEmpty && dotfiles.isEmpty && tasks.isEmpty && !manifest.vm.leanDeveloper ? [] : ["bash", "ssh", "scp", "sftp", "ansible-playbook", "ansible-inventory"]).map(ManifestValue.string)),
++                "application_tools": .array(["bash", "ssh", "scp", "sftp", "ansible-playbook", "ansible-inventory"].map(ManifestValue.string)),
+                 "trusted_tasks_required": .bool(!tasks.isEmpty), "desktop_restart_required": .bool(restart),
++                "system_update_required": .bool(true), "system_restart_required": .bool(true),
+                 "guest_state": .string("not_observed"), "dotfile_conflicts": .string("not_checked"),
+-                "removals": .array(removals.map(ManifestValue.string)), "update_policy": .string(manifest.vm.leanDeveloper ? "Opt-in optional-app trim through Omarchy; candidates only, installed state and dependency safety checked in the guest; selected software and required components retained; no implicit update" : "Native Omarchy/mise ownership; no implicit removal or update"),
++                "removals": .array(removals.map(ManifestValue.string)),
++                "update_policy": .string("Apply updates Omarchy and all system packages through omarchy update -y before installing selected software; restart and check are reviewed afterward. Check mode never updates. " + (manifest.vm.leanDeveloper ? "Opt-in optional-app trim through Omarchy; candidates only, installed state and dependency safety checked in the guest; selected software and required components retained." : "Native Omarchy/mise ownership; no implicit removal.")),
+                 "factory_admission": .string("manager_verification_required")])]
+         document["plan_digest"] = .string(digest(try canonicalData(ManifestValue.object(document))))
+         return SetupPlan(document: .object(document), snapshot: snapshot, manifestPath: path)
+diff --git a/tests/DevVMProvisioningCoreTests/SequencingTests.swift b/tests/DevVMProvisioningCoreTests/SequencingTests.swift
+index a6b23c8..45bef78 100644
+--- a/tests/DevVMProvisioningCoreTests/SequencingTests.swift
++++ b/tests/DevVMProvisioningCoreTests/SequencingTests.swift
+@@ -102,9 +102,9 @@ private actor FakeGuest: ProvisioningGuestAdapter {
+ @Test func applySequenceHasCleanupCoverageAndProofs() async throws {
+     let fixture = try SequenceFixture(), request = try fixture.request(), guest = FakeGuest()
+     let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
+-    #expect(result.outcome == .applied); #expect(result.recovery == nil)
++    #expect(result.outcome == .appliedRestartRequired); #expect(result.recovery == nil)
+     #expect(await guest.operations() == [.stagePayload, .resetGrant, .clearAuthenticationCache, .requestPersistentGrant,
+-        .verifyGrantActive, .installManifestPackages, .configureFeatures, .configureRepository,
++        .verifyGrantActive, .updateSystem, .installManifestPackages, .configureFeatures, .configureRepository,
+         .quiesceOwnedWork, .revokeGrant, .clearAuthenticationCache, .verifyGrantInactive, .removePayload])
+     let commands = await guest.commands
+     for event in result.events {
+@@ -188,7 +188,7 @@ func cleanupUncertaintyHasSameTargetRecovery(operation: GuestOperation) async th
+ @Test func lostRevokeAcknowledgementCanBeReconciledByProof() async throws {
+     let fixture = try SequenceFixture(), request = try fixture.request(), guest = FakeGuest([.revokeGrant: [.fail(.timedOut)]])
+     let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
+-    #expect(result.outcome == .applied && result.recovery == nil && result.cleanupFailures == [.timedOut])
++    #expect(result.outcome == .appliedRestartRequired && result.recovery == nil && result.cleanupFailures == [.timedOut])
+ }
+ 
+ @Test func sourceChangeDuringGrantStillRevokesWithoutUsingChangedInputs() async throws {
+@@ -226,17 +226,65 @@ func mismatchedRepliesNeverAdvanceOrRetarget(kind: String) async throws {
+     #expect(!ops.contains(.configureFeatures) && !ops.contains(.revokeGrant) && !ops.contains(.removePayload))
+ }
+ 
+-@Test func cancellationInterruptsExactCommandThenCleansUncancelled() async throws {
++@Test(arguments: [GuestOperation.requestPersistentGrant, .updateSystem])
++func cancellationInterruptsExactCommandThenCleansUncancelled(operation: GuestOperation) async throws {
+     let fixture = try SequenceFixture(), request = try fixture.request(), gate = FakeGate()
+-    let guest = FakeGuest(pauseAt: .requestPersistentGrant, gate: gate), sequencer = ProvisioningSequencer()
++    let guest = FakeGuest(pauseAt: operation, gate: gate), sequencer = ProvisioningSequencer()
+     let task = Task { await sequencer.run(request, approval: approval(request), adapter: guest) }
+     await gate.waitForEntry(); task.cancel()
+     let result = await task.value
+     #expect(result.outcome == .cancelled && result.recovery == nil)
+     let commands = await guest.commands, cancellations = await guest.cancelledCalls
+-    #expect(await guest.interrupts == commands.filter { $0.operation == .requestPersistentGrant }.map(\.id))
++    #expect(await guest.interrupts == commands.filter { $0.operation == operation }.map(\.id))
+     for (index, command) in commands.enumerated() where command.plan == nil { #expect(!cancellations[index]) }
+     #expect((await guest.operations()).contains(.revokeGrant))
++    #expect(!(await guest.operations()).contains(.configureFeatures))
++}
++
++@Test(arguments: [SequencingFailure.systemUpdateFailed, .timedOut])
++func failedUpdateStopsFeatureInstallsAndRetainsCleanupProof(failure: SequencingFailure) async throws {
++    let fixture = try SequenceFixture(), request = try fixture.request()
++    let guest = FakeGuest([.updateSystem: [.fail(failure)]])
++    let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
++    #expect(result.primaryFailure == failure && result.recovery == nil)
++    #expect(result.outcome == (failure == .timedOut ? .timedOut : .failed))
++    let ops = await guest.operations()
++    #expect(ops.filter { $0 == .updateSystem }.count == 1)
++    #expect(!ops.contains(.installManifestPackages) && !ops.contains(.configureFeatures) && !ops.contains(.configureRepository))
++    #expect(ops.suffix(5) == [.quiesceOwnedWork, .revokeGrant, .clearAuthenticationCache, .verifyGrantInactive, .removePayload])
++}
++
++@Test func uncertainUpdateCleanupCanOnlyRecoverCleanup() async throws {
++    let fixture = try SequenceFixture(), request = try fixture.request()
++    let guest = FakeGuest([.updateSystem: [.fail(.systemUpdateFailed)], .quiesceOwnedWork: [.fail(.timedOut)]])
++    let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
++    #expect(result.outcome == .cleanupRequired && result.primaryFailure == .systemUpdateFailed)
++    #expect(!(await guest.operations()).contains(.removePayload))
++    let recovery = FakeGuest()
++    let recovered = await ProvisioningSequencer().recover(try #require(result.recovery), adapter: recovery)
++    #expect(recovered.outcome == .cleanupConfirmed)
++    #expect(!(await recovery.operations()).contains(.updateSystem))
++}
++
++@Test func updatePolicyIsVisibleAndOldReviewCannotAuthorizeIt() async throws {
++    let fixture = try SequenceFixture(), request = try fixture.request()
++    let requirements = try #require(fixture.plan.document.object?["requirements"]?.object)
++    #expect(requirements["system_update_required"] == .bool(true))
++    #expect(requirements["system_restart_required"] == .bool(true))
++    #expect(requirements["update_policy"]?.string?.contains("omarchy update -y") == true)
++    let previous = digest(try canonicalData(ManifestValue.object([
++        "sequencing_api": .integer(1), "job": .string(request.jobID.uuidString), "plan": .string(request.plan.identity),
++        "target": request.target.reviewValue, "dependencies": .string(request.dependencyDigest), "mode": .string(request.mode.rawValue),
++        "tasks": .array(request.selectedTasks.map(ManifestValue.string)), "check_tasks": .bool(request.includeTasksInCheck),
++        "conflict": .string(request.conflictPolicy.rawValue), "input_lease": request.inputLeaseID.map { .string($0.uuidString) } ?? .null])))
++    #expect(previous != request.reviewIdentity)
++    let guest = FakeGuest()
++    let result = await ProvisioningSequencer().run(request, approval: .init(reviewIdentity: previous, persistentGrantAcknowledged: true), adapter: guest)
++    #expect(result.primaryFailure == .approvalRequired)
++    #expect(await guest.commands.isEmpty)
++    let native = try #require(GuestOperation.updateSystem.nativeInvocation)
++    #expect(native.arguments == ["bash", "-lc", "omarchy update -y"])
++    #expect(native.requiresInteractiveTerminal && !native.acceptsNonterminalInput)
+ }
+ 
+ @Test func cancellationDoesNotInterruptCleanupAndConcurrentRunIsRejected() async throws {
+diff --git a/tests/DevVMProvisioningCoreTests/TransportTests.swift b/tests/DevVMProvisioningCoreTests/TransportTests.swift
+index 7c9427b..942c198 100644
+--- a/tests/DevVMProvisioningCoreTests/TransportTests.swift
++++ b/tests/DevVMProvisioningCoreTests/TransportTests.swift
+@@ -161,6 +161,13 @@ private func jsonFile(_ url: URL) throws -> [String: ManifestValue] { try PlainD
+     let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
+     #expect(result.outcome == .appliedRestartRequired && result.recovery == nil)
+     let invocations = await runner.invocations
++    let update = try #require(invocations.first { $0.purpose == .systemUpdate })
++    #expect(invocations.filter { $0.purpose == .systemUpdate }.count == 1)
++    #expect(update.arguments.last?.hasSuffix("'/bin/bash' '-lc' 'omarchy update -y'") == true)
++    #expect(update.timeoutSeconds == 3600 && update.arguments.contains("-tt"))
++    if case .terminalLease(let id) = update.input { #expect(id == request.inputLeaseID) } else { Issue.record("Update needs the authenticated terminal lease") }
++    if case .terminalStream = update.output {} else { Issue.record("Update must stream output") }
++    #expect(try #require(invocations.firstIndex { $0.purpose == .systemUpdate }) < #require(invocations.firstIndex { $0.purpose == .packages }))
+     let first = try #require(invocations.first), root = first.workingDirectory
+     let config = try String(contentsOf: root.appendingPathComponent("ssh_config"), encoding: .utf8)
+     for expected in ["HostName 127.0.0.1", "StrictHostKeyChecking yes", "IdentityAgent none", "ProxyCommand none", "ProxyJump none", "EscapeChar none", "BatchMode yes", "%%h", "ControlMaster no"] { #expect(config.contains(expected)) }
+@@ -202,13 +209,44 @@ private func jsonFile(_ url: URL) throws -> [String: ManifestValue] { try PlainD
+     for expected in ["browser", "claude", "1password", "omarchy-pkg-add", "mise"] { #expect(installs.contains { $0.arguments.last!.contains(expected) }) }
+ }
+ 
++@Test(arguments: [RunnerFault.status(1), .timeout, .cancelled])
++private func updateProcessFailuresNeverContinueToPackages(fault: RunnerFault) async throws {
++    let fixture = try TransportFixture(), request = try fixture.request()
++    let runner = FakeProcessRunner([.systemUpdate: [fault]]), adapter = try fixture.adapter(runner)
++    let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
++    switch fault {
++    case .status: #expect(result.primaryFailure == .systemUpdateFailed)
++    case .timeout: #expect(result.primaryFailure == .timedOut)
++    case .cancelled: #expect(result.primaryFailure == .cancelled)
++    default: Issue.record("Unexpected fixture")
++    }
++    let invocations = await runner.invocations
++    #expect(invocations.filter { $0.purpose == .systemUpdate }.count == 1)
++    #expect(!invocations.contains { [.packages, .features, .repository].contains($0.purpose) })
++    #expect(invocations.contains { $0.purpose == .quiesce } && invocations.last?.purpose == .remove)
++    #expect(result.recovery == nil)
++}
++
++@Test func adapterRejectsUpdateInCheckModeOrWithoutInputBeforeAnyProcess() async throws {
++    let fixture = try TransportFixture()
++    for mode in [ProvisioningMode.check, .apply] {
++        let request = try fixture.request(check: mode == .check), runner = FakeProcessRunner()
++        let adapter = try fixture.adapter(runner)
++        let context = GuestJobContext(jobID: request.jobID, payloadID: UUID(), target: request.target, dependencyDigest: request.dependencyDigest, mode: mode)
++        let command = GuestCommand(id: UUID(), context: context, operation: .updateSystem, mode: mode,
++            inputLeaseID: nil, timeoutSeconds: 3600, plan: request.plan, tasks: [], conflictPolicy: .fail)
++        await #expect(throws: SequencingFailure.self) { _ = try await adapter.perform(command) }
++        #expect(await runner.invocations.isEmpty)
++    }
++}
++
+ @Test(arguments: [false, true]) func concreteCheckModeNeverRequestsGuestAuthorization(includeTasks: Bool) async throws {
+     let fixture = try TransportFixture(), request = try fixture.request(check: true, checkTasks: includeTasks), runner = FakeProcessRunner()
+     let adapter = try fixture.adapter(runner)
+     let result = await ProvisioningSequencer().run(request, approval: reviewed(request), adapter: adapter)
+     #expect(result.outcome == .checked)
+     for invocation in await runner.invocations {
+-        #expect(invocation.purpose != .native && invocation.purpose != .packages)
++        #expect(invocation.purpose != .native && invocation.purpose != .packages && invocation.purpose != .systemUpdate)
+         if [.features, .repository].contains(invocation.purpose) { #expect(invocation.arguments.last == "--check") }
+         if invocation.purpose == .repository {
+             let vars = try jsonFile(URL(fileURLWithPath: String(invocation.arguments[invocation.arguments.firstIndex(of: "--extra-vars")! + 1].dropFirst())))

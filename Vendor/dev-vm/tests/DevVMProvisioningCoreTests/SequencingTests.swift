@@ -102,9 +102,9 @@ private actor FakeGuest: ProvisioningGuestAdapter {
 @Test func applySequenceHasCleanupCoverageAndProofs() async throws {
     let fixture = try SequenceFixture(), request = try fixture.request(), guest = FakeGuest()
     let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
-    #expect(result.outcome == .applied); #expect(result.recovery == nil)
+    #expect(result.outcome == .appliedRestartRequired); #expect(result.recovery == nil)
     #expect(await guest.operations() == [.stagePayload, .resetGrant, .clearAuthenticationCache, .requestPersistentGrant,
-        .verifyGrantActive, .installManifestPackages, .configureFeatures, .configureRepository,
+        .verifyGrantActive, .updateSystem, .installManifestPackages, .configureFeatures, .configureRepository,
         .quiesceOwnedWork, .revokeGrant, .clearAuthenticationCache, .verifyGrantInactive, .removePayload])
     let commands = await guest.commands
     for event in result.events {
@@ -188,7 +188,7 @@ func cleanupUncertaintyHasSameTargetRecovery(operation: GuestOperation) async th
 @Test func lostRevokeAcknowledgementCanBeReconciledByProof() async throws {
     let fixture = try SequenceFixture(), request = try fixture.request(), guest = FakeGuest([.revokeGrant: [.fail(.timedOut)]])
     let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
-    #expect(result.outcome == .applied && result.recovery == nil && result.cleanupFailures == [.timedOut])
+    #expect(result.outcome == .appliedRestartRequired && result.recovery == nil && result.cleanupFailures == [.timedOut])
 }
 
 @Test func sourceChangeDuringGrantStillRevokesWithoutUsingChangedInputs() async throws {
@@ -226,17 +226,65 @@ func mismatchedRepliesNeverAdvanceOrRetarget(kind: String) async throws {
     #expect(!ops.contains(.configureFeatures) && !ops.contains(.revokeGrant) && !ops.contains(.removePayload))
 }
 
-@Test func cancellationInterruptsExactCommandThenCleansUncancelled() async throws {
+@Test(arguments: [GuestOperation.requestPersistentGrant, .updateSystem])
+func cancellationInterruptsExactCommandThenCleansUncancelled(operation: GuestOperation) async throws {
     let fixture = try SequenceFixture(), request = try fixture.request(), gate = FakeGate()
-    let guest = FakeGuest(pauseAt: .requestPersistentGrant, gate: gate), sequencer = ProvisioningSequencer()
+    let guest = FakeGuest(pauseAt: operation, gate: gate), sequencer = ProvisioningSequencer()
     let task = Task { await sequencer.run(request, approval: approval(request), adapter: guest) }
     await gate.waitForEntry(); task.cancel()
     let result = await task.value
     #expect(result.outcome == .cancelled && result.recovery == nil)
     let commands = await guest.commands, cancellations = await guest.cancelledCalls
-    #expect(await guest.interrupts == commands.filter { $0.operation == .requestPersistentGrant }.map(\.id))
+    #expect(await guest.interrupts == commands.filter { $0.operation == operation }.map(\.id))
     for (index, command) in commands.enumerated() where command.plan == nil { #expect(!cancellations[index]) }
     #expect((await guest.operations()).contains(.revokeGrant))
+    #expect(!(await guest.operations()).contains(.configureFeatures))
+}
+
+@Test(arguments: [SequencingFailure.systemUpdateFailed, .timedOut])
+func failedUpdateStopsFeatureInstallsAndRetainsCleanupProof(failure: SequencingFailure) async throws {
+    let fixture = try SequenceFixture(), request = try fixture.request()
+    let guest = FakeGuest([.updateSystem: [.fail(failure)]])
+    let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
+    #expect(result.primaryFailure == failure && result.recovery == nil)
+    #expect(result.outcome == (failure == .timedOut ? .timedOut : .failed))
+    let ops = await guest.operations()
+    #expect(ops.filter { $0 == .updateSystem }.count == 1)
+    #expect(!ops.contains(.installManifestPackages) && !ops.contains(.configureFeatures) && !ops.contains(.configureRepository))
+    #expect(ops.suffix(5) == [.quiesceOwnedWork, .revokeGrant, .clearAuthenticationCache, .verifyGrantInactive, .removePayload])
+}
+
+@Test func uncertainUpdateCleanupCanOnlyRecoverCleanup() async throws {
+    let fixture = try SequenceFixture(), request = try fixture.request()
+    let guest = FakeGuest([.updateSystem: [.fail(.systemUpdateFailed)], .quiesceOwnedWork: [.fail(.timedOut)]])
+    let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
+    #expect(result.outcome == .cleanupRequired && result.primaryFailure == .systemUpdateFailed)
+    #expect(!(await guest.operations()).contains(.removePayload))
+    let recovery = FakeGuest()
+    let recovered = await ProvisioningSequencer().recover(try #require(result.recovery), adapter: recovery)
+    #expect(recovered.outcome == .cleanupConfirmed)
+    #expect(!(await recovery.operations()).contains(.updateSystem))
+}
+
+@Test func updatePolicyIsVisibleAndOldReviewCannotAuthorizeIt() async throws {
+    let fixture = try SequenceFixture(), request = try fixture.request()
+    let requirements = try #require(fixture.plan.document.object?["requirements"]?.object)
+    #expect(requirements["system_update_required"] == .bool(true))
+    #expect(requirements["system_restart_required"] == .bool(true))
+    #expect(requirements["update_policy"]?.string?.contains("omarchy update -y") == true)
+    let previous = digest(try canonicalData(ManifestValue.object([
+        "sequencing_api": .integer(1), "job": .string(request.jobID.uuidString), "plan": .string(request.plan.identity),
+        "target": request.target.reviewValue, "dependencies": .string(request.dependencyDigest), "mode": .string(request.mode.rawValue),
+        "tasks": .array(request.selectedTasks.map(ManifestValue.string)), "check_tasks": .bool(request.includeTasksInCheck),
+        "conflict": .string(request.conflictPolicy.rawValue), "input_lease": request.inputLeaseID.map { .string($0.uuidString) } ?? .null])))
+    #expect(previous != request.reviewIdentity)
+    let guest = FakeGuest()
+    let result = await ProvisioningSequencer().run(request, approval: .init(reviewIdentity: previous, persistentGrantAcknowledged: true), adapter: guest)
+    #expect(result.primaryFailure == .approvalRequired)
+    #expect(await guest.commands.isEmpty)
+    let native = try #require(GuestOperation.updateSystem.nativeInvocation)
+    #expect(native.arguments == ["bash", "-lc", "omarchy update -y"])
+    #expect(native.requiresInteractiveTerminal && !native.acceptsNonterminalInput)
 }
 
 @Test func cancellationDoesNotInterruptCleanupAndConcurrentRunIsRejected() async throws {

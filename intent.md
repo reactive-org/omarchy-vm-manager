@@ -1,5 +1,213 @@
 # Omarchy VM Manager — implementation intent
 
+## Update-before-setup CI fixture correction — 7 November 2026
+
+**VERIFIED — hosted failure:** manager run `42295151880` on `288c82c` passes all
+559 Swift and 340 script tests, then fails relocated helper dispatch because its
+excluded debug fixture still expects `applied`. The helper returns the correct
+`appliedRestartRequired` with confirmed cleanup and no primary failure. Companion
+PR #10 run `42295108340` is green on `1c08131`.
+
+**FIX / DESIGN DECISION:** require the exact restart-required outcome for successful
+fixture dispatch; keep cancellation, terminal completion, cleanup, reconciliation,
+matching exit and existing time bounds unchanged. No product code, shared export,
+resource, runtime or frozen candidate pin changes. The local checks use fake
+runtimes/adapters and fresh scratch storage without explicit signing commands.
+Seven local fake helper-engine tests pass and the corrected excluded fixture
+compiles. Relocated bundle fixtures ad-hoc sign their disposable containers, so
+their full rerun is reserved for hosted CI. The user explicitly allows normal
+hosted workflows after merge, including runner-only Ansible installation and the
+normal next Dev signing/notarization release; this Mac remains untouched. Hosted
+success on the correction remains TO PROVE; the failed run above remains a failure.
+
+## Update before Developer setup — 7 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** restore the original dev-vm bootstrap
+sequence in the shared Swift engine. Every reviewed apply updates Omarchy and
+all system packages through `omarchy update -y` after verified admin access and
+before manifest packages, optional-app trimming, features, dotfiles or tasks.
+This is disclosed in New VM, the proposal and apply review; the existing apply
+confirmation authorizes the displayed update without another checkbox. Preview,
+check and cleanup recovery never update. Existing guests receive the same explicit
+apply review. Never substitute a database-only refresh or direct pacman upgrade.
+
+**PRIVATE COUPLING:** sequencing review version 2 binds update semantics; the
+authenticated helper admits only the new apply-only update operation and its
+matching process purpose. Use the existing owned guest scope, input lease,
+3600-second process deadline, live terminal and independent cleanup. A successful
+apply requests the existing separately reviewed restart/check, including when
+Docker is unselected. Update failure stops feature installation and retains a
+fixed typed reason through helper IPC and journal; cleanup does not roll back
+package changes. Old reviews/saved engine receipts cannot authorize this engine.
+Only the active public package export advances via a fourth checksummed patch;
+its base, factory recipe, runtime pins and all private frozen candidates remain.
+
+**VERIFIED — fake/local checks:** 104 shared Swift tests, 559 full manager tests
+in 72 suites, 283 Dev provisioning tests, 340 manager script tests, 239 legacy
+dev-vm tests (one existing Lua skip), 66 complete planning-oracle cases, 162 factory
+resource inputs and 141 offscreen Setup/New VM checks/27 PNGs pass. The Dev review
+render was visually inspected. Initial sandboxed PTY/socket refusals pass with
+local fixture process access. No real SSH or Ansible guest run was used.
+Eight source-export tests and twenty final Dev package/helper/review tests pass
+after the vendored test export is aligned. Generated pin and reverse-patch
+reconstruction checks pass. All 86,034 prior
+private artifact entries, eight frozen/runtime pins, imported factory/receipt,
+387 candidate payload files and thirteen Main metadata files remain unchanged.
+Frozen configuration inputs do not freeze guest repository package versions;
+the explicit native update uses the guest's configured repositories.
+
+**TO PROVE:** real fresh-official/lean guest update, mirror recovery, native
+prompts, interrupted upgrades and post-update compatibility. Validation here uses
+fake runtimes/runners and disposable local fixtures; no real guest, host install,
+credential, Apple request, app installation or VM launch is authorized.
+
+## Factory merge-readiness repairs — 6 November 2026
+
+**USER AUTHORIZATION:** review both factory PRs and fix remaining issues with
+fake/local checks only. Preserve private artifacts, frozen pins, Main and existing
+VMs; no signing, installs, factory/runtime downloads or VM launches.
+
+**FIX / DESIGN DECISION:** refresh factory records under the matching build lock
+before admission/recovery; keep already observed missing records fail-closed.
+Fence factory admission throughout quit, join existing recovery, and require a
+fresh preview after a cancelled quit. Use byte-based bounded output pages so the
+CLI snapshot retains small fragmented writes. The active public shared export
+gets a third checksummed patch over its unchanged base; historical candidates,
+recipe/archive bytes, runtime pins and private pins remain unchanged.
+
+**VERIFIED / TO PROVE:** deterministic regressions reproduce the old failures.
+The corrected focused manager tests (17), shared suite (99), script suite (340), source-export tests
+(8), resource tests (3) and 162-input parity pass. [Review evidence and merge
+order](docs/FactoryBuilding.md#merge-readiness-review--6-november-2026) retain fresh
+hosted checks and real cancellation/recovery as separate proof obligations.
+No review result authorizes a merge/release or extends a prior candidate's real
+boot acceptance to this new source revision.
+
+**VERIFIED — hosted budget:** all checks on `4122a31` passed their steps, including
+556 Swift tests per channel, but run `42202384549` is cancelled for exceeding the
+40-minute job limit. Raise only the bounded Mac job budget to 50 minutes; retain
+all individual deadlines, coverage and real-execution exclusions. Fresh hosted
+success remains TO PROVE.
+
+## Factory PR integration refresh — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** publish the factory acceptance docs and
+complete test-only CI, preserving private artifacts, frozen pins, Main and
+existing VMs. The updated PR conflicts with `next`; integrate `a2ff8da` on the
+factory feature branch and retain both documentation histories. Its inert-helper
+shutdown and nested saved-selection corrections join the factory changes; no
+package, runtime or candidate pin changes are needed.
+
+**TO PROVE:** fresh hosted checks on the merged source. This integration does not
+authorize signing, installs, factory/runtime downloads or VM launches, and does
+not extend the preceding real-guest acceptance to this new source revision.
+
+## Disposable lean factory boot acceptance — 6 November 2026
+
+**USER AUTHORIZATION:** boot one new disposable Dev VM from the imported lean
+factory and verify account setup and graphics. Preserve Main, existing VMs,
+artifacts and frozen pins; no signing, host installs or downloads.
+
+**VERIFIED:** one fresh manager-owned UUID booted with saved account defaults,
+4 CPUs, 8 GiB RAM and a 64 GiB system disk. After the user completed secure
+guest-password authorization, inspection joined the original pending launch
+without creating or starting another guest. Thirteen account checks, desktop
+keyboard matching, native completion and seed removal passed. Native Wayland EGL
+and the active compositor reported hardware-backed VirGL; scoped Mac-window
+observations showed a healthy desktop at 2688×1512, scale 2, about 120 Hz.
+Graceful shutdown produced the matching `Exited (0)`, released the listener/lock
+and left no new runtime processes. The stopped disk is retained. No factory
+manifest or frozen pin is rewritten by this later observation. [Checks and
+limits](docs/FactoryBuilding.md#disposable-dev-boot-account-and-graphics-acceptance--6-november-2026)
+distinguish this factory acceptance from developer provisioning.
+
+**TO PROVE:** repeatability of the known intermittent graphics-startup issue,
+password login, application/shortcut/resize/sleep/crash acceptance and real
+builder cancellation/recovery. GLX and an optional Foot-dispatch fixture were
+unavailable; native Wayland EGL, compositor and visible desktop checks passed.
+
+## Real Dev factory build and import — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** execute the reviewed lean factory
+recipe in Dev, allowing downloads and one owned privileged Docker container,
+then independently verify/import its output. No credentials, host installs,
+VM launches or Main operations are authorized. Existing artifacts and frozen
+candidate pins remain preserved; a necessary integration repair advances only
+the active public package export with a separate checksum-pinned source patch.
+
+**VERIFIED:** the first attempt failed before privileged-container creation on
+Docker's unavailable configured credential helper. A private anonymous build
+config and local-image-only container creation repair that integration without
+using a credential store. One subsequent mirror timeout failed closed; the next
+job built/imported **Lean Omarchy Dev acceptance** (20 GiB disk;
+1,716,254,279-byte compressed image). Format-2 admission, schema-2 receipt, catalog
+readback, scoped mounts, unchanged engine identity and zero remaining owned
+containers/volumes for all three jobs are observed. See [factory acceptance and
+limits](docs/FactoryBuilding.md#first-authorized-real-build-and-anonymous-registry-configuration).
+Local fake validation passes 97 shared, 542 Dev and 340 script tests plus final
+export/helper checks. One prior unfrozen local test log was reused accidentally;
+app payloads and frozen candidate pins remain unchanged, and further logs are
+isolated. **TO PROVE:** hosted CI for the repair, real cancellation/recovery and
+guest boot/account/graphics acceptance. No VM was created or launched here.
+
+## Native lean factory builder — approved prototype, 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** implement the approved native Factory
+images library, build sheet, progress terminal and New VM handoff in Dev. Reuse
+upstream Linux image/package logic through the shared Swift package; do not
+reimplement the guest/hypervisor. Readiness uses existing local Docker only.
+The Build action authorizes downloads and one owned privileged build container;
+readiness, navigation and field edits never imply execution. Stable remains gated.
+
+**PRIVATE COUPLING:** consume a compiled checksum-pinned export of dev-vm's
+maintained staging recipe; preserve the original reviewed guest integration
+archive and independently import through the existing format-2 catalog. The
+active public package pin advances on follow-on local feature branches. Preserved
+private candidate artifacts and frozen pins retain their original identities.
+
+**VERIFIED / TO PROVE:** [Factory builder evidence and limits](docs/FactoryBuilding.md)
+records passing offline staging parity, 92 shared Swift tests, full manager
+regressions, 27 final focused Dev tests, relocated bundles, 140 Setup/New VM and
+32 factory UI checks, plus all three optimized policy modes. The preservation
+audit matches all 86,034 old private artifact entries and five unchanged other
+pins. Real Docker/download, privileged-container and disposable-guest acceptance
+remain **TO PROVE**. This pass authorizes no
+real build, download, signing, install, VM launch or Main operation.
+
+## Factory CI portability and terminal input release — 6 November 2026
+
+**VERIFIED — failures:** both factory PRs fail resource lookup under hosted
+SwiftPM's resource layout. Manager CI also observes stale UI input ownership
+when an already-dispatched poll finishes while release waits for idle.
+
+**DESIGN DECISION:** use Foundation named bundle resources with unchanged
+recipe/archive checksums; advance only the active public shared package pin.
+After waiting for an in-flight read, input release clears local input state
+again before the serialized release command. A deterministic local read barrier
+reproduces the old failure and verifies the correction; no authority, command
+replay, deadlines or lease limits change. **TO PROVE:** fresh hosted CI results
+until recorded in [factory build validation](docs/FactoryBuilding.md).
+Private artifacts and frozen candidate pins remain preserved. Main and its VMs
+are untouched; real Docker, downloads, signing credentials, installs and guest
+launches remain outside this repair.
+
+## Docker executable admission repair — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** repair the factory host executable
+limit, test with fake adapters/local fixtures, prepare a separate ad-hoc Dev
+candidate and inspect readiness without building or launching anything. Factory
+host tools use a 128 MiB cap with 1 MiB hashing chunks; SSH/Ansible retain 32 MiB.
+Symlink, owner, permission, file-stamp and hash checks stay mandatory. The active
+package records a checksum-pinned integration patch over the unchanged upstream
+base; existing private artifacts, frozen candidate pins and runtime pins remain
+preserved. Main and its VMs are untouched.
+
+**VERIFIED / TO PROVE:** 97 shared Swift tests, 542 Dev manager tests and 340
+script tests pass. Read-only local ARM64 Linux engine inspection and identity
+revalidation pass. Fresh candidate verification and preservation evidence are
+recorded in [factory building](docs/FactoryBuilding.md). No Docker build,
+download, signing credential, install or VM launch is authorized here. Engine
+scratch capacity, real factory build/import and guest acceptance remain TO PROVE.
 ## Authorized PR #10 merge gate and terminal backport — 6 November 2026
 
 **USER AUTHORIZATION:** merge PR #10 into `next` once its reviewed source and all

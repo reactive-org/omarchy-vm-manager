@@ -215,7 +215,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         })
         try await f.coordinator.submit(request, approval: f.approve(request), adapter: guest)
         let result = try await f.coordinator.wait(request.jobID)
-        #expect(result.state == .succeeded && !result.cleanupRequired && !result.workerOutstanding)
+        #expect(result.state == .restartRequired && !result.cleanupRequired && !result.workerOutstanding)
         let disk = String(decoding: try PrivateFiles.read(file, maximum: 1024*1024), as: UTF8.self)
         for value in ["NEVER-PERSIST-FIXTURE-SECRET", "fixture_owner", f.root.path, "terminal", "privateKey", "helperPID"] { #expect(!disk.contains(value)) }
         #expect(await f.manager.activeSessionCount == 1)
@@ -238,7 +238,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         await #expect(throws: ProvisioningJobFailure.jobConflict) { try await f.coordinator.submit(conflict, approval: f.approve(conflict), adapter: unused) }
         await gate.release(); _ = try await f.coordinator.wait(request.jobID)
         let completed = try await f.coordinator.submit(request, approval: f.approve(request), adapter: unused)
-        #expect(completed.state == .succeeded)
+        #expect(completed.state == .restartRequired)
     }
     @Test func reviewSourceAndDependencyChangesStopBeforeGuestCalls() async throws {
         let f = try await JobFixture(), request = try f.request(), guest = JobGuest()
@@ -312,7 +312,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(await f.manager.activeSessionCount == 1)
         #expect(await guest.interrupts.isEmpty)
         await gate.release()
-        #expect(try await viewer.value.state == .succeeded)
+        #expect(try await viewer.value.state == .restartRequired)
         #expect(await f.manager.activeSessionCount == 1)
     }
     @Test func checkAndRestartRequiredAreNotVMLifecycleActions() async throws {
@@ -397,7 +397,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(await guest.commands.isEmpty)
         let reviewed = try f.request()
         try await f.coordinator.submit(reviewed, approval: f.approve(reviewed), adapter: guest)
-        #expect(try await f.coordinator.wait(reviewed.jobID).state == .succeeded)
+        #expect(try await f.coordinator.wait(reviewed.jobID).state == .restartRequired)
     }
     @Test func failedAdmissionWriteCannotStartEngineOrAnotherJob() async throws {
         let f = try await JobFixture(), request = try f.request(), guest = JobGuest()
@@ -622,7 +622,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(await eventually { await gate.entered })
         await #expect(throws: ProvisioningJobFailure.busy) { try await f.coordinator.closeForReopen() }
         await gate.release()
-        #expect(try await f.coordinator.wait(request.jobID).state == .succeeded)
+        #expect(try await f.coordinator.wait(request.jobID).state == .restartRequired)
     }
     @Test func reopenedCleanupUsesAuthenticatedHelperOwnershipProof() async throws {
         let f = try await JobFixture(), request = try f.request()
@@ -786,7 +786,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         _ = try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
         await #expect(throws: VMFailure.self) { try await f.manager.pause(f.profile.id) }
         await gate.release()
-        #expect(try await viewer.value.state == .succeeded)
+        #expect(try await viewer.value.state == .restartRequired)
         #expect(await dispatcher.activations == 1)
         #expect(await factory.prepares == 1)
         #expect(f.runtime.startedHandles[0].shutdownCount == 0 && f.runtime.startedHandles.count == 1)
@@ -868,7 +868,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(row.helperDelivery != nil && row.helperDelivery?.archiveSHA256 == row.inputArchiveSHA256)
         try FileManager.default.removeItem(at: f.source)
         try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: dispatcher)
-        #expect(try await f.coordinator.wait(request.jobID).state == .succeeded)
+        #expect(try await f.coordinator.wait(request.jobID).state == .restartRequired)
         #expect(await dispatcher.activations == 1)
         #expect(await !guest.commands.isEmpty)
         await dispatcher.close()
@@ -890,7 +890,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         if kind == "diagnostic" { f.runtime.startedHandles[0].emit(.error(VMRunError(code: .launchFailed, message: "fixture diagnostic"))) }
         await gate.release()
         let result = try await f.coordinator.wait(request.jobID)
-        if kind == "diagnostic" { #expect(result.state == .succeeded && !result.cleanupRequired) }
+        if kind == "diagnostic" { #expect(result.state == .restartRequired && !result.cleanupRequired) }
         else { #expect(result.cleanupRequired && result.state == .cleanupRequired) }
         #expect(await guest.commands.allSatisfy { $0.context.target == f.target })
         if kind != "exit" { #expect(await f.manager.activeSessionCount == 1) }
@@ -906,7 +906,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(try f.journal.load().first?.helperSessionAuthorityVersion == 1)
         try FileManager.default.removeItem(at: f.source)
         try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
-        #expect(try await f.coordinator.wait(request.jobID).state == (check ? .checked : .succeeded))
+        #expect(try await f.coordinator.wait(request.jobID).state == (check ? .checked : .restartRequired))
         _ = try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
         #expect(provider.builds == 1 && provider.preparations == 1)
         let invocations = await provider.runner.invocations, queries = await launcher.checks.requests
@@ -1016,7 +1016,7 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         #expect(!journal.contains(provider.root.path) && !journal.contains(admission.selection.endpoint.root) && !journal.contains("PRIVATE-FIXTURE"))
         #expect(provider.builds == 0 && provider.preparations == 0)
         try await f.coordinator.activateHelperWorker(request, approval: f.approve(request), dispatcher: launcher)
-        #expect(try await f.coordinator.wait(request.jobID).state == (check ? .checked : .succeeded))
+        #expect(try await f.coordinator.wait(request.jobID).state == (check ? .checked : .restartRequired))
         #expect(provider.builds == 1 && provider.preparations == 0)
         #expect(await !provider.runner.invocations.isEmpty)
         await launcher.close()

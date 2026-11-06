@@ -26,8 +26,8 @@ import Testing
         // Native API submits; CLI retries the exact reviewed consent as a lookup.
         _ = try await f.service.apply(id, consent: consent)
         #expect(try await cli.request(.apply, previewID: id, consent: consent).workflows?.first?.id == id)
-        #expect(try await f.service.wait(id).stage == .succeeded)
-        #expect(try await cli.request(.status, workflowID: id).workflows?.first?.stage == .succeeded)
+        #expect(try await f.service.wait(id).stage == .restartRequired)
+        #expect(try await cli.request(.status, workflowID: id).workflows?.first?.stage == .restartRequired)
         #expect(await f.launcher.launches == 1)
         await cli.close(); await f.close()
     }

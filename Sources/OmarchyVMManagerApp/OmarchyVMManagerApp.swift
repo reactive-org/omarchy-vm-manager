@@ -51,6 +51,10 @@ struct OmarchyVMManagerApp: App {
         UserDefaults.standard.register(defaults: ["AppleFontSmoothing": 0])
         BundledFonts.register()
         #if DEBUG
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--accept-factory-screens" {
+            do { try FactoryScreenAcceptance.run(output: URL(fileURLWithPath: CommandLine.arguments[2])); exit(0) }
+            catch { FileHandle.standardError.write(Data("Factory screen acceptance failed.\n".utf8)); exit(1) }
+        }
         if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--accept-setup-screens" {
             do { try SetupScreenAcceptance.run(output: URL(fileURLWithPath: CommandLine.arguments[2])); exit(0) }
             catch { FileHandle.standardError.write(Data("Setup screen acceptance failed.\n".utf8)); exit(1) }

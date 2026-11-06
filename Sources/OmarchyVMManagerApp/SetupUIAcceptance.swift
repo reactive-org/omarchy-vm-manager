@@ -55,7 +55,7 @@ enum AcceptanceFailure: Error { case check }
         let appearance = source.appearance
         let theme = appearance?.theme.map { ["random", "most-starred"].contains($0) ? "https://github.com/example/omarchy-fixture-theme" : $0 } ?? ""
         let workstation: [String: Any] = ["theme": theme, "layout": appearance?.layoutFile == nil && appearance?.layoutExample == nil ? "" : ".omarchy-manager-layout.lua", "remove_layout": appearance?.removeLayout == true]
-        var proposal: [String: Any] = ["schema_version": 1, "id": "synthetic-ui-only", "plan_digest": plan, "input_digest": input, "execution_available": false, "vm": ["name": "Source proposal only", "cpus": 8, "memory_gib": 16, "disk_gib": 256, "lean_developer": source.trimOptionalApps == true], "features": ["profiles": source.profiles ?? source.preset.map { [$0] } ?? [], "features": source.features?.enable.map(\.rawValue) ?? ["cli"], "options": ["workstation": workstation]], "requirements": ["update_policy": "No implicit removal or update", "removals": [], "desktop_restart_required": true], "tasks": [["name": "synthetic", "file": "fixture-task.yml"]]]
+        var proposal: [String: Any] = ["schema_version": 1, "id": "synthetic-ui-only", "plan_digest": plan, "input_digest": input, "execution_available": false, "vm": ["name": "Source proposal only", "cpus": 8, "memory_gib": 16, "disk_gib": 256, "lean_developer": source.trimOptionalApps == true], "features": ["profiles": source.profiles ?? source.preset.map { [$0] } ?? [], "features": source.features?.enable.map(\.rawValue) ?? ["cli"], "options": ["workstation": workstation]], "requirements": ["update_policy": "Update Omarchy and system packages before applying setup", "system_update_required": true, "system_restart_required": true, "removals": [], "desktop_restart_required": true], "tasks": [["name": "synthetic", "file": "fixture-task.yml"]]]
         if let id = appearance?.layoutExample, let example = try BundledProvisioning.layoutExamples().first(where: { $0.id == id }) {
             proposal["inputs"] = [["path": ".omarchy-manager-layout.lua", "sha256": example.sourceSHA256, "mode": 384]]
         }
@@ -89,7 +89,7 @@ enum AcceptanceFailure: Error { case check }
     func prepareApply(_ id: UUID) async throws -> ProvisioningApplyReview {
         guard executionEnabled else { throw ProvisioningReviewFailure.unavailable }
         guard let preview = previews[id] else { throw ProvisioningReviewFailure.invalid }; preparations += 1
-        var fields: [String: Any] = ["previewID": id.uuidString, "vmID": preview.vmID.uuidString, "sessionID": (reviewSession ?? UUID()).uuidString, "planDigest": preview.planDigest, "inputDigest": preview.inputDigest, "dependencyDigest": String(repeating: "b", count: 64), "reviewIdentity": String(repeating: "c", count: 64), "persistentGrantRequired": true, "dockerRootAccessRequired": !adminOnlyReview]
+        var fields: [String: Any] = ["previewID": id.uuidString, "vmID": preview.vmID.uuidString, "sessionID": (reviewSession ?? UUID()).uuidString, "planDigest": preview.planDigest, "inputDigest": preview.inputDigest, "dependencyDigest": String(repeating: "b", count: 64), "reviewIdentity": String(repeating: "c", count: 64), "systemUpdateRequired": true, "persistentGrantRequired": true, "dockerRootAccessRequired": !adminOnlyReview]
         if !adminOnlyReview { fields["taskTrustIdentity"] = String(repeating: "d", count: 64) }
         return try value(fields)
     }

@@ -89,7 +89,7 @@ struct NewVMSetupSelectionView: View {
                 ProvisioningProfileSelectionView(selection: $profiles, localSource: source == "local")
                 if factory == "official" { ProvisioningTrimSelectionView(selection: $trimOptionalApps) }
                 ProvisioningAppearanceSelectionView(draft: $appearance)
-                SpecNote("Create, Launch & Set Up approves this exact plan for this VM’s first launch, including temporary admin access while setup runs. If anything changes before setup starts, it pauses on the guest’s page and asks again. Create alone saves the plan for a later review.")
+                SpecNote("Setup updates Omarchy and system packages, then applies these selections. Create, Launch & Set Up approves this exact plan for this VM’s first launch, including temporary admin access while setup runs; the restart and configuration check that finish setup are reviewed on the guest’s page. If anything changes before setup starts, it pauses and asks again. Create alone saves the plan for a later review.")
             }
         }
         .background {

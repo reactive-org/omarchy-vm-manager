@@ -49,12 +49,31 @@ final class AppModel: ObservableObject {
     private var commandServer: ManagerCommandServer?
     private var provisioningService: ProvisioningService?
     private var setupServer: ProvisioningExternalServer?
+    private var factoryBuildModel: FactoryBuildModel?
+    private var quitRequested = false
+    var factoryBuilder: FactoryBuildModel {
+        if let factoryBuildModel { return factoryBuildModel }
+        let environment = LocalFactoryBuildEnvironment(kit: .embedded(), lockData: (try? Data(contentsOf: Self.lockURL)) ?? Data()) { [manager] bundle in try await manager.importFactory(bundle) }
+        let service: any FactoryBuildControlling
+        #if DEBUG
+        if isolated, let isolatedFactoryBuildService { service = isolatedFactoryBuildService }
+        else { service = FactoryBuildService(applicationSupport: support, environment: environment) }
+        #else
+        service = FactoryBuildService(applicationSupport: support, environment: environment)
+        #endif
+        let value = FactoryBuildModel(service: service); factoryBuildModel = value; return value
+    }
+    func builtFactoryAvailable(_ identity: FactoryIdentity) {
+        guard identity.kind == .custom else { return }
+        factoryLibrary.imported(identity)
+    }
     @Published var setupWorkflows: [ProvisioningWorkflowSnapshot] = []
     @Published var setupJobs: [UUID: ProvisioningJobSnapshot] = [:]
     #if DEBUG
     private var isolatedService: (any ProvisioningObserving)?
     private var isolatedSave: (@MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile)?
     private var isolated = false
+    var isolatedFactoryBuildService: (any FactoryBuildControlling)?
     init(isolatedManager: VMManager, support: URL, snapshots: [VMSnapshot], service: (any ProvisioningObserving)?,
          save: @escaping @MainActor (GuestConfigurationPatch, ProvisioningCreationConsent?) async throws -> VMProfile) {
         manager = isolatedManager; self.support = support; self.snapshots = snapshots
@@ -186,7 +205,7 @@ final class AppModel: ObservableObject {
 
     private func startCommandServer() {
         guard !Self.layoutPreview, registryError == nil, commandServer == nil else { return }
-        let service = GuestCommandService(manager: manager, applicationSupport: support)
+        let service = GuestCommandService(manager: manager, applicationSupport: support, factoryBuilds: factoryBuilder.service)
         do {
             commandServer = try ManagerCommandServer(endpoint: ManagerCommandEndpoint(applicationSupport: support)) { request in
                 await service.execute(request)
@@ -437,20 +456,44 @@ final class AppModel: ObservableObject {
     }
 
     func requestQuit() async {
+        guard !quitRequested else { return }
+        quitRequested = true
+        var accepted = false
+        defer { if !accepted { quitRequested = false } }
+        let factoryService = factoryBuilder.service
+        if (try? await factoryService.jobs().contains(where: \.active)) == true {
+            let alert = NSAlert()
+            alert.messageText = "Cancel the factory build and quit?"
+            alert.informativeText = "The owned build container will stop and its work volume will be cleaned up. Existing factory images are preserved."
+            alert.addButton(withTitle: "Cancel Build and Quit"); alert.addButton(withTitle: "Keep Building")
+            guard alert.runModal() == .alertFirstButtonReturn else { NSApplication.shared.reply(toApplicationShouldTerminate: false); return }
+        }
+        // Fence even an idle builder: a CLI start can arrive while later quit
+        // dialogs or manager shutdown are suspended. Cancel also joins recovery.
+        factoryBuildModel?.review = nil
+        guard await factoryService.cancelAndWait() else {
+            actionError = "Factory cleanup has not been confirmed. Verify the owned build resources in Factory images before quitting."
+            await factoryService.resumeAfterCancelledQuit()
+            NSApplication.shared.reply(toApplicationShouldTerminate: false); return
+        }
         await manager.cancelFactoryImportAndWait()
         await manager.waitForFactoryDeletion()
         if await manager.hasActiveSuspensionTransition {
             actionError = "An experimental suspension or restore is unresolved. Let it finish, or explicitly stop that guest and preserve its guarded state before quitting."
+            await factoryService.resumeAfterCancelledQuit()
             NSApplication.shared.reply(toApplicationShouldTerminate: false); return
         }
-        if await manager.prepareToQuitIfIdle() { NSApplication.shared.reply(toApplicationShouldTerminate: true); return }
+        if await manager.prepareToQuitIfIdle() { accepted = true; NSApplication.shared.reply(toApplicationShouldTerminate: true); return }
         let alert = NSAlert()
         alert.messageText = "Shut down the VMs and quit?"
         alert.informativeText = "The manager will cancel backups and wait for all VM helpers, backup workers and storage transactions to finish."
         alert.addButton(withTitle: "Shut Down and Quit"); alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { NSApplication.shared.reply(toApplicationShouldTerminate: false); return }
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            await factoryService.resumeAfterCancelledQuit()
+            NSApplication.shared.reply(toApplicationShouldTerminate: false); return
+        }
         shuttingDown = true; _ = await manager.beginApplicationShutdown()
         while !(await manager.isIdle) { await update(); try? await Task.sleep(for: .milliseconds(100)) }
-        await update(); NSApplication.shared.reply(toApplicationShouldTerminate: true)
+        await update(); accepted = true; NSApplication.shared.reply(toApplicationShouldTerminate: true)
     }
 }

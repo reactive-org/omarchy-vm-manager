@@ -2,7 +2,7 @@ import AppKit
 import OmarchyVMManagerCore
 import SwiftUI
 
-private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults, provisioningTools }
+private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults, provisioningTools, factoryImages }
 private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces", setup = "Setup" }
 
 struct ManagerView: View {
@@ -62,6 +62,7 @@ struct ManagerView: View {
                             }
                             sidebarHeader("manager")
                             sidebarLink("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark", .defaults)
+                            sidebarLink("Factory images", systemImage: "square.3.layers.3d", .factoryImages)
                             sidebarLink("Permissions", systemImage: "hand.raised", .permissions)
                             sidebarLink("Runtime", systemImage: "checkmark.shield", .runtime)
                             sidebarLink("Provisioning tools", systemImage: "wrench.and.screwdriver", .provisioningTools)
@@ -99,6 +100,10 @@ struct ManagerView: View {
                     case .permissions: permissions
                     case .runtime: runtime
                     case .provisioningTools: ProvisioningToolsView()
+                    case .factoryImages: FactoryImagesView(model: model) { factory in
+                        model.builtFactoryAvailable(factory)
+                        editor = EditorSelection(profile: nil, initialFactory: factory.selector)
+                    }
                     default: library
                     }
                 }.padding(Theme.gap).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
@@ -129,7 +134,7 @@ struct ManagerView: View {
         }
         .sheet(isPresented: $importingFactory) { FactoryImportView(model: model) }
         .sheet(item: $editor) { selection in
-            VMEditor(model: model, profile: selection.profile, reuseSource: selection.reuseSource, launchAvailable: launchAvailable) { id, launch in
+            VMEditor(model: model, profile: selection.profile, reuseSource: selection.reuseSource, initialFactory: selection.initialFactory, launchAvailable: launchAvailable) { id, launch in
                 focusGuest(id)
                 editor = nil
                 // Create and Launch is the user's explicit request to start this new guest.
@@ -147,7 +152,7 @@ struct ManagerView: View {
 
     /// Sidebar destinations in visual order, for arrow-key navigation.
     private var sidebarOrder: [Destination] {
-        model.snapshots.map { .guest($0.id) } + [.defaults, .permissions, .runtime, .provisioningTools]
+        model.snapshots.map { .guest($0.id) } + [.defaults, .factoryImages, .permissions, .runtime, .provisioningTools]
     }
 
     private func moveSelection(by offset: Int) -> KeyPress.Result {
@@ -519,7 +524,7 @@ private struct GuestTabs: View {
         }
     }
 }
-private struct EditorSelection: Identifiable { let id = UUID(); let profile: VMProfile?; var reuseSource: VMProfile? = nil }
+private struct EditorSelection: Identifiable { let id = UUID(); let profile: VMProfile?; var reuseSource: VMProfile? = nil; var initialFactory: String? = nil }
 struct VMEditor: View {
     #if DEBUG
     @Environment(\.setupAcceptance) private var acceptance
@@ -548,6 +553,7 @@ struct VMEditor: View {
     @State private var keyError: String?
     @State private var factory = "official"
     @State private var importingFactory = false
+    @State private var buildingFactory = false
     @State private var useOwnerDefaults: Bool
     @State private var setupSource: ProvisioningSetupSource?
     @State private var creationAttempt: CreationAttempt?
@@ -558,11 +564,11 @@ struct VMEditor: View {
     }
     @State private var setupBlocker: NewVMSetupBlocker?
     @State private var openPane: Pane?
-    init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, launchAvailable: Bool, saved: @escaping (UUID, _ launch: Bool) -> Void) {
-        self.init(model: model, profile: profile, reuseSource: reuseSource, saved: { _ in })
+    init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, initialFactory: String? = nil, launchAvailable: Bool, saved: @escaping (UUID, _ launch: Bool) -> Void) {
+        self.init(model: model, profile: profile, reuseSource: reuseSource, initialFactory: initialFactory, saved: { _ in })
         self.saved = saved; self.launchAvailable = launchAvailable
     }
-    init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, saved: @escaping (UUID) -> Void) {
+    init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, initialFactory: String? = nil, saved: @escaping (UUID) -> Void) {
         self.model = model; self.profile = profile; self.saved = { id, _ in saved(id) }
         _name = State(initialValue: profile?.name ?? reuseSource.map { $0.name + " Replacement" } ?? "")
         _memory = State(initialValue: (profile?.memoryMiB ?? 4096) / 1024)
@@ -579,6 +585,7 @@ struct VMEditor: View {
         _useOwnerDefaults = State(initialValue: reuseSource.map { $0.ownerSetup != nil } ?? (profile == nil && model.ownerDefaults?.isConfigured == true))
         _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.isConfigured == true ? model.ownerDefaults?.sshPublicKey : nil)
         _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
+        _factory = State(initialValue: initialFactory ?? "official")
     }
     private var saveBlocker: String? {
         if saving { return profile == nil ? (setupSource == nil ? "Creating VM…" : "Preparing setup and creating VM…") : "Saving changes…" }
@@ -633,6 +640,9 @@ struct VMEditor: View {
                     }.labelsHidden().frame(maxWidth: 250)
                     Button("Import Factory…") { importingFactory = true }
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
+                    Button("Build lean factory…", systemImage: "hammer") { buildingFactory = true }
+                        .disabled(saving || !model.factoryBuilder.service.enabled || model.registryError != nil)
+                        .accessibilityIdentifier("newvm.buildFactory")
                 }
                 if let notice = model.factorySelectionNotice { SpecNote(notice).padding(.bottom, 8) }
             } else {
@@ -749,6 +759,14 @@ struct VMEditor: View {
         .sheet(isPresented: $importingFactory) {
             FactoryImportView(model: model) { identity in factory = identity.selector }
         }
+        .sheet(isPresented: $buildingFactory) {
+            VStack(alignment: .trailing) {
+                Button("Done") { buildingFactory = false }.padding([.top, .trailing], 16)
+                ScrollView { FactoryImagesView(model: model) { identity in
+                    model.builtFactoryAvailable(identity); factory = identity.selector; buildingFactory = false
+                }.padding(24) }
+            }.frame(width: 900, height: 730)
+        }
         .background {
             #if DEBUG
             if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
@@ -762,7 +780,7 @@ struct VMEditor: View {
                     case .section(let value): openPane = Pane(rawValue: value)
                     default: break
                     }
-                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "ready": String(setupBlocker == nil), "ownerDefaults": String(useOwnerDefaults), "hasSetup": String(setupSource != nil), "failure": model.configurationError ?? "", "saving": String(saving), "canSave": String(canSave), "validation": saveBlocker ?? ""] })
+                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "factory": factory, "ready": String(setupBlocker == nil), "ownerDefaults": String(useOwnerDefaults), "hasSetup": String(setupSource != nil), "failure": model.configurationError ?? "", "saving": String(saving), "canSave": String(canSave), "validation": saveBlocker ?? ""] })
             } }
             #endif
         }
