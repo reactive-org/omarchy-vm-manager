@@ -28,9 +28,10 @@ class ProvisioningPackageTests(unittest.TestCase):
 
     def test_source_export_pin_and_generated_swift_match(self):
         raw, lock = package.read_lock()
-        self.assertEqual(lock["revision"], "99a8b5546c45dc044049c0c8faf6f4096a6ca829")
-        self.assertEqual(lock["integrationPatches"], [])
-        self.assertEqual(lock["baseFiles"], lock["files"])
+        self.assertEqual(lock["revision"], "5d0abc376862cf367256e64a0b210fc33e647686")
+        self.assertEqual([p["path"] for p in lock["integrationPatches"]], ["Patches/dev-vm-factory-executable-size.patch", "Patches/dev-vm-anonymous-factory-build.patch", "Patches/dev-vm-factory-output-pages.patch"])
+        self.assertNotEqual(lock["baseFiles"], lock["files"])
+        package.verify_source()
         self.assertEqual(package.files(package.ROOT / lock["package"]), lock["files"])
         self.assertEqual((package.ROOT / "Sources/OmarchyVMManagerCore/ProvisioningPackagePin.swift").read_text(), package.pin_source(raw, lock))
         resolved = json.loads((package.ROOT / "Package.resolved").read_bytes())
@@ -108,6 +109,7 @@ class ProvisioningPackageTests(unittest.TestCase):
             (root / "Config").mkdir()
             shutil.copytree(package.ROOT / "Vendor/dev-vm", root / "Vendor/dev-vm")
             _, lock = package.read_lock()
+            lock["integrationPatches"] = []
             lock["baseFiles"]["README.md"] = "a" * 64
             (root / package.LOCK).write_text(json.dumps(lock))
             with self.assertRaisesRegex(ValueError, "Unpatched provisioning base differs"):

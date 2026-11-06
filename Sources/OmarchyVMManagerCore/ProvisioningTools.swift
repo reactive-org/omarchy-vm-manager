@@ -115,17 +115,19 @@ public struct ProvisioningToolReport: Codable, Equatable, Sendable {
             case .githubStarThemes: required = [.bash, .ssh, .gh]
             case .remoteSetup, .imageBuilding: required = []
             }
-            let deferred = capability == .remoteSetup || capability == .imageBuilding
+            let deferred = capability == .remoteSetup
+            let factory = capability == .imageBuilding
             let blockers = required.filter { tool in tools.first(where: { $0.tool == tool })?.status != .available }
             let planning = capability == .jsonPlanning || capability == .yamlPlanning
-            let enabled = !deferred && blockers.isEmpty && (planning || ProvisioningProductExecution.enabled)
+            let enabled = !deferred && !factory && blockers.isEmpty && (planning || ProvisioningProductExecution.enabled)
             let reason: String
-            if deferred { reason = "Deferred; dependencies are not probed." }
+            if factory { reason = "Use Factory images in Dev for separate Docker, ARM64 engine, runtime and storage readiness checks. No tools are installed automatically." }
+            else if deferred { reason = "Deferred; dependencies are not probed." }
             else if !blockers.isEmpty { reason = "Required tools are missing, incompatible or unverified." }
             else if planning { reason = "Offline planning is available without external tools or guest access." }
             else if !ProvisioningProductExecution.enabled { reason = "Tool prerequisites pass; setup execution is disabled in Stable." }
             else { reason = "Tool prerequisites pass. Apply still requires target review, permissions and authenticated helper admission." }
-            return ProvisioningFeatureGate(capability: capability, toolsReady: !deferred && blockers.isEmpty,
+            return ProvisioningFeatureGate(capability: capability, toolsReady: !deferred && !factory && blockers.isEmpty,
                 implemented: !deferred, enabled: enabled, blockers: blockers, reason: reason)
         }
     }

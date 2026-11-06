@@ -46,7 +46,8 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
 
 public enum GuestCommand: String, Codable, Sendable { case list, get, create, update, delete, start, stop, restart, pause, resume, wait, factories
     case importFactory = "factory-import"
-    case deleteFactory = "factory-delete" }
+    case deleteFactory = "factory-delete"
+    case factoryBuild = "factory-build" }
 public enum GuestWaitCondition: String, Codable, Sendable { case running, ssh, stopped, paused }
 
 public struct GuestCommandRequest: Codable, Sendable {
@@ -61,10 +62,17 @@ public struct GuestCommandRequest: Codable, Sendable {
     public var timeoutSeconds = 600
     public var details = false
     public var setupConsent: ProvisioningCreationConsent?
+    public var factoryBuild: FactoryBuildRequest?
     public init(command: GuestCommand, selector: String? = nil, config: GuestConfigurationPatch? = nil) {
         self.command = command; self.selector = selector; self.config = config
     }
     public func validate() throws {
+        if command == .factoryBuild {
+            guard version == 1, (1...3600).contains(timeoutSeconds), selector == nil, config == nil, !start, !force, waitFor == nil, !details, setupConsent == nil,
+                  let factoryBuild else { throw FactoryBuildFailure.invalidRequest }
+            try factoryBuild.validate(); return
+        }
+        guard factoryBuild == nil else { throw FactoryBuildFailure.invalidRequest }
         guard version == 1, (1...3600).contains(timeoutSeconds),
               selector == nil || (!selector!.isEmpty && selector!.utf8.count <= (command == .importFactory ? 1024 : 255) && !selector!.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })) else {
             throw commandFailure("invalid-request", "Unsupported command version, selector or timeout.")
@@ -102,7 +110,13 @@ public struct GuestCommandRequest: Codable, Sendable {
     }
     static func decodeStrict(_ data: Data) throws -> Self {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              Set(object.keys).isSubset(of: ["version", "requestID", "command", "selector", "config", "start", "force", "waitFor", "timeoutSeconds", "details", "setupConsent"]) else { throw commandFailure("invalid-request", "Unknown command fields.") }
+              Set(object.keys).isSubset(of: ["version", "requestID", "command", "selector", "config", "start", "force", "waitFor", "timeoutSeconds", "details", "setupConsent", "factoryBuild"]) else { throw commandFailure("invalid-request", "Unknown command fields.") }
+        if let factory = object["factoryBuild"] {
+            _ = try PlainDataParser.parse(data, format: .json)
+            let bytes = try JSONSerialization.data(withJSONObject: factory)
+            let value = try JSONDecoder().decode(FactoryBuildRequest.self, from: bytes)
+            guard try PlainDataParser.parse(helperJSON(value), format: .json) == PlainDataParser.parse(bytes, format: .json) else { throw FactoryBuildFailure.invalidRequest }
+        }
         if let consent = object["setupConsent"] {
             let bytes = try JSONSerialization.data(withJSONObject: consent)
             let value = try JSONDecoder().decode(ProvisioningCreationConsent.self, from: bytes)
@@ -175,6 +189,7 @@ public struct GuestCommandResponse: Codable, Sendable {
     public var factoryIssues: [FactoryCatalogIssue]?
     public var deletedFactory: FactoryIdentity?
     public var error: GuestCommandFailure?
+    public var factoryBuild: FactoryBuildReply?
     public init(requestID: UUID, ok: Bool, guest: GuestCommandRecord? = nil, guests: [GuestCommandRecord]? = nil, error: GuestCommandFailure? = nil, factories: [FactoryIdentity]? = nil, factoryIssues: [FactoryCatalogIssue]? = nil, deletedFactory: FactoryIdentity? = nil) {
         self.requestID = requestID; self.ok = ok; self.guest = guest; self.guests = guests; self.error = error; self.factories = factories; self.factoryIssues = factoryIssues; self.deletedFactory = deletedFactory
     }
@@ -186,15 +201,22 @@ public actor GuestCommandService {
     private let manager: VMManager
     private let support: URL
     private let connections: any GuestConnectionChecking
+    private let factoryBuilds: (any FactoryBuildControlling)?
     private var cachedConnections: [UUID: VerifiedGuestConnection] = [:]
-    public init(manager: VMManager, applicationSupport: URL, connections: any GuestConnectionChecking = SSHGuestConnectionProbe()) {
-        self.manager = manager; support = applicationSupport; self.connections = connections
+    public init(manager: VMManager, applicationSupport: URL, connections: any GuestConnectionChecking = SSHGuestConnectionProbe(), factoryBuilds: (any FactoryBuildControlling)? = nil) {
+        self.manager = manager; support = applicationSupport; self.connections = connections; self.factoryBuilds = factoryBuilds
     }
     public func execute(_ request: GuestCommandRequest) async -> GuestCommandResponse {
         var target: UUID?
         do {
             try Task.checkCancellation()
             try request.validate()
+            if request.command == .factoryBuild {
+                guard let factoryBuilds, let operation = request.factoryBuild else { throw commandFailure("factory-build-unavailable", "Factory building is unavailable in this manager.") }
+                var response = GuestCommandResponse(requestID: request.requestID, ok: true)
+                response.factoryBuild = try await factoryBuilds.execute(operation)
+                return response
+            }
             let deadline = ContinuousClock.now.advanced(by: .seconds(request.timeoutSeconds))
             if request.command == .factories {
                 let listing = try await manager.factoryListing()
@@ -254,7 +276,7 @@ public actor GuestCommandService {
             let snapshot = try await snapshot(target!)
             return GuestCommandResponse(requestID: request.requestID, ok: true, guest: record(snapshot))
         } catch {
-            let failure = error as? VMFailure ?? commandFailure("command-failed", "The command could not finish.")
+            let failure = error as? VMFailure ?? (error as? FactoryBuildFailure).map { commandFailure("factory-build-" + $0.rawValue, $0.explanation) } ?? commandFailure("command-failed", "The command could not finish.")
             let current: GuestCommandRecord?
             if let target, let snapshot = try? await snapshot(target) { current = record(snapshot) } else { current = nil }
             return GuestCommandResponse(requestID: request.requestID, ok: false, guest: current, error: GuestCommandFailure(code: failure.code, message: failure.message))

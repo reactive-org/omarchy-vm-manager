@@ -22,6 +22,28 @@ do {
         FileHandle.standardOutput.write(data + Data([10])); exit(0)
     }
     let arguments = Array(CommandLine.arguments.dropFirst())
+    if arguments.first == "factory-build", arguments.contains("--help") || arguments.contains("-h") { print(FactoryBuildCLI.help); exit(0) }
+    if let (factory, follow) = try FactoryBuildCLI.parse(arguments) {
+        _ = try managerApp()
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
+        let client = ManagerCommandClient(endpoint: ManagerCommandEndpoint(applicationSupport: support))
+        var request = GuestCommandRequest(command: .factoryBuild); request.factoryBuild = factory
+        if factory.operation != .logs { output(try client.send(request)) }
+        var display = ProvisioningTerminalDisplay(), cursor: UInt64 = 0
+        var pages = 0
+        repeat {
+            request.factoryBuild?.cursor = cursor
+            let response = try client.send(request)
+            guard response.ok, let reply = response.factoryBuild else { output(response) }
+            if reply.reset == true { display.reset(); FileHandle.standardOutput.write(Data("\r\n[Earlier build output is unavailable.]\r\n".utf8)) }
+            if let bytes = reply.bytes { FileHandle.standardOutput.write(display.consume(bytes)) }
+            cursor = reply.sequence ?? cursor; pages += 1
+            if !follow && pages >= 4 { exit(0) } // At most the retained 256 KiB snapshot.
+            if reply.bytes?.isEmpty != false && (!follow || reply.jobs?.first?.active != true) { exit(0) }
+            if follow { try await Task.sleep(for: .milliseconds(200)) }
+        } while !Task.isCancelled
+        exit(0)
+    }
     if !arguments.contains("--help"), !arguments.contains("-h"),
        let tools = try ProvisioningToolsInvocation.parse(arguments) {
         let report = try await HomebrewProvisioningDependencies(configuration: .host(overrides: tools.overrides)).inspect()

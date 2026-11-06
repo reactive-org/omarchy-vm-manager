@@ -4,7 +4,8 @@ import json
 
 def add_patch_fixture(root, package):
     _, lock = package.read_lock(root)
-    assert not lock["integrationPatches"]
+    # Start this independent synthetic patch from the current exported bytes,
+    # regardless of whether the product itself carries an integration patch.
     original = package.files(root / lock["package"])
     # A new file reproduces Git's ignored-parent reverse-apply failure. A patch
     # that only edits an existing file does not exercise that historical case.

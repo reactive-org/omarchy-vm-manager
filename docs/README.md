@@ -8,6 +8,7 @@ Create independent Omarchy guests, configure their resources, and connect from y
 
 - [Getting started](getting-started.md): open the app, set up reusable defaults, create a guest and launch it.
 - [Manage your guests](managing-guests.md): change resources, use SSH, assign a Space, shut down and delete guests.
+- [Build a lean factory in Dev](FactoryBuilding.md): native factory library, Docker readiness, build terminal and New VM handoff.
 - [Prepare a factory image](preparing-factory-images.md): customise a lean build, prepare a compatible bundle and select it for a new guest.
 - [Use the CLI](cli-quickstart.md): create with per-VM owner overrides, wait for SSH, inspect, stop and reconfigure from a terminal.
 - [Stable and Dev](DevelopmentChannels.md): build and run an isolated development app while the existing app keeps its work VMs running.

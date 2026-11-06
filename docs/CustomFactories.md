@@ -15,7 +15,7 @@ Imports from an older runtime, or images that fail verification, remain preserve
 
 ## Prepared bundle
 
-Prepare the image outside the manager. This feature does not build a kernel, customize a running guest or create a factory from an existing user's disk. The flat bundle directory contains:
+Dev can [build the reviewed lean factory inside the manager](FactoryBuilding.md). Other producers prepare the image outside the manager. Neither flow customizes a running guest or creates a factory from an existing user's disk. The flat bundle directory contains:
 
 - `factory.json`, using upstream format 1 `upstream-shell-factory`, `platform: "aarch64"` and `boot: "uefi-limine"`;
 - the referenced `.img.zst`, with its compressed SHA-256 and the uncompressed disk SHA-256/byte count recorded in `factory.json`;
