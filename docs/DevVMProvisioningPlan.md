@@ -4100,3 +4100,18 @@ the explicit native update uses the guest's configured repositories.
 prompts, interrupted upgrades and post-update compatibility. Validation here uses
 fake runtimes/runners and disposable local fixtures; no real guest, host install,
 credential, Apple request, app installation or VM launch is authorized.
+
+## Update-before-setup PR checks — 7 November 2026
+
+The `codex/setup-system-update` feature branch uses the existing test-only CI
+path: the manager's full macOS no-VM job runs once for the PR, with the Docker/SSH
+fixture skipped; the companion uses its Swift/offline resource job and skips
+Ansible installation and the legacy job. Local legacy validation is recorded
+above. These filters do not change normal integration/release jobs on `next` or
+`main`. Feature-branch publication cannot invoke the manager release job. Hosted
+success remains TO PROVE until the new runs finish. No private artifact or frozen
+candidate pin is included in either PR.
+
+Workflow YAML parsing and branch/event condition checks pass: feature push/PR
+events exclude installer, real SSH and release jobs, while normal integration
+and release conditions remain unchanged.
