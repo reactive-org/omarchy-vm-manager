@@ -1799,6 +1799,11 @@ input availability comes from typed terminal metadata. Multiple workflows are
 selected explicitly, without treating sequence numbers as timestamps. The Home
 page links a concise setup state to the Setup tab.
 
+**DESIGN DECISION — 6 November 2026:** for a guest created with setup, Home shows a
+first-run tracker from observed guest, SSH, workflow and job state, and a second
+terminal viewer of an admitted job. Approval and every consent stay on the Setup tab.
+See [Validation](Validation.md#first-run-tracker--6-november-2026).
+
 **PRIVATE COUPLING — renderer:** SwiftTerm 1.99.0, revision
 `2dad6a1e516f755bed77cf9bbd09455062f54758`, is vendored under `Vendor/SwiftTerm`.
 Its sources/license are covered by an exact SHA-256 inventory; `Patches/swiftterm-bounded-graphemes.patch` adds one early-return guard limiting stored clusters to 16 scalars, including extensions across cursor/SGR sequences. All other upstream source/license bytes are unchanged.

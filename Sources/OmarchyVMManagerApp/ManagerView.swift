@@ -129,10 +129,11 @@ struct ManagerView: View {
         }
         .sheet(isPresented: $importingFactory) { FactoryImportView(model: model) }
         .sheet(item: $editor) { selection in
-            VMEditor(model: model, profile: selection.profile, reuseSource: selection.reuseSource) { id in
+            VMEditor(model: model, profile: selection.profile, reuseSource: selection.reuseSource, launchAvailable: launchAvailable) { id, launch in
                 focusGuest(id)
-                if selection.profile == nil, model.snapshots.first(where: { $0.id == id })?.profile.developerSetup != nil { page = .setup }
                 editor = nil
+                // Create and Launch is the user's explicit request to start this new guest.
+                if launch { Task { await model.start(id) } }
             }
         }
         .sheet(isPresented: $model.shuttingDown) { ProgressView("Shutting down VMs…").padding(40).interactiveDismissDisabled() }
@@ -289,7 +290,16 @@ struct ManagerView: View {
     }
 
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: Theme.gap) {
+        let firstRun = FirstRunProgress.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs)
+        return VStack(alignment: .leading, spacing: Theme.gap) {
+            if let firstRun {
+                FirstRunTracker(progress: firstRun) { page = .setup }
+                if let terminal = firstRun.terminal {
+                    FirstRunTerminal(model: model, workflowID: terminal.workflowID, attachmentKey: terminal.key) { page = .setup }
+                }
+            } else if model.setupCompletedThisRun.contains(snapshot.id) {
+                FirstRunComplete(viewLog: { page = .setup }, dismiss: { model.setupCompletedThisRun.remove(snapshot.id) })
+            }
             GroupedPanel {
                 HStack(spacing: 20) {
                     GuestArtwork(size: 116, state: snapshot.state)
@@ -310,7 +320,7 @@ struct ManagerView: View {
                     }
                 }.padding(.leading, 16).padding(.trailing, 20).padding(.vertical, 14)
             }
-            if let job = model.setupSummary(for: snapshot.id) {
+            if firstRun == nil, !model.setupCompletedThisRun.contains(snapshot.id), let job = model.setupSummary(for: snapshot.id) {
                 Button { page = .setup } label: { Label(job.title, systemImage: job.cleanupRequired ? "exclamationmark.shield" : "terminal") }.buttonStyle(.plain).padding(.horizontal, 4)
             }
             GuestHibernationPanel(snapshot: snapshot, review: { action in model.experimentalPowerReview = .init(id: snapshot.id, action: action) }, recheck: { Task { await model.recheckExperimentalRecovery(snapshot.id) } })
@@ -459,16 +469,18 @@ struct ManagerView: View {
     }
 
     private func controls(_ snapshot: VMSnapshot) -> some View {
-        GuestControls(snapshot: snapshot, launchEnabled: !model.checking && model.diagnostics != nil && model.registryError == nil && !model.shuttingDown,
+        GuestControls(snapshot: snapshot, launchEnabled: launchAvailable,
                       start: { focusGuest(snapshot.id); Task { await model.start(snapshot.id) } }, stop: { Task { await model.stop(snapshot.id) } },
                       forceStop: { model.forceStopID = snapshot.id },
                       pause: { Task { await model.pause(snapshot.id) } }, resume: { Task { await model.resume(snapshot.id) } },
                       suspendToDisk: { model.experimentalPowerReview = .init(id: snapshot.id, action: .suspend) },
                       restoreSuspension: { model.experimentalPowerReview = .init(id: snapshot.id, action: .restore) })
     }
+    private var launchAvailable: Bool { !model.checking && model.diagnostics != nil && model.registryError == nil && !model.shuttingDown }
+    /// Changing guests resets the page through onChange(of: destination); a launch
+    /// from the guest already shown keeps its page, so Setup is never yanked away.
     private func focusGuest(_ id: UUID) {
         destination = .guest(id)
-        page = .home
         detailPresentation = UUID()
     }
     private func deletable(_ snapshot: VMSnapshot) -> Bool { snapshot.sessionID == nil && snapshot.suspension == nil && !snapshot.suspensionMetadataUnsafe && snapshot.state.canStart && !model.shuttingDown }
@@ -513,7 +525,9 @@ struct VMEditor: View {
     #endif
     @ObservedObject var model: AppModel
     let profile: VMProfile?
-    let saved: (UUID) -> Void
+    private var saved: (UUID, _ launch: Bool) -> Void
+    /// Whether the manager can start a guest now; Create and Launch is disabled otherwise.
+    private var launchAvailable = false
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var memory: Int
@@ -543,8 +557,12 @@ struct VMEditor: View {
     }
     @State private var setupBlocker: NewVMSetupBlocker?
     @State private var openPane: Pane?
+    init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, launchAvailable: Bool, saved: @escaping (UUID, _ launch: Bool) -> Void) {
+        self.init(model: model, profile: profile, reuseSource: reuseSource, saved: { _ in })
+        self.saved = saved; self.launchAvailable = launchAvailable
+    }
     init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, saved: @escaping (UUID) -> Void) {
-        self.model = model; self.profile = profile; self.saved = saved
+        self.model = model; self.profile = profile; self.saved = { id, _ in saved(id) }
         _name = State(initialValue: profile?.name ?? reuseSource.map { $0.name + " Replacement" } ?? "")
         _memory = State(initialValue: (profile?.memoryMiB ?? 4096) / 1024)
         _cpus = State(initialValue: profile?.cpus ?? 4)
@@ -705,9 +723,20 @@ struct VMEditor: View {
             }
             HStack {
                 Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
-                Button(profile == nil ? "Create VM" : "Save Changes") {
-                    save()
-                }.accessibilityIdentifier("new-vm.create").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
+                if profile == nil {
+                    // Plain Create stays available; launching is a separate, explicit choice.
+                    if launchAvailable {
+                        Button("Create") { save() }.accessibilityIdentifier("new-vm.create").disabled(!canSave)
+                        Button("Create and Launch") { save(launch: true) }
+                            .accessibilityIdentifier("new-vm.create-launch").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
+                    } else {
+                        Button("Create and Launch") {}.disabled(true).help("Launching is unavailable right now. Create the VM, then launch it from its page.")
+                            .accessibilityIdentifier("new-vm.create-launch")
+                        Button("Create VM") { save() }.accessibilityIdentifier("new-vm.create").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
+                    }
+                } else {
+                    Button("Save Changes") { save() }.accessibilityIdentifier("new-vm.create").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
+                }
             }
             }.padding(.horizontal, 20).padding(.vertical, 12).overlay(alignment: .top) { Rectangle().fill(Theme.strongBorder).frame(height: 1) }
         }.frame(width: 620).font(Theme.body).background(Theme.pane).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle()).interactiveDismissDisabled(saving)
@@ -737,7 +766,7 @@ struct VMEditor: View {
             #endif
         }
     }
-    private func save() {
+    private func save(launch: Bool = false) {
         guard canSave else { return }
         let config = GuestConfigurationPatch(name: name.trimmingCharacters(in: .whitespacesAndNewlines), memoryMiB: memory * 1024, cpus: cpus, diskGiB: disk,
             clipboard: clipboard, immersive: immersive, guestTouchID: guestTouchID, ssh: sshEnabled, ownerDefaults: useOwnerDefaults,
@@ -753,7 +782,7 @@ struct VMEditor: View {
         // Capture all form values before preparation can suspend. Even a late
         // programmatic edit cannot change the configuration being confirmed.
         Task { [profile, setupSource, name = config.name!, memory, cpus, disk, clipboard, guestTouchID, immersive, sshEnabled, publicKey = config.publicKey, useOwnerDefaults, factory, share, sharePath, separateHome, homeDisk, reuseHomeFrom] in
-            if let id = await model.save(profile, name: name, memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, guestTouchID: guestTouchID, immersive: immersive, sshEnabled: sshEnabled, publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, separateHome: separateHome, homeDiskGiB: homeDisk, reuseHomeFrom: reuseHomeFrom, setupSource: setupSource, setupRequestID: requestID) { saved(id) }
+            if let id = await model.save(profile, name: name, memoryGiB: memory, cpus: cpus, diskGiB: disk, clipboard: clipboard, guestTouchID: guestTouchID, immersive: immersive, sshEnabled: sshEnabled, publicKey: publicKey, useOwnerDefaults: useOwnerDefaults, factory: factory, share: share, sharePath: sharePath, separateHome: separateHome, homeDiskGiB: homeDisk, reuseHomeFrom: reuseHomeFrom, setupSource: setupSource, setupRequestID: requestID) { saved(id, launch && profile == nil) }
             saving = false
         }
     }

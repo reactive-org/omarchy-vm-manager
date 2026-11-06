@@ -107,7 +107,7 @@ struct LibraryHeader: View {
                     // Drawn only when the title has room beside it.
                     GeometryReader { space in
                         if space.size.width >= 720 {
-                            FrameMark(size: 240, frame: activeCount > 0 ? Theme.green : Theme.idleFrame, tracer: activeCount > 0 ? Theme.tracer : nil)
+                            FrameMark(size: 240, frame: activeCount > 0 ? Theme.green : Theme.idleFrame, tracer: activeCount > 0 ? Theme.tracer : Theme.lavender.opacity(0.7))
                                 .offset(x: space.size.width - 288, y: 16)
                         }
                     }

@@ -15,6 +15,8 @@ enum Theme {
     static let green = dynamic(dark: 0x9ECE6A, light: 0x4F7A1F)
     static let onGreen = dynamic(dark: 0x12160C, light: 0xFFFFFF)
     static let lavender = dynamic(dark: 0xB5ABFC, light: 0x5B4BC4)
+    /// Waiting on the user: an approval or review, never an error.
+    static let amber = dynamic(dark: 0xE0AF68, light: 0x8A5A12)
     static let idleFrame = dynamic(dark: 0x4D5068, light: 0xB9BCCB)
     static let quietFrame = dynamic(dark: 0x34364A, light: 0xD7D9E3)
     static let tracer = dynamic(dark: 0xEAF7D9, light: 0x2F4A12)

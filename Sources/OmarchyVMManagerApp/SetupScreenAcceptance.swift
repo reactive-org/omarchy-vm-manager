@@ -386,6 +386,49 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: page), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); try capture(pageHost, "guest-" + page.lowercased() + "-dark.png"); pageHost.close()
         }
+        // First run: synthetic guest, SSH and workflow states only; nothing is launched.
+        let digest = String(repeating: "e", count: 64)
+        var firstRun = profile
+        firstRun.developerSetup = try JSONDecoder().decode(ProvisioningSelectionReceipt.self, from: JSONSerialization.data(withJSONObject: [
+            "reviewID": UUID().uuidString, "vmID": profile.id.uuidString, "reviewIdentity": digest, "planDigest": digest,
+            "inputDigest": digest, "engineDigest": digest, "configurationDigest": digest]))
+        let session = UUID()
+        func progress(_ state: VMState, ssh: SSHReadiness = .stopped, _ rows: [ProvisioningWorkflowSnapshot] = [], jobs: [UUID: ProvisioningJobSnapshot] = [:]) -> FirstRunProgress? {
+            FirstRunProgress.make(.init(profile: firstRun, state: state, sessionID: state == .stopped ? nil : session, sshReadiness: ssh), workflows: rows, jobs: jobs)
+        }
+        try check(FirstRunProgress.make(.init(profile: profile, state: .running, sshReadiness: .ready(user: "fixture_owner", command: "synthetic-unused")), workflows: [], jobs: [:]) == nil, "first-run-only-for-setup-guests")
+        try check(progress(.stopped)?.step == .created && progress(.stopped)?.setupAction == nil, "first-run-stopped-waits-for-explicit-launch")
+        try check(progress(.running, ssh: .waitingForOwner)?.step == .firstBoot, "first-run-owner-step-from-ssh-state")
+        try check(progress(.running, ssh: .connecting)?.step == .connecting, "first-run-connecting-from-ssh-state")
+        let approveNoJob = progress(.running, ssh: .ready(user: "fixture_owner", command: "synthetic-unused"))
+        try check(approveNoJob?.step == .approve && approveNoJob?.tone == .needsYou && approveNoJob?.setupAction != nil, "first-run-approval-routes-to-setup-review")
+        try check(progress(.running, ssh: .ready(user: "fixture_owner", command: "synthetic-unused"), [completedHistory]) == nil, "first-run-hidden-after-success")
+        try check(progress(.running, ssh: .ready(user: "fixture_owner", command: "synthetic-unused"), [failedHistory, try enabled.row(UUID(), stage: "cancelled")])?.tone == .problem, "first-run-unordered-history-not-guessed")
+        let installing = try enabled.row(UUID(), stage: "running")
+        let job = try JSONDecoder().decode(ProvisioningJobSnapshot.self, from: JSONSerialization.data(withJSONObject: [
+            "jobID": UUID().uuidString, "vmID": profile.id.uuidString, "sessionID": session.uuidString, "sequence": 1, "state": "running",
+            "cleanupFailures": [] as [Any], "cleanupRequired": true, "workerOutstanding": true]))
+        try check(progress(.running, [installing])?.terminal == nil, "first-run-terminal-waits-for-admitted-job")
+        try check(progress(.running, [installing], jobs: [installing.id: job])?.terminal?.workflowID == installing.id, "first-run-terminal-attaches-admitted-job")
+        enabledModel.setupCompletedThisRun = []
+        enabledModel.noteSetupCompletions(previous: [installing], current: [try enabled.row(installing.id, stage: "succeeded")])
+        try check(enabledModel.setupCompletedThisRun == [profile.id], "first-run-completion-observed-transition-only")
+        enabledModel.setupCompletedThisRun = []
+        enabledModel.noteSetupCompletions(previous: [], current: [completedHistory])
+        try check(enabledModel.setupCompletedThisRun.isEmpty, "first-run-old-success-not-announced")
+        for (name, ssh, rows, jobs) in [
+            ("first-run-connecting-dark.png", SSHReadiness.connecting, [ProvisioningWorkflowSnapshot](), [UUID: ProvisioningJobSnapshot]()),
+            ("first-run-approve-dark.png", .ready(user: "fixture_owner", command: "synthetic-unused"), [try enabled.row(UUID(), stage: "readyForReview")], [:]),
+            ("first-run-installing-dark.png", .ready(user: "fixture_owner", command: "synthetic-unused"), [installing], [installing.id: job])
+        ] {
+            enabledModel.snapshots = [.init(profile: firstRun, state: .running, sessionID: session, sshReadiness: ssh)]
+            enabledModel.setupWorkflows = rows; enabledModel.setupJobs = jobs
+            let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+            tick(); try capture(pageHost, name); pageHost.close(); tick()
+        }
+        enabledModel.setupWorkflows = []; enabledModel.setupJobs = [:]
+        enabledModel.snapshots = [.init(profile: profile, state: .stopped), .init(profile: downloading, state: .downloading(phase: .downloading, percent: 48), sessionID: UUID()),
+            .init(profile: failed, state: .failed(VMFailure(code: "synthetic", message: "The download could not finish.")), lastFailure: VMFailure(code: "synthetic", message: "The download could not finish."))]
         for page in ["permissions", "runtime"] {
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceManagerPage: page), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); try capture(pageHost, page + "-dark.png"); pageHost.close()

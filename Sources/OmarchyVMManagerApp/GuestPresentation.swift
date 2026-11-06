@@ -156,7 +156,9 @@ struct GuestHeaderPane<Controls: View>: View {
             }
             .padding(.horizontal, 24).frame(height: 120)
             .background(alignment: .topTrailing) {
-                FrameMark(size: 170, frame: Theme.quietFrame).offset(x: -190, y: 6)
+                // Same language as the library header: lavender while idle, bright while running.
+                FrameMark(size: 170, frame: snapshot.sessionID != nil ? Theme.green.opacity(0.55) : Theme.quietFrame,
+                          tracer: snapshot.sessionID != nil ? Theme.tracer : Theme.lavender.opacity(0.7)).offset(x: -190, y: 6)
             }
             .clipShape(RoundedRectangle(cornerRadius: Theme.paneRadius))
         }

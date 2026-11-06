@@ -75,6 +75,15 @@ final class AppModel: ObservableObject {
         let title = rows.count > 1 && !row.cleanupRequired && !row.canCancel ? "Setup history (\(rows.count) runs)" : row.title
         return (title, row.cleanupRequired)
     }
+    /// Guests whose setup was observed finishing while this manager ran. Home
+    /// shows a dismissible completion line for these; nothing is persisted.
+    @Published var setupCompletedThisRun: Set<UUID> = []
+    func noteSetupCompletions(previous: [ProvisioningWorkflowSnapshot], current: [ProvisioningWorkflowSnapshot]) {
+        let before = Dictionary(previous.map { ($0.id, $0.stage) }, uniquingKeysWith: { first, _ in first })
+        for row in current where [.succeeded, .checked].contains(row.stage) {
+            if let stage = before[row.id], ![.succeeded, .checked].contains(stage) { setupCompletedThisRun.insert(row.vmID) }
+        }
+    }
     func cancelSetup(_ id: UUID) async {
         do { try await setupService?.cancel(id) }
         catch { actionError = "Setup cancellation could not be confirmed. Check its job state and cleanup requirement." }
@@ -369,7 +378,9 @@ final class AppModel: ObservableObject {
         }
         snapshots = observation.snapshots; records = observation.records
         if let provisioningService {
-            setupWorkflows = await provisioningService.statuses()
+            let workflows = await provisioningService.statuses()
+            noteSetupCompletions(previous: setupWorkflows, current: workflows)
+            setupWorkflows = workflows
             var jobs: [UUID: ProvisioningJobSnapshot] = [:]
             for workflow in setupWorkflows { jobs[workflow.id] = await provisioningService.jobStatus(workflow.id) }
             setupJobs = jobs
