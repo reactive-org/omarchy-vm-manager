@@ -56,16 +56,28 @@ public final class FactoryBuildOutput: @unchecked Sendable {
         lock.withLock {
             for start in stride(from: 0, to: data.count, by: 8192) {
                 let part = data.subdata(in: start..<min(start + 8192, data.count))
-                sequence += 1; frames.append((sequence, part)); bytes += part.count
+                sequence += UInt64(part.count); frames.append((sequence, part)); bytes += part.count
                 while bytes > 256 * 1024, !frames.isEmpty { bytes -= frames.removeFirst().1.count }
             }
         }
     }
     public func page(after cursor: UInt64) -> FactoryBuildOutputPage {
         lock.withLock {
-            let reset = cursor > sequence || (frames.first.map { cursor + 1 < $0.0 } ?? false)
-            let selected = frames.filter { $0.0 > cursor }.prefix(8)
-            return .init(sequence: selected.last?.0 ?? sequence, bytes: selected.reduce(into: Data()) { $0.append($1.1) }, reset: reset)
+            // Byte cursors allow exactly bounded pages across arbitrarily
+            // fragmented writes. Four pages can drain the retained 256 KiB.
+            let earliest = frames.first.map { $0.0 - UInt64($0.1.count) } ?? sequence
+            let reset = cursor > sequence || cursor < earliest
+            let start = reset ? earliest : cursor
+            var data = Data(), next = start
+            for (end, frame) in frames where end > start {
+                let begin = end - UInt64(frame.count)
+                let offset = Int(max(start, begin) - begin)
+                let count = min(frame.count - offset, 65_536 - data.count)
+                data.append(frame.subdata(in: offset..<(offset + count)))
+                next = begin + UInt64(offset + count)
+                if data.count == 65_536 { break }
+            }
+            return .init(sequence: next, bytes: data, reset: reset)
         }
     }
 }

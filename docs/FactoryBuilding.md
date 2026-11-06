@@ -350,3 +350,53 @@ fixture did not run because its dispatch calls were incompatible with the
 installed Lua dispatcher API; no app-window/shortcut, resize, sleep/wake,
 clipboard or crash acceptance is claimed. Real builder cancellation/recovery and
 developer provisioning remain separately scoped.
+
+
+## Merge-readiness review — 6 November 2026
+
+**USER AUTHORIZATION:** review both factory PRs and repair remaining issues with
+fake runtimes and local fixtures. Preserve private artifacts, frozen candidate
+pins, Main and existing VMs. No signing, installs, factory/runtime downloads or
+VM launches are authorized; reviewing a PR does not authorize merging/releasing.
+
+**VERIFIED — reproduced defects and fixes:**
+
+- A controller with a cached journal could start past another controller's new
+  cleanup hold, or replay recovery over a job its original owner had already
+  completed. Readiness, start and recovery now refresh durable records under the
+  build lock before deciding. A record already observed by the controller cannot
+  disappear and silently clear its hold.
+- Quit could observe an idle builder, then allow a CLI start while waiting for
+  manager shutdown. It also failed to join an in-flight cleanup recovery. Quit
+  now fences new admission, invalidates pending/in-flight previews, cancels the
+  owned worker and readiness probes, and waits for recovery. Cancelling a later quit dialog reopens
+  admission but requires a fresh preview; it never resumes a cancelled build.
+  Unconfirmed cleanup or unreadable durable state blocks quit and directs the
+  user to explicit owned-resource recovery, rather than claiming cleanup passed.
+- Non-following CLI logs stopped after four pages of eight process writes, losing
+  retained output when writes were small. The shared ring now uses byte cursors
+  and pages at 64 KiB, so four requests cover its retained 256 KiB independently
+  of write fragmentation. Gaps and future cursors explicitly reset to retained
+  output; the terminal remains bounded and ephemeral.
+
+Deterministic tests fail with the original implementations and pass with the
+repairs. Final focused manager validation passes 17 test functions, the shared suite
+passes 99 functions, and the eight source-export plus three resource-verification
+tests pass. Offline staging parity still matches all 162 inputs. The 340 script tests and 32 fake UI checks pass. Fresh hosted results on the
+repaired heads are recorded separately once observed.
+
+**PRIVATE COUPLING:** the shared source/engine inventory advances through a third
+checksum-pinned integration patch, `dev-vm-factory-output-pages.patch`, over the
+same immutable `5d0abc3` base and original two patches. The active public export
+and generated package pin change; recipe/archive bytes, runtime pins, private
+candidate payloads and their frozen pins do not. The earlier real build/import
+and disposable boot evidence remains bound to its recorded candidate, rather
+than being extended to this new revision.
+
+**MERGE ORDER / TO PROVE:** the companion factory PR #9 still includes and depends
+on the open provisioning foundation PR #8; integrate that foundation first, then
+#9, then manager PR #11 into `next`. The manager provisioning foundation #10 is
+already merged. Both factory PRs remain drafts; no merge or release is performed
+by this review. Fresh CI on the repaired heads is required before approval.
+Real builder cancellation/recovery, graphics-startup repeatability and the prior
+unexercised guest checks retain their stated acceptance limits.

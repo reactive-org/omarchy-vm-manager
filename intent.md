@@ -1,5 +1,27 @@
 # Omarchy VM Manager — implementation intent
 
+## Factory merge-readiness repairs — 6 November 2026
+
+**USER AUTHORIZATION:** review both factory PRs and fix remaining issues with
+fake/local checks only. Preserve private artifacts, frozen pins, Main and existing
+VMs; no signing, installs, factory/runtime downloads or VM launches.
+
+**FIX / DESIGN DECISION:** refresh factory records under the matching build lock
+before admission/recovery; keep already observed missing records fail-closed.
+Fence factory admission throughout quit, join existing recovery, and require a
+fresh preview after a cancelled quit. Use byte-based bounded output pages so the
+CLI snapshot retains small fragmented writes. The active public shared export
+gets a third checksummed patch over its unchanged base; historical candidates,
+recipe/archive bytes, runtime pins and private pins remain unchanged.
+
+**VERIFIED / TO PROVE:** deterministic regressions reproduce the old failures.
+The corrected focused manager tests (17), shared suite (99), script suite (340), source-export tests
+(8), resource tests (3) and 162-input parity pass. [Review evidence and merge
+order](docs/FactoryBuilding.md#merge-readiness-review--6-november-2026) retain fresh
+hosted checks and real cancellation/recovery as separate proof obligations.
+No review result authorizes a merge/release or extends a prior candidate's real
+boot acceptance to this new source revision.
+
 ## Factory PR integration refresh — 6 November 2026
 
 **USER AUTHORIZATION / DESIGN DECISION:** publish the factory acceptance docs and

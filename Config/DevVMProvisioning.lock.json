@@ -104,7 +104,7 @@
     "tests/DevVMProvisioningCoreTests/TransportTests.swift": "83505faa83e646630bebd8366927aa4b018920230d97e656a95418bf75d2e741",
     "tests/ProcessFixture/main.c": "36d59d76a07eedc4cf78f06a95fa205abd22bb2cc100f88bb7e8b0cf3c005fae"
   },
-  "engineSHA256": "8d0e237c8019be8cef94d0c026922a640b247b4881ffbdd0428ad8e231b1a665",
+  "engineSHA256": "534fea013421badbafc2626abf5e3ae2624291e35fe8a5aee4bddd6f9fab67fc",
   "files": {
     "AGENTS.md": "df05f49430ac4197c88fae97e9309e16c04b36bc42c7b2ffa31526cc65a9444e",
     "Package.resolved": "1c1292adea6d7e8ccf2bca848d90a720bb644bb41c564053d500921b46e7017b",
@@ -121,7 +121,7 @@
     "Sources/CDevVMYAML/vendor/scanner.c": "338ee97fc97aa97c08a74cd3349462bea4e1f7ce836e4c7b04334fa1c74031c0",
     "Sources/CDevVMYAML/vendor/yaml_private.h": "2e2f7887f27da6bff518db117d358f708c1af30ebabdeeea612e628b9ed18841",
     "Sources/DevVMProvisioningCore/CleanupCheckpoint.swift": "614d16980e78f279c27bad28cf0437c5fb3b6ae9cc77106496963760b21c17e8",
-    "Sources/DevVMProvisioningCore/FactoryBuild.swift": "21ccdfe275cc9e6604b1d919313e82e9b6fa9859707f65aa4e9881543a97fcea",
+    "Sources/DevVMProvisioningCore/FactoryBuild.swift": "f00db89e0dde5e0bd099c4ef2055756cb9ce25a98ff4c87d1fdb5ad39cab27cc",
     "Sources/DevVMProvisioningCore/FactoryBuildEngine.swift": "1473ac1f9f41102fb43fdcc03f36985396e3e95e30a316d9f40413bb380a9b1c",
     "Sources/DevVMProvisioningCore/FactoryDocker.swift": "e35e0dea86a5df83e17cab9da5ada444a57ae9d364581e592959202c3d11c231",
     "Sources/DevVMProvisioningCore/FactoryHostProcess.swift": "6320cf530e73292fd44024534fa85e6765eafdbbf33e7cc1c6e9d0be70f366d1",
@@ -184,7 +184,7 @@
     "Sources/DevVMProvisioningCore/Resources/Yams-LICENSE.txt": "0354b0ea403d2e78059c5ae0510a2cfae9f8eb306fcef094ac9fff5b47e20bed",
     "Sources/DevVMProvisioningCore/Resources/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
     "Sources/DevVMProvisioningCore/Resources/catalogue.schema.json": "234128f6847d0b5b428d5b063261d4aa6f50129c13846d41d10812783b787ea6",
-    "Sources/DevVMProvisioningCore/Resources/engine-identity.json": "8d0e237c8019be8cef94d0c026922a640b247b4881ffbdd0428ad8e231b1a665",
+    "Sources/DevVMProvisioningCore/Resources/engine-identity.json": "534fea013421badbafc2626abf5e3ae2624291e35fe8a5aee4bddd6f9fab67fc",
     "Sources/DevVMProvisioningCore/Resources/selection.schema.json": "351a0754a2b9091a806e1e1237485cfd251e82e018610f0e1831ba3a049d17c9",
     "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "410c8b692ce9708039e18d5273dab2fdf2ebc9f9fa602d03ea366e55fb4b9e22",
     "Sources/DevVMProvisioningCore/SelectionSchema.swift": "e46a8ee4a2f81c17c3f33cb2ff0e7cf9ad5f6e70d32c79fc5021976c32eca29d",
@@ -197,7 +197,7 @@
     "Sources/dev-vm/main.swift": "550c97f885f3326477fea78cca65c93d7ee25ad9d7c9ad55a2cd3692f2cda681",
     "ThirdParty/ParserInventory.json": "3a64ef59bb137a2c4ba26f5812debabbdad9816d041f7e2b6ff52bb8fb6a8941",
     "tests/DevVMProvisioningCoreTests/DurableStateTests.swift": "134d7b5dee4e045a41f2a959835ddbcac85490b3650457962d929727f42b5153",
-    "tests/DevVMProvisioningCoreTests/FactoryBuildTests.swift": "59034b5f2e406bcd81765a316e2278b413c588ff8a08567eb8ba8410d6a29d3d",
+    "tests/DevVMProvisioningCoreTests/FactoryBuildTests.swift": "3edbb2fec57c3981167a9fc9e510efdd6e60b1ea9f224714ce1d44d999665115",
     "tests/DevVMProvisioningCoreTests/Fixtures/example.yml": "d9057ae4247aecc12df8b3d40d9846ea341eaa676448c65761bb59cb240d3211",
     "tests/DevVMProvisioningCoreTests/Fixtures/plain-contract.json": "97d1b7b835bd69ea55fb24861fc6331920237f0c4ceebd4887f0827df46d4b3e",
     "tests/DevVMProvisioningCoreTests/Fixtures/planning-contract.json": "aee89b98fcb8fe3bc65a1cd8ff86bd0af730a54c0e158031fe2fd536a5781d18",
@@ -219,6 +219,10 @@
     {
       "path": "Patches/dev-vm-anonymous-factory-build.patch",
       "sha256": "55eee0fd3cdd618e6a9eaf8d8162518b990e2e515a6207ef2cd506c93729a3a5"
+    },
+    {
+      "path": "Patches/dev-vm-factory-output-pages.patch",
+      "sha256": "9a148fd0ca720357c2c769d4a02efa073313d39915fd8141b09679d0fe3b0339"
     }
   ],
   "launcher": "dev-vm-process-host",
@@ -228,5 +232,5 @@
   "revision": "5d0abc376862cf367256e64a0b210fc33e647686",
   "setupAPI": 1,
   "source": "https://github.com/reactive-org/dev-vm",
-  "sourceSnapshotSHA256": "32ca271f76ff552747de4aa3b306f4b2107c2e9eb9681c2dc0ba0915cc3e2581"
+  "sourceSnapshotSHA256": "0c474f6fdbefd039f38b7e90e5bd043728b99636aeb74ab6bcc860be04706afe"
 }

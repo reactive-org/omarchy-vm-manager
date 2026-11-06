@@ -32,7 +32,8 @@ import SwiftUI
     func cancel(_ id: UUID) throws { cancellations += 1; rows[0].stage = .cancelled; rows[0].failure = "cancelled" }
     func recover(_ id: UUID) throws { recoveries += 1; rows[0].stage = .failed; rows[0].failure = "cleanup-verified" }
     func output(_ id: UUID, after sequence: UInt64) -> FactoryBuildOutputPage { outputBuffer.page(after: sequence) }
-    func cancelAndWait() {}
+    func cancelAndWait() -> Bool { true }
+    func resumeAfterCancelledQuit() {}
     func advance(_ stage: FactoryBuildStage) { rows[0].stage = stage; outputBuffer.append(Data(("Synthetic stage: " + stage.rawValue + "\r\n").utf8)) }
     func finish() throws {
         rows[0].stage = .succeeded; rows[0].finishedAt = Date()

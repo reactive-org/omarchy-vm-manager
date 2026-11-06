@@ -7,11 +7,20 @@ import Testing
 private actor FactoryFixtureEnvironment: FactoryBuildEnvironment {
     var builds = 0, imports = 0, cleanups = 0
     var paused = false, uncertain = false, lowSpace = false
+    var inspections = 0, pauseInspection = false, pauseCleanup = false
+    private var inspectionWaiter: CheckedContinuation<Void, Never>?
+    private var cleanupWaiter: CheckedContinuation<Void, Never>?
     var identity = String(repeating: "a", count: 64)
     func configure(paused: Bool = false, uncertain: Bool = false, lowSpace: Bool = false) { self.paused = paused; self.uncertain = uncertain; self.lowSpace = lowSpace }
     func changeEngine() { identity = String(repeating: "b", count: 64) }
-    func inspect(root: URL) -> FactoryBuildInspection {
-        .init(admission: .init(context: "fixture", endpoint: "unix:///private/tmp/fixture.sock", engineSHA256: identity, toolSHA256: String(repeating: "c", count: 64)), availableBytes: lowSpace ? 0 : 100 * 1_073_741_824)
+    func holdInspection() { pauseInspection = true }
+    func holdCleanup() { pauseCleanup = true }
+    func releaseInspection() { pauseInspection = false; inspectionWaiter?.resume(); inspectionWaiter = nil }
+    func releaseCleanup() { pauseCleanup = false; cleanupWaiter?.resume(); cleanupWaiter = nil }
+    func inspect(root: URL) async -> FactoryBuildInspection {
+        inspections += 1
+        if pauseInspection { await withCheckedContinuation { inspectionWaiter = $0 } }
+        return .init(admission: .init(context: "fixture", endpoint: "unix:///private/tmp/fixture.sock", engineSHA256: identity, toolSHA256: String(repeating: "c", count: 64)), availableBytes: lowSpace ? 0 : 100 * 1_073_741_824)
     }
     func build(plan: FactoryBuildPlan, id: UUID, root: URL, admission: FactoryDockerAdmission, output: FactoryBuildOutput, progress: @escaping @Sendable (FactoryBuildStage) async throws -> Void) async throws -> URL {
         builds += 1; output.append(Data("synthetic factory build output\n".utf8)); try await progress(.image)
@@ -24,7 +33,10 @@ private actor FactoryFixtureEnvironment: FactoryBuildEnvironment {
         imports += 1
         return .init(kind: .custom, name: plan.name, manifestSHA256: String(repeating: "d", count: 64), diskSHA256: String(repeating: "e", count: 64))
     }
-    func cleanup(id: UUID, admission: FactoryDockerAdmission) { cleanups += 1 }
+    func cleanup(id: UUID, admission: FactoryDockerAdmission) async {
+        cleanups += 1
+        if pauseCleanup { await withCheckedContinuation { cleanupWaiter = $0 } }
+    }
 }
 private final class FactoryServiceFixture {
     let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-service-" + UUID().uuidString)
@@ -33,6 +45,7 @@ private final class FactoryServiceFixture {
     init() throws { try PrivateFiles.directory(root, create: true); service = FactoryBuildService(fixtureRoot: root, environment: environment) }
     deinit { try? FileManager.default.removeItem(at: root) }
 }
+private actor RecordingFactoryQuit { var done = false; func complete() { done = true } }
 @Suite("Factory jobs — fake environment and disposable local metadata", .serialized) struct FactoryBuildServiceTests {
     @Test func commandSocketUsesTheSameControllerWithoutResolvingOrStartingGuests() async throws {
         let f = try FactoryServiceFixture(), files = try RegistryFixture(); defer { files.cleanup() }
@@ -109,6 +122,101 @@ private final class FactoryServiceFixture {
         try await f.service.recover(job.id)
         #expect(await f.environment.builds == 1); #expect(await f.environment.imports == 0); #expect(await f.environment.cleanups == 1)
         #expect(try await f.service.jobs().first?.stage == .failed)
+    }
+    @Test func staleControllerCannotBypassAnotherControllersCleanupHold() async throws {
+        let f = try FactoryServiceFixture()
+        let stale = FactoryBuildService(fixtureRoot: f.root, environment: f.environment)
+        let staleReview = try await stale.review()
+        await f.environment.configure(uncertain: true)
+        let review = try await f.service.review()
+        _ = try await f.service.start(reviewID: review.id)
+        #expect(await eventually { (try? await f.service.jobs().first?.cleanupRequired) == true })
+        await #expect(throws: FactoryBuildFailure.busy) { _ = try await stale.start(reviewID: staleReview.id) }
+        await stale.cancelAndWait()
+        #expect(await f.environment.builds == 1)
+        #expect(try await FactoryBuildService(fixtureRoot: f.root, environment: f.environment).jobs().count == 1)
+    }
+    @Test func staleRecoveryCannotOverwriteACompletedOwnersJournal() async throws {
+        let f = try FactoryServiceFixture(); await f.environment.configure(paused: true)
+        let review = try await f.service.review(), job = try await f.service.start(reviewID: review.id)
+        #expect(await eventually { await f.environment.builds == 1 })
+        let stale = FactoryBuildService(fixtureRoot: f.root, environment: f.environment)
+        #expect(try await stale.jobs().first?.cleanupRequired == true)
+        try await f.service.cancel(job.id); await f.service.cancelAndWait()
+        await #expect(throws: FactoryBuildFailure.invalidRequest) { try await stale.recover(job.id) }
+        #expect(await f.environment.cleanups == 0)
+        #expect(try await FactoryBuildService(fixtureRoot: f.root, environment: f.environment).jobs().first?.stage == .cancelled)
+    }
+    @Test func quitFencesPreviouslyReviewedAndNewBuildAdmission() async throws {
+        let f = try FactoryServiceFixture(), review = try await f.service.review()
+        await f.service.cancelAndWait()
+        await #expect(throws: FactoryBuildFailure.busy) { _ = try await f.service.start(reviewID: review.id) }
+        await #expect(throws: FactoryBuildFailure.busy) { _ = try await f.service.review() }
+        await f.service.cancelAndWait()
+        #expect(await f.environment.builds == 0)
+    }
+    @Test func cancelledQuitRequiresAFreshPreviewBeforeStartingAgain() async throws {
+        let f = try FactoryServiceFixture(), old = try await f.service.review()
+        await f.service.cancelAndWait(); await f.service.resumeAfterCancelledQuit()
+        await #expect(throws: Error.self) { _ = try await f.service.start(reviewID: old.id) }
+        let fresh = try await f.service.review()
+        _ = try await f.service.start(reviewID: fresh.id)
+        #expect(await eventually { (try? await f.service.jobs().first?.stage) == .succeeded })
+        #expect(await f.environment.builds == 1)
+    }
+    @Test func quitInvalidatesAnInspectionAlreadyInFlight() async throws {
+        let f = try FactoryServiceFixture(); await f.environment.holdInspection()
+        let review = Task { [service = f.service] in try await service.review() }
+        #expect(await eventually { await f.environment.inspections == 1 })
+        let finished = RecordingFactoryQuit()
+        let quit = Task { [service = f.service] in await service.cancelAndWait(); await finished.complete() }
+        #expect(await eventually { await f.service.admissionSuspended })
+        #expect(await finished.done == false)
+        await f.environment.releaseInspection(); await quit.value
+        await #expect(throws: Error.self) { _ = try await review.value }
+        #expect(await finished.done)
+        #expect(await f.environment.builds == 0)
+    }
+    @Test func quitWaitsForOwnedRecoveryAndDoesNotReplayIt() async throws {
+        let f = try FactoryServiceFixture(); await f.environment.configure(uncertain: true)
+        let review = try await f.service.review(), job = try await f.service.start(reviewID: review.id)
+        #expect(await eventually { (try? await f.service.jobs().first?.cleanupRequired) == true })
+        await f.environment.holdCleanup()
+        let recovery = Task { [service = f.service] in try await service.recover(job.id) }
+        #expect(await eventually { await f.environment.cleanups == 1 })
+        let finished = RecordingFactoryQuit()
+        let quit = Task { [service = f.service] in await service.cancelAndWait(); await finished.complete() }
+        #expect(await eventually { await f.service.admissionSuspended })
+        #expect(await finished.done == false)
+        await f.environment.releaseCleanup(); try await recovery.value; await quit.value
+        #expect(await finished.done)
+        await #expect(throws: FactoryBuildFailure.busy) { _ = try await f.service.review() }
+        await f.service.resumeAfterCancelledQuit()
+        _ = try await f.service.review()
+        #expect(await f.environment.cleanups == 1)
+        #expect(await f.environment.builds == 1)
+    }
+    @Test func deletingAJournalCannotEraseAnExistingCleanupHold() async throws {
+        let f = try FactoryServiceFixture(); await f.environment.configure(uncertain: true)
+        let preview = try await f.service.review(), job = try await f.service.start(reviewID: preview.id)
+        #expect(await eventually { (try? await f.service.jobs().first?.cleanupRequired) == true })
+        try FileManager.default.removeItem(at: f.root.appendingPathComponent("Records/" + job.id.uuidString + ".json"))
+        await #expect(throws: FactoryBuildFailure.invalidRequest) { try await f.service.recover(job.id) }
+        #expect(await f.environment.cleanups == 0)
+        #expect(try await f.service.jobs().first?.cleanupRequired == true)
+        #expect(await f.service.cancelAndWait() == false)
+    }
+    @Test func quitRefusesUnconfirmedCleanupAndRetriesOnlyAfterExplicitRecovery() async throws {
+        let f = try FactoryServiceFixture(); await f.environment.configure(uncertain: true)
+        let preview = try await f.service.review(), job = try await f.service.start(reviewID: preview.id)
+        #expect(await eventually { (try? await f.service.jobs().first?.cleanupRequired) == true })
+        #expect(await f.service.cancelAndWait() == false)
+        await f.service.resumeAfterCancelledQuit()
+        try await f.service.recover(job.id)
+        #expect(await f.service.cancelAndWait())
+        #expect(await f.environment.builds == 1)
+        #expect(await f.environment.imports == 0)
+        #expect(await f.environment.cleanups == 1)
     }
     @Test func wireRejectsUnknownFieldsAndCannotSelectHostPathsOrDockerCommands() throws {
         let request = GuestCommandRequest(command: .factoryBuild)

@@ -217,6 +217,40 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
         let page = output.page(after: 0)
         #expect(page.reset && page.bytes.count <= 65536)
     }
+    @Test(arguments: [17, 3007, 8191])
+    func fragmentedOutputSnapshotRetainsItsTailWithinFourBoundedPages(_ fragmentSize: Int) {
+        let output = FactoryBuildOutput()
+        var expected = Data()
+        for index in 0..<(200_000 / fragmentSize) {
+            let fragment = Data(repeating: UInt8(index % 251), count: fragmentSize)
+            expected.append(fragment); output.append(fragment)
+        }
+        var cursor: UInt64 = 0, actual = Data()
+        for _ in 0..<4 {
+            let page = output.page(after: cursor)
+            #expect(!page.reset && page.bytes.count <= 65_536)
+            actual.append(page.bytes); cursor = page.sequence
+        }
+        #expect(actual == expected)
+        #expect(output.page(after: cursor).bytes.isEmpty)
+    }
+    @Test func byteCursorResetsGapsAndFutureCursorsWithoutLosingTheRetainedTail() {
+        let output = FactoryBuildOutput(), expected = Data((0..<400_000).map { UInt8($0 % 251) })
+        output.append(expected)
+        let first = output.page(after: 0)
+        #expect(first.reset && first.bytes.count == 65_536)
+        let future = output.page(after: UInt64.max)
+        #expect(future.reset && future.bytes == first.bytes && future.sequence == first.sequence)
+        var cursor: UInt64 = 0, actual = Data()
+        for _ in 0..<4 {
+            let page = output.page(after: cursor)
+            actual.append(page.bytes); cursor = page.sequence
+        }
+        #expect(actual.count > 254 * 1024 && actual.count <= 256 * 1024)
+        #expect(actual == expected.suffix(actual.count) && cursor == UInt64(expected.count))
+        let end = output.page(after: cursor)
+        #expect(!end.reset && end.bytes.isEmpty && end.sequence == cursor)
+    }
     @Test func hostProcessesCancelAndBoundMetadataWithoutLeavingTheirGroup() async throws {
         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
         let runner = LocalFactoryBuildProcess()
