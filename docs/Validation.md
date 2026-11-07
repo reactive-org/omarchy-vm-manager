@@ -440,6 +440,8 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 
 **VERIFIED — fake/local:** offscreen checks cover the restart shown as progress, restart and check each submitted once with an acknowledged consent bound to the approved plan, recovery never submitted automatically, and a manual restart-required run reading as Restart rather than Installing.
 
+**VERIFIED — real Dev guest, 7 November 2026:** the automatic restart ran unattended on a Lean Omarchy guest. It then waited at `waitingForRebind`, because the check was only started at `readyForCheck`, which preparing the check produces. Fixed: the check now starts from `waitingForRebind` once the restarted session is the workflow's new session and its SSH is ready (offscreen check `auto-setup-check-waits-for-new-session-ssh`).
+
 **TO PROVE:** a real Create, launch & set up run completing through restart and check unattended, and the restart's session handoff timing on a real guest.
 
 ## Setup moves to Home — 7 November 2026

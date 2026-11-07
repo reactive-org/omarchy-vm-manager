@@ -111,6 +111,12 @@ extension AppModel {
         switch row.stage {
         case .restartRequired: action = .restart
         case .readyForCheck: action = .check
+        case .waitingForRebind:
+            // Preparing the check is what re-binds to the restarted session, so start it
+            // here, once that session is the workflow's new one and its SSH is ready.
+            guard let snapshot = snapshots.first(where: { $0.id == vmID }), let session = row.newSessionID,
+                  snapshot.sessionID == session, case .ready = snapshot.sshReadiness else { return }
+            action = .check
         default: return
         }
         guard row.availableActions.contains(action), !attempted.contains(action) else { return }
@@ -134,8 +140,8 @@ extension AppModel {
             }
             _ = try await service.performAction(workflowID, consent: .init(reviewID: review.id, action: action, reviewIdentity: review.reviewIdentity, acknowledged: true))
         } catch {
-            let stage: ProvisioningWorkflowStage = action == .restart ? .restartRequired : .readyForCheck
-            if setupWorkflows.first(where: { $0.id == workflowID })?.stage == stage {
+            let stages: [ProvisioningWorkflowStage] = action == .restart ? [.restartRequired] : [.waitingForRebind, .readyForCheck]
+            if let stage = setupWorkflows.first(where: { $0.id == workflowID })?.stage, stages.contains(stage) {
                 autoSetup[vmID] = .blocked("The \(what) couldn’t start automatically and was not retried. Review it on the Setup tab.")
             }
         }

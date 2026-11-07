@@ -16,7 +16,7 @@ def main():
     output = parent / 'result'
     subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=180)
     report = json.loads((output / 'report.json').read_text())
-    assert report['schema'] == 1 and len(report['checks']) == 178
+    assert report['schema'] == 1 and len(report['checks']) == 179
     assert len(set(report['checks'])) == len(report['checks'])
     for appearance in ('dark', 'light'):
         for case in ('bundled-direct-create-ready', 'all-draft-edits-have-no-backend-effects',
@@ -35,7 +35,7 @@ def main():
     for case in ('armed-has-no-approve-step', 'refuses-wider-permissions', 'blocked-falls-back-to-review',
                  'submits-admin-only-consent', 'single-use', 'bound-to-first-session', 'needs-setup-and-ssh',
                  'restart-shown-as-progress', 'restarts-once', 'checks-once', 'never-recovers',
-                 'follows-through-install-cleanup'):
+                 'follows-through-install-cleanup', 'check-waits-for-new-session-ssh'):
         assert f'auto-setup-{case}' in report['checks']
     for case in ('none-and-configured', 'running-shows-progress', 'manual-restart-needs-review', 'approved-restart-is-progress',
                  'cleanup-needs-recovery', 'failed-and-succeeded'):

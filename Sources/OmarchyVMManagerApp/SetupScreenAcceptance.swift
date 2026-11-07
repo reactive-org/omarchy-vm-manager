@@ -567,7 +567,16 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         try check(restarting?.step == .restart && restarting?.tone == .working && restarting?.setupAction == nil, "auto-setup-restart-shown-as-progress")
         enabledModel.advanceAutoSetup(); tick()
         try check(enabled.actionSubmissions == [.restart], "auto-setup-restarts-once")
-        enabledModel.setupWorkflows = [try enabled.row(autoID, stage: "readyForCheck")]; enabledModel.advanceAutoSetup()
+        // After the restart the run waits for rebind; the check starts once the new session's SSH is ready.
+        let newSession = UUID()
+        var rebind = try enabled.row(autoID, stage: "waitingForRebind")
+        rebind = try JSONDecoder().decode(ProvisioningWorkflowSnapshot.self, from: JSONSerialization.data(withJSONObject: [
+            "id": autoID.uuidString, "vmID": profile.id.uuidString, "originalSessionID": session.uuidString, "sequence": 3,
+            "stage": "waitingForRebind", "cleanupRequired": false, "applyJobID": autoID.uuidString, "newSessionID": newSession.uuidString]))
+        enabledModel.snapshots = [autoSnapshot(newSession, .connecting)]
+        enabledModel.setupWorkflows = [rebind]; enabledModel.advanceAutoSetup(); tick()
+        try check(enabled.actionSubmissions == [.restart], "auto-setup-check-waits-for-new-session-ssh")
+        enabledModel.snapshots = [autoSnapshot(newSession, ready)]; enabledModel.advanceAutoSetup()
         try until { enabled.actionSubmissions == [.restart, .check] }
         enabledModel.advanceAutoSetup(); tick()
         try check(enabled.actionSubmissions == [.restart, .check], "auto-setup-checks-once")
