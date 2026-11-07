@@ -104,6 +104,14 @@ final class AppModel: ObservableObject {
     /// Guests whose setup was observed finishing while this manager ran. Home
     /// shows a dismissible completion line for these; nothing is persisted.
     @Published var setupCompletedThisRun: Set<UUID> = []
+    /// Dock and notifications for setup attention (SetupAttentionSurfaces.swift).
+    /// Nil until the app delegate installs them; fixtures inject a fake.
+    var attentionSurfaces: (any SetupAttentionSurfaces)?
+    var attentionTracker = SetupAttentionTracker()
+    /// The guest whose setup state is on screen, reported by ManagerView.
+    var visibleGuest: UUID?
+    /// A pending click (badge or notification) for the window to open.
+    @Published var attentionRoute: AttentionRoute?
     func noteSetupCompletions(previous: [ProvisioningWorkflowSnapshot], current: [ProvisioningWorkflowSnapshot]) {
         let before = Dictionary(previous.map { ($0.id, $0.stage) }, uniquingKeysWith: { first, _ in first })
         for row in current where [.succeeded, .checked].contains(row.stage) {
@@ -425,6 +433,9 @@ final class AppModel: ObservableObject {
             setupJobs = jobs
         }
         advanceAutoSetup()
+        // The launch baseline must include saved workflows, so the tracker starts only
+        // once setup coordination is installed; until then no run can be blocked.
+        if provisioningService != nil { refreshAttention(appActive: NSApp.isActive) }
         accessibilityTrusted = AXIsProcessTrusted()
         if Date().timeIntervalSince(storageRefreshed) > 10 {
             storageRefreshed = Date()

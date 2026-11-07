@@ -1,5 +1,119 @@
 # Omarchy VM Manager — implementation intent
 
+## CI toolchain moves to Xcode 27 — 7 November 2026
+
+**USER DIRECTION / DESIGN DECISION:** CI's macOS test and branch-release jobs move
+from Xcode 26.0.1 on `macos-15` to Xcode 27.0 (27A266a) on GitHub's `xcode-27`
+image, matching the local development toolchain. Branch releases are therefore
+built with the toolchain the tests ran with. Xcode 26.0.1 had rejected a SwiftUI
+body that Xcode 27 accepted (PR #23), so CI and local builds now agree. The
+`xcode-27` image is a GitHub **preview** on macOS 27 (macOS 27.0.1); the deployment
+target stays macOS 15. The notarization status check keeps its own runner.
+
+**TO PROVE:** a green hosted run and a branch release on the preview image.
+
+## Releasing a stopped guest's cleanup hold — 7 November 2026
+
+**DESIGN DECISION — issue #24, user direction (same PR as #16):** this supersedes
+"Journal cleanup holds cannot be cleared from a stopped observation alone" for one
+explicit case. A guest whose setup stopped with temporary admin-access cleanup
+unconfirmed, and which then stopped, was permanently held: launch, configure,
+delete and backup were refused, and Recover needs the original live session. The
+hold also blocked setup preparation on every other guest. The owner can now
+release it through a reviewed **Release cleanup hold** workflow action, in the
+same spirit as the failed-restore attestation: an acknowledgement the app neither
+performs nor claims to verify. It is offered only for a stopped guest (Recover is
+offered only while the guest runs) and is refused while the guest has a session,
+lease, preparation, restart, home backup or storage change, while provisioning
+storage is unknown, or if a journal write fails. The confirmation says plainly
+that cleanup was not verified and that the owner removes any leftover passwordless
+sudo inside the guest. Every cleanup-bound job and workflow row for that VM is
+marked released without verification (`cleanupRelease: unverified`) and saved
+before the in-memory holds clear; other VMs' holds are untouched. History keeps
+saying the hold was released unverified; nothing is erased or shown as cleaned.
+
+**DESIGN DECISION — user direction, 7 November 2026:** workflow actions in the
+app are one click. Restart, check and recover each prepare a review bound to the
+guest's current state and submit exactly that review; the click is the owner's
+consent, replacing the separate review, "I approve this exact … action" checkbox
+and second button. Release alone adds a confirmation dialog that says cleanup
+wasn't verified. A failed preparation submits nothing, and a failed submission
+is never retried; the next click starts a fresh review. The CLI keeps its
+two-step prepare/submit with explicit `--ack`.
+
+**PRIVATE COUPLING:** the job journal writes schema 8 when a record carries
+`timedOutOperation` or `cleanupRelease`, and the workflow journal writes schema 2
+only when a row carries `cleanupRelease`; journals with neither stay readable by
+earlier builds. The CLI gains `setup prepare-release` and `setup release`.
+
+**VERIFIED — user-observed on a real Mac, 7 November 2026:** releasing a real
+stopped Dev guest's hold (the stuck guest from #24) worked; the guest could then
+be deleted, and setup could again be prepared and run on another guest.
+
+## Setup attention: badges, notifications and named timeouts — 7 November 2026
+
+**DESIGN DECISION — issue #16, user-approved plan:** one per-guest attention state
+in Core (`SetupAttention`) is the only source of "needs you" for the Home card,
+first-run tracker, sidebar, Dock and notifications. Reasons are the sudo prompt,
+a saved setup's review, restart review, check review and cleanup; all but the
+saved-setup review block a run. It is derived only from recorded workflow stage,
+job state and the in-memory New VM approval, never terminal output. The card and
+tracker select the current run with one Core rule. The sidebar shows **Needs you**
+on each waiting guest (its click opens the output at the prompt or the review).
+User correction during planning: no counts. The Dock shows a "!" marker while any
+guest is blocked and bounces once (`.informationalRequest`) when one becomes
+blocked while the manager isn't frontmost; neither needs permission. Notification
+permission is requested at launch. A pure Core tracker sends one notification per
+entry into a blocking state, only if the manager isn't frontmost or that guest
+isn't on screen, never repeats it, removes it once the state ends, and treats the
+first observation after launch as a baseline (badges only). Notifications carry
+the guest name, fixed wording and its UUID only. Clicks route from the current
+state at click time; activation alone never changes page.
+
+**VERIFIED — source finding:** the authenticated helper path, which real setup
+uses, never recorded `.awaitingAuthorization`; only the in-process path did. The
+coordinator now records it from the helper's reported `requestPersistentGrant`
+operation (never a cleanup step) and returns to `.running` on the next step. The
+helper wire format is unchanged.
+
+**PRIVATE COUPLING:** timeouts name the step from a new job field,
+`timedOutOperation`, set from the last body step the coordinator saw (in-process
+`before`, or helper session-authority command requests with `cleanup == false`),
+so cleanup steps cannot overwrite it. Legacy helpers without session authority
+keep the generic message. Journal schema 8 is written only when a record carries
+the field, so earlier builds keep reading journals without a timeout. Limits
+mirror the pinned dev-vm `bodyTimeoutSeconds` (10 s, 30 s, otherwise one hour,
+including dev-vm `6b5e2e6`'s one-hour sudo prompt); a test pins them to the
+vendored source. Workflow SSH and restart waits use the manager's 3-minute default.
+
+**VERIFIED — fake/local checks:** Core unit tests cover attention for every
+workflow stage × job state × approval, current-run selection, the tracker's
+notify/clear/bounce/marker rules, every timeout note, schema 8 round trip and
+refusal, the in-process sudo state and timed-out step through cleanup and reopen,
+and the authenticated helper path (local sockets, fake process runner) reporting
+the sudo prompt and naming its timeout. The offscreen setup acceptance (199
+checks, 54 PNGs) checks that card, tracker and Core agree, the sidebar badge and
+its routing, notification-click routing, and Dock/notification effects through a
+recording fake. `make test` passes: 596 Swift tests in 79 suites, 340 script
+tests, the provisioning bundle checks and 199 offscreen checks with 54 PNGs; the
+screen acceptance and `git diff --check` pass again on the final code. No VM, guest,
+Dock, notification or permission was touched, and `make app-dev` was not run. The
+tracker starts only once setup coordination is installed, so its launch baseline
+includes saved workflows; that ordering is reasoned from `AppModel.observe()`, not
+exercised.
+
+**VERIFIED — user-observed on a real Mac, Dev build `8dd129b`, 7 November 2026:**
+with a real Dev guest's Omarchy passwordless-sudo prompt, the Dock bounced once
+while the manager was not frontmost, one notification arrived, clicking it opened
+that guest's setup output at the prompt, and answering cleared the notification.
+The Dock "!" marker did **not** appear. The user confirmed the likely cause:
+macOS hides an app's Dock badge unless its notification settings allow badges,
+and the manager requests alert and sound authorisation only. Whether to request
+badge authorisation or draw the marker on a custom Dock tile is a follow-up.
+
+**TO PROVE:** the Dock "!" marker; foreground banners when another guest is on
+screen.
+
 ## Update-before-setup CI fixture correction — 7 November 2026
 
 **VERIFIED — hosted failure:** manager run `42295151880` on `288c82c` passes all

@@ -54,17 +54,19 @@ private actor JobGuest: ProvisioningGuestAdapter {
     private let pauseAt: GuestOperation?
     private let ignoreInterrupt: Bool
     private let failures: Set<GuestOperation>
+    private let timeouts: Set<GuestOperation>
     private let observe: (@Sendable (DevVMProvisioningCore.GuestCommand) throws -> Void)?
     init(pauseAt: GuestOperation? = nil, gate: JobGate? = nil, ignoreInterrupt: Bool = false,
-         failures: Set<GuestOperation> = [], observe: (@Sendable (DevVMProvisioningCore.GuestCommand) throws -> Void)? = nil) {
+         failures: Set<GuestOperation> = [], timeouts: Set<GuestOperation> = [], observe: (@Sendable (DevVMProvisioningCore.GuestCommand) throws -> Void)? = nil) {
         self.pauseAt = pauseAt; self.gate = gate; self.ignoreInterrupt = ignoreInterrupt
-        self.failures = failures; self.observe = observe
+        self.failures = failures; self.timeouts = timeouts; self.observe = observe
     }
     func perform(_ command: DevVMProvisioningCore.GuestCommand) async throws -> DevVMProvisioningCore.GuestReply {
         commands.append(command); try observe?(command)
         if command.operation == pauseAt { await gate?.pause() }
         if !ignoreInterrupt, interrupts.contains(command.id) { throw SequencingFailure.cancelled }
         if failures.contains(command.operation) { throw SequencingFailure.adapterFailed }
+        if command.plan != nil, timeouts.contains(command.operation) { throw SequencingFailure.timedOut }
         let proof: GuestProof
         switch command.operation {
         case .verifyIdentity: proof = .identityVerified
@@ -1070,4 +1072,33 @@ private actor JobAdmittedHelper: ProvisioningHelperLaunching {
         await launcher.close()
     }
 
+}
+
+extension ProvisioningCoordinatorTests {
+    @Test func theSudoPromptIsRecordedForItsWholeStep() async throws {
+        let f = try await JobFixture(), request = try f.request(), gate = JobGate()
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: JobGuest(pauseAt: .requestPersistentGrant, gate: gate))
+        #expect(await eventually { await gate.entered })
+        #expect(await f.coordinator.status(request.jobID)?.state == .awaitingAuthorization)
+        await gate.release()
+        let result = try await f.coordinator.wait(request.jobID)
+        #expect(result.state == .restartRequired && result.timedOutOperation == nil)
+        // No timeout recorded: the journal stays readable by builds before schema 8.
+        let document = try JSONSerialization.jsonObject(with: Data(contentsOf: f.journal.directory.appendingPathComponent("jobs.json"))) as! [String: Any]
+        #expect(document["schemaVersion"] as? Int == 7)
+    }
+
+    @Test func aTimedOutStepIsKeptThroughCleanupAndReopen() async throws {
+        let f = try await JobFixture(), request = try f.request(), guest = JobGuest(timeouts: [.requestPersistentGrant])
+        try await f.coordinator.submit(request, approval: f.approve(request), adapter: guest)
+        let result = try await f.coordinator.wait(request.jobID)
+        #expect(result.state == .timedOut && result.engineFailure == .timedOut && !result.cleanupRequired)
+        #expect(result.timedOutOperation == .requestPersistentGrant)
+        // Cleanup ran after the timeout and did not overwrite the step that timed out.
+        #expect(await guest.commands.contains { $0.operation == .revokeGrant && $0.plan == nil })
+        let document = try JSONSerialization.jsonObject(with: Data(contentsOf: f.journal.directory.appendingPathComponent("jobs.json"))) as! [String: Any]
+        #expect(document["schemaVersion"] as? Int == 8)
+        let reopened = try await f.reopen()
+        #expect(await reopened.status(request.jobID)?.timedOutOperation == .requestPersistentGrant)
+    }
 }

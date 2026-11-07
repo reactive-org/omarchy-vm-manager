@@ -123,7 +123,7 @@ enum AcceptanceFailure: Error { case check }
     /// Finishing actions submitted with an acknowledged consent, in order.
     var actionSubmissions: [ProvisioningWorkflowAction] = []
     func prepareAction(_ workflowID: UUID, action: ProvisioningWorkflowAction, reviewID: UUID) async throws -> ProvisioningWorkflowActionReview {
-        guard executionEnabled, action != .recover, let preview = previews[workflowID] else { throw ProvisioningReviewFailure.unavailable }
+        guard executionEnabled, [.restart, .check].contains(action), let preview = previews[workflowID] else { throw ProvisioningReviewFailure.unavailable }
         return try value(["id": reviewID.uuidString, "workflowID": workflowID.uuidString, "vmID": vmID.uuidString, "sessionID": UUID().uuidString,
                           "jobID": UUID().uuidString, "action": action.rawValue, "workflowSequence": 2, "planDigest": preview.planDigest,
                           "inputDigest": preview.inputDigest, "dependencyDigest": String(repeating: "b", count: 64), "reviewIdentity": String(repeating: "e", count: 64)])

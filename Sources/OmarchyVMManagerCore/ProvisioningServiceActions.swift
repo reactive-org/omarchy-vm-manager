@@ -44,6 +44,14 @@ extension ProvisioningService: ProvisioningWorkflowActing {
             guard admission.dependencyDigest == record.dependencyDigest, record == (try await cleanupRecord(id)) else { throw ProvisioningReviewFailure.changed }
             detail = .recover(record, admission); jobID = record.jobID; sessionID = record.sessionID
             dependencyDigest = record.dependencyDigest; scope = KitVerifier.sha256(try helperJSON(record))
+        case .release:
+            // Stopped guests only; the review binds the exact cleanup-bound jobs and rows.
+            try await manager.requireProvisioningHoldReleasable(row.vmID)
+            let held = try jobs.load().filter { $0.vmID == row.vmID && $0.cleanupRequired }.sorted { $0.jobID.uuidString < $1.jobID.uuidString }
+            let heldRows = rows.values.filter { $0.vmID == row.vmID && $0.cleanupRequired }.map { $0.id.uuidString + ":" + String($0.sequence) }.sorted()
+            detail = .release(vmID: row.vmID); jobID = row.checkJobID ?? row.applyJobID ?? row.id; sessionID = row.originalSessionID
+            dependencyDigest = held.first?.dependencyDigest ?? row.engineDigest
+            scope = KitVerifier.sha256(try helperJSON(held.map { $0.jobID.uuidString + ":" + String($0.sequence) } + heldRows))
         }
         try enabled(); try environment.admitPackage()
         guard let current = rows[id], current.snapshot.availableActions.contains(action),
@@ -116,6 +124,9 @@ extension ProvisioningService: ProvisioningWorkflowActing {
             try enabled(); try validateActionState(review); try environment.admitPackage()
             let deferred = ProvisioningDeferredCleanupAdapter(jobID: record.jobID, target: admission.target, dependencyDigest: admission.dependencyDigest, make: { try make(admission) })
             return try await recover(id, admission: admission, adapter: deferred)
+        case .release(let vmID):
+            guard rows[id]?.vmID == vmID else { throw ProvisioningReviewFailure.changed }
+            return try await releaseCleanupHold(id)
         }
     }
     private func validateActionState(_ review: ProvisioningWorkflowActionReview) throws {

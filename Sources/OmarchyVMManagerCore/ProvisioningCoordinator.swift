@@ -29,6 +29,9 @@ public actor ProvisioningCoordinator {
     private var recovering: [UUID: Recovery] = [:]
     private var helperAuthorities: [UUID: any ProvisioningRecoveryAuthorizing] = [:]
     private var transportAdmissions: [UUID: ProvisioningTransportAdmission] = [:]
+    /// The latest body (non-cleanup) step each running job started, in memory only.
+    /// Cleanup steps overwrite `operation`, so a timeout is attributed from this.
+    private var bodyOperations: [UUID: GuestOperation] = [:]
     private var admitting = false
     private var storageFailed = false
     private var closed = false
@@ -316,6 +319,32 @@ public actor ProvisioningCoordinator {
         }
         return row.snapshot
     }
+    /// Issue #24: the owner releases a stopped guest's unverifiable cleanup hold.
+    /// Every cleanup-bound job for that VM is marked released without verification
+    /// in one journal write; nothing claims cleanup happened. The caller has checked
+    /// the VM is stopped and unleased. Returns the released job IDs.
+    func releaseUnverifiedCleanup(vmID: UUID) async throws -> [UUID] {
+        guard !closed, !admitting, active == nil, helperActive == nil else { throw ProvisioningJobFailure.busy }
+        guard !storageFailed else { throw ProvisioningJobFailure.journalUnavailable }
+        let held = jobs.values.filter { $0.vmID == vmID && $0.cleanupRequired }.sorted { $0.jobID.uuidString < $1.jobID.uuidString }
+        guard !held.contains(where: \.workerOutstanding) else { throw ProvisioningJobFailure.busy }
+        let previous = jobs
+        for var record in held {
+            record.cleanupRequired = false; record.cleanupRelease = .unverified
+            if record.state == .cleanupRequired || record.state.unfinished { record.state = .interrupted }
+            try advance(&record); jobs[record.jobID] = record
+        }
+        do { try journal.save(Array(jobs.values)) }
+        catch { jobs = previous; storageFailed = true; throw ProvisioningJobFailure.journalUnavailable }
+        for record in held {
+            recovering.removeValue(forKey: record.jobID)
+            if let identity = record.helperIdentity {
+                await (helperAuthorities[record.jobID] ?? recoveryAuthority)?.releaseAfterCleanup(jobID: record.jobID, helperIdentity: identity)
+            }
+            helperAuthorities.removeValue(forKey: record.jobID)
+        }
+        return held.map(\.jobID)
+    }
     @discardableResult
     func recover(_ jobID: UUID, target: GuestBinding? = nil, adapter: any ProvisioningGuestAdapter) async throws -> ProvisioningJobSnapshot {
         guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }
@@ -353,7 +382,7 @@ public actor ProvisioningCoordinator {
         do {
             try await manager.validateProvisioning(lease, cleanup: true)
             record.state = .cleaningUp; record.workerOutstanding = true; record.failure = nil; record.attempts += 1
-            record.engineFailure = nil; record.cleanupFailures = []; record.outcome = nil
+            record.engineFailure = nil; record.timedOutOperation = nil; record.cleanupFailures = []; record.outcome = nil
             try advance(&record); try persist(record)
             let driver = ProvisioningSequencer()
             active = Active(generation: generation, jobID: jobID, lease: lease, target: candidate, driver: driver)
@@ -456,6 +485,7 @@ public actor ProvisioningCoordinator {
         guard let current = active, current.generation == generation, !current.expired else { throw SequencingFailure.cancelled }
         if !cleanup, current.cancelled { throw SequencingFailure.cancelled }
         record.payloadID = command.context.payloadID; record.commandID = command.id; record.operation = command.operation
+        if !cleanup { bodyOperations[record.jobID] = command.operation }
         if cleanup { record.state = .cleaningUp }
         else if command.operation == .requestPersistentGrant { record.state = .awaitingAuthorization }
         else if command.operation != .verifyIdentity { record.state = .running }
@@ -487,6 +517,8 @@ public actor ProvisioningCoordinator {
         guard let latest = active, latest.generation == generation, var record = jobs[latest.jobID] else { return }
         running = latest
         record.workerOutstanding = false; record.engineFailure = result.primaryFailure
+        record.timedOutOperation = result.primaryFailure == .timedOut ? bodyOperations[record.jobID] : nil
+        bodyOperations.removeValue(forKey: record.jobID)
         record.cleanupFailures = Array(result.cleanupFailures.prefix(32))
         record.outcome = result.outcome
         record.cleanupRequired = result.recovery != nil || storageFailed || running.expired || !currentTarget
@@ -660,6 +692,7 @@ extension ProvisioningCoordinator {
             }
         } catch {
             if let recorder = setupRecorders.removeValue(forKey: running.jobID) { await recorder.abort() }
+            bodyOperations.removeValue(forKey: running.jobID)
             await running.dispatcher.abort(running.activation)
             guard let current = helperActive, current.generation == generation, var row = jobs[current.jobID] else { return }
             current.timer?.cancel(); row.state = .cleanupRequired; row.cleanupRequired = true; row.workerOutstanding = false
@@ -705,6 +738,7 @@ extension ProvisioningCoordinator {
             do { try await manager.validateProvisioningTransport(transport, cleanup: request.cleanup) } catch { throw SequencingFailure.dependencyChanged }
             _ = try helperSessionOwner(request, generation: generation)
         }
+        if request.boundary == .command, !request.cleanup, let operation = request.operation { bodyOperations[running.jobID] = operation }
     }
     private func helperSessionOwner(_ request: ProvisioningSessionRequest, generation: UUID) throws -> HelperActive {
         guard !closed, let running = helperActive, running.generation == generation,
@@ -735,6 +769,11 @@ extension ProvisioningCoordinator {
         if changed, var row = jobs[running.jobID] {
             row.operation = status.operation; row.commandID = status.commandID
             if status.phase == .cancelling, !current.expired { row.state = .cancelling }
+            else if status.phase == .running, [.running, .awaitingAuthorization].contains(row.state) {
+                // Omarchy's passwordless-sudo prompt is never a cleanup step, so the
+                // reported operation alone says when the owner is being asked.
+                row.state = status.operation == .requestPersistentGrant ? .awaitingAuthorization : .running
+            }
             try advance(&row)
             do { try persist(row) }
             catch {
@@ -761,6 +800,8 @@ extension ProvisioningCoordinator {
         guard let latest = helperActive, latest.generation == generation, var row = jobs[latest.jobID] else { return }
         running = latest
         row.workerOutstanding = false; row.engineFailure = status.primaryFailure; row.cleanupFailures = status.cleanupFailures
+        row.timedOutOperation = status.primaryFailure == .timedOut ? bodyOperations[row.jobID] : nil
+        bodyOperations.removeValue(forKey: row.jobID)
         row.cleanupRequired = status.cleanupRequired || storageFailed || running.expired || !sealed
         row.outcome = row.cleanupRequired ? .cleanupRequired : outcome
         if row.cleanupRequired { row.state = .cleanupRequired }

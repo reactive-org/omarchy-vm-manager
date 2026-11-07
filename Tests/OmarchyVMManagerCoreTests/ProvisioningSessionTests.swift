@@ -17,11 +17,20 @@ actor SessionFixtureRunner: ProvisioningProcessRunner, ProvisioningLocalCleanupR
     let gate: IPCWorkerGate?
     private let uncertainFeatures: Bool
     private let updateStatus: Int32
+    /// Omarchy's passwordless-sudo request: optionally held open, or reported as timed out.
+    private let grantGate: IPCWorkerGate?
+    private let grantTimesOut: Bool
     private var cleanupProved = false
     private var interrupted = Set<UUID>()
-    init(gate: IPCWorkerGate? = nil, uncertainFeatures: Bool = false, updateStatus: Int32 = 0) { self.gate = gate; self.uncertainFeatures = uncertainFeatures; self.updateStatus = updateStatus }
+    init(gate: IPCWorkerGate? = nil, uncertainFeatures: Bool = false, updateStatus: Int32 = 0, grantGate: IPCWorkerGate? = nil, grantTimesOut: Bool = false) {
+        self.gate = gate; self.uncertainFeatures = uncertainFeatures; self.updateStatus = updateStatus; self.grantGate = grantGate; self.grantTimesOut = grantTimesOut
+    }
     func run(_ invocation: ProvisioningProcessInvocation) async -> ProvisioningProcessResult {
         invocations.append(invocation)
+        if invocation.purpose == .native, invocation.arguments.last?.contains("passwordless permanent") == true {
+            await grantGate?.wait()
+            if grantTimesOut { return .init(invocationID: invocation.id, termination: .exited(status: 143, reason: .timedOut)) }
+        }
         if invocation.purpose == .systemUpdate, updateStatus != 0 { return .init(invocationID: invocation.id, termination: .exited(status: updateStatus, reason: .normal)) }
         if invocation.purpose == .features { await gate?.wait(); if uncertainFeatures { return .init(invocationID: invocation.id, termination: .cleanupUnconfirmed) } }
         var object: [String: Any] = ["protocol": 1, "job": invocation.context.jobID.uuidString.lowercased(), "payload": invocation.context.payloadID.uuidString.lowercased(), "uid": invocation.context.target.ownerUID]

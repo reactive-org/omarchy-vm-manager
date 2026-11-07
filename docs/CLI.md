@@ -294,7 +294,17 @@ omarchy-vm setup prepare-check WORKFLOW_UUID --review-id CHECK_REVIEW_UUID
 omarchy-vm setup check WORKFLOW_UUID --review-id CHECK_REVIEW_UUID --review CHECK_DIGEST --ack
 omarchy-vm setup prepare-recover WORKFLOW_UUID --review-id RECOVERY_REVIEW_UUID
 omarchy-vm setup recover WORKFLOW_UUID --review-id RECOVERY_REVIEW_UUID --review RECOVERY_DIGEST --ack
+omarchy-vm setup prepare-release WORKFLOW_UUID --review-id RELEASE_REVIEW_UUID
+omarchy-vm setup release WORKFLOW_UUID --review-id RELEASE_REVIEW_UUID --review RELEASE_DIGEST --ack
 ```
+
+Recover needs the original guest session. If the guest has since stopped, its
+cleanup can't be verified and the hold would otherwise block it for good, so
+`release` lets you acknowledge that instead. It works only for a stopped guest
+with nothing else in progress. It marks every cleanup-bound run for that guest as
+released **without verification**, keeps that in setup history, and lets you
+launch, configure, delete or set up guests again. The guest may still allow
+passwordless sudo or other temporary admin access; remove it inside the guest.
 
 Choose and retain each review UUID. Preparation returns a correlated
 `workflowActionReview` containing the action, workflow/VM/session/job IDs,

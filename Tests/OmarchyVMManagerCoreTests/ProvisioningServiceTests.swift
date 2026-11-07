@@ -24,6 +24,8 @@ actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     private var exitGate: IPCWorkerGate?
     private var denyExit = false, loseRegistration = false, denyFence = false
     private var updateStatus: Int32 = 0
+    private var grantGate: IPCWorkerGate?
+    private var grantTimesOut = false
     private(set) var reconciliations = 0
     var uncertain = false
     init(provider: SessionFixtureProvider, executionAdmission: ProvisioningExecutionAdmission = .fixture) { self.provider = provider; self.executionAdmission = executionAdmission }
@@ -36,13 +38,16 @@ actor WorkflowFixtureLauncher: ProvisioningServiceLaunching {
     func withholdFenceProof() { denyFence = true }
     func uncertainNext() { uncertain = true }
     func failUpdate() { updateStatus = 1 }
+    func holdGrant(_ gate: IPCWorkerGate) { grantGate = gate }
+    func timeOutGrant() { grantTimesOut = true }
     var launches: Int { children.count }
     func runner(_ id: UUID) -> SessionFixtureRunner? { runners[id] }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration) async throws -> ProvisioningHelperLaunchTicket { throw ProvisioningServiceFailure.unavailable }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource) async throws -> ProvisioningHelperLaunchTicket { throw ProvisioningServiceFailure.unavailable }
     func prepare(_ registration: ProvisioningHelperWorkerRegistration, delivery: ProvisioningFrozenDeliverySource, transport: ProvisioningTransportHandoff) async throws -> ProvisioningHelperLaunchTicket {
         guard children[registration.scope.jobID] == nil else { throw ProvisioningJobFailure.jobConflict }
-        let runner = SessionFixtureRunner(uncertainFeatures: uncertain, updateStatus: updateStatus); uncertain = false; updateStatus = 0
+        let runner = SessionFixtureRunner(uncertainFeatures: uncertain, updateStatus: updateStatus, grantGate: grantGate, grantTimesOut: grantTimesOut)
+        uncertain = false; updateStatus = 0; grantGate = nil; grantTimesOut = false
         let child = LocalTransportLauncher(provider: provider, processRunner: runner, executionAdmission: executionAdmission)
         if let featureHook { self.featureHook = nil; await child.checks.interceptFeatures(featureHook) }
         if let gate { self.gate = nil; await child.checks.pause(gate) }
@@ -471,4 +476,31 @@ final class WorkflowFixture: Sendable {
         await f.close()
     }
 
+}
+
+extension ProvisioningServiceTests {
+    @Test func theAuthenticatedHelperPathReportsTheSudoPrompt() async throws {
+        let f = try await WorkflowFixture(), gate = IPCWorkerGate()
+        await f.launcher.holdGrant(gate)
+        let p = try await f.preview(); try await f.service.approve(p.workflowID, approval: f.approval(p))
+        #expect(await eventually { await gate.entered })
+        #expect(await eventually { await f.service.jobStatus(p.workflowID)?.state == .awaitingAuthorization })
+        let snapshot = try #require(await f.manager.snapshots().first)
+        let job = try #require(await f.service.jobStatus(p.workflowID))
+        #expect(SetupAttention.make(snapshot, workflows: await f.service.statuses(), jobs: [p.workflowID: job])?.reason == .sudoPrompt)
+        await gate.release()
+        #expect(try await f.service.wait(p.workflowID).stage == .restartRequired)
+        #expect(await f.service.jobStatus(p.workflowID)?.state == .restartRequired)
+        await f.close()
+    }
+
+    @Test func aTimedOutSudoPromptIsNamedThroughTheHelper() async throws {
+        let f = try await WorkflowFixture()
+        await f.launcher.timeOutGrant()
+        let id = try await f.apply(), row = try await f.service.wait(id)
+        let job = try #require(await f.service.jobStatus(id))
+        #expect(job.engineFailure == .timedOut && job.timedOutOperation == .requestPersistentGrant && !job.cleanupRequired)
+        #expect(SetupTimeoutNote.note(row, job: job) == "Setup timed out: Omarchy’s passwordless sudo prompt wasn’t answered within an hour.")
+        await f.close()
+    }
 }

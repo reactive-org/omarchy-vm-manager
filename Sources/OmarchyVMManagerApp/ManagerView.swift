@@ -23,6 +23,9 @@ struct ManagerView: View {
         self.model = model; _destination = State(initialValue: acceptanceManagerPage == "runtime" ? .runtime : .permissions)
     }
     #endif
+    #if DEBUG
+    @Environment(\.setupAcceptance) private var acceptance
+    #endif
     private var active: [VMSnapshot] { model.snapshots.filter { $0.sessionID != nil } }
 
     var body: some View {
@@ -34,6 +37,16 @@ struct ManagerView: View {
             }
         }
         .frame(minWidth: 920, minHeight: 650)
+        .background {
+            #if DEBUG
+            if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
+                acceptance.bind("manager", action: { _ in }, snapshot: {
+                    let guest: String = { if case .guest(let id) = destination { return id.uuidString }; return "" }()
+                    return ["guest": guest, "page": page.rawValue, "sheet": setupSheet?.rawValue ?? ""]
+                })
+            } }
+            #endif
+        }
     }
 
     private var navigationContent: some View {
@@ -47,7 +60,9 @@ struct ManagerView: View {
                             if model.snapshots.isEmpty, model.registryError == nil {
                                 Text("No guests yet").font(Theme.sans(13)).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 5)
                             }
+                            let attention = model.setupAttention
                             ForEach(model.snapshots) { snapshot in
+                                let needsYou = attention[snapshot.id] != nil
                                 sidebarRow(.guest(snapshot.id)) {
                                     HStack(spacing: 9) {
                                         GuestArtwork(size: 28, state: snapshot.state)
@@ -58,6 +73,12 @@ struct ManagerView: View {
                                                 Text(snapshot.profile.isRetainedPOC ? "Retained POC · \(snapshot.state.label)" : snapshot.state.label).font(Theme.note).foregroundStyle(snapshot.sessionID == nil ? Color.secondary : Theme.green).lineLimit(1)
                                             }
                                         }
+                                    }.padding(.trailing, needsYou ? NeedsYouBadge.width : 0)
+                                }
+                                // Outside the row's button so it is its own click target.
+                                .overlay(alignment: .trailing) {
+                                    if needsYou {
+                                        NeedsYouBadge(guestID: snapshot.id, guestName: snapshot.profile.name) { model.openAttention(snapshot.id) }.padding(.trailing, 6)
                                     }
                                 }
                             }
@@ -128,6 +149,13 @@ struct ManagerView: View {
             }
         }
         .onChange(of: destination) { page = .home }
+        // Only explicit clicks route here (badge, notification); activation alone never does.
+        .onChange(of: model.attentionRoute) { _, route in
+            guard let route else { return }
+            model.attentionRoute = nil
+            openRoute(route)
+        }
+        .onChange(of: visibleGuest, initial: true) { _, value in model.visibleGuest = value }
         .onChange(of: model.snapshots.compactMap(\.sessionID)) { previous, current in
             guard let session = current.last(where: { !previous.contains($0) }),
                   let snapshot = model.snapshots.first(where: { $0.sessionID == session }) else { return }
@@ -498,6 +526,29 @@ struct ManagerView: View {
                       restoreSuspension: { model.experimentalPowerReview = .init(id: snapshot.id, action: .restore) })
     }
     private var launchAvailable: Bool { !model.checking && model.diagnostics != nil && model.registryError == nil && !model.shuttingDown }
+    /// The guest whose setup state is on screen: its Home page or a setup sheet.
+    private var visibleGuest: UUID? {
+        guard case .guest(let id) = destination, page == .home || page == .setup || setupSheet != nil else { return nil }
+        return id
+    }
+
+    private func openRoute(_ route: AppModel.AttentionRoute) {
+        guard model.snapshots.contains(where: { $0.id == route.vmID }) else { return }
+        if destination == .guest(route.vmID) {
+            page = .home; setupSheet = route.sheet
+        } else {
+            // Dismiss any open sheet before its guest page is replaced, then open the
+            // other guest (whose page owns the sheet) on the next turn.
+            setupSheet = nil
+            let sheet = route.sheet, vmID = route.vmID
+            Task { @MainActor in
+                focusGuest(vmID)
+                await Task.yield()
+                page = .home; setupSheet = sheet
+            }
+        }
+    }
+
     /// Changing guests resets the page through onChange(of: destination); a launch
     /// from the guest already shown keeps its page, so Setup is never yanked away.
     private func focusGuest(_ id: UUID) {

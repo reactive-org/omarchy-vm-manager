@@ -16,7 +16,7 @@ def main():
     output = parent / 'result'
     subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=180)
     report = json.loads((output / 'report.json').read_text())
-    assert report['schema'] == 1 and len(report['checks']) == 187
+    assert report['schema'] == 1 and len(report['checks']) == 203
     assert len(set(report['checks'])) == len(report['checks'])
     for appearance in ('dark', 'light'):
         for case in ('bundled-direct-create-ready', 'all-draft-edits-have-no-backend-effects',
@@ -41,6 +41,14 @@ def main():
     for case in ('none-and-configured', 'running-shows-progress', 'manual-restart-needs-review', 'approved-restart-is-progress',
                  'cleanup-needs-recovery', 'failed-and-succeeded'):
         assert f'setup-card-{case}' in report['checks']
+    for case in ('card-and-first-run-agree', 'timeout-names-the-step', 'sidebar-badge-only-for-waiting-guest',
+                 'badge-opens-output-at-sudo-prompt', 'visible-guest-reported', 'notification-click-opens-review',
+                 'stale-click-opens-home-only', 'blocked-guest-notifies-bounces-and-marks-dock', 'no-repeat-notifications',
+                 'handled-clears-notification-and-marker', 'saved-review-no-notification-or-dock', 'on-screen-guest-not-notified'):
+        assert f'attention-{case}' in report['checks']
+    for case in ('release-offered-only-when-stopped', 'release-confirmation-says-unverified',
+                 'stopped-card-explains-release', 'released-history-says-unverified'):
+        assert f'cleanup-{case}' in report['checks']
     for case in ('setup-tab-shows-saved-log', 'setup-tab-saved-log-does-not-reattach-ended-job'):
         assert case in report['checks']
     assert report['runtimeStarts'] == 0 and report['visibleWindows'] == 0
@@ -48,7 +56,7 @@ def main():
     assert report['realExecution'] is False and report['physicalInputTested'] is False
     # One manual consent submission plus one approve-at-creation automatic submission.
     assert report['gate'] == 'unchanged-disabled' and report['fakeSubmissions'] == 2
-    assert len(report['images']) == 53
+    assert len(report['images']) == 54
     for name in report['images']:
         assert pathlib.Path(name).name == name and name.endswith('.png')
         data = (output / name).read_bytes()
@@ -56,7 +64,7 @@ def main():
         width, height = struct.unpack('>II', data[16:24])
         assert width >= 600 and height >= 760
     assert not (output / 'unused-support').exists()
-    print(f'Setup screen acceptance: {len(report["checks"])} checks, 53 PNGs; no runtime starts or on-display windows.')
+    print(f'Setup screen acceptance: {len(report["checks"])} checks, 54 PNGs; no runtime starts or on-display windows.')
     print(f'Artifacts retained for inspection: {output}')
 
 

@@ -8,6 +8,17 @@ import SwiftUI
 /// window, the installed manager, personal registry, Keychain or a real runtime.
 @MainActor private final class AcceptanceResult<Value> { var result: Result<Value, any Error>? }
 private extension Optional { func unwrap() throws -> Wrapped { guard let self else { throw AcceptanceFailure.check }; return self } }
+/// Records what would reach the Dock and Notification Centre; touches neither.
+@MainActor private final class RecordingAttentionSurfaces: SetupAttentionSurfaces {
+    var events: [String] = []
+    func notify(_ attention: SetupAttention, guestName: String) {
+        let text = SystemAttentionSurfaces.text(attention, guestName: guestName)
+        events.append("notify:" + text.title + ":" + text.body)
+    }
+    func clear(_ vmID: UUID) { events.append("clear:" + vmID.uuidString) }
+    func bounce() { events.append("bounce") }
+    func marker(_ shown: Bool) { events.append("marker:" + String(shown)) }
+}
 @MainActor enum SetupScreenAcceptance {
     final class OffscreenWindow: NSWindow {
         override var canBecomeKey: Bool { false }
@@ -111,6 +122,10 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         NSApplication.shared.setActivationPolicy(.prohibited)
         var checks: [String] = []
         func check(_ value: Bool, _ label: String) throws { guard value else { print("failed check: " + label); throw AcceptanceFailure.check }; checks.append(label) }
+        /// Like `until`, but names the wait that timed out.
+        func waitFor(_ label: String, _ condition: () -> Bool) throws {
+            do { try until(condition) } catch { print("timed out: " + label); throw error }
+        }
         let runtime = FakeRuntime(), profile = VMProfile(id: UUID(), name: "Synthetic acceptance guest", clipboardEnabled: false)
         let support = output.appendingPathComponent("unused-support")
         let manager = VMManager(runtime: runtime, profiles: [profile], applicationSupport: support)
@@ -594,6 +609,127 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         enabledModel.setupWorkflows = []; enabledModel.setupJobs = [:]
         enabledModel.snapshots = [.init(profile: profile, state: .stopped), .init(profile: downloading, state: .downloading(phase: .downloading, percent: 48), sessionID: UUID()),
             .init(profile: failed, state: .failed(VMFailure(code: "synthetic", message: "The download could not finish.")), lastFailure: VMFailure(code: "synthetic", message: "The download could not finish."))]
+        // Setup attention (issue #16): one Core state read by the card, first-run tracker, sidebar,
+        // Dock and notifications. Recording surfaces only: no Dock, notification or permission.
+        do {
+            func jobState(_ id: UUID, _ state: String, extra: [String: Any] = [:]) throws -> ProvisioningJobSnapshot {
+                let unfinished = ["running", "awaitingAuthorization"].contains(state)
+                var object: [String: Any] = ["jobID": id.uuidString, "vmID": profile.id.uuidString, "sessionID": session.uuidString, "sequence": 2, "state": state,
+                                             "cleanupFailures": [] as [Any], "cleanupRequired": unfinished, "workerOutstanding": unfinished]
+                object.merge(extra) { $1 }
+                return try JSONDecoder().decode(ProvisioningJobSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
+            }
+            let receipt = try firstRun.developerSetup.unwrap()
+            let autos: [AutoSetupState?] = [nil, .armed(receipt: receipt, sessionID: session), .following(receipt: receipt, workflowID: UUID(), attempted: []),
+                                            .blocked("Synthetic blocked reason."), .consumed]
+            let stages = ["waitingForSSH", "readyForReview", "running", "restartRequired", "waitingForExit", "restarting", "waitingForRebind",
+                          "readyForCheck", "checking", "succeeded", "checked", "failed", "cancelled", "interrupted", "cleanupRequired"]
+            var disagreements: [String] = []
+            func compare(_ snapshot: VMSnapshot, _ rows: [ProvisioningWorkflowSnapshot], _ jobs: [UUID: ProvisioningJobSnapshot], _ auto: AutoSetupState?, _ label: String) {
+                let reason = SetupAttention.make(snapshot, workflows: rows, jobs: jobs, auto: SetupAutoApproval(auto))?.reason
+                if !rows.isEmpty {
+                    let kind = SetupCardState.make(snapshot, workflows: rows, jobs: jobs, autoSetup: auto).kind
+                    let cardAgrees = reason == nil ? ![.needsYou, .cleanup].contains(kind) : reason == .cleanup ? kind == .cleanup : kind == .needsYou
+                    if !cardAgrees { disagreements.append("card " + label) }
+                }
+                if let tracker = FirstRunProgress.make(snapshot, workflows: rows, jobs: jobs, autoSetup: auto) {
+                    let trackerAgrees = (tracker.tone == .needsYou) == (reason != nil && reason != .cleanup) && (reason != .cleanup || tracker.tone == .problem)
+                    if !trackerAgrees { disagreements.append("tracker " + label) }
+                }
+            }
+            let readySnapshot = VMSnapshot(profile: firstRun, state: .running, sessionID: session, sshReadiness: ready)
+            for stage in stages {
+                for state in [nil, "running", "awaitingAuthorization"] as [String?] {
+                    for cleanup in [false, true] {
+                        for (index, auto) in autos.enumerated() {
+                            let id = UUID(), row = try enabled.row(id, stage: stage, cleanupRequired: cleanup)
+                            let jobs = try state.map { [id: try jobState(id, $0)] } ?? [:]
+                            compare(readySnapshot, [row], jobs, auto, "\(stage) \(state ?? "-") \(cleanup) \(index)")
+                        }
+                    }
+                }
+            }
+            for (index, auto) in autos.enumerated() {
+                for (name, snapshot) in [("ready", readySnapshot), ("connecting", VMSnapshot(profile: firstRun, state: .running, sessionID: session, sshReadiness: .connecting)),
+                                         ("stopped", VMSnapshot(profile: firstRun, state: .stopped))] {
+                    compare(snapshot, [], [:], auto, "no-run \(name) \(index)")
+                }
+            }
+            if !disagreements.isEmpty { print("attention disagreements: " + disagreements.joined(separator: "; ")) }
+            try check(disagreements.isEmpty, "attention-card-and-first-run-agree")
+            let timedOut = try enabled.row(UUID(), stage: "failed")
+            let timedOutJob = try jobState(timedOut.id, "timedOut", extra: ["engineFailure": "timedOut", "timedOutOperation": "requestPersistentGrant"])
+            try check(SetupCardState.make(readySnapshot, workflows: [timedOut], jobs: [timedOut.id: timedOutJob], autoSetup: nil).note
+                      == "Setup timed out: Omarchy’s passwordless sudo prompt wasn’t answered within an hour.", "attention-timeout-names-the-step")
+
+            // Issue #24: a stopped guest's unverifiable cleanup can only be released, never recovered.
+            let heldRow = try enabled.row(UUID(), stage: "failed", cleanupRequired: true)
+            try check(DeveloperSetupView.visibleActions(heldRow, guestRunning: false) == [.release]
+                      && DeveloperSetupView.visibleActions(heldRow, guestRunning: true) == [.recover], "cleanup-release-offered-only-when-stopped")
+            let confirmation = DeveloperSetupView.releaseConfirmation
+            try check(confirmation.contains("wasn’t verified") && confirmation.contains("passwordless sudo"), "cleanup-release-confirmation-says-unverified")
+            let stoppedHeld = SetupCardState.make(VMSnapshot(profile: firstRun, state: .stopped), workflows: [heldRow], jobs: [:], autoSetup: nil)
+            try check(stoppedHeld.kind == .cleanup && stoppedHeld.note.contains("can’t be verified"), "cleanup-stopped-card-explains-release")
+            let releasedRow = try JSONDecoder().decode(ProvisioningWorkflowSnapshot.self, from: JSONSerialization.data(withJSONObject: [
+                "id": heldRow.id.uuidString, "vmID": profile.id.uuidString, "originalSessionID": session.uuidString, "sequence": 3, "stage": "failed",
+                "cleanupRequired": false, "applyJobID": heldRow.id.uuidString, "cleanupRelease": "unverified"]))
+            let released = SetupCardState.make(VMSnapshot(profile: firstRun, state: .stopped), workflows: [releasedRow], jobs: [:], autoSetup: nil)
+            try check(released.kind == .failed && released.note.contains("released without verification")
+                      && SetupAttention.make(VMSnapshot(profile: firstRun, state: .stopped), workflows: [releasedRow], jobs: [:]) == nil
+                      && releasedRow.title == "Cleanup released without verification", "cleanup-released-history-says-unverified")
+
+            // Sidebar: a badge only on the guest that is waiting; clicking it opens the right place.
+            let second = VMProfile(id: UUID(), name: "Synthetic second guest", clipboardEnabled: false)
+            // Its own model: earlier closed hosts still observe the shared fixture model.
+            let attentionModel = AppModel(isolatedManager: manager, support: support, snapshots: [], service: enabled, save: { try await enabled.save($0, consent: $1) })
+            let sudoRow = try enabled.row(UUID(), stage: "running")
+            attentionModel.snapshots = [readySnapshot, .init(profile: second, state: .stopped)]
+            attentionModel.setupWorkflows = [sudoRow]; attentionModel.setupJobs = [sudoRow.id: try jobState(sudoRow.id, "awaitingAuthorization")]; attentionModel.autoSetup = [:]
+            let sideDriver = SetupUIAcceptanceDriver()
+            let side = Host(ManagerView(model: attentionModel), driver: sideDriver, width: 1200, height: 960, dark: true)
+            tick(); try waitFor("attention-wait-1") { sideDriver.scopes["manager"] != nil && sideDriver.scopes["needs-you:" + profile.id.uuidString] != nil }
+            try check(sideDriver.scopes["needs-you:" + second.id.uuidString] == nil && attentionModel.setupAttention.keys.sorted() == [profile.id], "attention-sidebar-badge-only-for-waiting-guest")
+            try capture(side, "attention-sidebar-dark.png")
+            try sideDriver.send("needs-you:" + profile.id.uuidString, .submit)
+            tick(0.3) // Let the window handle the route before polling its state.
+            try waitFor("attention-wait-2") { sideDriver.state("manager", "guest") == profile.id.uuidString && sideDriver.state("manager", "sheet") == "output" }
+            try check(sideDriver.state("manager", "page") == "Home", "attention-badge-opens-output-at-sudo-prompt")
+            try check(attentionModel.visibleGuest == profile.id, "attention-visible-guest-reported")
+            // A notification click calls the same route, worked out when clicked.
+            attentionModel.setupWorkflows = [try enabled.row(sudoRow.id, stage: "restartRequired")]; attentionModel.setupJobs = [:]
+            attentionModel.openAttention(profile.id)
+            tick(0.5)
+            try waitFor("attention-wait-3") { sideDriver.state("manager", "sheet") == "change" }
+            try check(sideDriver.state("manager", "guest") == profile.id.uuidString, "attention-notification-click-opens-review")
+            attentionModel.openAttention(second.id)
+            tick(0.5) // Sheet dismissal and the guest switch settle over a few run-loop turns.
+            try waitFor("attention-wait-4") { sideDriver.state("manager", "guest") == second.id.uuidString }
+            tick(); try check(sideDriver.state("manager", "sheet").isEmpty && sideDriver.state("manager", "page") == "Home", "attention-stale-click-opens-home-only")
+            side.close(); tick()
+
+            // Dock and notifications through the Core tracker, recorded only.
+            let surfaces = RecordingAttentionSurfaces()
+            attentionModel.attentionSurfaces = surfaces; attentionModel.attentionTracker = SetupAttentionTracker(); attentionModel.visibleGuest = nil
+            attentionModel.snapshots = [VMSnapshot(profile: firstRun, state: .running, sessionID: session, sshReadiness: .connecting), .init(profile: second, state: .stopped)]
+            attentionModel.setupWorkflows = []; attentionModel.setupJobs = [:]
+            attentionModel.refreshAttention(appActive: false)
+            attentionModel.snapshots[0] = readySnapshot
+            attentionModel.setupWorkflows = [sudoRow]; attentionModel.setupJobs = [sudoRow.id: try jobState(sudoRow.id, "awaitingAuthorization")]
+            attentionModel.refreshAttention(appActive: false)
+            try check(surfaces.events == ["bounce", "notify:" + firstRun.name + ":Omarchy is asking to enable passwordless sudo.", "marker:true"], "attention-blocked-guest-notifies-bounces-and-marks-dock")
+            attentionModel.refreshAttention(appActive: false); attentionModel.refreshAttention(appActive: true)
+            try check(surfaces.events.count == 3, "attention-no-repeat-notifications")
+            attentionModel.setupJobs = [sudoRow.id: try jobState(sudoRow.id, "running")]
+            attentionModel.refreshAttention(appActive: true)
+            try check(surfaces.events.suffix(2) == ["clear:" + profile.id.uuidString, "marker:false"], "attention-handled-clears-notification-and-marker")
+            attentionModel.setupWorkflows = [try enabled.row(UUID(), stage: "readyForReview")]; attentionModel.setupJobs = [:]
+            attentionModel.refreshAttention(appActive: false)
+            try check(surfaces.events.count == 5 && attentionModel.setupAttention[profile.id]?.reason == .review, "attention-saved-review-no-notification-or-dock")
+            attentionModel.setupWorkflows = [try enabled.row(UUID(), stage: "restartRequired")]; attentionModel.visibleGuest = profile.id
+            attentionModel.refreshAttention(appActive: true)
+            try check(surfaces.events.count == 6 && surfaces.events.last == "marker:true", "attention-on-screen-guest-not-notified")
+            attentionModel.attentionSurfaces = nil; attentionModel.attentionTracker = SetupAttentionTracker(); attentionModel.visibleGuest = nil
+        }
         for page in ["permissions", "runtime"] {
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceManagerPage: page), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); try capture(pageHost, page + "-dark.png"); pageHost.close()

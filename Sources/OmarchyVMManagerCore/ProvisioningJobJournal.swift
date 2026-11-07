@@ -8,6 +8,9 @@ public enum ProvisioningJobState: String, Codable, Sendable {
     case authorizationRequired, rejected, interrupted, cleanupRequired, cleanupConfirmed
     var unfinished: Bool { [.queued, .running, .awaitingAuthorization, .cleaningUp, .cancelling].contains(self) }
 }
+/// The owner released a cleanup hold that could not be verified (issue #24).
+/// Recorded so history never shows the run as cleaned up.
+public enum ProvisioningCleanupRelease: String, Codable, Sendable { case unverified }
 public enum ProvisioningJobFailure: String, Codable, Error, Sendable {
     case busy, invalidRequest, approvalRequired, sourceChanged, targetChanged, dependencyChanged
     case jobConflict, unknownJob, journalUnavailable, managerRestarted, cleanupRequired
@@ -27,6 +30,11 @@ public struct ProvisioningJobSnapshot: Codable, Equatable, Sendable {
     public let cleanupFailures: [SequencingFailure]
     public let cleanupRequired: Bool
     public let workerOutstanding: Bool
+    /// The body step that ran out of time, when the engine reported a timeout and
+    /// the step was observed. Used only to name the step; see SetupAttention.swift.
+    public var timedOutOperation: GuestOperation? = nil
+    /// Set when the owner released this job's cleanup hold without verification.
+    public var cleanupRelease: ProvisioningCleanupRelease? = nil
 }
 
 /// Private metadata only. No source paths/bytes, owner/key/credential references,
@@ -65,10 +73,16 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
     var helperDelivery: ProvisioningFrozenDeliveryReceipt?
     var helperSessionAuthorityVersion: Int?
     var helperTransport: ProvisioningTransportReceipt?
+    /// Schema 8 only. Written only for a timed-out run so older builds keep
+    /// reading journals that never recorded a timeout.
+    var timedOutOperation: GuestOperation?
+    /// Schema 8 only, like `timedOutOperation`.
+    var cleanupRelease: ProvisioningCleanupRelease?
     var snapshot: ProvisioningJobSnapshot {
         .init(jobID: jobID, vmID: vmID, sessionID: sessionID, sequence: sequence, state: state,
               outcome: outcome, failure: failure, engineFailure: engineFailure, cleanupFailures: cleanupFailures,
-              cleanupRequired: cleanupRequired, workerOutstanding: workerOutstanding)
+              cleanupRequired: cleanupRequired, workerOutstanding: workerOutstanding, timedOutOperation: timedOutOperation,
+              cleanupRelease: cleanupRelease)
     }
     enum CodingKeys: String, CodingKey, CaseIterable {
         case jobID, vmID, sessionID, reviewDigest, planDigest, inputDigest, engineDigest, dependencyDigest, bindingDigest, mode
@@ -77,6 +91,7 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
         case helperIdentity, helperRegistrationDigest, helperRegistered
         case helperActivationID, helperActivationDigest
         case helperDelivery, helperSessionAuthorityVersion, helperTransport
+        case timedOutOperation, cleanupRelease
     }
     func validate() throws {
         let durable = inputArchiveSHA256 != nil || cleanupCheckpointSHA256 != nil || workerToken != nil
@@ -101,6 +116,8 @@ struct ProvisioningJobRecord: Codable, Equatable, Sendable {
               state.unfinished || state == .cleanupRequired || !workerOutstanding,
               ![.succeeded, .checked, .restartRequired, .cleanupConfirmed].contains(state) || (!cleanupRequired && !workerOutstanding),
               state != .cleanupRequired || cleanupRequired,
+              timedOutOperation == nil || engineFailure == .timedOut,
+              cleanupRelease == nil || (!cleanupRequired && !workerOutstanding && !state.unfinished),
               (commandID == nil && operation == nil) || (commandID != nil && operation != nil && payloadID != nil)
         else { throw ProvisioningJobFailure.journalUnavailable }
     }
@@ -161,7 +178,7 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                 if loaded { guard fingerprint == KitVerifier.sha256(data) else { throw ProvisioningJobFailure.journalUnavailable } }
                 let value = try PlainDataParser.parse(data, format: .json)
                 guard case .object(let root) = value, Set(root.keys) == ["schemaVersion", "revision", "jobs"],
-                      [ManifestValue.integer(1), .integer(2), .integer(3), .integer(4), .integer(5), .integer(6), .integer(7)].contains(root["schemaVersion"] ?? .null),
+                      [ManifestValue.integer(1), .integer(2), .integer(3), .integer(4), .integer(5), .integer(6), .integer(7), .integer(8)].contains(root["schemaVersion"] ?? .null),
                       case .array(let jobs) = root["jobs"], jobs.count <= Self.maximumJobs
                 else { throw ProvisioningJobFailure.journalUnavailable }
                 for job in jobs {
@@ -173,18 +190,21 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                     if [.integer(1), .integer(2)].contains(root["schemaVersion"] ?? .null) {
                         guard Set(fields.keys).isDisjoint(with: ["helperIdentity", "helperRegistrationDigest", "helperRegistered"]) else { throw ProvisioningJobFailure.journalUnavailable }
                     }
-                    if ![ManifestValue.integer(4), .integer(5), .integer(6), .integer(7)].contains(root["schemaVersion"] ?? .null) {
+                    if fields["timedOutOperation"] != nil || fields["cleanupRelease"] != nil {
+                        guard root["schemaVersion"] == .integer(8) else { throw ProvisioningJobFailure.journalUnavailable }
+                    }
+                    if ![ManifestValue.integer(4), .integer(5), .integer(6), .integer(7), .integer(8)].contains(root["schemaVersion"] ?? .null) {
                         guard Set(fields.keys).isDisjoint(with: ["helperActivationID", "helperActivationDigest"]) else { throw ProvisioningJobFailure.journalUnavailable }
                     }
                     if let version = fields["helperSessionAuthorityVersion"] {
-                        guard [ManifestValue.integer(6), .integer(7)].contains(root["schemaVersion"] ?? .null), version == .integer(1) else { throw ProvisioningJobFailure.journalUnavailable }
+                        guard [ManifestValue.integer(6), .integer(7), .integer(8)].contains(root["schemaVersion"] ?? .null), version == .integer(1) else { throw ProvisioningJobFailure.journalUnavailable }
                     }
                     if let receipt = fields["helperTransport"] {
-                        guard root["schemaVersion"] == .integer(7) else { throw ProvisioningJobFailure.journalUnavailable }
+                        guard [ManifestValue.integer(7), .integer(8)].contains(root["schemaVersion"] ?? .null) else { throw ProvisioningJobFailure.journalUnavailable }
                         try ProvisioningTransportReceipt.validateDocument(receipt)
                     }
                     if let receipt = fields["helperDelivery"] {
-                        guard [ManifestValue.integer(5), .integer(6), .integer(7)].contains(root["schemaVersion"] ?? .null) else { throw ProvisioningJobFailure.journalUnavailable }
+                        guard [ManifestValue.integer(5), .integer(6), .integer(7), .integer(8)].contains(root["schemaVersion"] ?? .null) else { throw ProvisioningJobFailure.journalUnavailable }
                         try ProvisioningFrozenDeliveryReceipt.validateDocument(receipt)
                     }
                     let activationKeys: Set<String> = ["helperActivationID", "helperActivationDigest"]
@@ -212,7 +232,8 @@ final class ProvisioningJobJournal: ProvisioningJobJournaling, @unchecked Sendab
                 let current = try PrivateFiles.exists(file) ? KitVerifier.sha256(PrivateFiles.read(file, maximum: Self.maximumBytes)) : nil
                 guard current == fingerprint else { throw ProvisioningJobFailure.journalUnavailable }
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-                let data = try encoder.encode(Document(schemaVersion: 7, revision: revision + 1, jobs: records.sorted { $0.jobID.uuidString < $1.jobID.uuidString }))
+                let schema = records.contains { $0.timedOutOperation != nil || $0.cleanupRelease != nil } ? 8 : 7
+                let data = try encoder.encode(Document(schemaVersion: schema, revision: revision + 1, jobs: records.sorted { $0.jobID.uuidString < $1.jobID.uuidString }))
                 guard data.count <= Self.maximumBytes else { throw ProvisioningJobFailure.journalUnavailable }
                 try PrivateFiles.write(data, name: "jobs.json", in: directory)
                 guard try PrivateFiles.read(file, maximum: Self.maximumBytes) == data else { throw ProvisioningJobFailure.journalUnavailable }

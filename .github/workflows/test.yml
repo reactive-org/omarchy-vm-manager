@@ -11,9 +11,10 @@ jobs:
     # These PRs supply the complete check. Avoid a duplicate push run
     # consuming a second Mac runner for the same head.
     if: github.event_name != 'push' || (github.ref != 'refs/heads/codex/factory-image-builder' && github.ref != 'refs/heads/codex/setup-system-update')
-    runs-on: macos-15
+    # Xcode 27 is only on GitHub's xcode-27 (macOS 27) preview image.
+    runs-on: xcode-27
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     # Cold ARM64 builds plus three optimized policy modes can exceed 40 minutes.
     timeout-minutes: 50
     steps:
@@ -54,7 +55,8 @@ jobs:
     name: Publish branch release
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next')
     needs: [test, managed-ssh]
-    runs-on: macos-15
+    # Xcode 27 is only on GitHub's xcode-27 (macOS 27) preview image.
+    runs-on: xcode-27
     timeout-minutes: 120
     permissions:
       contents: write
@@ -63,7 +65,7 @@ jobs:
       queue: max
       cancel-in-progress: false
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
