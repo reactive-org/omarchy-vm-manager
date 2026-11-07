@@ -2,6 +2,8 @@
 
 **DESIGN DECISION — 5 November 2026:** a push to `main` publishes the stable app; a push to `next` publishes the isolated Dev app. Both wait for the macOS build/tests/upstream contracts and isolated SSH job on that exact commit. Pull requests and other branches run checks without release credentials or publication permission. Manual tag pushes no longer publish apps.
 
+**DESIGN DECISION — 8 November 2026:** the workflow's `push` trigger is limited to `main` and `next`, the only branches the release job publishes from. Other branches are checked by their `pull_request` run alone, so each PR commit uses one Mac runner instead of a duplicate push and PR run. A branch with no open pull request gets no hosted checks until one is opened.
+
 | Branch | App | Tag | GitHub release |
 | --- | --- | --- | --- |
 | `main` | Omarchy VM Manager, `dev.omarchy.vm-manager` | `v0.11.1`, `v0.11.2`, … | Stable; highest stable version becomes Latest |
