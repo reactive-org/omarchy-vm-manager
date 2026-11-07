@@ -484,6 +484,44 @@ Consent stays exactly as reviewed before: separate acknowledgements for temporar
 access, Docker root access and inspected task trust, each shown only when the review
 requires it, and reviewed restart, check and recovery actions.
 
+**DESIGN DECISION — issue #14, 8 November 2026 (a plan runs once; Run setup again):**
+a setup plan's preview ID is also its workflow ID, so a plan can run only once.
+`approve` returns a run that is still in progress, so a double-click stays harmless.
+For a finished run (succeeded, checked, failed, cancelled, interrupted or cleanup
+required) it throws `alreadyRun` instead of returning the old run as if it had just
+started. `prepareApply` refuses any plan whose workflow has a job, and `apply` never
+replays a finished submission. Change setup opens on the guest's latest plan and shows
+how its run ended in place of Review this run…. **Run setup again** is offered after any
+finished run, success included, but not while a cleanup hold remains (recover or
+release first). It makes a fresh plan with a new ID from the same choices, re-planned
+with the current pinned engine from the private input tree frozen for the last run. It
+never rereads the live source folder. The review says when dev-vm has changed since the
+last run and which features were added or removed, and the normal consent checkboxes
+still apply. After Run setup the sheet shows the new run's live state, or names why it
+didn't start.
+
+**VERIFIED — source review, 8 November 2026:** the frozen tree holds the choices, not
+the original `ProvisioningSetupSource`. `freezeSelection` bakes profiles, features,
+trim and appearance into `.omarchy-manager-selection.json` (plus the layout file), so
+re-planning the tree reproduces the selection. The tree's input digest covers files and
+folders only, not the engine, so it stays the same across engine updates. A different
+plan digest then shows the engine changed. What was missing was the link from a guest
+to its latest plan and from a plan to its tree.
+
+**DESIGN DECISION / PRIVATE COUPLING — plan history:** when a run is accepted, the
+manager records its plan ID, VM, tree name (`inputs-<UUID>`, not a path), manifest, plan,
+input and engine digests, and resolved feature names. The record goes in a private
+`plans/plans.json` beside the job and workflow journals, bounded at 128 entries, keeping
+each guest's latest. The workflow journal's schema is unchanged, so earlier builds can
+still read it. A damaged history file is preserved and refuses new records, so no run
+starts without the record its retry needs. Creation plans that ran before this record
+existed are found through the creation receipt by their input digest. The creation
+receipt in the VM profile is never rewritten.
+
+**TO PROVE:** Run setup again on a real guest, including after a dev-vm pin update, has
+been checked only with fake runtimes and local fixtures. It needs a run by hand on a
+real Mac.
+
 The current pass permits source integration and fake/local/CI validation only.
 No VM launch, real signing, host installation, Main app or Main VM operation is
 authorized. **TO PROVE:** fresh signed normal-Dev and real-guest acceptance after

@@ -452,7 +452,8 @@ final class WorkflowFixture: Sendable {
         let result = try await f.service.wait(p.workflowID)
         #expect(result.stage == .failed && !result.cleanupRequired)
         #expect(await f.launcher.launches == 0)
-        _ = try await f.service.approve(p.workflowID, approval: f.approval(p))
+        // Issue #14: a finished run is refused, never returned as if just started.
+        await #expect(throws: ProvisioningServiceFailure.alreadyRun) { _ = try await f.service.approve(p.workflowID, approval: f.approval(p)) }
         #expect(await f.launcher.launches == 0)
         await f.close()
     }

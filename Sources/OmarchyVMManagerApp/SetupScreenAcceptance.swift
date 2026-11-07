@@ -356,6 +356,41 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         try actionDriver.send("setup", .submit); try until { enabled.submissions == 1 }
         try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 1, "submission-attempt-not-replayed")
         actionHost.close()
+        // Issue #14: Change setup opens on the latest run, shows how it ended and
+        // offers Run setup again; the retry is a new plan through the normal review.
+        let lastPlan = UUID()
+        _ = try run { try await enabled.preview(id: lastPlan, vmID: profile.id, source: .init(profiles: ["web"])) }
+        let lastRun = try enabled.row(lastPlan, stage: "failed", failure: "systemUpdateFailed")
+        enabled.latestFixture = .init(planID: lastPlan, workflow: lastRun); enabled.retryEngineChanged = true
+        enabledModel.setupWorkflows = [lastRun]
+        let retryDriver = SetupUIAcceptanceDriver()
+        let retryHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id), driver: retryDriver, width: 1200, height: 960, dark: true)
+        defer { retryHost.close() }; tick(); try until { retryDriver.scopes["setup"] != nil }
+        func retryState(_ key: String) -> String { retryDriver.state("setup", key) }
+        try until { retryState("preview") == lastPlan.uuidString }
+        try check(retryState("runStatus") == "Last run: Failed during system update." && retryState("runAgain") == "true", "retry-failed-run-shows-outcome-and-run-again")
+        try check(retryState("reviewOffered") == "false" && retryState("workflow") == lastPlan.uuidString && retryState("failureText").isEmpty, "retry-used-plan-not-offered-for-review")
+        tick(); try capture(retryHost, "setup-last-run-failed-dark.png")
+        try retryDriver.send("setup", .runAgain); try until { !retryState("retryOf").isEmpty }
+        let retryPlan = try UUID(uuidString: retryState("preview")).unwrap()
+        try check(enabled.retries == 1 && retryPlan != lastPlan && retryState("retryOf") == lastPlan.uuidString && retryState("reviewOffered") == "true" && retryState("runStatus").isEmpty, "retry-makes-new-plan-for-normal-review")
+        try check(retryState("retrySummary").contains("dev-vm has been updated") && retryState("retrySummary").contains("docker"), "retry-review-names-engine-change")
+        try retryDriver.send("setup", .prepareApply); try until { !retryState("review").isEmpty }
+        try retryDriver.send("setup", .inspect); try until { retryState("inspected") == "1" }
+        try retryDriver.send("setup", .grant(true, true, true)); tick(); retryHost.scroll(fraction: 0.3); tick()
+        try capture(retryHost, "setup-run-again-review-dark.png")
+        try retryDriver.send("setup", .submit); try until { enabled.submissions == 2 }
+        try until { retryState("runStatus").hasPrefix("This setup is running") }
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "running")]; tick()
+        try check(retryState("workflow") == retryPlan.uuidString && retryState("review").isEmpty && retryState("failureText").isEmpty, "retry-starts-second-run-with-live-state")
+        try retryDriver.send("setup", .submit); tick(); try check(enabled.submissions == 2, "retry-submission-not-replayed")
+        try check(!["runStatus", "failureText", "retrySummary", "continuation"].contains { retryState($0).contains("Submission was attempted") }, "retry-no-submission-was-attempted")
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "succeeded")]; tick()
+        try until { retryState("runStatus") == "Last run: Finished." }
+        try check(retryState("runAgain") == "true", "retry-offered-after-success")
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "cleanupRequired", cleanupRequired: true)]; tick()
+        try check(retryState("runAgain") == "false", "retry-not-offered-with-cleanup-hold")
+        retryHost.close(); enabled.latestFixture = nil
         let failedHistory = try enabled.row(UUID(), stage: "failed")
         let completedHistory = try enabled.row(UUID(), stage: "succeeded")
         enabledModel.setupWorkflows = [failedHistory, completedHistory]

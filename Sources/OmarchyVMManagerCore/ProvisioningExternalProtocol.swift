@@ -114,7 +114,7 @@ public struct ProvisioningExternalReply: Codable, Sendable, CustomStringConverti
         }
         guard v.version == 1, v.requestID == request.requestID, v.sequence == request.sequence, v.operation == request.operation,
               Set(fields.keys) == keys,
-              v.failure == nil || ["unavailable", "busy", "unknown-workflow", "denied", "disabled", "review-required", "task-trust-required", "changed", "quota", "consent-conflict", "ownership-unverified", "profile-conflict", "theme-invalid", "theme-unavailable", "theme-catalogue", "theme-stars-unavailable", "theme-no-match", "layout-invalid", "workstation-disabled"].contains(v.failure!),
+              v.failure == nil || ["unavailable", "busy", "already-run", "unknown-workflow", "denied", "disabled", "review-required", "task-trust-required", "changed", "quota", "consent-conflict", "ownership-unverified", "profile-conflict", "theme-invalid", "theme-unavailable", "theme-catalogue", "theme-stars-unavailable", "theme-no-match", "layout-invalid", "workstation-disabled"].contains(v.failure!),
               v.failure != nil || (request.operation != .capabilities || v.executionEnabled != nil),
               v.failure != nil || (![.list, .status, .cancel, .apply, .performAction].contains(request.operation) || v.workflows != nil),
               v.failure != nil || (![.read, .reset].contains(request.operation) || v.page != nil) else { throw ProvisioningTerminalDenial.bounds }
@@ -217,6 +217,7 @@ actor ProvisioningExternalSession {
         catch ProvisioningServiceFailure.disabled { reply.failure = "disabled" }
         catch ProvisioningServiceFailure.reviewRequired { reply.failure = "review-required" }
         catch ProvisioningServiceFailure.busy { reply.failure = "busy" }
+        catch ProvisioningServiceFailure.alreadyRun { reply.failure = "already-run" }
         catch ProvisioningJobFailure.ownershipUnverified { reply.failure = "ownership-unverified" }
         catch let failure as ProvisioningReviewFailure {
             switch failure {

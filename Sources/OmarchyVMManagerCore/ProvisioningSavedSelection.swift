@@ -2,10 +2,21 @@ import DevVMProvisioningCore
 import Foundation
 
 extension ProvisioningService {
-    /// Recover the saved plan, not its old consent/session/worker authority. Only
-    /// manager-owned retained bytes with all three receipt hashes can be used.
+    /// Recover a saved plan, not its old consent/session/worker authority. Only
+    /// manager-owned retained bytes matching the recorded hashes can be used: a
+    /// plan recorded when its run was accepted, or the creation receipt's plan.
     func restoreSavedSelection(_ id: UUID) async throws {
         try reviewAvailable()
+        if let record = planHistory.record(id) {
+            let targets = await manager.snapshots().filter { $0.id == record.vmID }
+            try reviewAvailable()
+            guard targets.count == 1 else { throw ProvisioningReviewFailure.unavailable }
+            guard record.engineDigest == environment.engineDigest else { throw ProvisioningReviewFailure.changed }
+            let frozen = try frozenInputs(planID: id, inputDigest: record.inputDigest, receipt: nil)
+            guard frozen.plan.identity == record.planDigest, try ProvisioningCoordinator.engineIdentity(frozen.plan) == record.engineDigest else { throw ProvisioningReviewFailure.changed }
+            try store(id, vmID: record.vmID, frozen: frozen, factory: targets[0].profile.factory)
+            return
+        }
         let targets = await manager.snapshots().filter { $0.profile.developerSetup?.reviewID == id }
         guard targets.count == 1, let receipt = targets.first?.profile.developerSetup else { throw ProvisioningReviewFailure.unavailable }
         try receipt.validate(vmID: targets[0].id)
@@ -15,35 +26,21 @@ extension ProvisioningService {
         guard trees.count <= 128 else { throw ProvisioningReviewFailure.quota }
         for directory in trees.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             guard let storage = try? ProvisioningPrivateInputTree(retained: directory, parent: sourceDirectory) else { continue }
-            let manifests = try storage.manifestPaths().sorted {
-                if $0 == $1 { return false }
-                if $0 == Self.selectionManifest { return true }
-                if $1 == Self.selectionManifest { return false }
-                return $0 < $1
-            }
-            for manifest in manifests {
+            for manifest in try Self.orderedManifests(storage) {
                 guard let plan = try? SetupPlanner.plan(repository: directory, manifest: manifest),
                       plan.identity == receipt.planDigest, plan.snapshot.identity == receipt.inputDigest,
                       try ProvisioningCoordinator.engineIdentity(plan) == receipt.engineDigest else { continue }
-                try storage.verifyRoot(); try plan.verify(in: directory)
-                try ProvisioningTrim.admit(plan, factory: targets[0].profile.factory)
-                guard case .object(let document) = plan.document,
-                      case .array(let taskFields) = document["tasks"],
-                      case .object(let requirements) = document["requirements"] else { throw ProvisioningReviewFailure.changed }
-                let tasks = try taskFields.map { value -> ProvisioningTaskReview in
-                    guard case .object(let fields) = value, case .string(let name) = fields["name"],
-                          case .string(let file) = fields["file"], let input = plan.snapshot.receipts.first(where: { $0.path == file }) else { throw ProvisioningReviewFailure.changed }
-                    return .init(name: name, file: file, sha256: input.sha256)
-                }
-                let preview = ProvisioningPlanPreview(id: id, vmID: receipt.vmID, sessionID: nil,
-                    planDigest: receipt.planDigest, inputDigest: receipt.inputDigest, engineDigest: receipt.engineDigest,
-                    proposal: try helperJSON(plan), tasks: tasks,
-                    restartRequired: requirements["desktop_restart_required"] == .bool(true) || requirements["system_restart_required"] == .bool(true))
-                try preview.validate(); try reviewAvailable(); try storage.verifyRoot(); try plan.verify(in: directory)
-                drafts[id] = .init(selection: .init(directory: directory.path, manifest: manifest), preview: preview, storage: storage, plan: plan)
+                try store(id, vmID: receipt.vmID, frozen: (storage, plan, manifest), factory: targets[0].profile.factory)
                 return
             }
         }
         throw ProvisioningReviewFailure.changed
+    }
+    private func store(_ id: UUID, vmID: UUID, frozen: (storage: ProvisioningPrivateInputTree, plan: SetupPlan, manifest: String), factory: FactoryIdentity?) throws {
+        try frozen.storage.verifyRoot(); try frozen.plan.verify(in: frozen.storage.directory)
+        try ProvisioningTrim.admit(frozen.plan, factory: factory)
+        let preview = try savedPreview(id: id, vmID: vmID, plan: frozen.plan)
+        try reviewAvailable(); try frozen.storage.verifyRoot(); try frozen.plan.verify(in: frozen.storage.directory)
+        drafts[id] = .init(selection: .init(directory: frozen.storage.directory.path, manifest: frozen.manifest), preview: preview, storage: frozen.storage, plan: frozen.plan)
     }
 }

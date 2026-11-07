@@ -39,6 +39,9 @@ extension ProvisioningService: ProvisioningReviewing {
     }
     public func prepareApply(_ id: UUID) async throws -> ProvisioningApplyReview {
         try enabled()
+        // A plan with a job has been used, so it can't be offered for review again,
+        // even from the review cached for its first run.
+        if rows[id]?.applyJobID != nil { throw ProvisioningServiceFailure.alreadyRun }
         if let review = applyReviews[id] { return review }
         if drafts[id] == nil { _ = try await preview(id) }
         if let task = applyPreparations[id] { return try await task.value }
@@ -78,6 +81,8 @@ extension ProvisioningService: ProvisioningReviewing {
         guard let review = applyReviews[id], consent.reviewIdentity == review.reviewIdentity else { throw ProvisioningReviewFailure.consentRequired }
         guard consent.taskTrustIdentity == review.taskTrustIdentity else { throw ProvisioningReviewFailure.taskTrustRequired }
         guard consent.persistentGrantAcknowledged, !review.dockerRootAccessRequired || consent.dockerRootAccessAcknowledged else { throw ProvisioningReviewFailure.consentRequired }
+        // Only an in-progress submission is shared; a finished run is never replayed.
+        if let row = rows[id], row.applyJobID != nil, !row.stage.inProgress { throw ProvisioningServiceFailure.alreadyRun }
         if let (original, task) = applySubmissions[id] {
             guard original == consent else { throw ProvisioningReviewFailure.conflictingConsent }
             return try await task.value
@@ -102,6 +107,9 @@ extension ProvisioningService: ProvisioningReviewing {
         try await manager.validateProvisioningTransport(value.transport)
         guard fresh.dependencyDigest == review.dependencyDigest else { throw ProvisioningReviewFailure.changed }
         try enabled(); try verify(draft)
+        // Record where this plan's frozen choices live before its run can start,
+        // so Run setup again can rebuild them after a restart (issue #14).
+        if rows[id]?.applyJobID == nil { try recordPlan(draft) }
         return try await approve(id, approval: .init(reviewIdentity: review.reviewIdentity, customTasksReviewed: consent.taskTrustIdentity != nil,
             persistentGrantAcknowledged: consent.persistentGrantAcknowledged, dockerRootAccessAcknowledged: consent.dockerRootAccessAcknowledged))
     }

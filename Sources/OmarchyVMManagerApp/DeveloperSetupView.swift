@@ -58,6 +58,13 @@ struct DeveloperSetupView: View {
     @State private var tools = false
     /// The terminal shows the saved last-run log rather than a live job.
     @State private var showingSavedLog = false
+    /// The guest's latest setup plan and its run (issue #14).
+    @State private var latest: ProvisioningLatestSetup?
+    /// A fresh plan from the last run's choices, with what changed since.
+    @State private var retry: ProvisioningRetryPreview?
+    @State private var preparingRetry = false
+    /// The run this sheet started, until the model's next refresh lists it.
+    @State private var submittedRun: ProvisioningWorkflowSnapshot?
     private var workflows: [ProvisioningWorkflowSnapshot] { model.setupWorkflows.filter { $0.vmID == snapshot.id } }
     private var workflow: ProvisioningWorkflowSnapshot? {
         workflows.first { $0.id == selectedWorkflow } ?? workflows.first { $0.canCancel || $0.cleanupRequired } ?? workflows.first
@@ -122,15 +129,15 @@ struct DeveloperSetupView: View {
                             }
                         }.padding(.top, 8)
                     }
-                    if frozen != nil, source == "none" {
-                        Text("A saved frozen selection is loaded below. Choose a source only to create a new preview.").font(.caption).foregroundStyle(.secondary)
+                    if frozen != nil, source == "none", retry == nil {
+                        Text("This guest’s latest setup plan is loaded below. Choose a source only to choose different software.").font(.caption).foregroundStyle(.secondary)
                     }
                     if let frozen {
                         ProvisioningReviewedProfilesView(proposal: frozen.proposal)
                         ProvisioningReviewedTrimView(proposal: frozen.proposal)
                         ProvisioningReviewedAppearanceView(proposal: frozen.proposal)
-                        reviewActions(frozen)
                     }
+                    planRun
                 }.padding(20)
             }
             }
@@ -224,8 +231,8 @@ struct DeveloperSetupView: View {
             } else { showingSavedLog = false }
         }
         .task(id: snapshot.id.uuidString + String(model.setupService != nil)) {
-            guard showsChange, let receipt = snapshot.profile.developerSetup, frozen == nil, source == "none" else { return }
-            previewLookup = receipt.reviewID.uuidString; await loadPreview()
+            guard showsChange, frozen == nil, source == "none" else { return }
+            await loadLatest()
         }
         .background {
             #if DEBUG
@@ -247,14 +254,28 @@ struct DeveloperSetupView: View {
                     case .search(let value): search = value; matches = screen.search(value)
                     case .requestCancel: if workflow?.canCancel == true { confirmCancel = true }
                     case .confirmCancel: if confirmCancel { confirmCancel = false; cancelConfirmed() }
+                    case .runAgain: if let run = displayedRun, SetupRunPresentation.offersRunAgain(run) { Task { await runAgain(run) } }
                     default: break
                     }
-                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "updateReviewed": String(applyReview?.systemUpdateRequired == true), "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "cancelPending": String(confirmCancel), "continuation": continuationMessage, "savedLog": String(showingSavedLog)] })
+                }, snapshot: { acceptanceState })
             } }
             #endif
         }
         .onDisappear { Task { await screen.detach() } }
     }
+    #if DEBUG
+    private var acceptanceState: [String: String] {
+        var state: [String: String] = ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "updateReviewed": String(applyReview?.systemUpdateRequired == true), "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "cancelPending": String(confirmCancel), "continuation": continuationMessage, "savedLog": String(showingSavedLog)]
+        state["runStatus"] = displayedRun.map(SetupRunPresentation.status) ?? ""
+        state["runAgain"] = String(displayedRun.map(SetupRunPresentation.offersRunAgain) ?? false)
+        state["reviewOffered"] = String(displayedRun == nil && frozen != nil && applyReview == nil)
+        state["retryOf"] = retry?.previousID.uuidString ?? ""
+        state["retrySummary"] = retry.map(SetupRunPresentation.summary) ?? ""
+        state["failureText"] = failure ?? ""
+        state["workflow"] = workflow?.id.uuidString ?? ""
+        return state
+    }
+    #endif
     private func cancelConfirmed() { if let workflow, workflow.canCancel { Task { await model.cancelSetup(workflow.id) } } }
     private var releasePresentation: Binding<Bool> {
         #if DEBUG
@@ -388,12 +409,12 @@ struct DeveloperSetupView: View {
     }
     private var executionEnabled: Bool { reviewingService?.executionEnabled == true }
     private func invalidatePreview() {
-        planRevision = UUID(); captureID = nil; frozen = nil; preview = nil; applyReview = nil
+        planRevision = UUID(); captureID = nil; frozen = nil; preview = nil; applyReview = nil; retry = nil; submittedRun = nil
         grantConsent = false; dockerConsent = false; taskConsent = false; inspectedTasks.removeAll(); submissionAttempted = false; failure = nil
     }
     private func display(_ value: ProvisioningPlanPreview) throws {
         guard value.vmID == snapshot.id else { throw ProvisioningReviewFailure.invalid }
-        frozen = value; captureID = value.id; applyReview = nil
+        frozen = value; captureID = value.id; applyReview = nil; retry = nil
         grantConsent = false; dockerConsent = false; taskConsent = false; inspectedTasks.removeAll(); submissionAttempted = false
         let document = try JSONSerialization.jsonObject(with: value.proposal)
         let readable = try JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
@@ -475,7 +496,6 @@ struct DeveloperSetupView: View {
                     .accessibilityIdentifier("setup.prepare-apply")
                     .disabled(!executionEnabled || preparingApply || submitting)
             }
-            if submissionAttempted { Text("Submission was attempted. Inspect the workflow state before taking another action; this view will not repeat it automatically.").font(.caption).foregroundStyle(.secondary) }
         }
     }
     @MainActor private func plan() async {
@@ -498,7 +518,67 @@ struct DeveloperSetupView: View {
         guard let service = reviewingService, let id = UUID(uuidString: previewLookup) else { return }
         planning = true; failure = nil; let revision = planRevision; defer { planning = false }
         do { let value = try await service.preview(id); guard revision == planRevision else { return }; try display(value) }
-        catch { failure = "The saved preview is unavailable. Existing job results are shown below. Choose a source to review a new setup." }
+        catch {
+            guard revision == planRevision else { return }
+            // A finished run's plan may not rebuild under an updated engine; its
+            // outcome and Run setup again still show, from the run itself.
+            if latest?.planID == id, let run = displayedRun, SetupRunPresentation.offersRunAgain(run) { return }
+            failure = "The saved preview is unavailable. Existing job results are shown below. Choose a source to review a new setup."
+        }
+    }
+    /// Change setup opens on the guest's latest setup plan, not the one from creation.
+    @MainActor private func loadLatest() async {
+        if let service = model.setupService as? any ProvisioningRetrying, let value = await service.latestSetup(vmID: snapshot.id) {
+            guard frozen == nil, source == "none" else { return }
+            latest = value
+            if let run = value.workflow { selectedWorkflow = run.id }
+            previewLookup = value.planID.uuidString; await loadPreview()
+        } else if let receipt = snapshot.profile.developerSetup {
+            previewLookup = receipt.reviewID.uuidString; await loadPreview()
+        }
+    }
+    /// The run of the plan shown in this sheet, if it has one.
+    private var displayedRun: ProvisioningWorkflowSnapshot? {
+        guard let id = frozen?.id ?? (source == "none" ? latest?.planID : nil) else { return nil }
+        return workflows.first { $0.id == id } ?? (submittedRun?.id == id ? submittedRun : nil) ?? (latest?.planID == id ? latest?.workflow : nil)
+    }
+    private var canRunAgain: Bool {
+        executionEnabled && !preparingRetry && !planning && !preparingApply && !submitting && !workflows.contains { $0.canCancel || $0.cleanupRequired }
+    }
+    /// Shown in place of Review this run… once the plan has a run.
+    @ViewBuilder private var planRun: some View {
+        if let run = displayedRun {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(SetupRunPresentation.status(run)).font(Theme.sans(13, weight: .medium)).foregroundStyle(run.stage == .failed ? Theme.amber : Theme.text)
+                    .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("setup.run-status")
+                if SetupRunPresentation.offersRunAgain(run) {
+                    Text(SetupRunPresentation.runAgainNote).font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Spacer()
+                        if preparingRetry { ProgressView().controlSize(.small) }
+                        Button("Run setup again") { Task { await runAgain(run) } }
+                            .buttonStyle(.primaryAction).accessibilityIdentifier("setup.run-again").disabled(!canRunAgain)
+                    }
+                }
+            }.padding(.top, 4)
+        } else if let frozen {
+            if let retry, retry.preview.id == frozen.id {
+                Text(SetupRunPresentation.summary(retry)).font(Theme.sans(13)).foregroundStyle(retry.engineChanged ? Theme.amber : Theme.text.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("setup.retry-summary")
+            }
+            reviewActions(frozen)
+        }
+    }
+    /// A fresh plan with a new ID from the same frozen choices; then the normal review.
+    @MainActor private func runAgain(_ run: ProvisioningWorkflowSnapshot) async {
+        guard let service = model.setupService as? any ProvisioningRetrying, canRunAgain, SetupRunPresentation.offersRunAgain(run) else { return }
+        preparingRetry = true; failure = nil; defer { preparingRetry = false }
+        let revision = UUID(); planRevision = revision
+        do {
+            let value = try await service.prepareRetry(id: UUID(), of: run.id)
+            guard revision == planRevision, value.previousID == run.id else { return }
+            try display(value.preview); retry = value
+        } catch { guard revision == planRevision else { return }; failure = SetupRunPresentation.retryFailure(error) }
     }
     @MainActor private func inspectTask(_ value: ProvisioningPlanPreview, task: ProvisioningTaskReview) async {
         guard let service = reviewingService else { return }
@@ -534,10 +614,12 @@ struct DeveloperSetupView: View {
         guard let service = reviewingService, canSubmit(value, review: review) else { return }
         submissionAttempted = true; submitting = true; failure = nil; defer { submitting = false }
         do {
-            _ = try await service.apply(value.id, consent: .init(reviewIdentity: review.reviewIdentity,
+            let run = try await service.apply(value.id, consent: .init(reviewIdentity: review.reviewIdentity,
                 taskTrustIdentity: taskConsent ? review.taskTrustIdentity : nil, persistentGrantAcknowledged: grantConsent, dockerRootAccessAcknowledged: dockerConsent))
             applyReview = nil
-        } catch { failure = "Submission was not confirmed. Inspect its workflow state and exact hashes before any explicit retry. No automatic retry was made." }
+            // Show the new run's live state; the model's refresh takes over from here.
+            if run.id == value.id { submittedRun = run; selectedWorkflow = run.id; latest = .init(planID: value.id, workflow: run) }
+        } catch { failure = SetupRunPresentation.submissionFailure(error) }
     }
 }
 
