@@ -8,7 +8,7 @@ public struct FactoryIdentity: Codable, Equatable, Sendable {
     public let name: String
     public let manifestSHA256: String
     public let diskSHA256: String
-    public static let official = FactoryIdentity(kind: .official, name: "Offical Try Omarchy", manifestSHA256: "1c202c4d9c4087b87d40138d812835a765ff736ff7cf1b9dc233b4fa8945a8cf", diskSHA256: "f587d246981b14f1b0537d75ac1be03219368ac78aaefdb98b8e75a8f9a890c3")
+    public static let official = FactoryIdentity(kind: .official, name: "Official Try Omarchy", manifestSHA256: "1c202c4d9c4087b87d40138d812835a765ff736ff7cf1b9dc233b4fa8945a8cf", diskSHA256: "f587d246981b14f1b0537d75ac1be03219368ac78aaefdb98b8e75a8f9a890c3")
     public var displayName: String { kind == .official ? Self.official.name : name }
     public var selector: String { kind == .official ? "official" : manifestSHA256 }
     public func validate() throws {
