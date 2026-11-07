@@ -42,6 +42,12 @@ struct ProvisioningAppearanceDraft: Equatable {
             layoutFile: layoutMode == "file" ? layoutFile?.path : nil, removeLayout: layoutMode == "remove", layoutExample: layoutMode == "example" ? layoutExample : nil)
         return value.isEmpty ? nil : value
     }
+    /// The layout half of `failure`, so New VM can point at the Layout pane.
+    var layoutFailure: String? {
+        if layoutMode == "example", layoutExample == nil { return "Choose a layout example." }
+        if layoutMode == "file", layoutFile == nil { return "Choose a Lua layout file." }
+        return nil
+    }
     var failure: String? {
         if themeChoice == .repository, theme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Enter a GitHub repository URL." }
         if layoutMode == "example", layoutExample == nil { return "Choose a layout example." }
@@ -57,10 +63,9 @@ struct ProvisioningAppearanceDraft: Equatable {
 /// Desktop layout first, theme second. Layouts are cards in horizontally
 /// scrolling rows so the dev-vm catalogue can grow; one detail line under the
 /// rows describes the hovered card, or the selected one when nothing is hovered.
+/// Guest Defaults and Change setup use this combined view; New VM shows the layout
+/// cards and the theme in separate panes.
 struct ProvisioningAppearanceSelectionView: View {
-    #if DEBUG
-    @Environment(\.setupAcceptance) private var acceptance
-    #endif
     @Binding var draft: ProvisioningAppearanceDraft
     /// A local setup folder can name its own layout: offer it as a card, and make
     /// Omarchy default remove any managed layout instead of keeping the folder's.
@@ -75,7 +80,7 @@ struct ProvisioningAppearanceSelectionView: View {
                 Text(note).font(Theme.note).foregroundStyle(.secondary)
             }
             DesktopLayoutPicker(draft: $draft, localSource: localSource, chooseFile: { choosingLayout = true })
-            themeRow
+            ProvisioningThemeSelectionView(draft: $draft, localSource: localSource)
             if let failure = draft.failure {
                 Label(failure, systemImage: "exclamationmark.circle.fill").font(Theme.note).foregroundStyle(Theme.amber)
             }
@@ -85,13 +90,25 @@ struct ProvisioningAppearanceSelectionView: View {
         .fileImporter(isPresented: $choosingLayout, allowedContentTypes: [.data]) { result in
             if case .success(let url) = result { draft.layoutFile = url; draft.layoutMode = "file" }
         }
-        .background {
-            #if DEBUG
-            if let acceptance { Color.clear.allowsHitTesting(false).onAppear { bindAcceptance(acceptance, localSource: localSource) }
-                .onChange(of: localSource) { _, value in bindAcceptance(acceptance, localSource: value) }
+    }
+}
+
+/// The optional theme choice, below the layout cards or in New VM's Customise pane.
+struct ProvisioningThemeSelectionView: View {
+    #if DEBUG
+    @Environment(\.setupAcceptance) private var acceptance
+    #endif
+    @Binding var draft: ProvisioningAppearanceDraft
+    var localSource = false
+    var body: some View {
+        themeRow
+            .background {
+                #if DEBUG
+                if let acceptance { Color.clear.allowsHitTesting(false).onAppear { bindAcceptance(acceptance, localSource: localSource) }
+                    .onChange(of: localSource) { _, value in bindAcceptance(acceptance, localSource: value) }
+                }
+                #endif
             }
-            #endif
-        }
     }
 
     #if DEBUG

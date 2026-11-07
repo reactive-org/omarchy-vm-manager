@@ -16,7 +16,7 @@ def main():
     output = parent / 'result'
     subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=180)
     report = json.loads((output / 'report.json').read_text())
-    assert report['schema'] == 1 and len(report['checks']) == 179
+    assert report['schema'] == 1 and len(report['checks']) == 187
     assert len(set(report['checks'])) == len(report['checks'])
     for appearance in ('dark', 'light'):
         for case in ('bundled-direct-create-ready', 'all-draft-edits-have-no-backend-effects',
@@ -25,7 +25,8 @@ def main():
                      'preparation-failure-shown-without-saving', 'local-create-captures-selected-folder',
                      'create-grants-no-execution-or-task-trust', 'saved-inputs-default-on-despite-legacy-off',
                      'custom-factory-keeps-account-defaults', 'create-forwards-saved-account-defaults',
-                     'manual-choice-forwarded-without-changing-defaults'):
+                     'manual-choice-forwarded-without-changing-defaults', 'layout-pane-before-customise',
+                     'layout-pane-starts-without-setup', 'layout-card-turns-setup-on', 'omarchy-default-keeps-setup-on'):
             assert f'{appearance}-{case}' in report['checks']
     for case in ('only-for-setup-guests', 'stopped-waits-for-explicit-launch', 'approval-routes-to-setup-review',
                  'hidden-after-success', 'unordered-history-not-guessed', 'terminal-waits-for-admitted-job',
@@ -47,7 +48,7 @@ def main():
     assert report['realExecution'] is False and report['physicalInputTested'] is False
     # One manual consent submission plus one approve-at-creation automatic submission.
     assert report['gate'] == 'unchanged-disabled' and report['fakeSubmissions'] == 2
-    assert len(report['images']) == 52
+    assert len(report['images']) == 53
     for name in report['images']:
         assert pathlib.Path(name).name == name and name.endswith('.png')
         data = (output / name).read_bytes()
@@ -55,7 +56,7 @@ def main():
         width, height = struct.unpack('>II', data[16:24])
         assert width >= 600 and height >= 760
     assert not (output / 'unused-support').exists()
-    print(f'Setup screen acceptance: {len(report["checks"])} checks, 52 PNGs; no runtime starts or on-display windows.')
+    print(f'Setup screen acceptance: {len(report["checks"])} checks, 53 PNGs; no runtime starts or on-display windows.')
     print(f'Artifacts retained for inspection: {output}')
 
 

@@ -598,7 +598,24 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceManagerPage: page), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); try capture(pageHost, page + "-dark.png"); pageHost.close()
         }
-        for (section, name) in [("software", "new-vm-software-dark.png"), ("resources", "new-vm-pane-resources-dark.png"), ("access", "new-vm-access-dark.png")] {
+        for dark in [true, false] {
+            // Layout comes before Customise, and choosing a layout turns setup on.
+            let suffix = dark ? "dark" : "light", layoutDriver = SetupUIAcceptanceDriver()
+            let layoutHost = Host(VMEditor(model: enabledModel, profile: nil, saved: { _ in }), driver: layoutDriver, width: 640, height: 820, dark: dark)
+            tick(); try until { layoutDriver.scopes["selection"] != nil && layoutDriver.scopes["layout-cards"] != nil && layoutDriver.state("layout-cards", "count") == "7" }
+            try check(layoutDriver.state("editor", "panes") == "layout,customise,resources,access", suffix + "-layout-pane-before-customise")
+            try check(layoutDriver.state("selection", "source") == "none" && layoutDriver.state("editor", "hasSetup") == "false", suffix + "-layout-pane-starts-without-setup")
+            try layoutDriver.send("editor", .name("Layout first")); try layoutDriver.send("layout-cards", .layoutExample(.vscodeBrowser)); tick()
+            try check(layoutDriver.state("selection", "source") == "bundled" && layoutDriver.state("selection", "profiles") == "developer"
+                      && layoutDriver.state("selection", "layout") == "vscode-browser" && layoutDriver.state("editor", "hasSetup") == "true"
+                      && layoutDriver.state("editor", "canSave") == "true", suffix + "-layout-card-turns-setup-on")
+            if dark { try layoutDriver.send("editor", .section("layout")); tick(); try capture(layoutHost, "new-vm-layout-dark.png") }
+            try layoutDriver.send("layout-cards", .layoutExample(nil)); tick()
+            try check(layoutDriver.state("selection", "source") == "bundled" && layoutDriver.state("selection", "layout").isEmpty
+                      && layoutDriver.state("editor", "hasSetup") == "true", suffix + "-omarchy-default-keeps-setup-on")
+            layoutHost.close()
+        }
+        for (section, name) in [("customise", "new-vm-customise-dark.png"), ("resources", "new-vm-pane-resources-dark.png"), ("access", "new-vm-access-dark.png")] {
             let sheetDriver = SetupUIAcceptanceDriver()
             let sheet = Host(VMEditor(model: enabledModel, profile: nil, saved: { _ in }), driver: sheetDriver, width: 640, height: 820, dark: true)
             tick(); try until { sheetDriver.scopes["selection"] != nil }

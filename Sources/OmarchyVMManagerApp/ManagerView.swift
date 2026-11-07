@@ -579,6 +579,8 @@ struct VMEditor: View {
         let source: ProvisioningSetupSource?
     }
     @State private var setupBlocker: NewVMSetupBlocker?
+    @State private var setupDraft = NewVMSetupDraft()
+    @State private var layoutTitles: [ProvisioningLayoutExampleID: String] = [:]
     @State private var openPane: Pane?
     init(model: AppModel, profile: VMProfile?, reuseSource: VMProfile? = nil, initialFactory: String? = nil, launchAvailable: Bool, saved: @escaping (UUID, _ launch: Bool) -> Void) {
         self.init(model: model, profile: profile, reuseSource: reuseSource, initialFactory: initialFactory, saved: { _ in })
@@ -610,11 +612,20 @@ struct VMEditor: View {
     }
     private var canSave: Bool { saveBlocker == nil }
     private var maximumMemory: Int { max(4, Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) * 3 / 4) }
-    private enum Pane: String { case software, resources, access }
+    private enum Pane: String { case layout, customise, resources, access }
     private func paneBinding(_ pane: Pane) -> Binding<Bool> {
         Binding(get: { openPane == pane }, set: { openPane = $0 ? pane : nil })
     }
-    private var softwareSummary: String {
+    private var layoutSummary: String {
+        let appearance = setupDraft.appearance
+        switch appearance.layoutMode {
+        case "example": return appearance.layoutExample.flatMap { layoutTitles[$0] } ?? "Layout example"
+        case "file": return appearance.layoutFile?.lastPathComponent ?? "Custom file"
+        case "remove": return "Omarchy default"
+        default: return setupDraft.source == "local" ? "From your setup folder" : "Omarchy default"
+        }
+    }
+    private var customiseSummary: String {
         guard let setupSource else { return setupBlocker?.message ?? "No developer setup" }
         let titles = (setupSource.profiles ?? []).map { $0 == "project-managed" ? "Project managed" : $0.capitalized }
         var parts = setupSource.directory == nil ? [] : ["Local folder"]
@@ -736,8 +747,11 @@ struct VMEditor: View {
         VStack(alignment: .leading, spacing: 0) {
             identity
             if profile == nil {
-                DisclosurePaneRow(key: "software", summary: softwareSummary, isOpen: paneBinding(.software)) {
-                    NewVMSetupSelectionView(model: model, factory: $factory, selection: $setupSource, blocker: $setupBlocker).disabled(saving)
+                DisclosurePaneRow(key: "layout", summary: layoutSummary, isOpen: paneBinding(.layout)) {
+                    NewVMLayoutSelectionView(model: model, draft: $setupDraft).disabled(saving)
+                }
+                DisclosurePaneRow(key: "customise", summary: customiseSummary, isOpen: paneBinding(.customise)) {
+                    NewVMSetupSelectionView(model: model, factory: $factory, draft: $setupDraft, selection: $setupSource, blocker: $setupBlocker).disabled(saving)
                 }
             }
             DisclosurePaneRow(key: "resources", summary: resourcesSummary, isOpen: paneBinding(.resources)) { resourceRows.disabled(saving) }
@@ -770,7 +784,11 @@ struct VMEditor: View {
             }
             }.padding(.horizontal, 20).padding(.vertical, 12).overlay(alignment: .top) { Rectangle().fill(Theme.strongBorder).frame(height: 1) }
         }.frame(width: 620).font(Theme.body).background(Theme.pane).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle()).interactiveDismissDisabled(saving)
-        .onChange(of: setupBlocker) { _, value in if value != nil { openPane = .software } }
+        .onChange(of: setupBlocker) { _, value in if let value { openPane = value.isLayout ? .layout : .customise } }
+        .task(id: profile == nil) {
+            guard profile == nil, let examples = try? BundledProvisioning.layoutExamples() else { return }
+            layoutTitles = Dictionary(uniqueKeysWithValues: examples.map { ($0.id, $0.title) })
+        }
         .onChange(of: useOwnerDefaults) { _, value in
             if value { selectedPublicKey = model.ownerDefaults?.sshPublicKey }
             else if selectedPublicKey == model.ownerDefaults?.sshPublicKey { selectedPublicKey = nil }
@@ -799,7 +817,7 @@ struct VMEditor: View {
                     case .section(let value): openPane = Pane(rawValue: value)
                     default: break
                     }
-                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "factory": factory, "ready": String(setupBlocker == nil), "ownerDefaults": String(useOwnerDefaults), "hasSetup": String(setupSource != nil), "failure": model.configurationError ?? "", "saving": String(saving), "canSave": String(canSave), "validation": saveBlocker ?? ""] })
+                }, snapshot: { ["name": name, "memory": String(memory), "cpus": String(cpus), "disk": String(disk), "factory": factory, "ready": String(setupBlocker == nil), "ownerDefaults": String(useOwnerDefaults), "hasSetup": String(setupSource != nil), "failure": model.configurationError ?? "", "saving": String(saving), "canSave": String(canSave), "validation": saveBlocker ?? "", "panes": profile == nil ? "layout,customise,resources,access" : "resources,access", "openPane": openPane?.rawValue ?? ""] })
             } }
             #endif
         }
