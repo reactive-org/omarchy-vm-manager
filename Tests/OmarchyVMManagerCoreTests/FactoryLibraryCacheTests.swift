@@ -48,6 +48,20 @@ struct FactoryLibraryCacheTests {
         #expect(cache.factories.last?.selector == custom("4").selector)
     }
 
+    @Test("factory details tell same-named factories apart by channel, version and build time")
+    func details() throws {
+        let stable = try #require(FactoryDetails.decode(Data(#"{"omarchy":"4.5.0-3","channel":"stable","built":"2026-11-08T00:34:50Z","kernel":"7.2"}"#.utf8)))
+        #expect(stable.omarchyVersion == "4.5.0" && stable.channelLabel == "Stable" && stable.built != nil)
+        let edge = try #require(FactoryDetails.decode(Data(#"{"omarchy":"4.0.0.r7481.ge4fffc6-1.1","channel":"edge"}"#.utf8)))
+        #expect(edge.omarchyVersion == "4.0.0.r7481" && edge.channelLabel == "Edge" && edge.built == nil)
+        let bare = try #require(FactoryDetails.decode(Data("{}".utf8)))
+        #expect(bare.omarchyVersion == nil && bare.channelLabel == nil)
+        var cache = FactoryLibraryCache()
+        let request = cache.beginRefresh()
+        _ = cache.apply(FactoryCatalogListing(factories: [.official, image], issues: [], details: [image.selector: stable]), for: request)
+        #expect(cache.details[image.selector] == stable)
+    }
+
     @Test("a refresh started before import cannot remove the new picker choice or publish an old error")
     func importWins() {
         var cache = FactoryLibraryCache()

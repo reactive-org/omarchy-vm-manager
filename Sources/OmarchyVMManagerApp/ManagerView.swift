@@ -714,8 +714,8 @@ struct VMEditor: View {
             if profile == nil {
                 SpecRow("factory") {
                     Picker("Factory image", selection: $factory) {
-                        ForEach(model.factories, id: \.selector) { image in Text(image.displayName).tag(image.selector) }
-                    }.labelsHidden().frame(maxWidth: 250)
+                        ForEach(model.factories, id: \.selector) { image in Text(model.factoryLabel(image)).tag(image.selector) }
+                    }.labelsHidden().frame(maxWidth: 420)
                     // Short labels keep the row on one line beside long factory names; the full action is in help and VoiceOver.
                     Button("Import…") { importingFactory = true }
                         .fixedSize().help("Import a factory image").accessibilityLabel("Import factory")

@@ -28,6 +28,35 @@ public struct FactoryCatalogIssue: Codable, Equatable, Sendable {
 public struct FactoryCatalogListing: Sendable {
     public let factories: [FactoryIdentity]
     public let issues: [FactoryCatalogIssue]
+    /// Descriptive image metadata by selector, for telling factories apart.
+    public let details: [String: FactoryDetails]
+    public init(factories: [FactoryIdentity], issues: [FactoryCatalogIssue], details: [String: FactoryDetails] = [:]) {
+        self.factories = factories; self.issues = issues; self.details = details
+    }
+}
+
+/// What a factory image contains, read from its verified factory.json. Display
+/// only: admission never depends on these fields, and each may be absent.
+public struct FactoryDetails: Equatable, Sendable {
+    public let omarchy: String?
+    public let channel: String?
+    public let built: Date?
+    public init(omarchy: String?, channel: String?, built: Date?) { self.omarchy = omarchy; self.channel = channel; self.built = built }
+    /// "4.5.0" for a release, "4.0.0.r7481" for a development build.
+    public var omarchyVersion: String? {
+        guard var value = omarchy, !value.isEmpty else { return nil }
+        if let dash = value.firstIndex(of: "-") { value = String(value[..<dash]) }
+        if let range = value.range(of: #"\.g[0-9a-f]+$"#, options: .regularExpression) { value.removeSubrange(range) }
+        return value
+    }
+    public var channelLabel: String? {
+        switch channel { case "stable": "Stable"; case "edge": "Edge"; case "rc": "RC"; default: nil }
+    }
+    static func decode(_ data: Data) -> FactoryDetails? {
+        struct Image: Decodable { let omarchy: String?; let channel: String?; let built: String? }
+        guard let image = try? JSONDecoder().decode(Image.self, from: data) else { return nil }
+        return FactoryDetails(omarchy: image.omarchy, channel: image.channel, built: image.built.flatMap { ISO8601DateFormatter().date(from: $0) })
+    }
 }
 
 public enum FactoryImportProgress: String, Sendable {
@@ -278,15 +307,17 @@ public struct FactoryCatalog: Sendable {
         let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         var factories: [FactoryIdentity] = [.official]
         var issues: [FactoryCatalogIssue] = []
+        var details: [String: FactoryDetails] = [:]
         for digest in names.filter({ VMFactorySelection.isDigest($0) }).sorted() {
             do {
                 try PrivateFiles.directory(root(digest))
                 factories.append(try verify(root(digest), digest: digest))
+                details[digest] = (try? VMFactorySelection.readMetadata(root(digest).appendingPathComponent("factory.json"))).flatMap(FactoryDetails.decode)
             } catch {
                 issues.append(FactoryCatalogIssue(selector: digest, message: (error as? VMFailure)?.message ?? "This imported factory or its import record is malformed and cannot be selected. Prepare a separate supported bundle for explicit import."))
             }
         }
-        return FactoryCatalogListing(factories: factories, issues: issues)
+        return FactoryCatalogListing(factories: factories, issues: issues, details: details)
     }
     public func identities() throws -> [FactoryIdentity] { try listing().factories }
     public func identity(for selector: String) throws -> FactoryIdentity {

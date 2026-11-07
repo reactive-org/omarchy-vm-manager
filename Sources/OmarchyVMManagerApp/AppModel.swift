@@ -17,6 +17,27 @@ final class AppModel: ObservableObject {
     @Published var factoryImportProgress = FactoryImportProgress.verifying
     @Published private var factoryLibrary = FactoryLibraryCache()
     var factories: [FactoryIdentity] { factoryLibrary.factories }
+    /// Channel, Omarchy version and build time, so factories that share a name
+    /// can be told apart. Nil when the image records none of them.
+    func factorySummary(_ factory: FactoryIdentity) -> String? {
+        let details: FactoryDetails?
+        if factory.kind == .official {
+            details = officialFactorySource.map { FactoryDetails(omarchy: $0.omarchyVersion, channel: $0.channel, built: $0.built) }
+        } else {
+            details = factoryLibrary.details[factory.selector]
+        }
+        guard let details else { return nil }
+        var parts: [String] = []
+        if let channel = details.channelLabel { parts.append(channel) }
+        if let version = details.omarchyVersion { parts.append("Omarchy " + version) }
+        if let built = details.built {
+            parts.append("built " + built.formatted(.dateTime.day().month(.abbreviated).year().hour().minute()))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+    func factoryLabel(_ factory: FactoryIdentity) -> String {
+        factorySummary(factory).map { factory.displayName + " — " + $0 } ?? factory.displayName
+    }
     var factorySelectionNotice: String? { factoryLibrary.selectionNotice }
     @Published var ownerDefaults: OwnerDefaults?
     @Published var diskDefaults = DiskDefaults()

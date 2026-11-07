@@ -7,6 +7,7 @@ public struct FactoryLibraryCache: Sendable {
     }
     public private(set) var factories: [FactoryIdentity] = [.official]
     public private(set) var issues: [FactoryCatalogIssue] = []
+    public private(set) var details: [String: FactoryDetails] = [:]
     public var selectionNotice: String? {
         issues.isEmpty ? nil : "Some imported factory images are incompatible with this app or failed verification. Only verified compatible images are listed."
     }
@@ -25,6 +26,7 @@ public struct FactoryLibraryCache: Sendable {
         guard isCurrent(request) else { return false }
         factories = listing.factories
         issues = listing.issues
+        details = listing.details
         return true
     }
     public mutating func imported(_ identity: FactoryIdentity) {
