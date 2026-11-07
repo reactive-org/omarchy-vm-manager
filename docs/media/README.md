@@ -31,12 +31,6 @@ The twelve WebP screenshots total **454,306 bytes**. The MP4 is **747,929 bytes*
 
 ## Update the media
 
-Capture the same screens from the current app with Computer Use, preserving the original PNG names expected by the script. Use unsaved examples instead of displaying personal defaults or keys, cancel open forms and preserve each guest's original lifecycle state. Do not launch a guest just to update this tour.
+Use the `refresh-screenshots` project skill (`.claude/skills/refresh-screenshots/`) with the Dev app running. It finds every image the guides use, captures each screen through Computer Use, crops out personal rows by inspecting the content, converts the result to WebP in place and updates this README, the manifest and `docs/Validation.md`.
 
-With ImageMagick and FFmpeg available, run from the repository root:
-
-```sh
-python3 Scripts/build_doc_media.py .build/user-doc-captures-2026-11-01
-```
-
-Update `APP_VERSION` and `CAPTURE_DATE` when making new captures. Review `SOURCE_CROPS` against the new original images before rebuilding; the script refuses privacy crops when source dimensions change. Review every optimized image and decoded tour frame to confirm that personal details are excluded. The script enforces a combined screenshot/video budget below 2 MB. If captions or screen order change, update this transcript as well.
+Whether done by the skill or by hand, the rules are the same. Use unsaved examples instead of showing personal defaults or keys, cancel open forms and preserve each guest's original lifecycle state. Do not launch a guest just to update the media. Keep each file's name and aspect ratio, strip metadata, review every image before replacing the old one and keep the combined screenshot/video size below 2 MB. The tour is rebuilt only when requested. If it is not rebuilt, note here that it shows an earlier version. If captions or screen order change, update the transcript as well.
