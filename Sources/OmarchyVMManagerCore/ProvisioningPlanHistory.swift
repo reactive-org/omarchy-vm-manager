@@ -65,12 +65,11 @@ final class ProvisioningPlanHistory: @unchecked Sendable {
         catch { damaged = true; throw ProvisioningJobFailure.journalUnavailable }
         records = updated
     }
-    #if DEBUG
-    /// Test-only: replace a record, e.g. to stand in for a run made by an older engine.
+    /// Tests only (internal; optimized test builds use it too): replace a record,
+    /// e.g. to stand in for a run made by an older engine.
     func replaceForTesting(_ value: ProvisioningPlanRecord) throws {
         guard let index = records.firstIndex(where: { $0.id == value.id }) else { throw ProvisioningJobFailure.jobConflict }
         records[index] = value
         try PrivateFiles.write(try helperJSON(Document(schemaVersion: 1, plans: records)), name: file.lastPathComponent, in: directory)
     }
-    #endif
 }
