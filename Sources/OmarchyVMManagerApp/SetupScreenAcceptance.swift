@@ -19,7 +19,10 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let view: NSHostingView<AnyView>
         let root: @MainActor (Bool) -> AnyView
         init<V: View>(_ content: V, driver: SetupUIAcceptanceDriver, width: CGFloat, height: CGFloat, dark: Bool) {
+            // Fill the requested size: compact sheets otherwise shrink the hosting view to their
+            // content, and the capture must stay at least the size the harness asked for.
             let labelled = VStack(spacing: 0) { Text("ISOLATED ACCEPTANCE · Synthetic data · No VM or real transport").font(.caption).padding(8); content }
+                .frame(minWidth: width, minHeight: height, alignment: .top)
             let makeRoot: @MainActor (Bool) -> AnyView = { scheme in
                 AnyView(labelled.environment(\.setupAcceptance, driver)
                     .environment(\.colorScheme, scheme ? .dark : .light)
