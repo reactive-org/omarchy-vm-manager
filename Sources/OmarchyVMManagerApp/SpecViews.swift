@@ -323,3 +323,36 @@ struct DisclosurePaneRow<Content: View>: View {
         }
     }
 }
+
+/// The sidebar's "Needs you" mark for a guest whose setup is waiting for the
+/// owner. Clicking it opens what the setup is waiting for.
+struct NeedsYouBadge: View {
+    static let width: CGFloat = 78
+    let guestID: UUID
+    let guestName: String
+    let open: () -> Void
+    #if DEBUG
+    @Environment(\.setupAcceptance) private var acceptance
+    #endif
+    var body: some View {
+        Button(action: open) {
+            Text("Needs you").font(Theme.sans(11, weight: .medium)).foregroundStyle(Theme.amber)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .overlay(RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(Theme.amber.opacity(0.8)))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open what " + guestName + "’s setup is waiting for")
+        .accessibilityLabel(guestName + " needs you")
+        .accessibilityHint("Opens what setup is waiting for")
+        .accessibilityIdentifier("sidebar.needs-you")
+        .background {
+            #if DEBUG
+            // Fixtures "click" through the same closure the button runs.
+            if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
+                acceptance.bind("needs-you:" + guestID.uuidString, action: { _ in open() }, snapshot: { ["shown": "true"] })
+            } }
+            #endif
+        }
+    }
+}

@@ -1,5 +1,61 @@
 # Omarchy VM Manager — implementation intent
 
+## Setup attention: badges, notifications and named timeouts — 7 November 2026
+
+**DESIGN DECISION — issue #16, user-approved plan:** one per-guest attention state
+in Core (`SetupAttention`) is the only source of "needs you" for the Home card,
+first-run tracker, sidebar, Dock and notifications. Reasons are the sudo prompt,
+a saved setup's review, restart review, check review and cleanup; all but the
+saved-setup review block a run. It is derived only from recorded workflow stage,
+job state and the in-memory New VM approval, never terminal output. The card and
+tracker select the current run with one Core rule. The sidebar shows **Needs you**
+on each waiting guest (its click opens the output at the prompt or the review).
+User correction during planning: no counts. The Dock shows a "!" marker while any
+guest is blocked and bounces once (`.informationalRequest`) when one becomes
+blocked while the manager isn't frontmost; neither needs permission. Notification
+permission is requested at launch. A pure Core tracker sends one notification per
+entry into a blocking state, only if the manager isn't frontmost or that guest
+isn't on screen, never repeats it, removes it once the state ends, and treats the
+first observation after launch as a baseline (badges only). Notifications carry
+the guest name, fixed wording and its UUID only. Clicks route from the current
+state at click time; activation alone never changes page.
+
+**VERIFIED — source finding:** the authenticated helper path, which real setup
+uses, never recorded `.awaitingAuthorization`; only the in-process path did. The
+coordinator now records it from the helper's reported `requestPersistentGrant`
+operation (never a cleanup step) and returns to `.running` on the next step. The
+helper wire format is unchanged.
+
+**PRIVATE COUPLING:** timeouts name the step from a new job field,
+`timedOutOperation`, set from the last body step the coordinator saw (in-process
+`before`, or helper session-authority command requests with `cleanup == false`),
+so cleanup steps cannot overwrite it. Legacy helpers without session authority
+keep the generic message. Journal schema 8 is written only when a record carries
+the field, so earlier builds keep reading journals without a timeout. Limits
+mirror the pinned dev-vm `bodyTimeoutSeconds` (10 s, 30 s, otherwise one hour,
+including dev-vm `6b5e2e6`'s one-hour sudo prompt); a test pins them to the
+vendored source. Workflow SSH and restart waits use the manager's 3-minute default.
+
+**VERIFIED — fake/local checks:** Core unit tests cover attention for every
+workflow stage × job state × approval, current-run selection, the tracker's
+notify/clear/bounce/marker rules, every timeout note, schema 8 round trip and
+refusal, the in-process sudo state and timed-out step through cleanup and reopen,
+and the authenticated helper path (local sockets, fake process runner) reporting
+the sudo prompt and naming its timeout. The offscreen setup acceptance (199
+checks, 54 PNGs) checks that card, tracker and Core agree, the sidebar badge and
+its routing, notification-click routing, and Dock/notification effects through a
+recording fake. `make test` passes: 596 Swift tests in 79 suites, 340 script
+tests, the provisioning bundle checks and 199 offscreen checks with 54 PNGs; the
+screen acceptance and `git diff --check` pass again on the final code. No VM, guest,
+Dock, notification or permission was touched, and `make app-dev` was not run. The
+tracker starts only once setup coordination is installed, so its launch baseline
+includes saved workflows; that ordering is reasoned from `AppModel.observe()`, not
+exercised.
+
+**TO PROVE:** the macOS permission prompt, notification delivery and foreground
+banners, notification click-through, Dock marker and bounce on a real Mac with
+the Dev app and a real guest's sudo prompt.
+
 ## Update-before-setup CI fixture correction — 7 November 2026
 
 **VERIFIED — hosted failure:** manager run `42295151880` on `288c82c` passes all

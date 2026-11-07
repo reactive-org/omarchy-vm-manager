@@ -27,6 +27,15 @@ enum AutoSetupState: Equatable {
     }
 }
 
+extension SetupAutoApproval {
+    /// What the shared Core attention state needs from the in-memory approval.
+    init(_ state: AutoSetupState?) {
+        guard let state else { self.init(); return }
+        let finishing: Bool = { if case .following = state { return true }; return false }()
+        self.init(approved: state.blockedReason == nil, finishing: finishing, blocked: state.blockedReason != nil)
+    }
+}
+
 extension AppModel {
     /// Called only from the Create, Launch & Set Up path for a just-created guest.
     func armAutoSetup(_ vmID: UUID) {

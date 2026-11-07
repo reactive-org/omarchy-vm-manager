@@ -51,7 +51,7 @@ struct FirstRunProgress: Equatable {
         var value: FirstRunProgress
         if rows.isEmpty { value = guestProgress(snapshot) }
         // UUID order is not chronology: only a live or cleanup-bound run is "current".
-        else if let row = rows.first(where: \.cleanupRequired) ?? rows.first(where: \.canCancel) ?? (rows.count == 1 ? rows.first : nil) {
+        else if let row = SetupAttention.currentRun(snapshot.id, workflows: workflows) {
             value = workflowProgress(row, job: jobs[row.id])
         } else {
             return .init(step: .installing, tone: .problem, note: "Earlier setup runs did not finish. Review their results before trying again.", setupAction: "Open setup…")
@@ -65,7 +65,8 @@ struct FirstRunProgress: Equatable {
         }
         value.approvedAtCreation = true
         if value.step == .connecting, value.tone == .working { value.note = "Waiting for the guest’s SSH service. Setup starts automatically when it’s ready." }
-        if case .following = autoSetup, value.step == .restart, value.tone == .needsYou {
+        let sudoPrompt = SetupAttention.make(snapshot, workflows: workflows, jobs: jobs, auto: SetupAutoApproval(autoSetup))?.reason == .sudoPrompt
+        if case .following = autoSetup, value.step == .restart, value.tone == .needsYou, !sudoPrompt {
             // Covered by the approval given in New VM: submitted automatically, once.
             value.tone = .working; value.setupAction = nil
             value.note = value.note.hasPrefix("Software installed")
@@ -126,7 +127,7 @@ struct FirstRunProgress: Equatable {
             var value = row.stage == .checking
                 ? FirstRunProgress(step: .restart, tone: .working, note: "Checking the configuration after the restart.")
                 : FirstRunProgress(step: .installing, tone: .working, note: "Installing software. You can use the guest while this runs.")
-            if job?.state == .awaitingAuthorization { value.tone = .needsYou; value.note = "Setup is waiting for authorization in the terminal." }
+            if job?.state == .awaitingAuthorization { value.tone = .needsYou; value.note = "Omarchy is asking to enable passwordless sudo. Answer it in the terminal below." }
             if let attachKey { value.terminal = (row.id, attachKey, true) }
             return value
         case .restartRequired:
@@ -154,6 +155,8 @@ struct FirstRunProgress: Equatable {
 
     /// Built only from recorded categories, never from terminal text.
     static func failureNote(_ row: ProvisioningWorkflowSnapshot, job: ProvisioningJobSnapshot?) -> String {
+        // Names the step that ran out of time and its limit, from recorded categories.
+        if let timeout = SetupTimeoutNote.note(row, job: job) { return timeout }
         switch row.failure {
         case .systemUpdateFailed?: return "Setup failed: the Omarchy update failed before your selections were applied."
         case .helperUnavailable?: return "Setup could not start: this build can’t run the setup helper."
@@ -161,7 +164,6 @@ struct FirstRunProgress: Equatable {
         }
         switch job?.engineFailure {
         case .adapterFailed?: return "Setup failed: a task failed inside the guest."
-        case .timedOut?: return "Setup timed out before it finished."
         case .dependencyChanged?: return "Setup stopped because the Mac’s setup tools changed while it ran."
         case .identityMismatch?, .sourceChanged?: return "Setup stopped because the guest or its inputs changed while it ran."
         case .cancelled?: return "Setup was cancelled."

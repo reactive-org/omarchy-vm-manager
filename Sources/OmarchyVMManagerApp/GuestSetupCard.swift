@@ -24,39 +24,43 @@ struct SetupCardState: Equatable {
             if snapshot.profile.developerSetup == nil { return .init(kind: .none) }
             return .init(kind: .configured, run: "Not run yet", note: "Setup runs after the guest starts and SSH is ready.")
         }
-        let reviewStages: [ProvisioningWorkflowStage] = [.readyForReview, .restartRequired, .waitingForRebind, .readyForCheck]
-        // UUID order is not chronology: only a cleanup-bound, live or waiting run is "current".
-        guard let row = rows.first(where: \.cleanupRequired) ?? rows.first(where: \.canCancel) ?? rows.first(where: { reviewStages.contains($0.stage) })
-                ?? (rows.count == 1 ? rows.first : nil) else {
+        guard let row = SetupAttention.currentRun(snapshot.id, workflows: workflows) else {
             return .init(kind: .finished, run: "Finished", note: "View output shows the most recent run.")
         }
-        if row.cleanupRequired, !row.canCancel {
+        // Whether the owner is needed comes only from the shared Core attention state.
+        let attention = SetupAttention.make(snapshot, workflows: workflows, jobs: jobs, auto: SetupAutoApproval(autoSetup))?.reason
+        switch attention {
+        case .cleanup?:
             return .init(kind: .cleanup, run: "Interrupted · cleanup needs review",
                          note: "The run stopped before temporary admin access was confirmed removed. Recovery removes it; nothing is re-installed and the guest isn’t restarted.")
+        case .sudoPrompt?:
+            return .init(kind: .needsYou, run: "Waiting for authorization",
+                         note: "Omarchy is asking to enable passwordless sudo in the setup terminal. Open View output to respond.", progress: 0)
+        case .restartReview?:
+            return .init(kind: .needsYou, run: "Restart needs your review", note: "Software is installed. Review the restart that finishes setup.")
+        case .checkReview?:
+            return .init(kind: .needsYou, run: "Check needs your review", note: "The guest restarted. Review the configuration check that finishes setup.")
+        case .review?:
+            return .init(kind: .needsYou, run: "Waiting for your review",
+                         note: autoSetup?.blockedReason ?? "Review what this setup changes and approve it to start.")
+        case nil:
+            break
         }
-        let automatic: Bool = { if case .following = autoSetup { return true }; return false }()
         switch row.stage {
         case .waitingForSSH:
             return .init(kind: .running, run: "Preparing", note: "Preparing the setup review in the guest.", progress: 0)
+        case .readyForReview:
+            return .init(kind: .running, run: "Starting", note: "Starting setup. You approved it when you created this VM.", progress: 0)
         case .running:
-            let waiting = jobs[row.id]?.state == .awaitingAuthorization
-            return .init(kind: waiting ? .needsYou : .running, run: waiting ? "Waiting for authorization" : "Installing",
-                         note: waiting ? "Setup is waiting for authorization in the terminal. Open View output to respond." : "You can use the guest while this runs. It restarts once near the end.", progress: 0)
+            return .init(kind: .running, run: "Installing", note: "You can use the guest while this runs. It restarts once near the end.", progress: 0)
         case .restartRequired, .readyForCheck, .waitingForRebind:
-            if automatic {
-                return .init(kind: .running, run: row.stage == .restartRequired ? "Restarting" : "Checking",
-                             note: "Finishing automatically, as approved when you created this VM.", progress: row.stage == .restartRequired ? 1 : 2)
-            }
-            let restart = row.stage == .restartRequired
-            return .init(kind: .needsYou, run: restart ? "Restart needs your review" : "Check needs your review",
-                         note: restart ? "Software is installed. Review the restart that finishes setup." : "The guest restarted. Review the configuration check that finishes setup.")
+            // No attention here means the New VM approval is finishing setup automatically.
+            return .init(kind: .running, run: row.stage == .restartRequired ? "Restarting" : "Checking",
+                         note: "Finishing automatically, as approved when you created this VM.", progress: row.stage == .restartRequired ? 1 : 2)
         case .waitingForExit, .restarting:
             return .init(kind: .running, run: "Restarting", note: "Restarting the guest to finish setup.", progress: 1)
         case .checking:
             return .init(kind: .running, run: "Checking", note: "Checking the configuration after the restart.", progress: 2)
-        case .readyForReview:
-            if let reason = autoSetup?.blockedReason { return .init(kind: .needsYou, run: "Waiting for your review", note: reason) }
-            return .init(kind: .needsYou, run: "Waiting for your review", note: "Review what this setup changes and approve it to start.")
         case .succeeded, .checked:
             return .init(kind: .succeeded, run: "Succeeded",
                          note: row.stage == .checked ? "Updated Omarchy, applied your selections, restarted and checked." : "Updated Omarchy and applied your selections.")

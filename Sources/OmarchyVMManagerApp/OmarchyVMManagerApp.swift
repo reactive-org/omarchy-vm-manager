@@ -8,8 +8,28 @@ import TryOmarchyKitClient
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    var model: AppModel?
+    var model: AppModel? {
+        didSet {
+            guard let model, model !== oldValue else { return }
+            model.attentionSurfaces = attention
+            if let vmID = pendingAttention { pendingAttention = nil; model.openAttention(vmID) }
+        }
+    }
+    /// Dock and notifications for setup attention, set up before launch finishes
+    /// so notification clicks always have a delegate.
+    private let attention = SystemAttentionSurfaces()
+    /// A notification click that arrived before the window's model was bound.
+    private var pendingAttention: UUID?
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        attention.open = { [weak self] vmID in
+            guard let self else { return }
+            showManagerWindow()
+            if let model { model.openAttention(vmID) } else { pendingAttention = vmID }
+        }
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Asked at launch (issue #16); notifications only fire when setup is blocked.
+        if !AppModel.layoutPreview { attention.start() }
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(activationRequested(_:)),
             name: SingleInstanceApplication.activationNotification, object: nil)
         if let url = Bundle.main.url(forResource: "OmarchyVMManager", withExtension: "icns"), let icon = NSImage(contentsOf: url) {

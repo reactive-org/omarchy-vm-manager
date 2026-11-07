@@ -59,7 +59,7 @@ private final class JournalFixture {
             case "oversized": try Data(repeating: 32, count: ProvisioningJobJournal.maximumBytes + 1).write(to: f.file)
             case "duplicate-key": try Data("{\"schemaVersion\":1,\"schemaVersion\":1}".utf8).write(to: f.file)
             default:
-                if kind == "schema" { root["schemaVersion"] = 8 }
+                if kind == "schema" { root["schemaVersion"] = 9 }
                 if kind == "field" { jobs[0]["privateKey"] = "never-accept" }
                 if kind == "duplicate-job" { jobs.append(jobs[0]) }
                 if kind == "digest" { jobs[0]["dependencyDigest"] = "unknown" }
@@ -297,4 +297,31 @@ private final class JournalFixture {
         else { #expect(throws: ProvisioningJobFailure.journalUnavailable) { _ = try reopened.load() }; #expect(try Data(contentsOf: f.file) == bytes) }
     }
 
+}
+
+extension ProvisioningJournalTests {
+    @Test func aRecordedTimeoutStepNeedsSchemaEightAndATimeout() throws {
+        let f = try JournalFixture(), store = try ProvisioningJobJournal(directory: f.directory)
+        _ = try store.load()
+        var record = journalRecord(); record.state = .timedOut; record.engineFailure = .timedOut; record.timedOutOperation = .requestPersistentGrant
+        try store.save([record])
+        var document = try JSONSerialization.jsonObject(with: Data(contentsOf: f.file)) as! [String: Any]
+        #expect(document["schemaVersion"] as? Int == 8)
+        store.close()
+        let reopened = try ProvisioningJobJournal(directory: f.directory)
+        #expect(try reopened.load() == [record] && reopened.load().first?.snapshot.timedOutOperation == .requestPersistentGrant)
+        reopened.close()
+        // An older schema cannot carry the field.
+        document["schemaVersion"] = 7
+        try JSONSerialization.data(withJSONObject: document).write(to: f.file)
+        let legacy = try ProvisioningJobJournal(directory: f.directory)
+        #expect(throws: ProvisioningJobFailure.journalUnavailable) { _ = try legacy.load() }
+        legacy.close()
+        // Without a timed-out engine result the field is refused before writing.
+        let other = try JournalFixture(), writer = try ProvisioningJobJournal(directory: other.directory)
+        _ = try writer.load()
+        var invalid = journalRecord(); invalid.state = .failed; invalid.engineFailure = .adapterFailed; invalid.timedOutOperation = .updateSystem
+        #expect(throws: ProvisioningJobFailure.journalUnavailable) { try writer.save([invalid]) }
+        #expect(!FileManager.default.fileExists(atPath: other.file.path))
+    }
 }

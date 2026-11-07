@@ -73,6 +73,19 @@ With saved owner defaults, setup continues automatically. Otherwise, complete th
 
 Both guests remained stopped during capture. The example’s 20 GiB allocation illustrates an existing configuration, not the suggested starting size. The Home page’s experimental suspend panel does not establish that this guest can hibernate; see [suspend requirements and limitations](Suspend.md).
 
+### When setup needs you
+
+Developer setup sometimes waits for you: Omarchy asks to enable passwordless sudo
+in the setup terminal, or a review of the restart, the configuration check or
+cleanup is ready. The guest then shows **Needs you** in the sidebar; click it to
+open the setup output at the prompt, or the review. While a run is blocked the
+Dock icon shows **!** and bounces once if the manager isn't in front, and macOS
+shows one notification naming the guest and what it's waiting for. The manager
+asks for notification permission when it opens; the badge and Dock still work if
+you decline. A saved setup that is simply waiting for your review only shows the
+sidebar badge. If a step runs out of time, the failure names it, for example
+"Omarchy’s passwordless sudo prompt wasn’t answered within an hour".
+
 For terminal access, open the guest's **SSH** tab. Once its connection is verified, choose **Copy SSH Command** and paste the command into Terminal on your Mac. See [SSH and networking](managing-guests.md#connect-over-ssh).
 
 For Omarchy keyboard shortcuts, enable the manager's Accessibility access as described in [Super shortcuts](troubleshooting.md#commandspace-opens-mac-spotlight).
