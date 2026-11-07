@@ -460,3 +460,13 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 
 **TO PROVE:** the card during a real first-launch download, including the waiting, paused and reconnecting phases.
 
+
+## User documentation media refresh — 8 November 2026
+
+With the user's approval to drive only the Dev manager window (`dev.omarchy.vm-manager.dev`), captured the twelve user-guide screenshots from the running Dev build, **0.11.3 (187)**, through Computer Use. The captures cover the library, an unsaved New VM example, a stopped guest's Home, Virtual machine, Network, Startup, SSH and Spaces tabs, the Configure and Import factory forms, Permissions and Runtime. All five Dev guests were observed stopped before and after capture. The New VM, Configure and Import factory forms were opened, captured and cancelled; the guest count was unchanged afterwards. No guest lifecycle, saved configuration, default-save, permission-grant, bundle import or factory-download action was taken, and the Stable app and its VMs were not touched. The manager was returned to its library view.
+
+The capture tool saves scaled JPEGs, so full-window captures are 1,260 × 952 at their native saved width and were not upscaled. The window was taller than at the previous capture, so these images are taller than the earlier 1,280 × 891. Form captures were scaled to their earlier widths (1,040 and 1,000). The SSH image is cropped to 1,260 × 400 pixels, above the personal public-key fingerprint row, after a zoomed check of the boundary. The configuration image keeps its access section closed rather than cropping, because that section shows the generated guest hostname. The New VM image drops a 14-pixel strip of the window behind the form. Small areas of desktop show at the rounded window corners. The MP4 tour and captions were not rebuilt and still show 0.9.3 (16). The twelve screenshots total 522,362 bytes; with the unchanged 747,929-byte MP4 the media is 1,270,291 bytes, below the 2 MB budget.
+
+**VERIFIED — real Dev window:** every raw capture and every converted WebP was visually reviewed for credentials, key fingerprints, hostnames, personal identifiers, stray windows and the intended screen. `manifest.json` dimensions, byte counts, WebP and source SHA-256 hashes and crops match the files. Guide alt text and wording that no longer matched the UI were updated, all media links resolve with exact case, and `git diff --check` passes. No Swift or runtime code changed, so builds and tests were not rerun.
+
+**TO PROVE:** the screenshots show stopped guests only; running-guest controls, the guest desktop and setup progress are not illustrated.

@@ -6,9 +6,9 @@
 
 Use an Apple Silicon Mac running macOS 15 or later. Open **Omarchy VM Manager.app** from this project's `dist` folder. If you are building it yourself, follow the [repository build instructions](../README.md#build-and-check).
 
-**Virtual Machines** is your library. Select a guest in the sidebar to inspect it. Opening the app restores the list without starting guests. Scroll the library to see additional entries.
+**Virtual machines** is your library. Select a guest in the sidebar to inspect it. Opening the app restores the list without starting guests. Scroll the library to see additional entries.
 
-![The current manager library, showing two stopped guests](media/library.webp)
+![The manager library, showing five stopped guests](media/library.webp)
 
 ## Set up defaults once
 
@@ -28,7 +28,7 @@ For different owner settings on just one VM, the updated CLI supports [per-VM ow
 
 Click **+** in the toolbar, or press **Command+N**.
 
-![The actual New Virtual Machine form with an unsaved Development example, four cores, 4 GiB RAM and SSH enabled](media/new-vm.webp)
+![The New virtual machine form with an unsaved Development example and its resources section open: four cores, 4 GiB memory, and 64 GiB system and home disks](media/new-vm.webp)
 
 Give the guest a distinct name, such as **Development**, then choose its options:
 
@@ -43,7 +43,7 @@ Give the guest a distinct name, such as **Development**, then choose its options
 | Enable SSH from this Mac | Provision separate guest keys and a unique localhost connection port; enabled by default |
 | Personal public key | Optionally enroll your existing `.pub` key alongside the manager's key |
 
-Click **Create VM**. This saves the profile; the guest disk is created on its first launch. SSH enrollment and owner setup are chosen at creation and cannot be changed through the current configuration form.
+Click **Create**, or **Create and launch** to start it straight away. Create saves the profile; the guest disk is created on its first launch. SSH enrollment and owner setup are chosen at creation and cannot be changed through the current configuration form.
 
 In builds with **Developer setup**, Source **None** creates a VM without a setup
 selection. For **Bundled configuration** or a **Local setup folder**, choose the
@@ -63,15 +63,15 @@ the selections and try Create VM again.
 
 Select the guest and click **Launch**. The manager selects its Home card and scrolls to the top so preparation and download progress are visible. Launching through the CLI selects the same card when the manager observes the new session. You can switch to another guest or page while startup continues.
 
-![The stopped guest Home page with Launch, experimental suspend readiness and Quick Settings](media/guest-home.webp)
+![The stopped guest Home page with Launch, resources, setup, experimental suspend to disk and home disk sections](media/guest-home.webp)
 
 On first launch, the manager downloads the official factory image if it is not already cached, verifies it, and prepares the guest disk. Progress appears beside the guest's icon. The shared image is kept in `~/Downloads/Omarchy VM Manager/Factory Images/` for reuse by later guests. See [cache behavior](FactoryCache.md) for retention and disk-space details.
 
 With saved owner defaults, setup continues automatically. Otherwise, complete the normal setup wizard in the guest window. **Running** means the VM has reached its runtime-ready boundary; account setup and SSH can still be finishing.
 
-![The current Virtual Machine tab showing CPU, memory, disk capacity and recorded factory](media/resources.webp)
+![The Virtual machine tab showing cores, memory, system and home disks and the recorded factory](media/resources.webp)
 
-Both guests remained stopped during capture. The example’s 20 GiB allocation illustrates an existing configuration, not the suggested starting size. The Home page’s experimental suspend panel does not establish that this guest can hibernate; see [suspend requirements and limitations](Suspend.md).
+All five guests remained stopped during capture. The example’s 12 GiB allocation illustrates an existing configuration, not the suggested starting size. The Home page’s experimental suspend panel does not establish that this guest can hibernate; see [suspend requirements and limitations](Suspend.md).
 
 ### When setup needs you
 

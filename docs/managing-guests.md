@@ -10,11 +10,11 @@ Select a running guest and choose **Home → Back Up Home…**. This requires au
 
 New guests can use independent system and home disks, enabled by default. Both capacities appear in Configure. **Replace System…** creates a new VM using a copy of a stopped source's home while preserving the original. See [separate home disks, defaults and CLI](HomeDisks.md).
 
-Shut down the guest and wait for **Stopped**. Select it in the sidebar, open **Virtual Machine**, then click **Configure…**. **Rename or Configure…** opens the same form.
+Shut down the guest and wait for **Stopped**. Select it in the sidebar, open **Virtual machine**, then click **Configure…**. **Rename or configure…** opens the same form.
 
-![A crop of the current configuration form showing name, factory, memory, CPU, disk capacity, clipboard and immersive mode](media/configure.webp)
+![The Configure virtual machine form with its resources section open, showing name, factory, memory, cores, system disk, separate home and home disk](media/configure.webp)
 
-Change its name, memory, CPU count, grow-only disk capacity, clipboard integration or immersive mode, then click **Save Changes**. Changes apply the next time you launch it, with its existing disk preserved. Running guests cannot be edited. Entries marked **Retained POC** keep their original configuration and cannot be edited.
+Change its name; its memory, cores and grow-only disk capacities under **resources**; or clipboard integration and immersive mode under **access**. Then click **Save changes**. Changes apply the next time you launch it, with its existing disk preserved. Running guests cannot be edited. Entries marked **Retained POC** keep their original configuration and cannot be edited.
 
 SSH enrollment and the owner setup snapshot are fixed at guest creation. Create another guest if you need a different enrollment choice.
 
@@ -22,15 +22,15 @@ SSH enrollment and the owner setup snapshot are fixed at guest creation. Create 
 
 Choose the guest's **SSH** tab. A stopped guest shows **Available on next launch**. After launch and account setup, the manager verifies its host key, authenticates, and makes **Copy SSH Command** available. Paste that command into a Mac terminal.
 
-![The upper portion of the current SSH page for a stopped guest, showing its localhost port and managed login-key information](media/ssh.webp)
+![The upper portion of the SSH tab for a stopped guest, showing its localhost endpoint and managed login key](media/ssh.webp)
 
 Every SSH-enabled guest has an independent managed key and a distinct localhost port. The generated command selects the correct key and pinned host identity. An optional personal public key can be chosen when creating the guest; private keys are not imported.
 
-The **Network** tab shows the mapping. In this screenshot, `127.0.0.1:2222` on the Mac forwards to TCP port 22 in this particular guest. Your port may differ.
+The **Network** tab shows the mapping. In this screenshot, `127.0.0.1:49200` on the Mac forwards to TCP port 22 in this particular guest. Your port may differ.
 
-![The Network tab showing shared NAT, a guest-specific localhost SSH forward and disabled host sharing](media/network.webp)
+![The Network tab showing shared NAT, a guest-specific localhost SSH forward and no host folder exposed](media/network.webp)
 
-Use the generated command or localhost endpoint to connect from the Mac. The private guest IP reported by the CLI is informational: two NAT guests can both report `10.0.2.15`. General port-forward editing remains unavailable. Native [host-folder sharing](SharedFolders.md) is opt-in: Configure a stopped guest to share a dedicated host folder (default `~/Shared`) at `/mnt/mac`, with read-write access. The Network page reports the exposed path and mount status. The screenshot predates this control.
+Use the generated command or localhost endpoint to connect from the Mac. The private guest IP reported by the CLI is informational: two NAT guests can both report `10.0.2.15`. General port-forward editing remains unavailable. Native [host-folder sharing](SharedFolders.md) is opt-in: Configure a stopped guest to share a dedicated host folder (default `~/Shared`) at `/mnt/mac`, with read-write access. The Network page reports the exposed path and mount status. In the screenshot, no host folder is exposed.
 
 ## Choose windowed or immersive mode
 

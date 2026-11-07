@@ -28,7 +28,7 @@ Intermittent graphics startup failure remains under investigation. Save work if 
 
 If managed SSH is ready, it can remain usable even when the graphical desktop is unhealthy. Do not reset or delete the disk to troubleshoot this symptom.
 
-The **Runtime** page shows host preflight and the known graphics issue. **Check Again** refreshes the runtime checks; **Build provenance** identifies the pinned helper source.
+The **Runtime** page shows host preflight and the known graphics issue. **Check again** refreshes the runtime checks; **Build provenance** identifies the pinned helper source.
 
 ![The Runtime page with a passed host preflight and the known graphics startup issue](media/runtime.webp)
 

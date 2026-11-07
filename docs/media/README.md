@@ -2,11 +2,13 @@
 
 [User guide](../README.md) · [MP4 tour](quick-tour.mp4) · [WebVTT captions](quick-tour.vtt)
 
-These are actual window captures of Omarchy VM Manager **0.9.3 (16)** on macOS, captured through Computer Use on **1 November 2026, Australia/Melbourne**. Both existing guests, Omarchy Suspend POC and Dev Code, remained stopped. The New VM form contains an unsaved Development example with saved owner defaults turned off only in that form, which also excludes the inherited personal public key. Creation, configuration and factory import forms were cancelled; no bundle was chosen or imported. Saved defaults and guest settings were preserved.
+The screenshots are actual window captures of the Dev build, Omarchy VM Manager Dev **0.11.3 (187)**, on macOS, captured through Computer Use on **8 November 2026, Australia/Melbourne**. The window title, library header and sidebar footer therefore show Dev branding. All five Dev guests (Rails web dev, Ops workspace, Python data science, Go services and Frontend · Next.js) remained stopped. The New VM form contains an unsaved Development example with its access section closed, so no account details are shown. Creation, configuration and factory import forms were cancelled; no bundle was chosen or imported. Saved defaults and guest settings were preserved.
 
-The silent 48-second video is a captioned still-screen walkthrough assembled from these captures, not a continuous recording. It shows the current resource/factory controls and experimental suspend readiness panel. It does not demonstrate installation, boot, a running guest, suspend/restore, the guest desktop or a completed Spaces assignment. The SSH image shows the stopped state. No permission grants or guest lifecycle actions were taken for the documentation.
+The silent 48-second video was **not** rebuilt in this refresh. It and its captions still show the 0.9.3 (16) screens captured on 1 November 2026, so it is older than the screenshots. It is a captioned still-screen walkthrough, not a continuous recording. It shows the current resource/factory controls and experimental suspend readiness panel. It does not demonstrate installation, boot, a running guest, suspend/restore, the guest desktop or a completed Spaces assignment. The SSH image shows the stopped state. No permission grants or guest lifecycle actions were taken for the documentation.
 
 ## Transcript
+
+This transcript describes the 0.9.3 (16) tour.
 
 | Time | Screen | What to look for |
 | --- | --- | --- |
@@ -25,9 +27,9 @@ The silent 48-second video is a captioned still-screen walkthrough assembled fro
 
 ## Size and format
 
-The twelve WebP screenshots total **454,306 bytes**. The MP4 is **747,929 bytes**, bringing the combined media to **1,202,235 bytes** (about 1.2 MB). Screenshots are at most 1,280 pixels wide, with metadata removed. The video is 1,280 × 960, H.264, 5 fps, 48 seconds, no audio, with fast-start metadata for playback before the whole file is downloaded. No GIF or duplicate high-resolution PNGs are shipped.
+The twelve WebP screenshots total **522,362 bytes**. The MP4 is **747,929 bytes**, bringing the combined media to **1,270,291 bytes** (about 1.3 MB). Full-window screenshots are 1,260 × 952 at the capture's native width; the form screenshots are scaled to their earlier widths. Metadata is removed. The video is 1,280 × 960, H.264, 5 fps, 48 seconds, no audio, with fast-start metadata for playback before the whole file is downloaded. No GIF or duplicate high-resolution PNGs are shipped.
 
-[`manifest.json`](manifest.json) records dimensions, hashes, exact byte counts and privacy crops. The original captures stay in the ignored `.build/user-doc-captures-2026-11-01/` folder. The configuration image is cropped before the generated guest-hostname row; the SSH image is cropped before the personal public-key fingerprint row. These lower sections are omitted, not redrawn. Passwords, personal contact details, public-key fingerprints and private keys are absent from the shipped media. Other processing consists of resizing, compression and video captions outside the screenshots. The previous running-guest image was removed because no guest was running during this capture.
+[`manifest.json`](manifest.json) records dimensions, hashes, exact byte counts and privacy crops. The original JPEG captures stay in the ignored `.build/user-doc-captures-2026-11-08/` folder. The SSH image is cropped before the personal public-key fingerprint row; that section is omitted, not redrawn. The configuration image keeps its access section closed, so the generated guest hostname never appears. The New VM image drops a 14-pixel strip of the window behind the form. Small areas of desktop show at the rounded window corners. Passwords, personal contact details, public-key fingerprints and private keys are absent from the shipped media. Other processing consists of cropping, resizing and compression.
 
 ## Update the media
 
