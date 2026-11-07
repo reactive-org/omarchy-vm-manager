@@ -12,6 +12,10 @@ struct FactoryImagesView: View {
     let use: (FactoryIdentity) -> Void
     @State private var importing = false
     @State private var showJob = true
+    #if DEBUG
+    @State private var cardFrames: [String: CGRect] = [:]
+    @State private var gridWidth: CGFloat = 0
+    #endif
     init(model: AppModel, use: @escaping (FactoryIdentity) -> Void) { self.model = model; builder = model.factoryBuilder; self.use = use }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -30,13 +34,14 @@ struct FactoryImagesView: View {
                 if let job = builder.current, job.active || job.cleanupRequired {
                     HStack { Label(FactoryBuildModel.title(job), systemImage: "hammer"); Spacer(); Button("View build") { showJob = true } }.padding(16).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
                 }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], spacing: 16) {
                     factoryCard(title: "Try Omarchy", subtitle: "Official factory", icon: "opticaldisc", description: "Omarchy’s standard desktop and application collection, ready to make your own.", status: "Downloads when a VM first starts", action: "Use for new VM", source: model.officialFactorySource) { use(.official) }
                     factoryCard(title: "Lean Omarchy", subtitle: "Reviewed lean foundation", icon: "square.3.layers.3d", description: "The essential Omarchy desktop, native Mac integration, Git, Python and build tools. Choose additional apps per VM.", status: "Build once, reuse for new VMs", action: "Build lean factory…", disabled: !builder.service.enabled || builder.jobs.contains { $0.active || $0.cleanupRequired }) { builder.showingBuild = true }
                     ForEach(model.factories.filter { $0.kind == .custom }, id: \.selector) { factory in
-                        factoryCard(title: factory.name, subtitle: "Custom factory", icon: "externaldrive", description: "Verified for this runtime and available for new virtual machines.", status: "Built or imported · Boot validation is separate", action: "Use for new VM") { use(factory) }
+                        factoryCard(title: factory.name, subtitle: "Custom factory", icon: "externaldrive", description: "Verified for this runtime and available for new virtual machines.", status: "Built or imported · Boot validation is separate", action: "Use for new VM", identifier: "factory.use." + factory.selector) { use(factory) }
                     }
                 }
+                .modifier(FactoryGridGeometry(cardFrames: cardFramesBinding, gridWidth: gridWidthBinding))
                 Text("Each VM has its own disk and account. Building a factory does not change existing VMs.").font(.callout).foregroundStyle(.secondary)
                 if !builder.service.enabled { Text("Factory building is available in Dev.").font(.callout).foregroundStyle(.secondary) }
                 if !builder.jobs.isEmpty {
@@ -49,7 +54,9 @@ struct FactoryImagesView: View {
             }
         }
         .task { await builder.observe() }
-        .onChange(of: builder.current?.id) { _, _ in showJob = true }
+        // Return to a job page only when a build starts, not whenever the
+        // selected job changes under the library.
+        .onChange(of: builder.current?.id) { _, _ in if builder.current?.active == true { showJob = true } }
         .sheet(isPresented: buildPresentation) { FactoryBuildSheet(builder: builder) }
         .sheet(isPresented: $importing) { FactoryImportView(model: model) { _ in importing = false } }
         .background {
@@ -64,11 +71,25 @@ struct FactoryImagesView: View {
                     case .save: if let factory = builder.current?.factory { use(factory) }
                     default: break
                     }
-                }, snapshot: { ["stage": builder.current?.stage.rawValue ?? "none", "enabled": String(builder.service.enabled), "buildingSheet": String(builder.showingBuild), "follow": String(builder.terminal.follow)] })
+                }, snapshot: {
+                    // Every card stays inside the grid (#27), and each title keeps
+                    // room for its words.
+                    let frames = cardFrames.values
+                    let fits = !frames.isEmpty && frames.allSatisfy { $0.minX >= -0.5 && $0.maxX <= gridWidth + 0.5 }
+                    return ["stage": builder.current?.stage.rawValue ?? "none", "enabled": String(builder.service.enabled), "buildingSheet": String(builder.showingBuild), "follow": String(builder.terminal.follow),
+                            "cards": String(frames.count), "cardsFit": String(fits), "minCardWidth": String(Int(frames.map(\.width).min() ?? 0))]
+                })
             } }
             #endif
         }
     }
+    #if DEBUG
+    private var cardFramesBinding: Binding<[String: CGRect]>? { $cardFrames }
+    private var gridWidthBinding: Binding<CGFloat>? { $gridWidth }
+    #else
+    private var cardFramesBinding: Binding<[String: CGRect]>? { nil }
+    private var gridWidthBinding: Binding<CGFloat>? { nil }
+    #endif
     private var buildPresentation: Binding<Bool> {
         #if DEBUG
         if acceptance != nil { return .constant(false) }
@@ -76,25 +97,31 @@ struct FactoryImagesView: View {
         return $builder.showingBuild
     }
     private func factoryCard(title: String, subtitle: String, icon: String, description: String, status: String, action: String, disabled: Bool = false,
-                             source: OfficialFactorySource? = nil, perform: @escaping () -> Void) -> some View {
+                             source: OfficialFactorySource? = nil, identifier: String? = nil, perform: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack(spacing: 13) {
                 Image(systemName: icon).font(.system(size: 29)).foregroundStyle(.purple).frame(width: 54, height: 54).background(.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 3) { Text(title).font(.headline); Text(subtitle).font(.caption).foregroundStyle(.secondary) }
-                if source != nil { Spacer(minLength: 8); OfficialSourceBadge(compact: true) }
+                // The badge sits under the subtitle, not beside the title, so the
+                // title keeps the row's width in a narrow grid cell.
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.headline)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    if source != nil { OfficialSourceBadge(compact: true).padding(.top, 3) }
+                }.layoutPriority(1)
             }
             Text(description).font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 65, alignment: .topLeading)
             if let source { FactorySourceDetails(source: source, compact: true) }
             Divider()
             Text(status).font(.caption).foregroundStyle(.secondary)
-            Button(action, action: perform).frame(maxWidth: .infinity).disabled(disabled)
-        }.padding(20).background(.background, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+            Button(action, action: perform).frame(maxWidth: .infinity).disabled(disabled).accessibilityIdentifier(identifier ?? "")
+        }.padding(20)
+        .background { GeometryReader { geometry in Color.clear.preference(key: FactoryCardFrameKey.self, value: [identifier ?? title: geometry.frame(in: .named(FactoryGridGeometry.space))]) } }.background(.background, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
     }
     @ViewBuilder private func jobView(_ job: FactoryBuildJob) -> some View {
         Button("Factory library", systemImage: "chevron.left") { showJob = false }.buttonStyle(.plain).foregroundStyle(.secondary)
-        VStack(alignment: .leading, spacing: 7) { Text(FactoryBuildModel.title(job)).font(.title.bold()); Text("\(job.plan.name) · ARM64 · \(job.plan.sizeGiB) GiB factory").foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: 7) { Text(FactoryBuildModel.title(job)).font(.title.bold()); Text("\(job.plan.name) · ARM64 · \(job.plan.sizeGiB) GiB factory · Omarchy \(job.plan.resolvedChannel.label)").foregroundStyle(.secondary) }
         if job.stage == .failed {
-            Text(job.failure.flatMap(FactoryBuildFailure.init(rawValue:))?.explanation ?? "No factory was added. The build output was preserved; inspect the terminal and build details.")
+            Text(job.failureExplanation)
                 .font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
         }
         if let factory = job.factory {
@@ -125,6 +152,7 @@ struct FactoryImagesView: View {
                 Text("Job: " + job.id.uuidString).textSelection(.enabled)
                 Text("Recipe: " + job.plan.recipeSHA256).textSelection(.enabled)
                 Text("Factory capacity: \(job.plan.sizeGiB) GiB · New VM disks can grow")
+                Text("Omarchy channel: \(job.plan.resolvedChannel.label) · \(job.plan.resolvedChannel.summary)")
                 Text("Package checks and image sealing are separate from guest boot testing.")
                 if let failure = job.failure { Text("Result: " + failure) }
             }.font(.caption).foregroundStyle(.secondary).padding(.top, 7)
@@ -139,8 +167,9 @@ struct FactoryBuildSheet: View {
     @ObservedObject var builder: FactoryBuildModel
     @State private var name = "Lean Omarchy"
     @State private var size = 20
+    @State private var channel = FactoryChannel.stable
     @Environment(\.dismiss) private var dismiss
-    private var canStart: Bool { builder.review != nil && builder.review?.plan.name == name && builder.review?.plan.sizeGiB == size && !builder.checking && !builder.submitting }
+    private var canStart: Bool { builder.review != nil && builder.review?.plan.name == name && builder.review?.plan.sizeGiB == size && builder.review?.plan.resolvedChannel == channel && !builder.checking && !builder.submitting }
     var body: some View {
         VStack(alignment: .leading, spacing: 17) {
             Label("Build lean factory", systemImage: "hammer").font(.title2.bold())
@@ -150,6 +179,13 @@ struct FactoryBuildSheet: View {
                 Text("Image name").font(.callout.bold())
                 TextField("Lean Omarchy", text: $name).textFieldStyle(.roundedBorder)
             }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Omarchy channel").font(.callout.bold())
+                Picker("Omarchy channel", selection: $channel) {
+                    ForEach(FactoryChannel.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.pickerStyle(.segmented).labelsHidden().accessibilityIdentifier("factory.channel")
+                Text(channel.summary + ". A release whose setup programs this app hasn’t reviewed is refused.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             if builder.checking { HStack { ProgressView().controlSize(.small); Text("Checking existing Docker and build storage…").foregroundStyle(.secondary) } }
             if let review = builder.review {
                 Label("Local ARM64 engine ready · " + review.context, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
@@ -157,15 +193,15 @@ struct FactoryBuildSheet: View {
                 Text("Available: " + ByteCountFormatter.string(fromByteCount: review.availableBytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
             }
             if let error = builder.error { Text(error).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
-            Text("Downloads sources and packages, then uses a privileged Docker container to prepare the disk. Existing VMs are unaffected.").font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text("Downloads the channel’s signed Omarchy packages, then uses a privileged Docker container to prepare the disk. Existing VMs are unaffected.").font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             DisclosureGroup("Advanced") { Picker("Factory disk capacity", selection: $size) { ForEach([20,32,64,128], id: \.self) { Text("\($0) GiB").tag($0) } }; Text("New VMs can use a larger disk. Build inputs come from this app’s reviewed recipe.").font(.caption).foregroundStyle(.secondary) }
             Divider()
-            HStack { Button("Check again") { Task { await builder.check(name: name, size: size) } }.disabled(builder.checking || builder.submitting); Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Build factory") { Task { await builder.start() } }.buttonStyle(.borderedProminent).disabled(!canStart).accessibilityIdentifier("factory.start") }
+            HStack { Button("Check again") { Task { await builder.check(name: name, size: size, channel: channel) } }.disabled(builder.checking || builder.submitting); Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Build factory") { Task { await builder.start() } }.buttonStyle(.borderedProminent).disabled(!canStart).accessibilityIdentifier("factory.start") }
         }.padding(26).frame(width: 570).disabled(builder.submitting)
-        .task(id: name + ":" + String(size)) {
+        .task(id: name + ":" + String(size) + ":" + channel.rawValue) {
             builder.review = nil
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
-            await builder.check(name: name, size: size)
+            await builder.check(name: name, size: size, channel: channel)
         }
         .background {
             #if DEBUG
@@ -177,9 +213,34 @@ struct FactoryBuildSheet: View {
                     case .save: if canStart { Task { await builder.start() } }
                     default: break
                     }
-                }, snapshot: { ["name": name, "size": String(size), "ready": String(canStart), "error": builder.error ?? "", "checking": String(builder.checking)] })
+                }, snapshot: { ["name": name, "size": String(size), "channel": channel.rawValue, "ready": String(canStart), "error": builder.error ?? "", "checking": String(builder.checking)] })
             } }
             #endif
+        }
+    }
+}
+
+extension FactoryChannel {
+    var label: String { switch self { case .stable: "Stable"; case .edge: "Edge" } }
+    var summary: String { switch self { case .stable: "The latest Omarchy release"; case .edge: "Omarchy’s development builds" } }
+}
+
+/// Card frames in grid coordinates, read only by the debug layout checks.
+private struct FactoryCardFrameKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) { value.merge(nextValue()) { $1 } }
+}
+private struct FactoryGridGeometry: ViewModifier {
+    static let space = "factory-grid"
+    let cardFrames: Binding<[String: CGRect]>?
+    let gridWidth: Binding<CGFloat>?
+    func body(content: Content) -> some View {
+        if let cardFrames, let gridWidth {
+            content.coordinateSpace(name: Self.space)
+                .background { GeometryReader { geometry in Color.clear.onAppear { gridWidth.wrappedValue = geometry.size.width }.onChange(of: geometry.size.width) { _, value in gridWidth.wrappedValue = value } } }
+                .onPreferenceChange(FactoryCardFrameKey.self) { cardFrames.wrappedValue = $0 }
+        } else {
+            content
         }
     }
 }

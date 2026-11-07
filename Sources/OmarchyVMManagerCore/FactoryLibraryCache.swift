@@ -31,7 +31,11 @@ public struct FactoryLibraryCache: Sendable {
         revision = UUID()
         refresh = nil
         factories.removeAll { $0.selector == identity.selector }
-        factories.append(identity)
+        // Keep the catalog's own order (official first, then custom factories
+        // by digest) so cards never swap places under the pointer when a
+        // later refresh replaces this list.
+        let index = factories.firstIndex { $0.kind == .custom && $0.selector > identity.selector } ?? factories.endIndex
+        factories.insert(identity, at: index)
         issues.removeAll { $0.selector == identity.selector }
     }
 }

@@ -19,12 +19,12 @@ import OmarchyVMManagerCore
     private var cursor: UInt64 = 0
     var current: FactoryBuildJob? { jobs.first { $0.id == selectedID } ?? jobs.first { $0.active || $0.cleanupRequired } ?? jobs.first }
     init(service: any FactoryBuildControlling) { self.service = service }
-    func check(name: String, size: Int) async {
+    func check(name: String, size: Int, channel: FactoryChannel = .stable) async {
         let generation = UUID(); self.generation = generation
         checking = true; review = nil; error = nil
         defer { if self.generation == generation { checking = false } }
         do {
-            let result = try await service.review(name: name, sizeGiB: size)
+            let result = try await service.review(name: name, sizeGiB: size, channel: channel)
             guard generation == self.generation, !Task.isCancelled else { return }
             review = result
         } catch { if generation == self.generation, !Task.isCancelled { self.error = Self.message(error) } }

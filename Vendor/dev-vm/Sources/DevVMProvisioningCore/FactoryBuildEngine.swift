@@ -12,7 +12,7 @@ public struct FactoryBuildEngine: Sendable {
     }
     public func build(_ plan: FactoryBuildPlan, jobID: UUID, root: URL, admission: FactoryDockerAdmission,
                       output: FactoryBuildOutput, stage: @escaping @Sendable (FactoryBuildStage) async throws -> Void) async throws -> URL {
-        _ = try FactoryBuildPlan(name: plan.name, sizeGiB: plan.sizeGiB)
+        _ = try FactoryBuildPlan(name: plan.name, sizeGiB: plan.sizeGiB, channel: plan.channel)
         guard plan.recipeSHA256 == recipe.identity else { throw FactoryBuildFailure.inputsChanged }
         try recipe.verify()
         let workspace = root.appendingPathComponent(jobID.uuidString)
@@ -66,7 +66,7 @@ public struct FactoryBuildEngine: Sendable {
                 guard !source.contains(",") else { throw FactoryBuildFailure.invalidRequest }
                 args += ["--mount", "type=bind,src=" + source + ",dst=" + destination + (readOnly ? ",readonly" : "")]
             }
-            args += ["--mount", "type=volume,src=" + volume + ",dst=/work", "--entrypoint", "/bin/bash", imageID, "/input-profile/build-container.sh", "build", String(plan.sizeGiB)]
+            args += ["--mount", "type=volume,src=" + volume + ",dst=/work", "--entrypoint", "/bin/bash", imageID, "/input-profile/build-container.sh", "build", String(plan.sizeGiB), plan.resolvedChannel.rawValue]
             // A lost create acknowledgement can leave only a stopped container.
             // Start and cleanup use its immutable ID, never a reusable name.
             creationUnconfirmed = true

@@ -175,6 +175,45 @@ prompts, interrupted upgrades and post-update compatibility. Validation here use
 fake runtimes/runners and disposable local fixtures; no real guest, host install,
 credential, Apple request, app installation or VM launch is authorized.
 
+## Factory channels and Omarchy 4.5 — 8 November 2026
+
+**USER AUTHORIZATION:** implement issues #29 (Stable/Edge factory channel) and #27
+(factory library layout) end to end, with Stable tracking the latest Omarchy
+release without a manager release where possible, failing closed otherwise.
+
+**DESIGN DECISION — live channel, reviewed set, fail closed:** custom factory
+builds no longer compile Omarchy from one pinned commit. They install the
+selected channel's current signed pair (Stable `omarchy`/`omarchy-settings`,
+Edge `omarchy-dev`/`omarchy-settings-dev`) and refuse any release whose six
+patched install scripts or five owner programs differ from a reviewed entry.
+Stable is the default; plans written before channels decode as edge. A release
+that leaves those programs unchanged builds without a manager release; one that
+changes them needs a reviewed contract, guest integration package and kit.
+
+**DESIGN DECISION — lean contract set:** lean admission accepts a reviewed set of
+owner contracts instead of one digest: `lean-e4fffc6` (`1347cb16…`, image
+package 0.1.0-43.1) and `lean-a948d8a` (`fb73e12e…`, Omarchy 4.5.0 and edge from
+`9044b7e`, image package 0.1.0-48.1). Each factory names one by digest; its
+evidence must match that contract's programs and package. The compatibility
+policy is schema 2 with a `leanContracts` list. Receipt digests are computed
+per pairing over the schema-1 field set, so existing e4fffc6 receipts keep
+`c3cbd5eb…`. Unknown contracts and crossed pairings are refused.
+
+**VERIFIED — source review:** 4.5.0 changes `omarchy-provision-owner` (tip
+rendering without subshells), `progress-icon.sh` (VT colour and cell-size fixes),
+`setup-form.sh` (French, French (Switzerland) and German console keymaps move to
+latin1 maps; keyboard IDs unchanged) and `install/user/mise.sh` (offline
+reshim). The functions the guest adapter drives are byte-identical, so the
+existing lean fixture covers both adapters. Guest package 0.1.0-48/48.1 differs
+from 47/47.1 only in the adapter, the new contract file and its version.
+
+**PRIVATE COUPLING:** the six guarded install scripts are edited after
+installation, so `pacman -Qkk` reports them modified until Omarchy updates them.
+
+**TO PROVE:** a real Stable build, owner setup, managed SSH and hardware
+rendering on Omarchy 4.5 in a disposable Dev guest. No factory build, VM launch,
+signing or publication was performed for this change.
+
 ## Factory merge-readiness repairs — 6 November 2026
 
 **USER AUTHORIZATION:** review both factory PRs and fix remaining issues with

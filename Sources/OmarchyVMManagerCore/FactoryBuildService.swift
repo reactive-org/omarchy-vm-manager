@@ -18,6 +18,14 @@ public struct FactoryBuildJob: Codable, Sendable, Identifiable {
     public var failure: String?
     public var factory: FactoryIdentity?
     public var active: Bool { [.preparing, .downloading, .packages, .image, .verifying, .importing].contains(stage) }
+    /// The recorded failure as a fixed explanation for the job page.
+    public var failureExplanation: String {
+        if failure == Self.unreviewedOmarchyFailure {
+            return "This Omarchy release changes setup programs that Omarchy VM Manager hasn’t reviewed yet. Update Omarchy VM Manager, or try the other channel. No factory was added."
+        }
+        return failure.flatMap(FactoryBuildFailure.init(rawValue:))?.explanation ?? "No factory was added. The build output was preserved; inspect the terminal and build details."
+    }
+    public static let unreviewedOmarchyFailure = "omarchy-unreviewed"
     public var cleanupRequired: Bool { stage == .cleanupRequired }
     public init(id: UUID, plan: FactoryBuildPlan, stage: FactoryBuildStage, createdAt: Date = Date(), finishedAt: Date? = nil, failure: String? = nil, factory: FactoryIdentity? = nil) {
         self.id = id; self.plan = plan; self.stage = stage; self.createdAt = createdAt; self.finishedAt = finishedAt; self.failure = failure; self.factory = factory
@@ -26,7 +34,7 @@ public struct FactoryBuildJob: Codable, Sendable, Identifiable {
 public protocol FactoryBuildControlling: Sendable {
     var enabled: Bool { get }
     func jobs() async throws -> [FactoryBuildJob]
-    func review(name: String, sizeGiB: Int) async throws -> FactoryBuildReview
+    func review(name: String, sizeGiB: Int, channel: FactoryChannel) async throws -> FactoryBuildReview
     func start(reviewID: UUID) async throws -> FactoryBuildJob
     func cancel(_ id: UUID) async throws
     func recover(_ id: UUID) async throws
@@ -99,14 +107,14 @@ public actor FactoryBuildService: FactoryBuildControlling {
         records[record.job.id] = record
     }
     public func jobs() throws -> [FactoryBuildJob] { try load(); return records.values.map(\.job).sorted { $0.createdAt > $1.createdAt } }
-    public func review(name: String = "Lean Omarchy", sizeGiB: Int = 20) async throws -> FactoryBuildReview {
+    public func review(name: String = "Lean Omarchy", sizeGiB: Int = 20, channel: FactoryChannel = .stable) async throws -> FactoryBuildReview {
         try load()
         guard task == nil, !recovering, !admissionSuspended else { throw FactoryBuildFailure.busy }
         try acquireLock()
         do { try load(refresh: true) } catch { releaseLock(); throw error }
         releaseLock()
         guard records.count < 128, !records.values.contains(where: { $0.job.cleanupRequired }) else { throw FactoryBuildFailure.busy }
-        let plan = try FactoryBuildPlan(name: name, sizeGiB: sizeGiB)
+        let plan = try FactoryBuildPlan(name: name, sizeGiB: sizeGiB, channel: channel)
         let generation = UUID(); reviewGeneration = generation; pending = nil
         let probe = Task { [environment, root = jobsRoot] in
             let value = try await environment.inspect(root: root)
@@ -161,6 +169,19 @@ public actor FactoryBuildService: FactoryBuildControlling {
         guard var record = records[id], record.job.active else { throw FactoryBuildFailure.cancelled }
         record.job.stage = stage; try write(record)
     }
+    /// The dev-vm builder's fixed fail-closed sentence for an Omarchy release
+    /// outside the reviewed set. Only this exact marker is recognised; other
+    /// output stays confined to the live terminal.
+    static let unreviewedOmarchyMarker = "changes setup programs that Omarchy VM Manager hasn't reviewed yet"
+    static func reportsUnreviewedOmarchy(_ output: FactoryBuildOutput) -> Bool {
+        var cursor: UInt64 = 0, text = Data()
+        for _ in 0..<5 {
+            let page = output.page(after: cursor)
+            guard !page.bytes.isEmpty else { break }
+            text.append(page.bytes); cursor = page.sequence
+        }
+        return text.range(of: Data(unreviewedOmarchyMarker.utf8)) != nil
+    }
     private func run(_ id: UUID, output: FactoryBuildOutput) async {
         guard var record = records[id] else { return }
         defer { releaseLock(); task = nil }
@@ -177,6 +198,9 @@ public actor FactoryBuildService: FactoryBuildControlling {
             let cancelled = Task.isCancelled || error is CancellationError || (error as? FactoryBuildFailure) == .cancelled
             record.job.stage = (error as? FactoryBuildFailure) == .cleanupRequired ? .cleanupRequired : cancelled ? .cancelled : .failed
             record.job.failure = (error as? FactoryBuildFailure)?.rawValue ?? (cancelled ? "cancelled" : "build-failed")
+            if (error as? FactoryBuildFailure) == .commandFailed, Self.reportsUnreviewedOmarchy(output) {
+                record.job.failure = FactoryBuildJob.unreviewedOmarchyFailure
+            }
         }
         record.job.finishedAt = Date()
         do { try write(record) } catch { record.job.stage = .cleanupRequired; record.job.failure = "journal-unavailable"; records[id] = record }

@@ -32,6 +32,22 @@ struct FactoryLibraryCacheTests {
         #expect(cache.selectionNotice == nil)
     }
 
+    @Test("an import keeps the catalog's card order so cards do not move under the pointer")
+    func importKeepsCatalogOrder() {
+        func custom(_ digit: String) -> FactoryIdentity {
+            FactoryIdentity(kind: .custom, name: "Fixture " + digit, manifestSHA256: String(repeating: digit, count: 64), diskSHA256: String(repeating: "f", count: 64))
+        }
+        var cache = FactoryLibraryCache()
+        let request = cache.beginRefresh()
+        _ = cache.apply(FactoryCatalogListing(factories: [.official, custom("1"), custom("3")], issues: []), for: request)
+        cache.imported(custom("2"))
+        #expect(cache.factories.map(\.selector) == ["official", custom("1").selector, custom("2").selector, custom("3").selector])
+        cache.imported(custom("1"))
+        #expect(cache.factories.map(\.selector) == ["official", custom("1").selector, custom("2").selector, custom("3").selector])
+        cache.imported(custom("4"))
+        #expect(cache.factories.last?.selector == custom("4").selector)
+    }
+
     @Test("a refresh started before import cannot remove the new picker choice or publish an old error")
     func importWins() {
         var cache = FactoryLibraryCache()

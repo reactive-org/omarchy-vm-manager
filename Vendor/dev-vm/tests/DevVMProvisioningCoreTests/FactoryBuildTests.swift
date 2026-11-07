@@ -143,7 +143,7 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
         } else {
             let recipe = try FactoryRecipe(bundle: bundle)
             try recipe.verify()
-            #expect(recipe.downloads.count == 3)
+            #expect(recipe.downloads.count == 1)
         }
     }
     @Test func bundledRecipeAndPlanAreOfflineAndPinned() throws {
@@ -151,7 +151,14 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
         try recipe.verify()
         #expect(plan.sizeGiB == 20 && plan.minimumArtifactBytes == 24 * 1_073_741_824)
         #expect(plan.privilegedContainer && !plan.guestBootTested)
-        #expect(recipe.downloads.count == 3)
+        // Omarchy comes from the selected channel at build time; only Node is pinned.
+        #expect(recipe.downloads.map(\.name) == [recipe.downloads[0].name] && recipe.downloads[0].name.hasPrefix("node-"))
+        #expect(plan.channel == .stable && plan.resolvedChannel == .stable)
+        #expect(try FactoryBuildPlan(channel: .edge).resolvedChannel == .edge)
+        // Records written before channels existed carry no channel and built edge.
+        let legacy = try JSONDecoder().decode(FactoryBuildPlan.self, from: Data(#"{"name":"Lean Omarchy","sizeGiB":20,"recipeSHA256":"x"}"#.utf8))
+        #expect(legacy.channel == nil && legacy.resolvedChannel == .edge)
+        #expect(!String(decoding: try JSONEncoder().encode(legacy), as: UTF8.self).contains("channel"))
         for size in [0,19,129] { #expect(throws: FactoryBuildFailure.self) { _ = try FactoryBuildPlan(sizeGiB: size) } }
         #expect(throws: FactoryBuildFailure.self) { _ = try FactoryBuildPlan(name: "bad\nname") }
     }
@@ -177,14 +184,14 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
         try FileManager.default.createDirectory(at: input.appendingPathComponent("profile"), withIntermediateDirectories: true)
         let archive = root.appendingPathComponent("template.tgz")
         _ = try await LocalFactoryBuildProcess().run(.init(executable: URL(fileURLWithPath: "/usr/bin/tar"), arguments: ["-czf", archive.path, "-C", input.path, "upstream", "profile"], directory: root, environment: ["PATH": "/usr/bin:/bin"]), output: { _ in })
-        let recipeData = try JSONSerialization.data(withJSONObject: ["format": 1, "templateSHA256": try factoryFileHash(archive), "files": ["upstream/test": ["sha256": digest(Data("template".utf8)), "mode": 420]], "downloads": (1...3).map { ["name": "input-\($0)", "url": "https://nodejs.org/fixture", "sha256": digest(Data("fixture".utf8))] }, "provenance": ["try_commit": String(repeating: "a", count: 40)]])
+        let recipeData = try JSONSerialization.data(withJSONObject: ["format": 1, "templateSHA256": try factoryFileHash(archive), "files": ["upstream/test": ["sha256": digest(Data("template".utf8)), "mode": 420]], "downloads": [["name": "input-1", "url": "https://nodejs.org/fixture", "sha256": digest(Data("fixture".utf8))]], "provenance": ["try_commit": String(repeating: "a", count: 40)]])
         let recipe = try FactoryRecipe(archive: archive, data: recipeData, expected: digest(recipeData)), id = UUID()
         try factoryDirectory(root.appendingPathComponent(id.uuidString), create: true)
         let fake = FactoryFakeProcess(root: root, jobID: id); await fake.configure(failImage: kind == "failed" || kind == "foreign", foreign: kind == "foreign", lostCreate: kind == "lost-create", renamed: kind == "renamed", tamperConfiguration: kind == "config-tamper")
         let docker = try FactoryDockerClient(executable: URL(fileURLWithPath: "/bin/echo"), home: root, runner: fake), admission = try await docker.inspect()
         let engine = FactoryBuildEngine(docker: docker, recipe: recipe, downloader: FactoryFakeDownload()), output = FactoryBuildOutput()
         do {
-            let result = try await engine.build(.init(fixtureRecipe: digest(recipeData)), jobID: id, root: root, admission: admission, output: output, stage: { _ in })
+            let result = try await engine.build(.init(fixtureRecipe: digest(recipeData), channel: kind == "renamed" ? .edge : .stable), jobID: id, root: root, admission: admission, output: output, stage: { _ in })
             #expect(kind == "success" || kind == "renamed")
             #expect(FileManager.default.fileExists(atPath: result.appendingPathComponent("image-build.json").path))
         } catch { #expect(kind != "success" && kind != "renamed"); if kind == "foreign" || kind == "lost-create" { #expect(error as? FactoryBuildFailure == .cleanupRequired) }; if kind == "config-tamper" { #expect(error as? FactoryBuildFailure == .inputsChanged) } }
@@ -193,7 +200,11 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
         let imageBuilds = commands.filter { $0.contains("build") && !$0.contains("create") }
         #expect(imageBuilds.count == 1 && imageBuilds.allSatisfy { $0.contains("--config") })
         if kind == "config-tamper" { #expect(!commands.contains { $0.contains("create") }) }
-        else { #expect(commands.contains { $0.contains("--privileged") && $0.contains("linux/arm64") && $0.contains("--pull=never") }) }
+        else {
+            #expect(commands.contains { $0.contains("--privileged") && $0.contains("linux/arm64") && $0.contains("--pull=never") })
+            let channel = kind == "renamed" ? "edge" : "stable"
+            #expect(commands.contains { $0.suffix(3) == ["build", "20", channel] && $0.contains("/input-profile/build-container.sh") })
+        }
         #expect(!commands.contains { $0.contains("prune") })
         if kind == "lost-create" {
             #expect(!commands.contains { $0.contains("start") })

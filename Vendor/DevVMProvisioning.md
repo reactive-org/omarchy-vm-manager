@@ -1,6 +1,11 @@
 # Pinned developer provisioning source
 
-**Current pin (7 November 2026, issue #18):** `dev-vm/` is the unpatched export of
+**Current pin (8 November 2026, issues #27/#29):** `dev-vm/` is the unpatched
+export of reactive-org/dev-vm#16 (`codex/factory-channels`), which builds factories
+from the selected Omarchy channel and fails closed on unreviewed releases.
+**To re-pin after that PR merges:** export the merged commit the same way.
+
+**Previous pin (7 November 2026, issue #18):** `dev-vm/` is the unpatched export of
 the dev-vm commit named by `revision` in `Config/DevVMProvisioning.lock.json`
 (107 files: the paths listed below). `integrationPatches` is empty and `baseFiles`
 equals `files`; the four former patches are part of that commit. The export adds

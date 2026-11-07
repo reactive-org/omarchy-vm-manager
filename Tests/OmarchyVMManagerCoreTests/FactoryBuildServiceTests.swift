@@ -229,6 +229,53 @@ private actor RecordingFactoryQuit { var done = false; func complete() { done = 
             #expect(throws: Error.self) { _ = try FactoryBuildCLI.parse(args) }
         }
     }
+    @Test func channelIsAPlanOnlyChoiceThatDefaultsToStable() throws {
+        let (plain, _) = try #require(try FactoryBuildCLI.parse(["factory-build", "plan"]))
+        #expect(plain.channel == nil)
+        let (edge, _) = try #require(try FactoryBuildCLI.parse(["factory-build", "plan", "--channel", "edge", "--name", "Edge foundation"]))
+        #expect(edge.channel == .edge && edge.name == "Edge foundation")
+        for args in [["factory-build", "plan", "--channel", "rc"], ["factory-build", "plan", "--channel", "stable", "--channel", "edge"],
+                     ["factory-build", "plan", "--channel"], ["factory-build", "status", "--channel", "edge"]] {
+            #expect(throws: Error.self) { _ = try FactoryBuildCLI.parse(args) }
+        }
+        #expect(throws: Error.self) { try FactoryBuildRequest(operation: .status, channel: .edge).validate() }
+        let request = GuestCommandRequest(command: .factoryBuild)
+        var data = try #require(JSONSerialization.jsonObject(with: helperJSON(request)) as? [String: Any])
+        data["factoryBuild"] = ["operation": "plan", "channel": "edge"]
+        let decoded = try GuestCommandRequest.decodeStrict(JSONSerialization.data(withJSONObject: data))
+        #expect(decoded.factoryBuild?.channel == .edge)
+        data["factoryBuild"] = ["operation": "plan", "channel": "nightly"]
+        #expect(throws: Error.self) { _ = try GuestCommandRequest.decodeStrict(JSONSerialization.data(withJSONObject: data)) }
+    }
+    @Test func reviewRecordsTheChosenChannelAndOlderJournalRecordsStillLoad() async throws {
+        let f = try FactoryServiceFixture()
+        #expect(try await f.service.review().plan.channel == .stable)
+        let review = try await f.service.review(name: "Edge foundation", sizeGiB: 20, channel: .edge)
+        #expect(review.plan.channel == .edge)
+        let job = try await f.service.start(reviewID: review.id)
+        #expect(await f.service.cancelAndWait())
+        let records = f.root.appendingPathComponent("Records")
+        let path = records.appendingPathComponent(job.id.uuidString + ".json")
+        var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any])
+        var jobObject = try #require(object["job"] as? [String: Any]), plan = try #require(jobObject["plan"] as? [String: Any])
+        #expect(plan["channel"] as? String == "edge")
+        // A record written before channels existed has no channel and built edge.
+        plan.removeValue(forKey: "channel"); jobObject["plan"] = plan; object["job"] = jobObject
+        let legacy = FactoryBuildService(fixtureRoot: f.root, environment: f.environment)
+        try PrivateFiles.write(JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]), name: path.lastPathComponent, in: records)
+        let loaded = try #require(try await legacy.jobs().first { $0.id == job.id })
+        #expect(loaded.plan.channel == nil && loaded.plan.resolvedChannel == .edge)
+    }
+    @Test func onlyTheBuildersFixedSentenceMarksAnUnreviewedOmarchyRelease() {
+        let marked = FactoryBuildOutput()
+        marked.append(Data(repeating: 46, count: 300_000))
+        marked.append(Data("Image compatibility failed: This Omarchy release changes setup programs that Omarchy VM Manager hasn't reviewed yet.\n".utf8))
+        #expect(FactoryBuildService.reportsUnreviewedOmarchy(marked))
+        let other = FactoryBuildOutput(); other.append(Data("Dependency resolution failed\n".utf8))
+        #expect(!FactoryBuildService.reportsUnreviewedOmarchy(other))
+        let job = FactoryBuildJob(id: UUID(), plan: try! FactoryBuildPlan(), stage: .failed, failure: FactoryBuildJob.unreviewedOmarchyFailure)
+        #expect(job.failureExplanation.contains("hasn’t reviewed yet"))
+    }
     @Test func compiledStableGateCannotBeChangedByAnEnvironmentOrWireField() async throws {
         let f = try FactoryServiceFixture()
         let service = FactoryBuildService(applicationSupport: f.root, environment: f.environment)

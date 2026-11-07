@@ -6,7 +6,13 @@ already entered. After independent verification/import, **Use for new VM** selec
 the resulting factory. Building never creates a VM, changes an existing disk or
 launches a guest. Official and previously imported factories remain available.
 
-Choose a name and, under **Advanced**, a capacity from 20–128 GiB. The reviewed
+Choose a name, an **Omarchy channel** and, under **Advanced**, a capacity from
+20–128 GiB. **Stable** (the default) installs the latest Omarchy release;
+**Edge** installs Omarchy's development builds. Either way the build uses the
+channel's current signed packages, so a new Omarchy release needs no new app.
+If a release changes setup programs this app hasn't reviewed, the build stops
+before creating a disk and says so; update Omarchy VM Manager or try the other
+channel. The reviewed
 recipe supplies the desktop, Mac integration, Git, Python and build tools inside
 the image. Additional profiles, apps, themes and layouts are selected per VM.
 Arbitrary build scripts, package editors and source repositories are outside this
@@ -86,7 +92,7 @@ Use the CLI inside the matching Dev app bundle while that app is open. These
 commands do not open an installed app automatically:
 
 ```sh
-omarchy-vm factory-build plan --name 'Lean development' --size-gib 20
+omarchy-vm factory-build plan --name 'Lean development' --size-gib 20 --channel stable
 omarchy-vm factory-build start REVIEW_UUID
 omarchy-vm factory-build status JOB_UUID
 omarchy-vm factory-build logs JOB_UUID --follow
@@ -94,7 +100,8 @@ omarchy-vm factory-build cancel JOB_UUID
 omarchy-vm factory-build cleanup JOB_UUID
 ```
 
-`plan` checks readiness and returns a preview UUID. `start` is the deliberate build
+`plan` checks readiness and returns a preview UUID. `--channel` is `stable`
+(default) or `edge`. `start` is the deliberate build
 action. Closing `logs --follow` leaves the job running. Commands cannot select a
 host endpoint, private root, custom recipe or privileged command. Stable and Dev
 use their existing separate same-user command sockets and storage.
