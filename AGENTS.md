@@ -7,7 +7,7 @@ Read intent.md before changing architecture or policy. Preserve its VERIFIED, DE
 - Use `next` as the default development and integration branch. Fetch `origin/next` before starting new work, and create `codex/<task>` work branches from its latest commit unless the user explicitly specifies another base.
 - Target ordinary feature, fix, test and documentation PRs at `next`. Set the base explicitly when creating a PR, for example `gh pr create --base next`.
 - Reserve `main` for stable releases. Target or merge into `main` only when the user explicitly requests a stable release or promotion; normally promote reviewed changes with a `next` → `main` PR.
-- Use work branches and PRs rather than direct pushes to `next` or `main` by default. Successful pushes to `next` publish Dev prereleases; successful pushes to `main` publish stable patch releases. Follow explicit user instructions for exceptions and preserve existing work when continuing a branch or PR.
+- Use work branches and PRs rather than direct pushes to `next` or `main` by default. Successful pushes to `next` publish Dev prereleases; successful pushes to `main` publish stable patch releases. Docs-only changes (`docs/**`, `.claude/**`, `README.md`, `AGENTS.md`, `intent.md`) skip CI and publish nothing. Follow explicit user instructions for exceptions and preserve existing work when continuing a branch or PR.
 
 ## Implementation and VM safety
 

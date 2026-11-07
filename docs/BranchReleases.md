@@ -2,6 +2,8 @@
 
 **DESIGN DECISION — 5 November 2026:** a push to `main` publishes the stable app; a push to `next` publishes the isolated Dev app. Both wait for the macOS build/tests/upstream contracts and isolated SSH job on that exact commit. Pull requests and other branches run checks without release credentials or publication permission. Manual tag pushes no longer publish apps.
 
+**DESIGN DECISION — 8 November 2026:** the workflow runs on push only for `main` and `next`; work branches are checked through their pull requests. Pushes and pull requests that change only `docs/**`, `.claude/**`, `README.md`, `AGENTS.md` or `intent.md` skip the workflow entirely, so a docs-only push to `main` or `next` publishes no release; the next app change publishes as usual. `LICENSE` and `THIRD_PARTY_NOTICES.md` still trigger the full build, because they are bundled into the app.
+
 | Branch | App | Tag | GitHub release |
 | --- | --- | --- | --- |
 | `main` | Omarchy VM Manager, `dev.omarchy.vm-manager` | `v0.11.1`, `v0.11.2`, … | Stable; highest stable version becomes Latest |
