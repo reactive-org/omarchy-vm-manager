@@ -20,6 +20,15 @@ marked released without verification (`cleanupRelease: unverified`) and saved
 before the in-memory holds clear; other VMs' holds are untouched. History keeps
 saying the hold was released unverified; nothing is erased or shown as cleaned.
 
+**DESIGN DECISION — user direction, 7 November 2026:** workflow actions in the
+app are one click. Restart, check and recover each prepare a review bound to the
+guest's current state and submit exactly that review; the click is the owner's
+consent, replacing the separate review, "I approve this exact … action" checkbox
+and second button. Release alone adds a confirmation dialog that says cleanup
+wasn't verified. A failed preparation submits nothing, and a failed submission
+is never retried; the next click starts a fresh review. The CLI keeps its
+two-step prepare/submit with explicit `--ack`.
+
 **PRIVATE COUPLING:** the job journal writes schema 8 when a record carries
 `timedOutOperation` or `cleanupRelease`, and the workflow journal writes schema 2
 only when a row carries `cleanupRelease`; journals with neither stay readable by

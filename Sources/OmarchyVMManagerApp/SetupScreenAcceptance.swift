@@ -666,8 +666,8 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let heldRow = try enabled.row(UUID(), stage: "failed", cleanupRequired: true)
             try check(DeveloperSetupView.visibleActions(heldRow, guestRunning: false) == [.release]
                       && DeveloperSetupView.visibleActions(heldRow, guestRunning: true) == [.recover], "cleanup-release-offered-only-when-stopped")
-            let acknowledgement = DeveloperSetupView.acknowledgement(.release)
-            try check(acknowledgement.contains("wasn’t verified") && acknowledgement.contains("passwordless sudo"), "cleanup-release-acknowledgement-says-unverified")
+            let confirmation = DeveloperSetupView.releaseConfirmation
+            try check(confirmation.contains("wasn’t verified") && confirmation.contains("passwordless sudo"), "cleanup-release-confirmation-says-unverified")
             let stoppedHeld = SetupCardState.make(VMSnapshot(profile: firstRun, state: .stopped), workflows: [heldRow], jobs: [:], autoSetup: nil)
             try check(stoppedHeld.kind == .cleanup && stoppedHeld.note.contains("can’t be verified"), "cleanup-stopped-card-explains-release")
             let releasedRow = try JSONDecoder().decode(ProvisioningWorkflowSnapshot.self, from: JSONSerialization.data(withJSONObject: [

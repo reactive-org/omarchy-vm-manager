@@ -44,12 +44,9 @@ struct DeveloperSetupView: View {
     @State private var showingTask = false
     @State private var inspectingTask = false
     @State private var previewLookup = ""
-    @State private var workflowActionReview: ProvisioningWorkflowActionReview?
-    @State private var actionRequestID: UUID?
-    @State private var actionRequested: ProvisioningWorkflowAction?
     @State private var actionBusy = false
-    @State private var actionAcknowledged = false
-    @State private var actionAttempted = false
+    /// The workflow whose cleanup-hold release is awaiting confirmation.
+    @State private var confirmRelease: ProvisioningWorkflowSnapshot?
     @State private var planning = false
     @State private var planRevision = UUID()
     @State private var failure: String?
@@ -179,9 +176,11 @@ struct DeveloperSetupView: View {
                 Text("No setup job for this guest. Live output will appear here when an admitted job is available.").foregroundStyle(.secondary).font(Theme.sans(13))
             }
         }
-        .onChange(of: workflow?.id) { _, _ in
-            workflowActionReview = nil; actionRequestID = nil; actionRequested = nil; actionAcknowledged = false; actionAttempted = false
-        }
+        .onChange(of: workflow?.id) { _, _ in confirmRelease = nil }
+        .alert("Release cleanup hold?", isPresented: releasePresentation, presenting: confirmRelease) { held in
+            Button("Release cleanup hold", role: .destructive) { Task { await runWorkflowAction(held, action: .release) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in Text(Self.releaseConfirmation) }
         .onChange(of: source) { _, _ in profiles = source == "bundled" ? ["developer"] : []; invalidatePreview() }
         .onChange(of: snapshot.profile.factory) { _, _ in trimOptionalApps = false; invalidatePreview() }
         .onChange(of: appearance) { _, _ in invalidatePreview() }
@@ -249,6 +248,12 @@ struct DeveloperSetupView: View {
         .onDisappear { Task { await screen.detach() } }
     }
     private func cancelConfirmed() { if let workflow, workflow.canCancel { Task { await model.cancelSetup(workflow.id) } } }
+    private var releasePresentation: Binding<Bool> {
+        #if DEBUG
+        if acceptance != nil { return .constant(false) }
+        #endif
+        return Binding(get: { confirmRelease != nil }, set: { if !$0 { confirmRelease = nil } })
+    }
     private var cancelPresentation: Binding<Bool> {
         #if DEBUG
         if acceptance != nil { return .constant(false) }
@@ -273,65 +278,47 @@ struct DeveloperSetupView: View {
             }
         }
     }
-    /// What the owner confirms. Release says plainly that nothing was verified.
-    static func acknowledgement(_ action: ProvisioningWorkflowAction) -> String {
-        action == .release
-            ? "I understand cleanup wasn’t verified. This guest may still allow passwordless sudo or other temporary admin access, and I’ll remove it inside the guest."
-            : "I approve this exact " + action.title.lowercased() + " action for this guest and session."
-    }
+    /// Release is the one action that verifies nothing, so it alone is confirmed,
+    /// and the confirmation says so plainly.
+    static let releaseConfirmation = "Cleanup wasn’t verified. This guest may still allow passwordless sudo or other temporary admin access, and you’ll need to remove it inside the guest."
     @ViewBuilder private func workflowActions(_ workflow: ProvisioningWorkflowSnapshot) -> some View {
         let actions = Self.visibleActions(workflow, guestRunning: snapshot.sessionID != nil)
-        if !actions.isEmpty || workflowActionReview?.workflowID == workflow.id {
+        if !actions.isEmpty {
             GroupedPanel {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Reviewed workflow actions").font(Theme.sans(14, weight: .semibold))
+                    Text("Next step").font(Theme.sans(14, weight: .semibold))
                     ForEach(actions, id: \.self) { action in
                         HStack {
-                            Text(action.explanation).font(Theme.sans(13)).foregroundStyle(.secondary)
+                            Text(action.explanation).font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             Spacer()
-                            Button("Review " + action.title.lowercased() + "…") { Task { await prepareWorkflowAction(workflow, action: action) } }
-                                .disabled(actingService?.executionEnabled != true || actionBusy)
+                            Button(action.title + (action == .release ? "…" : "")) {
+                                if action == .release { confirmRelease = workflow } else { Task { await runWorkflowAction(workflow, action: action) } }
+                            }
+                            .buttonStyle(.primaryAction)
+                            .disabled(actingService?.executionEnabled != true || actionBusy)
                         }
                     }
-                    if let review = workflowActionReview, review.workflowID == workflow.id {
-                        Text(review.action.title).bold()
-                        Text(review.action.explanation).font(Theme.sans(13))
-                        DisclosureGroup("Details") {
-                            Text("Session: " + review.sessionID.uuidString).font(.caption).textSelection(.enabled)
-                            Text("Input fingerprint: " + review.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                            Text("Review: " + review.reviewIdentity).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                        }
-                        Toggle(Self.acknowledgement(review.action), isOn: $actionAcknowledged)
-                            .disabled(actionBusy || actionAttempted)
-                        Button(review.action.title) { Task { await performWorkflowAction(workflow, review: review) } }
-                            .disabled(actingService?.executionEnabled != true || !actionAcknowledged || actionBusy || actionAttempted)
-                    }
-                    if actionAttempted { Text("Action submission was attempted. Inspect the workflow state. A new attempt needs a fresh explicit review.").font(.caption).foregroundStyle(.secondary) }
+                    if actionBusy { ProgressView().controlSize(.small) }
                     if actingService?.executionEnabled != true { Text("Workflow execution is unavailable in this build or service.").font(.caption).foregroundStyle(.secondary) }
                 }.padding(20)
             }
         }
     }
-    @MainActor private func prepareWorkflowAction(_ workflow: ProvisioningWorkflowSnapshot, action: ProvisioningWorkflowAction) async {
+    /// One click: prepare a review bound to this guest's current state, then submit
+    /// exactly that review. The click is the owner's consent (user direction,
+    /// 7 November 2026). A failure submits nothing further; the next click starts a
+    /// fresh review, never a retry of the old one.
+    @MainActor private func runWorkflowAction(_ workflow: ProvisioningWorkflowSnapshot, action: ProvisioningWorkflowAction) async {
         guard let service = actingService, !actionBusy else { return }
-        if actionRequested != action || actionAttempted || workflowActionReview != nil { actionRequestID = nil }
-        let id = actionRequestID ?? UUID(); actionRequestID = id; actionRequested = action
-        actionBusy = true; actionAcknowledged = false; workflowActionReview = nil; failure = nil
+        actionBusy = true; failure = nil
         defer { actionBusy = false }
+        let review: ProvisioningWorkflowActionReview
+        do { review = try await service.prepareAction(workflow.id, action: action, reviewID: UUID()) }
+        catch { failure = action.title + " isn’t possible right now. Check the guest’s current state; nothing was changed."; return }
+        guard self.workflow?.id == workflow.id, review.workflowID == workflow.id, review.action == action else { return }
         do {
-            let review = try await service.prepareAction(workflow.id, action: action, reviewID: id)
-            guard self.workflow?.id == workflow.id else { return }
-            workflowActionReview = review; actionAttempted = false
-        } catch { actionRequestID = nil; failure = "This workflow action could not be reviewed. Verify its current state, exact guest session and original helper ownership. No action was automatically submitted." }
-    }
-    @MainActor private func performWorkflowAction(_ workflow: ProvisioningWorkflowSnapshot, review: ProvisioningWorkflowActionReview) async {
-        guard let service = actingService, !actionBusy, !actionAttempted, actionAcknowledged else { return }
-        actionAttempted = true; actionBusy = true; failure = nil
-        defer { actionBusy = false }
-        do {
-            _ = try await service.performAction(workflow.id, consent: .init(reviewID: review.id, action: review.action, reviewIdentity: review.reviewIdentity, acknowledged: true))
-            workflowActionReview = nil; actionAcknowledged = false
-        } catch { failure = "The action was not confirmed. Inspect the workflow state and cleanup requirement before preparing a fresh review. No automatic retry was made." }
+            _ = try await service.performAction(workflow.id, consent: .init(reviewID: review.id, action: action, reviewIdentity: review.reviewIdentity, acknowledged: true))
+        } catch { failure = action.title + " didn’t complete. Check the setup state before trying again; it wasn’t retried automatically." }
     }
     private func currentPhase(_ workflow: ProvisioningWorkflowSnapshot) -> ProvisioningSetupPhase? {
         if workflow.stage == .waitingForSSH { return .connect }

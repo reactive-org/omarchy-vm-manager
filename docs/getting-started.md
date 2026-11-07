@@ -89,10 +89,15 @@ sidebar badge. If a step runs out of time, the failure names it, for example
 If a run stopped before its temporary admin access was confirmed removed and the
 guest has since stopped, cleanup can no longer be verified and the guest is held:
 it can't be launched, configured or deleted, and other guests can't start setup.
-Click **Review cleanup…** on its Home card, then **Review release cleanup hold…**.
-Confirming says you understand cleanup wasn't verified; the guest may still allow
-passwordless sudo, which you then remove inside the guest. Setup history keeps
-showing that the hold was released without verification.
+Open its setup sheet (**Open setup…** on the first-run card, or **Review cleanup…**
+on the setup card) and click **Release cleanup hold…**, then confirm. The
+confirmation says cleanup wasn't verified; the guest may still allow passwordless
+sudo, which you then remove inside the guest. Setup history keeps showing that the
+hold was released without verification.
+
+Other setup steps that wait for you (**Restart guest**, **Check after restart** and
+**Recover cleanup**) take a single click: the manager prepares the step for that
+guest's current state and runs exactly that.
 
 For terminal access, open the guest's **SSH** tab. Once its connection is verified, choose **Copy SSH Command** and paste the command into Terminal on your Mac. See [SSH and networking](managing-guests.md#connect-over-ssh).
 

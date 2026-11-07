@@ -46,7 +46,7 @@ def main():
                  'stale-click-opens-home-only', 'blocked-guest-notifies-bounces-and-marks-dock', 'no-repeat-notifications',
                  'handled-clears-notification-and-marker', 'saved-review-no-notification-or-dock', 'on-screen-guest-not-notified'):
         assert f'attention-{case}' in report['checks']
-    for case in ('release-offered-only-when-stopped', 'release-acknowledgement-says-unverified',
+    for case in ('release-offered-only-when-stopped', 'release-confirmation-says-unverified',
                  'stopped-card-explains-release', 'released-history-says-unverified'):
         assert f'cleanup-{case}' in report['checks']
     for case in ('setup-tab-shows-saved-log', 'setup-tab-saved-log-does-not-reattach-ended-job'):
