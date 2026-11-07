@@ -11,19 +11,19 @@ struct ProvisioningProfileSelectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Profiles").font(.headline)
+                Text("Profiles").font(Theme.sans(14, weight: .semibold))
                 Spacer()
-                Text(selection.isEmpty ? (localSource ? "Optional additions" : "Select one or more") : "\(selection.count) selected").font(.caption).foregroundStyle(.secondary)
+                Text(selection.isEmpty ? (localSource ? "Optional additions" : "Select one or more") : "\(selection.count) selected").font(Theme.note).foregroundStyle(.secondary)
             }
             Text(localSource ? "Profiles in vm.yml stay included. Select cards to add bundled profiles." : "Combine profiles to build your workstation. Shared features are included once.")
-                .font(.caption).foregroundStyle(.secondary)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10, alignment: .top), GridItem(.flexible(), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
+                .font(Theme.note).foregroundStyle(.secondary)
+            VStack(spacing: 2) {
                 ForEach(summaries) { profile in
-                    card(profile)
+                    row(profile)
                 }
             }
-            if unavailable { Text("Profile descriptions are unavailable. Check the bundled setup resources.").font(.caption).foregroundStyle(.orange) }
-            if !localSource, selection.isEmpty { Text("Select at least one profile to review setup.").font(.caption).foregroundStyle(.secondary) }
+            if unavailable { Text("Profile descriptions are unavailable. Check the bundled setup resources.").font(Theme.note).foregroundStyle(.orange) }
+            if !localSource, selection.isEmpty { Text("Select at least one profile to review setup.").font(Theme.note).foregroundStyle(.secondary) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task {
@@ -31,43 +31,36 @@ struct ProvisioningProfileSelectionView: View {
             catch { summaries = []; unavailable = true }
         }
     }
-    private func card(_ profile: ProvisioningProfileSummary) -> some View {
+    private func row(_ profile: ProvisioningProfileSummary) -> some View {
         let selected = selection.contains(profile.id)
-        let style = appearance(profile.id)
+        let name = title(profile.id)
         return Button {
             if selected { selection.remove(profile.id) } else { selection.insert(profile.id) }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 9).fill(style.color.opacity(0.16)).frame(width: 38, height: 38)
-                        if profile.id == "python" { Text("Py").font(.system(size: 19, weight: .bold, design: .rounded)).foregroundStyle(style.color) }
-                        else { Image(systemName: style.symbol).font(.system(size: 20, weight: .medium)).foregroundStyle(style.color) }
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 2).fill(selected ? Theme.green : .clear)
+                    RoundedRectangle(cornerRadius: 2).strokeBorder(selected ? Theme.green : Theme.label, lineWidth: 1.5)
+                    if selected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.onGreen) }
+                }.frame(width: 15, height: 15).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(name).font(Theme.sans(13, weight: .medium))
+                        if profile.includesDeveloper { Text("Includes Developer").font(Theme.note).foregroundStyle(.secondary) }
                     }
-                    Text(style.title).font(.headline).fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.5))
+                    let details = profile.additionalFeatures.map(featureTitle) + profile.tools.map(toolTitle) + (profile.databaseClients.isEmpty ? [] : [profile.databaseClients.map(toolTitle).joined(separator: " · ") + " clients"])
+                    Text(details.joined(separator: " · ")).font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                if profile.includesDeveloper { Text("Includes Developer").font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-                Text(profile.additionalFeatures.map(featureTitle).joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if !profile.tools.isEmpty {
-                    Text(profile.tools.map(toolTitle).joined(separator: " · ")).font(.caption.weight(.semibold))
-                }
-                if !profile.databaseClients.isEmpty {
-                    Text(profile.databaseClients.map(toolTitle).joined(separator: " · ") + " clients")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                Spacer(minLength: 0)
             }
-            .padding(12).frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.6), lineWidth: selected ? 2 : 1))
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(selected ? Theme.green.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(selected ? Theme.green : .clear))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.controlRadius))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("setup.profile." + profile.id)
-        .accessibilityLabel(style.title + ". " + profile.includedFeatures.map(featureTitle).joined(separator: ", "))
+        .accessibilityLabel(name + ". " + profile.includedFeatures.map(featureTitle).joined(separator: ", "))
         .accessibilityValue(selected ? "Selected" : "Not selected")
         .help("Select to include this profile. Shared features are deduplicated; conflicting settings must be resolved before applying.")
     }
@@ -83,12 +76,12 @@ struct ProvisioningProfileSelectionView: View {
         default: name
         }
     }
-    private func appearance(_ id: String) -> (title: String, symbol: String, color: Color) {
+    private func title(_ id: String) -> String {
         switch id {
-        case "developer": ("Developer", "chevron.left.forwardslash.chevron.right", .blue)
-        case "web": ("Web", "globe", .teal)
-        case "python": ("Python", "curlybraces", .orange)
-        default: ("Project managed", "shippingbox.fill", .indigo)
+        case "developer": "Developer"
+        case "web": "Web"
+        case "python": "Python"
+        default: "Project managed"
         }
     }
 }
@@ -97,7 +90,9 @@ struct ProvisioningProfileSelectionView: View {
 /// without choosing a new source. Technical proposal data remains under Details.
 struct ProvisioningReviewedProfilesView: View {
     let proposal: Data
-    private var names: [String] {
+    private var names: [String] { Self.names(proposal) }
+    /// Display names of the profiles a frozen proposal resolves.
+    static func names(_ proposal: Data) -> [String] {
         guard let document = try? JSONSerialization.jsonObject(with: proposal) as? [String: Any],
               let features = document["features"] as? [String: Any], let profiles = features["profiles"] as? [String] else { return [] }
         return profiles.map { raw in
@@ -114,7 +109,7 @@ struct ProvisioningReviewedProfilesView: View {
     var body: some View {
         if !names.isEmpty {
             Label("In this preview: " + names.joined(separator: " · "), systemImage: "checkmark.seal")
-                .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                .font(Theme.sans(13)).foregroundStyle(.secondary).textSelection(.enabled)
         }
     }
 }

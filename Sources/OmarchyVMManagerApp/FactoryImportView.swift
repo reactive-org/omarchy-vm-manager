@@ -16,32 +16,32 @@ struct FactoryImportView: View {
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Label("Import Factory", systemImage: "square.and.arrow.down").font(.title2.bold())
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Import factory").font(Theme.sans(20, weight: .semibold))
             if let imported {
-                Label(imported.displayName, systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.headline)
+                Label(imported.displayName, systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).font(Theme.sans(14, weight: .semibold))
                 Text("Verified and imported. This factory is available for new virtual machines.")
                     .foregroundStyle(.secondary)
             } else {
                 Text("Choose a prepared factory bundle from a source you trust. The app checks the image, provisioning files and compatibility with this runtime.")
                     .foregroundStyle(.secondary)
                 Link("Prepare your own factory image: dev-vm example", destination: URL(string: "https://www.reactive.org/dev-vm")!)
-                    .font(.callout)
-                if let selectedName { Text(selectedName).font(.callout).lineLimit(2) }
+                    .font(Theme.sans(13))
+                if let selectedName { Text(selectedName).font(Theme.sans(13)).lineLimit(2) }
                 if working {
                     ProgressView(cancelling ? "Cancelling import…" : model.factoryImportProgress.rawValue)
-                    Text("Large factory images can take a few minutes to verify and copy.").font(.caption).foregroundStyle(.secondary)
+                    Text("Large factory images can take a few minutes to verify and copy.").font(Theme.note).foregroundStyle(.secondary)
                 } else {
-                    Button("Choose Bundle…") { chooseBundle() }.disabled(choosing)
-                    Text("Select the folder containing factory.json and reviewed-factory.json.").font(.caption).foregroundStyle(.secondary)
+                    Button("Choose bundle…") { chooseBundle() }.buttonStyle(.primaryAction).disabled(choosing)
+                    Text("Select the folder containing factory.json and reviewed-factory.json.").font(Theme.note).foregroundStyle(.secondary)
                 }
             }
-            if let error { Text(error).foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true) }
+            if let error { Text(error).foregroundStyle(.red).font(Theme.sans(13)).fixedSize(horizontal: false, vertical: true) }
             Divider()
             HStack {
                 Spacer()
                 if imported != nil {
-                    Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                    Button("Done") { dismiss() }.buttonStyle(.primaryAction).keyboardShortcut(.defaultAction)
                 } else {
                     Button("Cancel", role: .cancel) {
                         if working { cancelling = true; operation?.cancel() }
@@ -50,7 +50,7 @@ struct FactoryImportView: View {
                 }
             }
         }
-        .padding(26).frame(width: 500, alignment: .leading)
+        .padding(20).frame(width: 500, alignment: .leading).font(Theme.body).background(Theme.pane).buttonStyle(.quietAction)
         .interactiveDismissDisabled(working || choosing)
         .onDisappear { operation?.cancel(); chooser?.cancel() }
     }
@@ -61,9 +61,9 @@ struct FactoryImportView: View {
         chooser = Task { @MainActor in
             defer { choosing = false; chooser = nil }
             let panel = NSOpenPanel()
-            panel.title = "Import Factory"
+            panel.title = "Import factory"
             panel.message = "Choose a prepared factory bundle."
-            panel.prompt = "Import Factory"
+            panel.prompt = "Import factory"
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.canCreateDirectories = false

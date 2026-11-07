@@ -6,12 +6,21 @@ import UniformTypeIdentifiers
 
 /// Offline selection and review never creates a VM or authorizes tasks. The
 /// running-job pane consumes the same service used by the separate CLI socket.
+/// Presented from the guest's Home setup card: `.change` is the Change setup sheet
+/// (selection, review, consent and reviewed workflow actions) and `.output` the
+/// View output sheet (live terminal or saved log, cancel, job details). `.full`
+/// shows both and exists for the offscreen acceptance harness, which cannot
+/// capture sheets.
 struct DeveloperSetupView: View {
+    enum Mode { case change, output, full }
     #if DEBUG
     @Environment(\.setupAcceptance) private var acceptance
     #endif
     @ObservedObject var model: AppModel
     let snapshot: VMSnapshot
+    var mode: Mode = .full
+    private var showsChange: Bool { mode != .output }
+    private var showsOutput: Bool { mode != .change }
     @StateObject private var screen = ProvisioningTerminalScreen()
     @State private var source = "none"
     @State private var trimOptionalApps = false
@@ -48,15 +57,18 @@ struct DeveloperSetupView: View {
     @State private var matches: Int?
     @State private var confirmCancel = false
     @State private var tools = false
+    /// The terminal shows the saved last-run log rather than a live job.
+    @State private var showingSavedLog = false
     private var workflows: [ProvisioningWorkflowSnapshot] { model.setupWorkflows.filter { $0.vmID == snapshot.id } }
     private var workflow: ProvisioningWorkflowSnapshot? {
         workflows.first { $0.id == selectedWorkflow } ?? workflows.first { $0.canCancel || $0.cleanupRequired } ?? workflows.first
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            if showsChange {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Developer setup").font(.largeTitle.bold())
+                    Text("Software and desktop").font(Theme.sans(17, weight: .semibold))
                     Text("Configure this VM from a reviewed dev-vm configuration.").foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -79,10 +91,10 @@ struct DeveloperSetupView: View {
                     if source != "none", ProvisioningTrim.isAvailable(for: snapshot.profile.factory) {
                         ProvisioningTrimSelectionView(selection: $trimOptionalApps).disabled(planning || preparingApply || submitting || applyReview != nil)
                     }
-                    if source != "none" { ProvisioningAppearanceSelectionView(draft: $appearance).disabled(planning || preparingApply || submitting || applyReview != nil) }
+                    if source != "none" { ProvisioningAppearanceSelectionView(draft: $appearance, localSource: source == "local").disabled(planning || preparingApply || submitting || applyReview != nil) }
                     if let folder, source == "local" { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
-                    Text("Setup updates Omarchy and system packages before applying your selections. Review software, removals, dotfiles and the restart requirement below. Custom tasks require separate trust.").font(.callout).foregroundStyle(.secondary)
-                    Text(executionEnabled ? "Applying setup requires a target review and the permissions shown below. A preview does not change this VM." : "Setup execution is disabled in this build. A preview does not change this VM or its resource settings.").font(.callout).foregroundStyle(.secondary)
+                    Text("Setup updates Omarchy and system packages before applying your selections. Review software, removals, dotfiles and the restart requirement below. Custom tasks require separate trust.").font(Theme.sans(13)).foregroundStyle(.secondary)
+                    Text(executionEnabled ? "Applying setup requires a target review and the permissions shown below. A preview does not change this VM." : "Setup execution is disabled in this build. A preview does not change this VM or its resource settings.").font(Theme.sans(13)).foregroundStyle(.secondary)
                     DisclosureGroup("Details") {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -119,31 +131,37 @@ struct DeveloperSetupView: View {
                     }
                 }.padding(20)
             }
+            }
             if let failure { Text(failure).foregroundStyle(.orange) }
             if workflows.count > 1 {
                 Picker("Workflow", selection: Binding(get: { workflow?.id }, set: { selectedWorkflow = $0 })) {
                     ForEach(workflows, id: \.id) { row in Text(row.title + " · " + row.id.uuidString.prefix(8)).tag(Optional(row.id)) }
                 }
             }
-            if let workflow {
-                Text(workflow.title).font(.title2.bold())
-                if let explanation = workflow.failureExplanation { Text(explanation).font(.callout).foregroundStyle(.orange) }
-                HStack(spacing: 14) {
+            if mode == .change, let workflow {
+                // Change setup shows only the reviewed actions waiting on the user; progress and output live in View output.
+                workflowActions(workflow)
+            } else if let workflow {
+                if mode == .full { Text(workflow.title).font(Theme.sans(20, weight: .semibold)) }
+                if let explanation = workflow.failureExplanation { Text(explanation).font(Theme.sans(13)).foregroundStyle(.orange) }
+                if mode == .full { HStack(spacing: 14) {
                     ForEach(ProvisioningSetupPhase.allCases, id: \.self) { phase in
                         Label(phase.rawValue, systemImage: currentPhase(workflow) == phase ? "circle.inset.filled" : "circle").foregroundStyle(currentPhase(workflow) == phase ? Color.accentColor : Color.secondary)
                     }
-                }.accessibilityLabel("Setup stages. Current workflow: " + workflow.title)
+                }.accessibilityLabel("Setup stages. Current workflow: " + workflow.title) }
                 if workflow.cleanupRequired {
                     if workflow.stage == .running || workflow.stage == .checking {
                         Text("Setup tracks temporary admin access and will verify its removal during cleanup.").font(.caption).foregroundStyle(.secondary)
                     } else { Label("Cleanup has not been confirmed. Recovery must verify the original guest and authorization state.", systemImage: "exclamationmark.shield").foregroundStyle(.orange) }
                 }
-                workflowActions(workflow)
-                terminal(height: 420)
-                HStack {
-                    Text(continuationMessage).font(.callout).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Cancel Setup…") { confirmCancel = true }.disabled(!workflow.canCancel)
+                if mode == .full { workflowActions(workflow) }
+                if showsOutput {
+                    terminal(height: mode == .output ? 520 : 420)
+                    HStack {
+                        Text(continuationMessage).font(Theme.sans(13)).foregroundStyle(.secondary)
+                        Spacer()
+                        if workflow.canCancel || mode == .full { Button("Cancel setup…") { confirmCancel = true }.disabled(!workflow.canCancel) }
+                    }
                 }
                 DisclosureGroup("Job details") {
                     VStack(alignment: .leading, spacing: 6) {
@@ -154,9 +172,9 @@ struct DeveloperSetupView: View {
                         Text("Restart, check and cleanup recovery require a reviewed action; no automatic retry is performed.")
                     }.font(.caption).padding(.top, 8)
                 }
-            } else {
+            } else if showsOutput {
                 terminal(height: 260)
-                Text("No setup job for this guest. Live output will appear here when an admitted job is available.").foregroundStyle(.secondary).font(.callout)
+                Text("No setup job for this guest. Live output will appear here when an admitted job is available.").foregroundStyle(.secondary).font(Theme.sans(13))
             }
         }
         .onChange(of: workflow?.id) { _, _ in
@@ -172,24 +190,32 @@ struct DeveloperSetupView: View {
         }
         .sheet(isPresented: taskPresentation) {
             VStack(alignment: .leading) {
-                Text("Frozen task source").font(.title2.bold())
+                Text("Frozen task source").font(Theme.sans(20, weight: .semibold))
                 ScrollView([.horizontal, .vertical]) { Text(taskText ?? "Source unavailable").font(.system(.body, design: .monospaced)).textSelection(.enabled).padding(12) }
                 Button("Done") { showingTask = false }
             }.padding(20).frame(width: 760, height: 560)
         }
         .sheet(isPresented: $tools) { ScrollView { ProvisioningToolsView().padding(24) }.frame(width: 680, height: 640) }
         .confirmationDialog("Cancel setup and perform its cleanup?", isPresented: cancelPresentation) {
-            Button("Cancel Setup", role: .destructive) { cancelConfirmed() }
+            Button("Cancel setup", role: .destructive) { cancelConfirmed() }
         } message: { Text("Cleanup may still need verification. Closing this page only detaches the terminal.") }
         .task(id: terminalAttachmentID) {
             // Publish/prepare precedes helper activation. Wait for an admitted
             // job before initial attachment; never auto-reclaim input on loss.
-            if terminalAttachmentID != nil, let workflow, let service = model.setupService {
+            // An ended job is not reattached; its saved log is shown instead.
+            if showsOutput, terminalAttachmentID != nil, liveRun, let workflow, let service = model.setupService {
+                showingSavedLog = false
                 await screen.attach(service: service, workflowID: workflow.id)
             }
         }
+        .task(id: savedLogKey) {
+            guard showsOutput, !liveRun, let service = model.setupService else { return }
+            if let data = await service.setupLog(vmID: snapshot.id) {
+                await screen.detach(); screen.resetScreen(); screen.render(data); screen.jumpToLatest(); showingSavedLog = true
+            } else { showingSavedLog = false }
+        }
         .task(id: snapshot.id.uuidString + String(model.setupService != nil)) {
-            guard let receipt = snapshot.profile.developerSetup, frozen == nil, source == "none" else { return }
+            guard showsChange, let receipt = snapshot.profile.developerSetup, frozen == nil, source == "none" else { return }
             previewLookup = receipt.reviewID.uuidString; await loadPreview()
         }
         .background {
@@ -214,7 +240,7 @@ struct DeveloperSetupView: View {
                     case .confirmCancel: if confirmCancel { confirmCancel = false; cancelConfirmed() }
                     default: break
                     }
-                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "updateReviewed": String(applyReview?.systemUpdateRequired == true), "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "cancelPending": String(confirmCancel), "continuation": continuationMessage] })
+                }, snapshot: { ["trimAvailable": String(ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && source != "none"), "trim": String(trimOptionalApps), "source": source, "preview": frozen?.id.uuidString ?? "", "review": applyReview?.reviewIdentity ?? "", "updateReviewed": String(applyReview?.systemUpdateRequired == true), "failure": String(failure != nil), "planning": String(planning), "inspected": String(inspectedTasks.count), "taskBytes": String(taskText?.utf8.count ?? 0), "grant": String(grantConsent), "taskConsent": String(taskConsent), "attempted": String(submissionAttempted), "execution": String(executionEnabled), "matches": matches.map(String.init) ?? "", "cancelPending": String(confirmCancel), "continuation": continuationMessage, "savedLog": String(showingSavedLog)] })
             } }
             #endif
         }
@@ -238,10 +264,10 @@ struct DeveloperSetupView: View {
         if !workflow.availableActions.isEmpty || workflowActionReview?.workflowID == workflow.id {
             GroupedPanel {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Reviewed workflow actions").font(.headline)
+                    Text("Reviewed workflow actions").font(Theme.sans(14, weight: .semibold))
                     ForEach(workflow.availableActions, id: \.self) { action in
                         HStack {
-                            Text(action.explanation).font(.callout).foregroundStyle(.secondary)
+                            Text(action.explanation).font(Theme.sans(13)).foregroundStyle(.secondary)
                             Spacer()
                             Button("Review " + action.title.lowercased() + "…") { Task { await prepareWorkflowAction(workflow, action: action) } }
                                 .disabled(actingService?.executionEnabled != true || actionBusy)
@@ -249,7 +275,7 @@ struct DeveloperSetupView: View {
                     }
                     if let review = workflowActionReview, review.workflowID == workflow.id {
                         Text(review.action.title).bold()
-                        Text(review.action.explanation).font(.callout)
+                        Text(review.action.explanation).font(Theme.sans(13))
                         DisclosureGroup("Details") {
                             Text("Session: " + review.sessionID.uuidString).font(.caption).textSelection(.enabled)
                             Text("Input fingerprint: " + review.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
@@ -299,31 +325,39 @@ struct DeveloperSetupView: View {
     }
     private func terminal(height: CGFloat) -> some View {
         VStack(spacing: 0) {
-            HStack {
-                Circle().fill(screen.connected ? .green : .gray).frame(width: 8, height: 8)
-                Text("Live terminal").bold()
-                Spacer()
-                Button("A−") { screen.fontSize -= 1 }.disabled(screen.fontSize <= 9)
-                Button("A+") { screen.fontSize += 1 }.disabled(screen.fontSize >= 24)
-                Toggle("Follow output", isOn: $screen.follow).toggleStyle(.switch).controlSize(.small)
-            }.padding(12).background(.quaternary)
-            HStack {
-                TextField("Search terminal", text: $search).textFieldStyle(.roundedBorder).onSubmit { matches = screen.search(search) }
-                if let matches { Text("\(matches) matching lines").font(.caption) }
-                if !screen.connected, let workflow, let service = model.setupService {
+            HStack(spacing: 10) {
+                Circle().fill(screen.connected ? Theme.green : Theme.label).frame(width: 7, height: 7)
+                Text(showingSavedLog ? "saved output" : "live output").font(Theme.mono(12)).foregroundStyle(.secondary)
+                TextField("Search output", text: $search).textFieldStyle(.roundedBorder).font(Theme.sans(12)).frame(maxWidth: 220)
+                    .onSubmit { matches = screen.search(search) }
+                if let matches { Text("\(matches) matching lines").font(Theme.note).foregroundStyle(.secondary) }
+                Spacer(minLength: 8)
+                if showingSavedLog, let url = model.setupLogURL(snapshot) {
+                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                }
+                if liveRun, !screen.connected, let workflow, let service = model.setupService {
                     Button("Reconnect") { Task { await screen.attach(service: service, workflowID: workflow.id) } }
                 }
-                Button("Jump to latest") { screen.jumpToLatest() }
                 if screen.ownsInput { Button("Release input") { Task { await screen.releaseInput() } } }
-            }.padding(8)
+                Button { screen.fontSize -= 1 } label: { Image(systemName: "textformat.size.smaller") }.disabled(screen.fontSize <= 9).help("Smaller text")
+                Button { screen.fontSize += 1 } label: { Image(systemName: "textformat.size.larger") }.disabled(screen.fontSize >= 24).help("Larger text")
+                Button { screen.jumpToLatest() } label: { Image(systemName: "arrow.down.to.line") }.help("Jump to latest")
+                Toggle("Follow output", isOn: $screen.follow).font(Theme.sans(12))
+            }
+            .controlSize(.small).padding(.horizontal, 12).frame(minHeight: 40)
+            .background(Theme.pane).overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
             ProvisioningNativeTerminal(screen: screen).frame(height: height).clipped()
             HStack {
-                Text(workflow?.canCancel == false && !screen.connected ? "Live output has ended. Job status remains available." : screen.message).font(.caption).foregroundStyle(.secondary)
+                Text(showingSavedLog ? "Saved output from the most recent setup run, kept next to this VM. It may include anything setup printed; typed input is never saved."
+                     : workflow?.canCancel == false && !screen.connected ? "Live output has ended. Job status remains available." : screen.message)
+                    .font(Theme.note).foregroundStyle(.secondary)
                 Spacer()
-                if screen.acceptsInput { Label("Interactive input available", systemImage: "keyboard").font(.caption) }
-            }.padding(10)
-        }.background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary)).clipShape(RoundedRectangle(cornerRadius: 10))
+                if screen.acceptsInput { Label("Type into the terminal when setup asks", systemImage: "keyboard").font(Theme.note) }
+            }.padding(.horizontal, 12).padding(.vertical, 8).background(Theme.pane)
+        }
+        .background(Color.black.opacity(0.35))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.paneRadius))
+        .overlay(RoundedRectangle(cornerRadius: Theme.paneRadius).strokeBorder(Theme.border))
     }
     private var reviewingService: (any ProvisioningReviewing)? { model.setupService as? any ProvisioningReviewing }
     private var continuationMessage: String {
@@ -331,6 +365,8 @@ struct DeveloperSetupView: View {
         if workflow.cleanupRequired && !workflow.canCancel { return "Cleanup still needs verification. Review job details before continuing." }
         return workflow.canCancel ? "You can leave this page. Setup will continue." : "Setup has finished. Its result remains saved."
     }
+    private var liveRun: Bool { workflow?.canCancel == true }
+    private var savedLogKey: String { snapshot.id.uuidString + ":" + (workflow?.id.uuidString ?? "none") + ":" + (workflow?.stage.rawValue ?? "") + ":" + String(liveRun) }
     private var terminalAttachmentID: String? {
         guard let workflow, let job = model.setupJobs[workflow.id], job.state != .queued else { return nil }
         return workflow.id.uuidString + ":" + job.jobID.uuidString
@@ -348,6 +384,35 @@ struct DeveloperSetupView: View {
         let readable = try JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         preview = String(decoding: readable, as: UTF8.self)
     }
+    /// Plain steps for the review, from the frozen proposal and the prepared review only.
+    private func runSteps(_ value: ProvisioningPlanPreview, review: ProvisioningApplyReview) -> [String] {
+        var steps: [String] = []
+        if review.systemUpdateRequired { steps.append("Updates Omarchy and system packages with Omarchy’s own updater.") }
+        let names = ProvisioningReviewedProfilesView.names(value.proposal)
+        steps.append(names.isEmpty ? "Applies the reviewed configuration." : "Installs " + names.joined(separator: " + ") + (review.dockerRootAccessRequired ? ", including Docker without sudo." : "."))
+        let look = ProvisioningAppearanceSummary(proposal: value.proposal)
+        if look.layoutIncluded || look.layoutRemoved || look.theme != nil {
+            let layout = look.layoutExample?.title ?? (look.layoutIncluded ? "your custom layout" : look.layoutRemoved ? "Omarchy’s default layout" : nil)
+            let theme = look.theme.map { $0.hasPrefix("https://github.com/") ? String($0.dropFirst(19)) + " theme" : $0 == "most-starred" ? "the most-starred theme" : $0 == "random" ? "a random theme" : $0 }
+            steps.append("Applies " + [layout, theme].compactMap { $0 }.joined(separator: " and ") + " at the next desktop login.")
+        }
+        if !value.tasks.isEmpty { steps.append("Runs \(value.tasks.count) custom task\(value.tasks.count == 1 ? "" : "s") from this configuration.") }
+        if review.persistentGrantRequired { steps.append("Uses temporary admin access while it runs; cleanup removes it.") }
+        steps.append("Finishes with a restart and a configuration check, each reviewed before it runs.")
+        return steps
+    }
+    private func consent(_ title: String, note: String, isOn: Binding<Bool>, warning: Bool = false) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Theme.sans(13, weight: .medium)).foregroundStyle(warning ? Theme.amber : Theme.text)
+                Text(note).font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .toggleStyle(.checkbox)
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 4).fill(warning ? Theme.amber.opacity(0.07) : Theme.ground))
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(warning ? Theme.amber.opacity(0.45) : Theme.border))
+    }
     private func reviewActions(_ value: ProvisioningPlanPreview) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(value.tasks, id: \.name) { task in
@@ -358,32 +423,38 @@ struct DeveloperSetupView: View {
                 }
             }
             if let review = applyReview {
-                if review.systemUpdateRequired {
-                    Label("Update Omarchy, then apply setup", systemImage: "arrow.triangle.2.circlepath").font(.headline)
-                    Text("Updates Omarchy and all system packages using its native updater before installing your selected software. Output appears in the live terminal. After cleanup, review a restart and configuration check to finish.")
-                        .font(.callout).foregroundStyle(.secondary)
+                Text("this run").font(Theme.mono(13, weight: .medium)).foregroundStyle(Theme.green).padding(.top, 4)
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(runSteps(value, review: review).enumerated()), id: \.offset) { index, step in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text("\(index + 1)").font(Theme.mono(12)).foregroundStyle(Theme.label).frame(width: 16, alignment: .leading)
+                            Text(step).font(Theme.sans(13)).foregroundStyle(Theme.text.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
-                if review.persistentGrantRequired {
-                    Toggle("Allow admin access during setup", isOn: $grantConsent)
-                        .help("Allow a sudo grant in this VM across setup steps, until cleanup revokes it. Unconfirmed cleanup keeps the job marked Cleanup required.")
-                    Text("Admin access stays active until cleanup revokes it.").font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    if review.persistentGrantRequired {
+                        consent("Allow temporary admin access while setup runs", note: "A sudo grant in this VM across setup steps, until cleanup revokes it. Unconfirmed cleanup keeps the run marked Cleanup required.", isOn: $grantConsent)
+                    }
+                    if review.dockerRootAccessRequired {
+                        consent("Allow Docker without sudo", note: "The guest owner gets root-equivalent access inside this VM. It stays after setup.", isOn: $dockerConsent, warning: true)
+                    }
+                    if review.taskTrustIdentity != nil {
+                        consent("Allow custom tasks from this configuration", note: value.tasks.allSatisfy { inspectedTasks.contains($0.name) }
+                                ? "Custom Ansible tasks can run on this Mac and in the VM, using credentials available to Ansible. Covers the reviewed configuration, task files and assets."
+                                : "Inspect each custom task above before allowing it.", isOn: $taskConsent, warning: true)
+                            .disabled(!value.tasks.allSatisfy { inspectedTasks.contains($0.name) })
+                    }
+                }.padding(.top, 6)
+                HStack {
+                    Spacer()
+                    Button("Run setup") { Task { await submit(value, review: review) } }
+                        .buttonStyle(.primaryAction)
+                        .accessibilityIdentifier("setup.apply")
+                        .disabled(!canSubmit(value, review: review))
                 }
-                if review.dockerRootAccessRequired {
-                    Toggle("Allow Docker without sudo", isOn: $dockerConsent)
-                        .help("Allow the guest owner to use Docker without sudo. This is root-equivalent access inside the VM; restart needs a separate review.")
-                    Text("This gives the guest owner access equivalent to root. Restart is reviewed separately.").font(.caption).foregroundStyle(.secondary)
-                }
-                if review.taskTrustIdentity != nil {
-                    Toggle("Allow custom tasks from this configuration", isOn: $taskConsent)
-                        .help("Trust the exact reviewed configuration, inspected task files and assets. This permission is separate from admin and Docker access.")
-                        .disabled(!value.tasks.allSatisfy { inspectedTasks.contains($0.name) })
-                    Text("Custom Ansible tasks can run on this Mac and in the VM, using credentials available to Ansible. Approval covers the reviewed configuration, task files and assets.").font(.callout)
-                }
-                Button("Apply reviewed setup") { Task { await submit(value, review: review) } }
-                    .accessibilityIdentifier("setup.apply")
-                    .disabled(!canSubmit(value, review: review))
             } else {
-                Button(preparingApply ? "Preparing target review…" : "Review apply…") { Task { await prepareReview(value) } }
+                Button(preparingApply ? "Preparing the review…" : "Review this run…") { Task { await prepareReview(value) } }
                     .accessibilityIdentifier("setup.prepare-apply")
                     .disabled(!executionEnabled || preparingApply || submitting)
             }

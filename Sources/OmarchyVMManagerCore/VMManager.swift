@@ -413,6 +413,12 @@ public actor VMManager {
     }
 
     public func diskDefaults() throws -> DiskDefaults { try DiskDefaultsStore(applicationSupport: applicationSupport).load() }
+    public func desktopDefaults() throws -> ProvisioningAppearanceSelection? { try DesktopDefaultsStore(applicationSupport: applicationSupport).load() }
+    public func saveDesktopDefaults(_ value: ProvisioningAppearanceSelection?) throws {
+        guard !quitting, let registry else { throw ProvisioningAppearanceFailure.invalidLayout }
+        try registry.checkRevision()
+        try DesktopDefaultsStore(applicationSupport: applicationSupport).save(value)
+    }
     public func saveDiskDefaults(_ value: DiskDefaults) throws {
         guard !quitting, let registry else { throw HomeDisk.failure("Disk defaults are unavailable while quitting.") }
         try registry.checkRevision()
@@ -1040,7 +1046,7 @@ extension VMManager {
                 for row in rows where row.cleanupRequired { await manager.setProvisioningWorkflowHold(row.id, vmID: row.vmID, required: true) }
             } catch { await manager.markProvisioningStorageUnknown(); throw ProvisioningJobFailure.journalUnavailable }
             let engine = try BundledProvisioning.engineDigest(layout)
-            let launcher = try ProvisioningHelperLauncher(layout: layout, directory: directory.appendingPathComponent("control"))
+            let launcher = try ProvisioningHelperLauncher(layout: layout, directory: directory.appendingPathComponent("control"), policy: .product)
             return try await ProvisioningService.open(manager: manager, directory: directory,
                 environment: .init(executionEnabled: ProvisioningProductExecution.enabled, engineDigest: engine, dependencies: HomebrewProvisioningDependencies(), launcher: launcher,
                     transportPolicy: .host, admitPackage: { _ = try BundledProvisioning.inspect(layout) },
@@ -1056,7 +1062,18 @@ extension VMManager {
         do { let service = try await task.value; provisioningService = service; provisioningServiceOpening = nil; return service }
         catch { provisioningServiceOpening = nil; throw VMFailure(code: "provisioning-service-unavailable", message: "Setup coordination is unavailable. Private recovery metadata was preserved.") }
     }
-    func installProvisioningService(_ service: ProvisioningService) throws {
+    /// The VM's existing manager-owned root for the saved setup log; never creates it.
+    func provisioningLogRoot(vmID: UUID) -> URL? {
+        guard let profile = profiles.first(where: { $0.id == vmID }) else { return nil }
+        let root = ManagerStorage(applicationSupport: applicationSupport).root(for: profile)
+        return PrivateFiles.exists(root) ? root : nil
+    }
+    /// Saved output of the most recent setup run, or nil when none exists.
+    public func setupLog(vmID: UUID) throws -> Data? {
+        guard let root = provisioningLogRoot(vmID: vmID) else { return nil }
+        return try ProvisioningSetupLog.read(root: root)
+    }
+        func installProvisioningService(_ service: ProvisioningService) throws {
         guard provisioningService == nil, service.manager === self else { throw ProvisioningServiceFailure.unavailable }
         provisioningService = service
     }

@@ -30,8 +30,9 @@ import SwiftTerm
     }
 }
 
-/// UI owns only a viewer. Output stays in the bounded emulator; no output mirror,
-/// log, restoration archive or automatic input queue. All work runs on MainActor.
+/// UI owns only a viewer. Output stays in the bounded emulator; this view keeps no
+/// output mirror, log, restoration archive or automatic input queue (only the
+/// coordinator's recorder saves last-run output). All work runs on MainActor.
 @MainActor public final class ProvisioningTerminalScreen: NSObject, ObservableObject, @preconcurrency TerminalViewDelegate {
     public let view: TerminalView
     @Published public var follow = true

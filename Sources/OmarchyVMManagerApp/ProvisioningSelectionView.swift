@@ -20,7 +20,7 @@ struct ProvisioningFeatureSelectionView: View {
                 }
             }
             Text("Use source keeps the preset or manifest choice. The shared planner resolves profiles, dependencies and conflicts. Disabling a feature does not remove installed packages. Custom features and options stay in the source manifest.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(Theme.note).foregroundStyle(.secondary)
         }
     }
 }
@@ -72,22 +72,24 @@ struct NewVMSetupSelectionView: View {
         return .init(profiles: profiles.sorted(), trimOptionalApps: factory == "official" && trimOptionalApps, appearance: appearance.selection)
     }
     var body: some View {
-        Section("Developer setup") {
-            Picker("Source", selection: $source) {
-                Text("None").tag("none")
-                Text("Bundled configuration").tag("bundled")
-                Text("Local setup folder").tag("local")
-            }.help(ProvisioningSetupHelp.source)
+        VStack(alignment: .leading, spacing: 8) {
+            SpecRow("source") {
+                Picker("Source", selection: $source) {
+                    Text("None").tag("none")
+                    Text("Bundled configuration").tag("bundled")
+                    Text("Local setup folder").tag("local")
+                }.labelsHidden().frame(maxWidth: 240).help(ProvisioningSetupHelp.source)
+            }
             if source != "none" {
                 if source == "local" {
-                    Button("Choose setup folder…") { choosingFolder = true }
-                    if let folder { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
+                    SpecRow("folder", note: folder.map { $0.lastPathComponent + "/vm.yml" }) {
+                        Button("Choose setup folder…") { choosingFolder = true }
+                    }
                 }
                 ProvisioningProfileSelectionView(selection: $profiles, localSource: source == "local")
                 if factory == "official" { ProvisioningTrimSelectionView(selection: $trimOptionalApps) }
-                ProvisioningAppearanceSelectionView(draft: $appearance)
-                Text("Setup updates Omarchy and system packages before applying these selections. Create VM saves the plan; applying it requires admin approval, followed by a reviewed restart and configuration check.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                ProvisioningAppearanceSelectionView(draft: $appearance, localSource: source == "local")
+                SpecNote("Setup updates Omarchy and system packages, then applies these selections. Create, launch & set up approves this exact plan for this VM’s first launch, including temporary admin access while setup runs and the restart and configuration check that finish it, so you end at an updated, configured desktop. If anything changes before setup starts, it pauses and asks again. Create alone saves the plan for a later review.")
             }
         }
         .background {
@@ -107,6 +109,7 @@ struct NewVMSetupSelectionView: View {
             #endif
         }
         .onChange(of: source) { _, _ in profiles = source == "bundled" ? ["developer"] : []; publish() }
+        .task { if appearance == ProvisioningAppearanceDraft(), let defaults = model.desktopDefaults { appearance = ProvisioningAppearanceDraft(defaults) } }
         .onChange(of: factory) { _, _ in trimOptionalApps = false; publish() }
         .onChange(of: appearance) { _, _ in publish() }
         .onChange(of: trimOptionalApps) { _, _ in publish() }

@@ -125,9 +125,9 @@ test-provisioning-bundle-dev: build-dev
 
 test-build-policies: prepare-source
 	@mkdir -p "$(SWIFT_MODULECACHE_PATH)" "$(CLANG_MODULE_CACHE_PATH)"
-	swift test $(SWIFT_FLAGS) -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
-	swift test $(SWIFT_FLAGS) -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
-	swift test $(SWIFT_FLAGS) -c release --scratch-path .build/dev -Xswiftc -DSIGNED_PRERELEASE -Xswiftc -DDEVELOPMENT_CHANNEL --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
+	swift test $(SWIFT_FLAGS) -c release --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledProvisioningHelperSigningPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
+	swift test $(SWIFT_FLAGS) -c release -Xswiftc -DSIGNED_PRERELEASE --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledProvisioningHelperSigningPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
+	swift test $(SWIFT_FLAGS) -c release --scratch-path .build/dev -Xswiftc -DSIGNED_PRERELEASE -Xswiftc -DDEVELOPMENT_CHANNEL --filter 'compiledLaunchAdmission|compiledCredentialStoragePolicy|compiledProvisioningExecutionPolicy|compiledProvisioningHelperSigningPolicy|compiledStableGateCannotBeChangedByAnEnvironmentOrWireField'
 
 fetch-kit:
 	Scripts/fetch-try-omarchy-kit.sh

@@ -9,6 +9,11 @@ public protocol ProvisioningObserving: Sendable {
     func jobStatus(_ id: UUID) async -> ProvisioningJobSnapshot?
     func cancel(_ id: UUID) async throws
     func attachTerminal(_ id: UUID) async throws -> ProvisioningTerminalAttachment
+    /// Saved output of the VM's most recent setup run (read-only; see ProvisioningSetupLog).
+    func setupLog(vmID: UUID) async -> Data?
+}
+extension ProvisioningObserving {
+    public func setupLog(vmID: UUID) async -> Data? { nil }
 }
 extension ProvisioningService: ProvisioningObserving {}
 

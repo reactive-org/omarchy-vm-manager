@@ -2,7 +2,8 @@ import DevVMProvisioningCore
 import Foundation
 
 /// UI/CLI-neutral attachment. Construction is view-only; claiming input is a
-/// separate deliberate action. No raw output/input is persisted or described.
+/// separate deliberate action. The attachment itself persists nothing and raw input is never recorded; only the
+/// coordinator's view-only recorder saves output, to one private per-VM last-run file.
 public actor ProvisioningTerminalAttachment {
     public let id: UUID
     private let client: ProvisioningTerminalClient

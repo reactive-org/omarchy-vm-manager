@@ -1,29 +1,102 @@
 import OmarchyVMManagerCore
 import SwiftUI
 
-struct ProvisioningLayoutExampleCards: View {
+/// One choice in the desktop layout picker, mapped onto the draft's layout mode.
+enum DesktopLayoutCard: Hashable {
+    case omarchyDefault, setupFolder, example(ProvisioningLayoutExampleID), customFile
+
+    /// Reads the card a draft shows. With a bundled source, keeping the source's
+    /// layout adds nothing, which is Omarchy's default; with a local folder it
+    /// keeps whatever the folder names, and Omarchy default removes managed layouts.
+    init(_ draft: ProvisioningAppearanceDraft, localSource: Bool) {
+        switch draft.layoutMode {
+        case "example": self = draft.layoutExample.map { .example($0) } ?? .omarchyDefault
+        case "file": self = .customFile
+        case "remove": self = .omarchyDefault
+        default: self = localSource ? .setupFolder : .omarchyDefault
+        }
+    }
+    func apply(to draft: inout ProvisioningAppearanceDraft, localSource: Bool) {
+        switch self {
+        case .omarchyDefault: draft.layoutMode = localSource ? "remove" : "source"
+        case .setupFolder: draft.layoutMode = "source"
+        case .example(let id): draft.layoutExample = id; draft.layoutMode = "example"
+        case .customFile: draft.layoutMode = "file"
+        }
+    }
+    var key: String {
+        switch self {
+        case .omarchyDefault: "omarchy-default"
+        case .setupFolder: "setup-folder"
+        case .example(let id): id.rawValue
+        case .customFile: "custom-file"
+        }
+    }
+}
+
+/// Layout cards grouped by how many workspaces they arrange, each group one
+/// horizontally scrolling row of fixed-width cards. The bundled dev-vm
+/// catalogue describes one workspace per example; a group appears only when it
+/// has cards.
+struct DesktopLayoutPicker: View {
     #if DEBUG
     @Environment(\.setupAcceptance) private var acceptance
     #endif
-    @Binding var selection: ProvisioningLayoutExampleID?
+    @Binding var draft: ProvisioningAppearanceDraft
+    let localSource: Bool
+    let chooseFile: () -> Void
     @State private var examples: [ProvisioningLayoutExample] = []
     @State private var unavailable = false
+    @State private var hovered: DesktopLayoutCard?
+
+    private struct Entry: Identifiable {
+        let card: DesktopLayoutCard
+        let title: String
+        let summary: String
+        let needs: String
+        var windows: [ProvisioningLayoutWindow] = []
+        var id: String { card.key }
+    }
+
+    private var selected: DesktopLayoutCard { DesktopLayoutCard(draft, localSource: localSource) }
+    private var exampleEntries: [Entry] {
+        examples.map { Entry(card: .example($0.id), title: $0.title, summary: $0.summary,
+                             needs: "Needs " + $0.applications.joined(separator: " · "), windows: $0.windows) }
+    }
+    private var startEntries: [Entry] {
+        var entries = [Entry(card: .omarchyDefault, title: "Omarchy default",
+                             summary: localSource ? "Omarchy’s standard tiling. Removes a layout the manager applied earlier; your folder’s layout isn’t used."
+                                                  : "Omarchy’s standard tiling. Apps open where you launch them; no layout file is added.",
+                             needs: "Nothing extra")]
+        if localSource {
+            entries.append(Entry(card: .setupFolder, title: "From your setup folder", summary: "Uses the layout your vm.yml names, if any.", needs: "Your setup folder"))
+        }
+        let file = draft.layoutFile?.lastPathComponent
+        entries.append(Entry(card: .customFile, title: "Custom file",
+                             summary: file.map { $0 + " · copied into the reviewed inputs. Lua runs in the guest desktop, so choose a file you trust." }
+                                ?? "Use your own Omarchy layout file. Lua runs in the guest desktop, so choose a file you trust.",
+                             needs: "Your apps"))
+        return entries
+    }
+    private var shown: Entry? {
+        let all = exampleEntries + startEntries
+        return all.first { $0.card == hovered } ?? all.first { $0.card == selected }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10, alignment: .top)], spacing: 10) {
-                ForEach(examples) { example in card(example) }
+        VStack(alignment: .leading, spacing: 12) {
+            if !exampleEntries.isEmpty { group("one workspace", exampleEntries) }
+            if unavailable {
+                Text("The bundled layout examples are unavailable. Check the setup resources.").font(Theme.note).foregroundStyle(Theme.amber)
             }
-            if unavailable { Text("The bundled layout examples are unavailable. Check the setup resources.").font(.caption).foregroundStyle(.orange) }
-            Text("Illustrative previews · workspace 1. These layouts open the listed apps; make sure they’re installed.")
-                .font(.caption).foregroundStyle(.secondary)
+            group("or start from", startEntries)
+            detail
         }
         .background {
             #if DEBUG
-            if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
-                acceptance.bind("layout-cards", action: { command in
-                    if case .layoutExample(let value) = command { selection = value }
-                }, snapshot: { ["count": String(examples.count), "selection": selection?.rawValue ?? ""] })
-            } }
+            if let acceptance { Color.clear.allowsHitTesting(false).onAppear { bindAcceptance(acceptance, localSource: localSource) }
+                .onChange(of: localSource) { _, value in bindAcceptance(acceptance, localSource: value) }
+            }
             #endif
         }
         .task {
@@ -31,70 +104,154 @@ struct ProvisioningLayoutExampleCards: View {
             catch { examples = []; unavailable = true }
         }
     }
-    private func card(_ example: ProvisioningLayoutExample) -> some View {
-        let selected = selection == example.id
-        return Button { selection = example.id } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                LayoutExampleWireframe(windows: example.windows, selected: selected)
-                HStack(spacing: 5) {
-                    Text(example.title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                    Spacer(minLength: 0)
-                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.5))
-                }.frame(height: 20)
-                Text(example.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    .frame(height: 32, alignment: .topLeading)
-                Text("Needs " + example.applications.joined(separator: " · "))
-                    .font(.caption2).foregroundStyle(.secondary).lineLimit(2).frame(height: 28, alignment: .topLeading)
+
+    #if DEBUG
+    private func bindAcceptance(_ acceptance: SetupUIAcceptanceDriver, localSource: Bool) {
+        acceptance.bind("layout-cards", action: { command in
+            if case .layoutExample(let value) = command {
+                (value.map { DesktopLayoutCard.example($0) } ?? .omarchyDefault).apply(to: &draft, localSource: localSource)
             }
-            .padding(10).frame(maxWidth: .infinity, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.accentColor.opacity(0.08) : Color(nsColor: .textBackgroundColor).opacity(0.5)))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.65), lineWidth: selected ? 2 : 1))
-            .contentShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("setup.layout-example." + example.id.rawValue)
-        .accessibilityLabel(example.title + ". " + example.summary + " Needs " + example.applications.joined(separator: ", "))
-        .accessibilityValue(selected ? "Selected" : "Not selected")
-        .help(example.summary + " The bundled Lua file is saved with your preview. Apps are not installed by choosing a layout.")
+        }, snapshot: { ["count": String(examples.count), "cards": (exampleEntries + startEntries).map(\.id).joined(separator: ","),
+                        "selection": draft.layoutMode == "example" ? draft.layoutExample?.rawValue ?? "" : ""] })
     }
-}
-private struct LayoutExampleWireframe: View {
-    let windows: [ProvisioningLayoutWindow]
-    let selected: Bool
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .windowBackgroundColor))
-                ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
-                    windowFrame(window)
-                        .frame(width: geometry.size.width * window.width, height: geometry.size.height * window.height)
-                        .offset(x: geometry.size.width * window.x, y: geometry.size.height * window.y)
+    #endif
+
+    private static let cardWidth: CGFloat = 150
+
+    private func group(_ label: String, _ entries: [Entry]) -> some View {
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 6) {
+                GeometryReader { geometry in
+                    let overflows = CGFloat(entries.count) * (Self.cardWidth + 8) - 8 > geometry.size.width
+                    HStack(spacing: 8) {
+                        Text(label).font(Theme.mono(11)).foregroundStyle(.secondary)
+                        Text("\(entries.count)").font(Theme.mono(11)).foregroundStyle(Theme.label)
+                        Rectangle().fill(Theme.border).frame(height: 1)
+                        if overflows {
+                            arrow("chevron.left", "Scroll \(label) to the start") { withAnimation { proxy.scrollTo(entries.first?.id, anchor: .leading) } }
+                            arrow("chevron.right", "Scroll \(label) to the end") { withAnimation { proxy.scrollTo(entries.last?.id, anchor: .trailing) } }
+                        }
+                    }.frame(height: 20)
+                }.frame(height: 20)
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(entries) { entry in card(entry).id(entry.id) }
+                    }.padding(.vertical, 2).scrollTargetLayout()
+                }
+                // The row's arrows and trackpad scrolling move it; an overlay scroller would cover the cards.
+                .scrollIndicators(.never)
+                .scrollTargetBehavior(.viewAligned)
+            }
+        }
+    }
+
+    private func arrow(_ symbol: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.text.opacity(0.8))
+                .frame(width: 24, height: 20)
+                .background(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.strongBorder))
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel(label)
+    }
+
+    private func card(_ entry: Entry) -> some View {
+        let isSelected = selected == entry.card
+        return Button {
+            if entry.card == .customFile && draft.layoutFile == nil { chooseFile() }
+            else { entry.card.apply(to: &draft, localSource: localSource) }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                thumbnail(entry)
+                HStack(spacing: 6) {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .font(.system(size: 12)).foregroundStyle(isSelected ? Theme.green : Theme.label)
+                    Text(entry.title).font(Theme.sans(13, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8).truncationMode(.tail)
                 }
             }
+            .padding(8).frame(width: Self.cardWidth, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(isSelected ? Theme.green.opacity(0.07) : Theme.pane))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(isSelected ? Theme.green : hovered == entry.card ? Theme.strongBorder : Theme.border,
+                                                                      style: StrokeStyle(lineWidth: 1, dash: entry.card == .customFile && !isSelected ? [4, 3] : [])))
+            .contentShape(RoundedRectangle(cornerRadius: 6))
         }
-        .aspectRatio(16 / 9, contentMode: .fit)
-        .padding(5)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor)))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .allowsHitTesting(false).accessibilityHidden(true)
+        .buttonStyle(.plain)
+        .onHover { inside in if inside { hovered = entry.card } else if hovered == entry.card { hovered = nil } }
+        .accessibilityIdentifier("setup.layout." + entry.id)
+        .accessibilityLabel(entry.title + ". " + entry.summary + " " + entry.needs)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
-    private func windowFrame(_ window: ProvisioningLayoutWindow) -> some View {
+
+    @ViewBuilder private func thumbnail(_ entry: Entry) -> some View {
+        switch entry.card {
+        case .example: LayoutExampleWireframe(windows: entry.windows)
+        case .omarchyDefault:
+            screen { FrameMark(size: 34) }
+        case .setupFolder:
+            screen { Text("vm.yml").font(Theme.mono(11)).foregroundStyle(.secondary) }
+        case .customFile:
+            screen(dashed: true) {
+                Text(draft.layoutFile?.lastPathComponent ?? "Choose .lua…").font(Theme.mono(11)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).padding(.horizontal, 6)
+            }
+        }
+    }
+    private func screen<Content: View>(dashed: Bool = false, @ViewBuilder _ content: () -> Content) -> some View {
+        Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+            .overlay { content() }
+            .background(RoundedRectangle(cornerRadius: 3).fill(Theme.ground))
+            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: dashed ? [4, 3] : [])))
+            .accessibilityHidden(true)
+    }
+
+    private var detail: some View {
+        let previewing = shown != nil && shown?.card != selected
+        return VStack(alignment: .leading, spacing: 2) {
+            if let shown {
+                HStack(spacing: 8) {
+                    Text(shown.title).font(Theme.sans(13, weight: .medium))
+                    Spacer(minLength: 8)
+                    Text(previewing ? "preview" : "selected").font(Theme.mono(11)).foregroundStyle(previewing ? Theme.lavender : Theme.green)
+                }
+                Text(shown.summary).font(Theme.note).foregroundStyle(Theme.text.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+                Text(shown.needs).font(Theme.note).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8).frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 4).fill(Theme.pane))
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(previewing ? Theme.strongBorder : Theme.green.opacity(0.35)))
+        .accessibilityHidden(true)
+    }
+}
+
+private struct LayoutExampleWireframe: View {
+    let windows: [ProvisioningLayoutWindow]
+    var body: some View {
+        Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+            .overlay {
+                GeometryReader { geometry in
+                    ZStack(alignment: .topLeading) {
+                        ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
+                            tile(window)
+                                .frame(width: geometry.size.width * window.width, height: geometry.size.height * window.height)
+                                .offset(x: geometry.size.width * window.x, y: geometry.size.height * window.y)
+                        }
+                    }
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 3).fill(Theme.ground))
+            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.border))
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private func tile(_ window: ProvisioningLayoutWindow) -> some View {
         let floating = window.floating == true
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 3) {
-                Image(systemName: symbol(window.kind)).font(.system(size: 8))
-                Text(window.label).font(.system(size: 8, weight: .medium)).lineLimit(1).minimumScaleFactor(0.75)
-            }.foregroundStyle(.secondary)
-            Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
-            Spacer(minLength: 0)
-        }
-        .padding(4).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .textBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(selected ? Color.accentColor.opacity(floating ? 0.9 : 0.6) : Color.secondary.opacity(floating ? 0.7 : 0.45), lineWidth: floating ? 1.5 : 1))
-        .shadow(color: .black.opacity(floating ? 0.2 : 0), radius: 3, y: 1)
-    }
-    private func symbol(_ kind: ProvisioningLayoutWindow.Kind) -> String {
-        switch kind { case .terminal: "terminal"; case .browser: "globe"; case .editor: "chevron.left.forwardslash.chevron.right"; case .claude: "sparkle" }
+        return Text(window.label).font(Theme.mono(8)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+            .padding(.horizontal, 3).padding(.vertical, 2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 2).fill(floating ? Theme.strongBorder.opacity(0.5) : Theme.pane))
+            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(floating ? Theme.lavender.opacity(0.6) : Theme.strongBorder))
+            .shadow(color: .black.opacity(floating ? 0.4 : 0), radius: 3, y: 2)
+            .padding(1)
     }
 }

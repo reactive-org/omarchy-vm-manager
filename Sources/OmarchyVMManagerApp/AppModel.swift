@@ -20,6 +20,10 @@ final class AppModel: ObservableObject {
     var factorySelectionNotice: String? { factoryLibrary.selectionNotice }
     @Published var ownerDefaults: OwnerDefaults?
     @Published var diskDefaults = DiskDefaults()
+    /// Where the official factory image comes from, read from the kit's pinned manifests.
+    @Published var officialFactorySource: OfficialFactorySource? = OfficialFactorySource.load(kit: .embedded(), lockData: (try? Data(contentsOf: AppModel.lockURL)) ?? Data())
+    /// Desktop layout and theme that New VM starts from (Guest defaults).
+    @Published var desktopDefaults: ProvisioningAppearanceSelection?
     @Published var defaultsError: String?
     @Published private var passwordUpgrade: (reference: UUID, result: OwnerPasswordUpgradeResult)?
     var passwordUpgradeResult: OwnerPasswordUpgradeResult? {
@@ -93,6 +97,25 @@ final class AppModel: ObservableObject {
         // failure as the current result when several completed runs exist.
         let title = rows.count > 1 && !row.cleanupRequired && !row.canCancel ? "Setup history (\(rows.count) runs)" : row.title
         return (title, row.cleanupRequired)
+    }
+    /// One-time first-run approvals given by Create, Launch & Set Up. Memory only:
+    /// never persisted, used at most once. See AutoSetup.swift.
+    @Published var autoSetup: [UUID: AutoSetupState] = [:]
+    /// Guests whose setup was observed finishing while this manager ran. Home
+    /// shows a dismissible completion line for these; nothing is persisted.
+    @Published var setupCompletedThisRun: Set<UUID> = []
+    func noteSetupCompletions(previous: [ProvisioningWorkflowSnapshot], current: [ProvisioningWorkflowSnapshot]) {
+        let before = Dictionary(previous.map { ($0.id, $0.stage) }, uniquingKeysWith: { first, _ in first })
+        for row in current where [.succeeded, .checked].contains(row.stage) {
+            if let stage = before[row.id], ![.succeeded, .checked].contains(stage) { setupCompletedThisRun.insert(row.vmID) }
+        }
+    }
+    /// Location of the saved setup log, for Reveal in Finder. Never used to read it.
+    func setupLogURL(_ snapshot: VMSnapshot) -> URL? {
+        #if DEBUG
+        if isolated { return nil }
+        #endif
+        return ProvisioningSetupLog.fileURL(root: ManagerStorage(applicationSupport: support).root(for: snapshot.profile))
     }
     func cancelSetup(_ id: UUID) async {
         do { try await setupService?.cancel(id) }
@@ -292,6 +315,12 @@ final class AppModel: ObservableObject {
     func loadDefaults() async {
         do { diskDefaults = try await manager.diskDefaults(); ownerDefaults = try await manager.guestDefaults(); defaultsError = nil }
         catch { defaultsError = error.localizedDescription }
+        // Separate so an unreadable desktop preference never hides account defaults.
+        do { desktopDefaults = try await manager.desktopDefaults() } catch { desktopDefaults = nil }
+    }
+    func saveDesktopDefaults(_ value: ProvisioningAppearanceSelection?) async -> Bool {
+        do { try await manager.saveDesktopDefaults(value); desktopDefaults = value?.isEmpty == true ? nil : value; defaultsError = nil; return true }
+        catch { defaultsError = ProvisioningAppearance.failureMessage(error) ?? "The desktop defaults could not be saved."; return false }
     }
     func saveDiskDefaults(_ value: DiskDefaults) async -> Bool {
         do { try await manager.saveDiskDefaults(value); diskDefaults = value; defaultsError = nil; return true }
@@ -388,11 +417,14 @@ final class AppModel: ObservableObject {
         }
         snapshots = observation.snapshots; records = observation.records
         if let provisioningService {
-            setupWorkflows = await provisioningService.statuses()
+            let workflows = await provisioningService.statuses()
+            noteSetupCompletions(previous: setupWorkflows, current: workflows)
+            setupWorkflows = workflows
             var jobs: [UUID: ProvisioningJobSnapshot] = [:]
             for workflow in setupWorkflows { jobs[workflow.id] = await provisioningService.jobStatus(workflow.id) }
             setupJobs = jobs
         }
+        advanceAutoSetup()
         accessibilityTrusted = AXIsProcessTrusted()
         if Date().timeIntervalSince(storageRefreshed) > 10 {
             storageRefreshed = Date()
@@ -450,7 +482,7 @@ final class AppModel: ObservableObject {
             let alert = NSAlert()
             alert.messageText = "Cancel the factory build and quit?"
             alert.informativeText = "The owned build container will stop and its work volume will be cleaned up. Existing factory images are preserved."
-            alert.addButton(withTitle: "Cancel Build and Quit"); alert.addButton(withTitle: "Keep Building")
+            alert.addButton(withTitle: "Cancel build and quit"); alert.addButton(withTitle: "Keep building")
             guard alert.runModal() == .alertFirstButtonReturn else { NSApplication.shared.reply(toApplicationShouldTerminate: false); return }
         }
         // Fence even an idle builder: a CLI start can arrive while later quit
@@ -472,7 +504,7 @@ final class AppModel: ObservableObject {
         let alert = NSAlert()
         alert.messageText = "Shut down the VMs and quit?"
         alert.informativeText = "The manager will cancel backups and wait for all VM helpers, backup workers and storage transactions to finish."
-        alert.addButton(withTitle: "Shut Down and Quit"); alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Shut down and quit"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else {
             await factoryService.resumeAfterCancelledQuit()
             NSApplication.shared.reply(toApplicationShouldTerminate: false); return

@@ -24,6 +24,8 @@ public actor ProvisioningCoordinator {
     private var jobs: [UUID: ProvisioningJobRecord]
     private var active: Active?
     private var helperActive: HelperActive?
+    /// View-only last-run recorders, one per running helper job (see ProvisioningSetupLog).
+    private var setupRecorders: [UUID: ProvisioningSetupRecorder] = [:]
     private var recovering: [UUID: Recovery] = [:]
     private var helperAuthorities: [UUID: any ProvisioningRecoveryAuthorizing] = [:]
     private var transportAdmissions: [UUID: ProvisioningTransportAdmission] = [:]
@@ -642,6 +644,8 @@ extension ProvisioningCoordinator {
                     try await self.validateHelperSession(request, generation: generation)
                 }
             }
+            // Attach before activation so the recording starts at the first byte.
+            await startSetupRecorder(running)
             var status = try await running.dispatcher.dispatch(.activate, activation: running.activation)
             var cancelSent = false
             while true {
@@ -655,6 +659,7 @@ extension ProvisioningCoordinator {
                 }
             }
         } catch {
+            if let recorder = setupRecorders.removeValue(forKey: running.jobID) { await recorder.abort() }
             await running.dispatcher.abort(running.activation)
             guard let current = helperActive, current.generation == generation, var row = jobs[current.jobID] else { return }
             current.timer?.cancel(); row.state = .cleanupRequired; row.cleanupRequired = true; row.workerOutstanding = false
@@ -662,6 +667,21 @@ extension ProvisioningCoordinator {
             try? advance(&row); try? persist(row)
             await manager.releaseProvisioning(current.lease, cleanupRequired: true); helperActive = nil
         }
+    }
+    /// Starts the view-only recorder when the VM root already exists. Any failure is
+    /// silent for the job: recording is diagnostic and never blocks or alters setup.
+    private func startSetupRecorder(_ running: HelperActive) async {
+        guard let launcher = running.dispatcher as? any ProvisioningTerminalLaunching, let record = jobs[running.jobID],
+              let root = await manager.provisioningLogRoot(vmID: running.target.vmID) else { return }
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let header = "Omarchy VM Manager setup output · " + record.mode.rawValue + " · started " + stamp + " · may include anything setup printed"
+        guard let writer = try? ProvisioningSetupLogWriter(root: root, replace: record.mode == .apply, header: header) else { return }
+        do {
+            let attachment = try await ProvisioningTerminalAttachment.attach(client: try await launcher.terminalClient(jobID: running.jobID))
+            let recorder = ProvisioningSetupRecorder(reader: attachment, writer: writer)
+            setupRecorders[running.jobID] = recorder
+            await recorder.start()
+        } catch { writer.finish("live output was unavailable to record") }
     }
     /// Fresh reverse-RPC authority, never a saved receipt or a port/SSH proof.
     /// Recheck actor-owned cancellation and scope after every external await.
@@ -759,6 +779,8 @@ extension ProvisioningCoordinator {
         }
         try? advance(&row)
         do { try persist(row) } catch { row.cleanupRequired = true; row.state = .cleanupRequired; row.failure = .journalUnavailable; jobs[row.jobID] = row }
+        // Drain the recording before the helper and its terminal are released.
+        if let recorder = setupRecorders.removeValue(forKey: row.jobID) { await recorder.finish(result: row.state.rawValue) }
         if !row.cleanupRequired, let identity = row.helperIdentity {
             await running.dispatcher.releaseAfterCleanup(jobID: row.jobID, helperIdentity: identity); helperAuthorities.removeValue(forKey: row.jobID)
         }

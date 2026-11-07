@@ -136,6 +136,7 @@ public actor ProvisioningService {
         guard let jobID else { throw ProvisioningTerminalDenial.unavailable }
         return try await ProvisioningTerminalAttachment.attach(client: try await launcher.terminalClient(jobID: jobID))
     }
+    public func setupLog(vmID: UUID) async -> Data? { try? await manager.setupLog(vmID: vmID) }
     public func jobStatus(_ id: UUID) async -> ProvisioningJobSnapshot? {
         guard let row = rows[id], let job = row.checkJobID ?? row.applyJobID else { return nil }
         return await coordinator.status(job)

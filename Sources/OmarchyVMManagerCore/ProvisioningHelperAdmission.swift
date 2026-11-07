@@ -2,9 +2,37 @@ import Darwin
 import Foundation
 import Security
 
-/// Fixture policy is explicit and internal. Production admission requires
-/// non-ad-hoc signatures with the application's same Team ID.
-enum ProvisioningHelperSigningPolicy: Sendable { case sameApplicationTeam, adHocFixture }
+/// Fixture policy is explicit and internal. Stable and signed Dev prereleases
+/// require non-ad-hoc signatures with the application's same Team ID. Local Dev
+/// builds (compiled without SIGNED_PRERELEASE) also admit a matching ad-hoc
+/// app/helper pair so setup can be tested without a signing identity; a team-signed
+/// app still needs its same-team helper, and mixed pairs are always refused.
+/// The policy is fixed at compile time: no environment, metadata or wire switch.
+enum ProvisioningHelperSigningPolicy: Sendable {
+    case sameApplicationTeam, adHocFixture, sameApplicationTeamOrLocalAdHoc
+
+    static var product: Self {
+        #if DEVELOPMENT_CHANNEL && !SIGNED_PRERELEASE
+        .sameApplicationTeamOrLocalAdHoc
+        #else
+        .sameApplicationTeam
+        #endif
+    }
+
+    /// Pure signature-pair decision; the bundle hash, file and running-child
+    /// cdHash checks still apply under every policy.
+    func admits(outer: ProvisioningHelperCodeIdentity, helper: ProvisioningHelperCodeIdentity) -> Bool {
+        switch self {
+        case .sameApplicationTeam:
+            guard !outer.adHoc, !helper.adHoc, let team = outer.team, !team.isEmpty else { return false }
+            return helper.team == team
+        case .adHocFixture:
+            return outer.adHoc && helper.adHoc && outer.team == nil && helper.team == nil
+        case .sameApplicationTeamOrLocalAdHoc:
+            return Self.sameApplicationTeam.admits(outer: outer, helper: helper) || Self.adHocFixture.admits(outer: outer, helper: helper)
+        }
+    }
+}
 struct ProvisioningHelperCodeIdentity: Sendable, Equatable {
     let cdHash: Data
     let team: String?
@@ -74,12 +102,7 @@ final class ProvisioningHelperLaunchAdmission: @unchecked Sendable {
         guard app.pathExtension == "app", layout.contents.lastPathComponent == "Contents" else { throw ProvisioningHelperIPCFailure.authentication }
         let outer = try staticIdentity(app, nested: true)
         let helper = try staticIdentity(layout.binaries.appendingPathComponent("OmarchyVMProvisioningHelper"), nested: false)
-        switch policy {
-        case .sameApplicationTeam:
-            guard !outer.adHoc, !helper.adHoc, let team = outer.team, !team.isEmpty, helper.team == team else { throw ProvisioningHelperIPCFailure.authentication }
-        case .adHocFixture:
-            guard outer.adHoc, helper.adHoc, outer.team == nil, helper.team == nil else { throw ProvisioningHelperIPCFailure.authentication }
-        }
+        guard policy.admits(outer: outer, helper: helper) else { throw ProvisioningHelperIPCFailure.authentication }
         return helper
     }
     private static func staticIdentity(_ url: URL, nested: Bool) throws -> ProvisioningHelperCodeIdentity {
