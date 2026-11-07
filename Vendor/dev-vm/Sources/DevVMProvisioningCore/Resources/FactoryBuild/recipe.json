@@ -25,7 +25,7 @@
     },
     "profile/build-container.sh": {
       "mode": 420,
-      "sha256": "c4cd328d250333ff5bc0374380b1422c8b1996921799090e241c59db814fa435"
+      "sha256": "bcc518d2a811069bcc9758b9875be0b482d115ae821d796f5b076a7bd9661f15"
     },
     "profile/check-provisioning.py": {
       "mode": 420,
@@ -37,7 +37,7 @@
     },
     "profile/compatibility.py": {
       "mode": 420,
-      "sha256": "498058ce628a49a83004b3dcc6cc70e82e1167f5a92839e495e6763fc81c8813"
+      "sha256": "8bca0bbd6d2371f75eb63c4928ada294df3e2b37bfcba6e333083b576ad68a59"
     },
     "profile/excluded.packages": {
       "mode": 420,
@@ -712,10 +712,10 @@
       "omarchy/image/OMARCHY-LICENSE": "717ba1949502290f8e47688ae2e323acd06c8ca47aec9f7596b15f678c1af4a2",
       "omarchy/image/UPSTREAM-LICENSE": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481",
       "omarchy/image/base.packages": "3a4496b9adcfe7e77ce0afbb9d36e60a9bdab9ef01b0898686cdf41c5fc53125",
-      "omarchy/image/build-container.sh": "c4cd328d250333ff5bc0374380b1422c8b1996921799090e241c59db814fa435",
+      "omarchy/image/build-container.sh": "bcc518d2a811069bcc9758b9875be0b482d115ae821d796f5b076a7bd9661f15",
       "omarchy/image/check-provisioning.py": "65061dca9ed1d8f4271fe2886ef0fdf04d236e295d188244a7b094dd44ea12de",
       "omarchy/image/check-user.sh": "52b2cdad6d2095806438c4b36f61040734d6cd6f7fbcb6b1bec37320d903d4d4",
-      "omarchy/image/compatibility.py": "498058ce628a49a83004b3dcc6cc70e82e1167f5a92839e495e6763fc81c8813",
+      "omarchy/image/compatibility.py": "8bca0bbd6d2371f75eb63c4928ada294df3e2b37bfcba6e333083b576ad68a59",
       "omarchy/image/excluded.packages": "6744af32cfcb539d868d860627a59aaf48a95e63bb64c0f6bba648838fdec0db",
       "omarchy/image/guest-integration-compatibility.json": "dbc6763e0c12453797350ad644e5b1a82a1dd25f3348d0eae621dd6f5a63d40b",
       "omarchy/image/inputs.lock.json": "581bf8d7f382d1f4ab2943fa8e17c46b2dea431306e31e323fbdbb52941adf67",
@@ -887,5 +887,5 @@
     "size_gib": 20,
     "try_commit": "91e95a2b9d6a9399cb2fe51f8be3d3a45c085054"
   },
-  "templateSHA256": "4cd574711784d7c39fce9b094c9b7f683987bdec7261ab184372d89b211c29bc"
+  "templateSHA256": "228b1e40e4e039891a51192362fa4721257b5c47e3f77d57e0c4482d0a0ca57e"
 }

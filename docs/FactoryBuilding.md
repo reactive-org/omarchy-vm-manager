@@ -39,7 +39,8 @@ contents may require more. Before preparation/import, the manager checks space
 again against twice the actual compressed image size plus 64 MiB. Failure retains
 the finished output and does not publish an import.
 
-**Build factory** authorizes downloading the reviewed sources/packages and running
+**Build factory** authorizes downloading the pinned Node payload and the
+selected channel's signed Omarchy and Arch Linux ARM packages, and running
 an owned privileged Linux build container. Readiness or editing fields never
 starts a build. There is no additional review button or approval checkbox.
 Downloads have HTTPS host/redirect, size, time and checksum limits. Mac Python,
