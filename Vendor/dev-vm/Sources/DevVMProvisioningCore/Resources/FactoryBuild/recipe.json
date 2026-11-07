@@ -25,7 +25,7 @@
     },
     "profile/build-container.sh": {
       "mode": 420,
-      "sha256": "bcc518d2a811069bcc9758b9875be0b482d115ae821d796f5b076a7bd9661f15"
+      "sha256": "bc0de1649b2695fd6f060bd1aba57799f2266136f034384c12edd75856a01d10"
     },
     "profile/check-provisioning.py": {
       "mode": 420,
@@ -133,7 +133,7 @@
     },
     "upstream/guest/factory/build-image.sh": {
       "mode": 493,
-      "sha256": "62dc55fb59521dfd0cd5e32a2643aae86f9aae4cf5d6bafe07ab141fe6517472"
+      "sha256": "2bccd66e886a2702ce37b165fe13291f5e89356d40e2e8ba1e04b4a88e1fd01c"
     },
     "upstream/guest/keys/omarchy-revoked": {
       "mode": 420,
@@ -712,7 +712,7 @@
       "omarchy/image/OMARCHY-LICENSE": "717ba1949502290f8e47688ae2e323acd06c8ca47aec9f7596b15f678c1af4a2",
       "omarchy/image/UPSTREAM-LICENSE": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481",
       "omarchy/image/base.packages": "3a4496b9adcfe7e77ce0afbb9d36e60a9bdab9ef01b0898686cdf41c5fc53125",
-      "omarchy/image/build-container.sh": "bcc518d2a811069bcc9758b9875be0b482d115ae821d796f5b076a7bd9661f15",
+      "omarchy/image/build-container.sh": "bc0de1649b2695fd6f060bd1aba57799f2266136f034384c12edd75856a01d10",
       "omarchy/image/check-provisioning.py": "65061dca9ed1d8f4271fe2886ef0fdf04d236e295d188244a7b094dd44ea12de",
       "omarchy/image/check-user.sh": "52b2cdad6d2095806438c4b36f61040734d6cd6f7fbcb6b1bec37320d903d4d4",
       "omarchy/image/compatibility.py": "8bca0bbd6d2371f75eb63c4928ada294df3e2b37bfcba6e333083b576ad68a59",
@@ -725,7 +725,7 @@
       "omarchy/image/preferences/preferences.install": "595ecfe1e7ffa005f4ce48772e167794647467034ad5649bb0e398927c99bcb9",
       "omarchy/image/reviewed-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst": "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3",
       "omarchy/image/try-guest-source.tar.gz": "45aa19dd23e5ac768672034d51e09a39dd66c9cb8f45105be7f8d216351c3766",
-      "scripts/omarchy_image.py": "98c6444b6afdc1e248cf69868622874e03abeb7b21a6edc613323aaa5b6c95f3"
+      "scripts/omarchy_image.py": "1ec9d81fc6374b1bda3a4a1f2236494e12c4165a4333e51d0061b22ddd645d73"
     },
     "integration_package": {
       "archive": "reviewed-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst",
@@ -887,5 +887,5 @@
     "size_gib": 20,
     "try_commit": "91e95a2b9d6a9399cb2fe51f8be3d3a45c085054"
   },
-  "templateSHA256": "228b1e40e4e039891a51192362fa4721257b5c47e3f77d57e0c4482d0a0ca57e"
+  "templateSHA256": "11172109dd8ecb5164f7f384cd2eb97ba0b7e5f8924789c424462adcbee489c1"
 }
