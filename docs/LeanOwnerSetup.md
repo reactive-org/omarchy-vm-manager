@@ -3,7 +3,7 @@
 **Current compatibility policy:** [reviewed guest integration contract](FactoryCompatibility.md). Unrelated manager/source changes do not require a lean disk rebuild. Legacy lean descriptors require a separate format-2 bundle, the original reviewed package archive and explicit import. Historical source/rebuild records below describe their original validation and are not the current admission rule.
 
 
-The official contract remains byte-for-byte unchanged in `Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json`. Its digest is `d381667f407b5f82cfb9f9c391eccf2898ba8a064bc6b2f082e28f959e76aef8`. Explicit `--owner-contract lean-e4fffc6` selects `LeanOwnerSetupContract.json`, digest `1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310`. The app's normal official choice remains **Offical Try Omarchy**.
+The official contract remains byte-for-byte unchanged in `Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json`. Its digest is `d381667f407b5f82cfb9f9c391eccf2898ba8a064bc6b2f082e28f959e76aef8`. Explicit `--owner-contract lean-e4fffc6` selects `LeanOwnerSetupContract.json`, digest `1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310`. The app's normal official choice remains **Official Try Omarchy**.
 
 ## Source review
 
