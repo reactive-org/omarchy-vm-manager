@@ -36,7 +36,7 @@ The **Runtime** page shows host preflight and the known graphics issue. **Check 
 
 **Running** and SSH readiness are separate. First boot can still be installing integrations or creating the owner account. With manual owner setup selected, finish the normal wizard in the guest. With saved defaults, allow automatic setup to finish.
 
-Inspect the guest's **SSH** tab, or use `./bin/omarchy-vm get "Guest Name"`. For a stopped guest, **Available on next launch** is expected. Use **Copy SSH Command** after verification; the generated connection checks the guest's host identity on every connection.
+Inspect the guest's **SSH** tab, or use `./bin/omarchy-vm get "Guest Name"`. For a stopped guest, **Available on next launch** is expected. Use **Copy SSH command** after verification; the generated connection checks the guest's host identity on every connection.
 
 A CLI wait timeout leaves the guest running. Use `wait` to continue observing it. See the [CLI quick start](cli-quickstart.md).
 

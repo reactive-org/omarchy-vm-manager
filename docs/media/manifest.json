@@ -14,15 +14,6 @@
       "sourceSHA256": "bff2bad5721786d1ad173e132519be8ed2b55839eed1b3c46d7f624906a6a62b"
     },
     {
-      "file": "new-vm.webp",
-      "title": "Create a guest",
-      "dimensions": "1040x1101",
-      "bytes": 46454,
-      "sha256": "bc66001bbe21f4171888fe8878c0d989c27caac0ba34f2a7dc37504b95ae954d",
-      "sourceSHA256": "15292b417b9c0d5e6315f8c2c5ec2c79f7072a78dcd22e3e2b87c14dff1aacc5",
-      "sourceCrop": "1052x1114+0+14"
-    },
-    {
       "file": "guest-home.webp",
       "title": "Guest Home",
       "dimensions": "1260x952",
@@ -102,6 +93,88 @@
       "bytes": 36756,
       "sha256": "60bda9e79479ec206c4fab8178ef9d3148df4b37bbdb68acce96c64166d3f5bb",
       "sourceSHA256": "dd5bee461c7ebb56bb29def2edf4f20128a24519c3e7d34bbacfe7d92f520073"
+    },
+    {
+      "file": "example-vm-01-new-vm.webp",
+      "title": "New VM: name and factory",
+      "dimensions": "1260x952",
+      "bytes": 58798,
+      "sha256": "5104298e0768294f688cfae62e57f6c421cb0aa6db68a5634cd8261489f99ff5",
+      "sourceSHA256": "4370dd701be75d814ede67234b1626ac672ef18d7c1a2cba41b487f43b3c9434"
+    },
+    {
+      "file": "example-vm-02-layout.webp",
+      "title": "New VM: Four terminals layout",
+      "dimensions": "1260x952",
+      "bytes": 57718,
+      "sha256": "5b50a83aa49c120984394cb7df9b4207a9819718d00da3fb951a18372d840122",
+      "sourceSHA256": "aa603dd8066e1c18f965db5a53d7fb7cd4e5fa002d9d9220625ed56e7acf5779"
+    },
+    {
+      "file": "example-vm-03-customise.webp",
+      "title": "New VM: Developer setup",
+      "dimensions": "1260x952",
+      "bytes": 64036,
+      "sha256": "dd15eb505437620964eebeb9ee33d4ae403305f7205a4b928c2fdc264769b7b7",
+      "sourceSHA256": "a8c13d2cdf345c2a092bd5de8098c98856698582ec4b35b08f039223c834711a"
+    },
+    {
+      "file": "example-vm-04-resources.webp",
+      "title": "New VM: resources",
+      "dimensions": "1260x952",
+      "bytes": 55056,
+      "sha256": "a762dff97b75eac5f6a7897f50ad43e6d3a73a7b4bd2d696a79c15de8757d80f",
+      "sourceSHA256": "3657113c2cee252301b78255aefefb34c117ecaf66da4d3cf875fd69e485a439"
+    },
+    {
+      "file": "example-vm-05-access.webp",
+      "title": "New VM: access",
+      "dimensions": "1260x952",
+      "bytes": 59192,
+      "sha256": "3fe44bdbcc73ed0ebbd976191828bbc25caebb691521e360c9891ee7e26ffae8",
+      "sourceSHA256": "4cbf41474ebbf82e04b10eef10a45a8f28226ae7ae65e9274f2f2aca0bc984c0"
+    },
+    {
+      "file": "example-vm-06-starting.webp",
+      "title": "First run: starting",
+      "dimensions": "1260x952",
+      "bytes": 65316,
+      "sha256": "2067dcbaf3bc0ee880a2e45db4e56a59fde923ac9c959da94864d054266ace0c",
+      "sourceSHA256": "ae9c1f88ef0653edb54a9640fc32adbc694a0fbb54b87e12f8c539880c5f5389"
+    },
+    {
+      "file": "example-vm-07-needs-you.webp",
+      "title": "First run: needs you",
+      "dimensions": "1260x952",
+      "bytes": 70926,
+      "sha256": "7c5af0cd2e6d1ab4bf59b3d52ce6f5eb052952dfd160c0ce721bd2c2dc3ed685",
+      "sourceSHA256": "62acc08929b8ca12bf81b686d53ffca1e114b79cfbe9929a16474f67898b1497",
+      "note": "Captured during the first Example VM attempt on the official image; that screen does not show the factory."
+    },
+    {
+      "file": "example-vm-08-installing.webp",
+      "title": "First run: installing",
+      "dimensions": "1260x952",
+      "bytes": 74704,
+      "sha256": "9906d47c764c78ab6999e8bfaab808332a8a4b231d0c8709e99b39c411aea3db",
+      "sourceSHA256": "393e922962bd425d1f7a2dc87a809affa7284d9907b38731d8eca480563a7a33"
+    },
+    {
+      "file": "example-vm-09-ready.webp",
+      "title": "First run: ready",
+      "dimensions": "1260x952",
+      "bytes": 62538,
+      "sha256": "db40e2834fb64062460c2f6c1a637e09d624125e460ab513db1822132be9f14f",
+      "sourceSHA256": "ba0a96fdec6bbf2a1952e660b85bdf2d82b32a2f965fedf84e29c9f21153941b"
+    },
+    {
+      "file": "example-vm-10-desktop.webp",
+      "title": "Guest desktop: four terminals",
+      "dimensions": "1260x739",
+      "bytes": 27520,
+      "sha256": "ad22ea8c1111ebacbc3fb31cbcf13065852e05c505c68acb33b9b47093aa00f5",
+      "sourceSHA256": "5622566ec93bfe12f8235ff6eb2e75125d0730415331151c66d2e151f226ba88",
+      "sourceResize": "1344x788 resized to 1260 wide"
     }
   ],
   "video": {
@@ -116,5 +189,5 @@
     "captureDate": "2026-11-01",
     "note": "Not rebuilt on 2026-11-08; shows the earlier screenshots."
   },
-  "screenshotsAndVideoBytes": 1270291
+  "screenshotsAndVideoBytes": 1819641
 }

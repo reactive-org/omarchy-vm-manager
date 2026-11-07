@@ -2,6 +2,12 @@
 
 [User guide](README.md) · [Getting started](getting-started.md) · [CLI quick start](cli-quickstart.md)
 
+## A guest's Home page
+
+Select a guest in the sidebar to open its **Home** page. It shows the guest's resources, its developer setup, experimental suspend to disk and its home disk, with **Launch** or **Shut down** at the top. The tabs beside **Home** cover the virtual machine, networking, startup, SSH and Spaces. The suspend panel doesn't establish that a guest can hibernate; see [suspend requirements and limitations](Suspend.md).
+
+![The stopped guest Home page with Launch, resources, setup, experimental suspend to disk and home disk sections](media/guest-home.webp)
+
 ## Back up a guest home
 
 Select a running guest and choose **Home → Back up home…**. This requires authenticated managed SSH and a mounted read-write host folder. Close guest apps, review the unencrypted export (including hidden files and credentials), then confirm. A unique backup folder receives `home.tgz`; the app reports completion and its host path after checking the archive. Existing backups are preserved. See [backup contents, cancellation and limitations](HomeBackup.md).
@@ -10,7 +16,11 @@ Select a running guest and choose **Home → Back up home…**. This requires au
 
 New guests can use independent system and home disks, enabled by default. Both capacities appear in Configure. **Replace system…** creates a new VM using a copy of a stopped source's home while preserving the original. See [separate home disks, defaults and CLI](HomeDisks.md).
 
-Shut down the guest and wait for **Stopped**. Select it in the sidebar, open **Virtual machine**, then click **Configure…**. **Rename or configure…** opens the same form.
+Shut down the guest and wait for **Stopped**. Select it in the sidebar and open **Virtual machine**. It shows the guest's cores, memory, disks and recorded factory.
+
+![The Virtual machine tab showing cores, memory, system and home disks and the recorded factory](media/resources.webp)
+
+Click **Configure…**. **Rename or configure…** opens the same form.
 
 ![The Configure virtual machine form with its resources section open, showing name, factory, memory, cores, system disk, separate home and home disk](media/configure.webp)
 
@@ -20,7 +30,7 @@ SSH enrollment and the owner setup snapshot are fixed at guest creation. Create 
 
 ## Connect over SSH
 
-Choose the guest's **SSH** tab. A stopped guest shows **Available on next launch**. After launch and account setup, the manager verifies its host key, authenticates, and makes **Copy SSH Command** available. Paste that command into a Mac terminal.
+Choose the guest's **SSH** tab. A stopped guest shows **Available on next launch**. After launch and account setup, the manager verifies its host key, authenticates, and makes **Copy SSH command** available. Paste that command into a Mac terminal.
 
 ![The upper portion of the SSH tab for a stopped guest, showing its localhost endpoint and managed login key](media/ssh.webp)
 

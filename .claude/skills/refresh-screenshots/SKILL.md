@@ -13,7 +13,7 @@ Read `AGENTS.md` and `docs/media/README.md` first. The media README describes ho
 
 These exist because the user's real VMs, keys and stable install live on this Mac.
 
-- **Read-only use of the manager.** Never create, launch, stop, restart, reset, suspend or delete a VM, never download or import a factory image, and never press Create, Save, Import or any other committing button. Opening a form to photograph it and then pressing Cancel is fine; that is how the New VM, Configure and Import Factory shots were made. Only act on a specific VM if the user explicitly asks for that VM.
+- **Read-only use of the manager.** Never create, launch, stop, restart, reset, suspend or delete a VM, never download or import a factory image, and never press Create, Save, Import or any other committing button. Opening a form to photograph it and then pressing Cancel is fine; that is how the New VM, Configure and Import Factory shots were made. Only act on a specific VM if the user explicitly asks for that VM. The one planned exception is the **New VM flow** below: it creates and launches a dedicated "Example VM", and only after the user agrees to that in the current run.
 - **Dev app only.** Target bundle id `dev.omarchy.vm-manager.dev` ("Omarchy VM Manager Dev"). It is also installed in `/Applications`, so identify it by bundle id, never by path or name alone. Never grant, drive or capture the stable app (`dev.omarchy.vm-manager`) or its VMs.
 - **No rebuilds while Dev is running.** `make app-dev` (or anything that reassembles the Dev bundle) replaces the app under its running guests. Don't run it, even if the UI looks out of date; report it instead.
 - **No macOS permission prompts.** Don't use `screencapture` or anything that needs Screen Recording, Accessibility or similar. Capture only through the computer-use tools. Approving computer-use full-screen control is a Claude approval, not a macOS permission, and is allowed for the capture step.
@@ -46,7 +46,7 @@ Also gather:
 
 - **The Dev app version.** Run `lsappinfo find bundleid=dev.omarchy.vm-manager.dev` to get its ASN, then `lsappinfo info -only bundlepath '<ASN>'` and read the `bundle path=` line. Keep these as two separate commands: a worktree-isolated session refuses command substitution. Then run `defaults read "<path>/Contents/Info" CFBundleShortVersionString` and `CFBundleVersion`. Don't use `lsappinfo list`: it prints every running app's details, which can include personal account names and email addresses. Format it like `0.9.3 (16)`.
 - **Guest states.** List each guest in the Dev library and say whether it is stopped. Several shots say the guests stayed stopped. If a guest is running, that's the user's business: don't stop it, just note it and take the stopped-state shots from a stopped guest.
-- **Dev branding.** The Dev app shows "Omarchy VM Manager Dev" in the title bar, a purple DEV badge on the library header and "Omarchy VM Manager Dev <version>" in the sidebar footer, while the guide describes the everyday app. Guest names carry no Dev prefix. Point this out once, in the step 2 summary, so the user can decide whether Dev branding in published images is acceptable.
+- **Dev branding.** The Dev app shows "Omarchy VM Manager Dev" in the title bar, a purple DEV badge on the library header and "Omarchy VM Manager Dev <version>" in the sidebar footer, while the guide describes the everyday app. Guest names in the manager carry no Dev prefix, but a guest's own window title does (for example "[Dev] Example VM"). Point this out once, in the step 2 summary, so the user can decide whether Dev branding in published images is acceptable.
 
 ## 2. Confirm with the user
 
@@ -56,8 +56,9 @@ Then ask, in one message:
 
 1. Is the shot list right? Should any shots be dropped, added or renamed?
 2. The MP4 tour (`quick-tour.mp4` and `quick-tour.vtt`) is a captioned slideshow of these same screens. Should it be rebuilt this time, or left as it is and marked as older than the screenshots?
-3. Which display is the window on? Ask this **only if** you can't tell. Display names come from the note on the first full-screen screenshot. Ask once.
-4. Please say **"ready"** once the Dev window is arranged.
+3. The `example-vm-*` shots in Getting started walk through creating and launching a VM. Should this run recapture them? That means creating and launching a new **Example VM**, so ask for the specifics: who approves setup steps, whether to capture its guest desktop, and what to do with it afterwards. Skip this question if the user has already scoped the run to the stopped-guest shots.
+4. Which display is the window on? Ask this **only if** you can't tell. Display names come from the note on the first full-screen screenshot. Ask once.
+5. Please say **"ready"** once the Dev window is arranged.
 
 Wait for "ready". Don't capture before it.
 
@@ -82,7 +83,7 @@ A cropped shot (for example `configure` and `ssh`, which keep only the upper par
 
 The New VM and Configure forms use collapsible sections, and only one section is open at a time. Opening a section to photograph it is fine. Prefer an arrangement that shows nothing personal over one that needs a privacy crop.
 
-- **New VM** (the toolbar **+**): click the name field and type an unsaved example. The last refresh used "Development", with the **resources** section open showing the defaults. Keep the **access** section closed, because it can show owner defaults (username, hostname, key). If saved owner defaults would carry a personal key or username into view, turn them off **in this unsaved form only**. Capture, then Cancel. Never press Create or Create and launch, and never save defaults.
+- **New VM**: covered by the `example-vm-*` walkthrough (see "The New VM flow" below). There is no separate cancelled-form shot any more.
 - **Configure** (the **Configure…** button on Home or the Virtual machine tab, for a stopped guest): open **resources** and keep **access** closed. Access shows an "owner defaults" line containing the generated hostname. Capture, then Cancel.
 - **SSH**: capture the tab for a stopped guest. The personal key fingerprint ("your key") is the third row, so crop above it (see step 4).
 - **Import factory** (the toolbar import button, or the **Factory images** page): capture before any bundle is chosen, then Cancel. Never press Choose bundle….
@@ -97,6 +98,34 @@ Ask the user instead of working around it when a shot needs any of these:
 Mark that shot "skipped — waiting on you" and carry on with the rest.
 
 When you've finished, restore what you changed: the originally selected guest and tab, scroll positions, and any open sheets (Cancel them). Then call `release_full_control` and `app_release`.
+
+### The New VM flow (Example VM)
+
+Getting started walks through creating a VM, with one `example-vm-NN-<step>` image per major step. These are the only shots that change the user's machine: they create and launch a real VM, which downloads and installs software and takes 10–20 minutes. Do them only when the user agrees in this run (step 2), and settle these points first:
+
+- **Name and layout:** name the VM **Example VM** and choose the **Four terminals** layout. Choosing a layout turns on developer setup (customise shows **Developer**, and the main button becomes **Create, launch & set up**).
+- **Factory:** use a lean **custom** factory with a generic name, such as **Lean Omarchy**. Setup fails on the official Try Omarchy image, because updating it fails. Avoid factories whose names identify a person or organisation. The factory pop-up can't be opened by background tools, so either start from **Factory images → Use for new VM** on the right factory, or ask the user to select it. Check the factory row before the first capture.
+- **Existing Example VM:** if one already exists, the name clashes. Ask the user to delete it, or ask permission to Trash it through the app's confirmed delete. Don't rename or reuse it.
+- **Approvals:** setup can stop at **Needs you**, for example Omarchy asking to enable passwordless sudo in the live terminal. Ask the user who answers. By default the user does; capture the prompt first, then wait for them.
+- **Guest desktop:** ask whether to capture the guest's own window. Each guest has its own window app, with a bundle id like `dev.tryomarchy.guest.<hash>` and a withheld display name, and Stable guests use the same pattern. Find the right one with `list_apps`, then match its pid to Example VM by start time (`ps -o pid=,lstart= -p <pids>`; Example VM's started minutes ago, around its Restart step). Request access to that bundle id only; the grant's display name should read "[Dev] Example VM". The window is usually hidden behind other apps, so capture it with `app_screenshot` at `scale: 1`. Its saved blob is the window at native size (about 1344 × 788), with nothing overlapping. Omarchy's welcome notifications stay until dismissed, and one of them is "Update System", so never click them; ask the user to dismiss any they don't want shown.
+- **Afterwards:** ask whether to shut it down and keep it, shut it down and Trash it, or leave it running. After shutting it down, confirm it shows **Stopped** before releasing control.
+
+Capture the whole manager window at each step, in this order:
+
+1. **01-new-vm:** the form named Example VM, with the custom factory selected and all sections closed.
+2. **02-layout:** **layout** open, with **Four terminals** selected.
+3. **03-customise:** **customise** open (Bundled configuration, Developer profile).
+4. **04-resources:** **resources** open with the defaults.
+5. **05-access:** **access** open. Check that the selected public key's fingerprint is below the visible area; crop or skip the shot if it isn't. Then press **Create, launch & set up**.
+6. **06-starting:** Home with the **first run** tracker at **Starting**.
+7. **07-needs-you:** the live terminal prompt and the **Needs you** badge in the sidebar, before the user answers. Omarchy's sudo prompt arrives a minute or two after Starting, often before your next check. Tell the user up front to wait for your capture before answering it.
+8. **08-installing:** **Installing**, with package output in the live terminal.
+9. **09-ready:** Home once the tracker reaches **Ready**.
+10. **10-desktop:** the guest window showing the four terminals, if agreed. Scale it to 1260 wide. Check the terminal prompts for a username or hostname; with the default Omarchy prompt they show only `~ ❯`.
+
+Afterwards, shut Example VM down from its Home page (if that's what the user chose), wait for **Stopped**, and confirm its guest window process has exited (`ps -p <pid>`). Release both apps. In the docs, record the factory, layout, profile, who answered prompts, any reused capture and the final state in `docs/media/README.md` and the Validation entry. Adding the flow images brings the media close to the 2 MB budget, so report the total.
+
+Waiting is long and uneventful. Run `sleep` in the background (2–4 minutes at a time) between checks rather than repeatedly taking screenshots, and check with a scaled `app_screenshot`. If setup fails, capture nothing more, report what the app shows, and ask the user how to proceed. Don't retry setup from the failed VM's Home page: a known bug makes a retry re-run the old saved plan.
 
 ## 4. Review, crop and convert each image
 
