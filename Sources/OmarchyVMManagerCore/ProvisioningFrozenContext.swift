@@ -67,7 +67,8 @@ final class ProvisioningPrivateInputTree: @unchecked Sendable {
     /// never execution authority; the caller must match the saved receipt hashes.
     init(retained directory: URL, parent: URL) throws {
         self.parent = parent; self.directory = directory
-        guard directory.deletingLastPathComponent() == parent,
+        // Compare paths: a directory URL may or may not carry a trailing slash.
+        guard directory.deletingLastPathComponent().path == parent.path,
               directory.lastPathComponent.hasPrefix("inputs-"),
               UUID(uuidString: String(directory.lastPathComponent.dropFirst(7))) != nil else { throw ProvisioningJobFailure.artifactUnavailable }
         do {

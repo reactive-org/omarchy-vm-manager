@@ -10,7 +10,7 @@ jobs:
     name: macOS build and tests
     # These PRs supply the complete check. Avoid a duplicate push run
     # consuming a second Mac runner for the same head.
-    if: github.event_name != 'push' || (github.ref != 'refs/heads/codex/factory-image-builder' && github.ref != 'refs/heads/codex/setup-system-update')
+    if: github.event_name != 'push' || (github.ref != 'refs/heads/codex/factory-image-builder' && github.ref != 'refs/heads/codex/setup-system-update' && github.ref != 'refs/heads/claude/issue-14-run-setup-again')
     # Xcode 27 is only on GitHub's xcode-27 (macOS 27) preview image.
     runs-on: xcode-27
     env:

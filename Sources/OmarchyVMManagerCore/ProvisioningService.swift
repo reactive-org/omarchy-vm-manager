@@ -1,7 +1,9 @@
 import DevVMProvisioningCore
 import Foundation
 
-public enum ProvisioningServiceFailure: String, Error, Sendable { case disabled, busy, unknownWorkflow, reviewRequired, interrupted, targetChanged, timedOut, unavailable }
+/// `alreadyRun`: this plan's run has finished. A plan runs once; Run setup again
+/// makes a fresh plan with a new ID from the same frozen choices (issue #14).
+public enum ProvisioningServiceFailure: String, Error, Sendable { case disabled, busy, unknownWorkflow, reviewRequired, interrupted, targetChanged, timedOut, unavailable, alreadyRun }
 struct ProvisioningPreparedJob: Sendable, CustomStringConvertible, CustomDebugStringConvertible {
     let workflowID: UUID
     let request: ProvisioningRequest
@@ -62,6 +64,7 @@ public actor ProvisioningService {
     let jobs: ProvisioningJobJournal
     private let artifacts: ProvisioningJobArtifacts
     let sourceDirectory: URL
+    let planHistory: ProvisioningPlanHistory
     let environment: ProvisioningServiceEnvironment
     private let authority: ProvisioningAdmittedSessionAuthority
     var rows: [UUID: ProvisioningWorkflowRecord]
@@ -81,6 +84,7 @@ public actor ProvisioningService {
     var creations: [UUID: ProvisioningCreationDraft] = [:]
     var applyPreparations: [UUID: Task<ProvisioningApplyReview, Error>] = [:]
     var applyReviews: [UUID: ProvisioningApplyReview] = [:]
+    var retries: [UUID: ProvisioningRetryPreview] = [:]
     var applySubmissions: [UUID: (ProvisioningApplyConsent, Task<ProvisioningWorkflowSnapshot, Error>)] = [:]
     var reviewOperations = Set<UUID>()
     var actionPreparations: [UUID: ProvisioningActionPreparation] = [:]
@@ -90,10 +94,10 @@ public actor ProvisioningService {
     private var closed = false, failed = false
 
     private init(manager: VMManager, coordinator: ProvisioningCoordinator, jobs: ProvisioningJobJournal, workflows: ProvisioningWorkflowJournal,
-                 artifacts: ProvisioningJobArtifacts, sourceDirectory: URL, environment: ProvisioningServiceEnvironment,
+                 artifacts: ProvisioningJobArtifacts, sourceDirectory: URL, planHistory: ProvisioningPlanHistory, environment: ProvisioningServiceEnvironment,
                  authority: ProvisioningAdmittedSessionAuthority, rows: [ProvisioningWorkflowRecord]) {
         self.manager = manager; self.coordinator = coordinator; self.jobs = jobs; self.workflows = workflows; self.artifacts = artifacts
-        self.sourceDirectory = sourceDirectory; self.environment = environment; self.authority = authority; self.rows = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+        self.sourceDirectory = sourceDirectory; self.planHistory = planHistory; self.environment = environment; self.authority = authority; self.rows = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
         executionEnabled = environment.executionEnabled
     }
     static func open(manager: VMManager, directory: URL, environment: ProvisioningServiceEnvironment) async throws -> ProvisioningService {
@@ -125,8 +129,9 @@ public actor ProvisioningService {
         let sourceDirectory = directory.appendingPathComponent("sources"); try PrivateFiles.directory(sourceDirectory, create: true)
         let coordinator = try await ProvisioningCoordinator.open(manager: manager, journal: jobs, authority: authority, artifacts: artifacts,
             recoveryAuthority: environment.launcher, engineDigest: environment.engineDigest, executionAdmission: environment.executionAdmission, admitPackage: environment.admitPackage)
+        let planHistory = ProvisioningPlanHistory(directory: directory.appendingPathComponent("plans"))
         return .init(manager: manager, coordinator: coordinator, jobs: jobs, workflows: workflows, artifacts: artifacts,
-            sourceDirectory: sourceDirectory, environment: environment, authority: authority, rows: records)
+            sourceDirectory: sourceDirectory, planHistory: planHistory, environment: environment, authority: authority, rows: records)
     }
     func reviewAvailable() throws { guard !closed, !failed else { throw ProvisioningServiceFailure.unavailable } }
     public func status(_ id: UUID) -> ProvisioningWorkflowSnapshot? { rows[id]?.snapshot }
@@ -225,7 +230,12 @@ public actor ProvisioningService {
     func approve(_ id: UUID, approval: ProvisioningApproval) async throws -> ProvisioningWorkflowSnapshot {
         try enabled()
         guard var row = rows[id], row.reviewDigest == approval.reviewIdentity else { throw ProvisioningServiceFailure.reviewRequired }
-        if row.applyJobID != nil { return row.snapshot }
+        if row.applyJobID != nil {
+            // A repeat while the run is in progress (a double-click) observes it.
+            // A finished run is never returned as if this approval started it.
+            guard row.stage.inProgress else { throw ProvisioningServiceFailure.alreadyRun }
+            return row.snapshot
+        }
         guard let value = previews[id] else { throw ProvisioningServiceFailure.reviewRequired }
         guard rows[id]?.stage == .readyForReview else { throw ProvisioningServiceFailure.reviewRequired }
         try current(id)
@@ -426,7 +436,7 @@ public actor ProvisioningService {
         for lease in pendingPreparations.values { await coordinator.endPreparation(lease) }
         let pendingRestarts = restarts; restarts.removeAll()
         for lease in pendingRestarts.values { await coordinator.cancelRestart(lease) }
-        try await coordinator.closeForReopen(); workflows.close(); closed = true; actionPreparations.removeAll(); actionContexts.removeAll(); actionSubmissions.removeAll(); drafts.removeAll(); creations.removeAll(); applyPreparations.removeAll(); applyReviews.removeAll(); applySubmissions.removeAll(); previews.removeAll(); original.removeAll(); sources.removeAll(); tasks.removeAll()
+        try await coordinator.closeForReopen(); workflows.close(); closed = true; actionPreparations.removeAll(); actionContexts.removeAll(); actionSubmissions.removeAll(); drafts.removeAll(); retries.removeAll(); creations.removeAll(); applyPreparations.removeAll(); applyReviews.removeAll(); applySubmissions.removeAll(); previews.removeAll(); original.removeAll(); sources.removeAll(); tasks.removeAll()
     }
     /// Explicit recovery requires live original resource admission and an injected
     /// adapter. A fresh process with an empty launcher still cannot prove the
