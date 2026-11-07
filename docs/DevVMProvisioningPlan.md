@@ -4141,3 +4141,24 @@ their full rerun is reserved for hosted CI. The user explicitly allows normal
 hosted workflows after merge, including runner-only Ansible installation and the
 normal next Dev signing/notarization release; this Mac remains untouched. Hosted
 success on the correction remains TO PROVE; the failed run above remains a failure.
+
+## Layout needs and list merge pin — 7 November 2026
+
+**DESIGN DECISION:** consume the exact 107-file package export of the dev-vm commit
+that merges issue #18's three PRs: sibling lists combine without duplicates, the
+three multi-workspace layout examples are bundled, and each example's needs are
+planned by `SetupPlanner` with a top-level `layout` report. `integrationPatches` is
+empty and `baseFiles` equals the export; the four former patches are in that commit.
+Historical patch files and frozen candidate pins are unchanged.
+
+**IMPLEMENTED:** the layout picker groups the seven examples by workspace count and
+draws workspace 1 with an “N of M” marker; each card's needs line comes from the
+catalogue. `ProvisioningAppearanceSummary` reads the plan's `layout` report, and the
+setup review, reviewed-appearance view and guest card show “Layout adds …” and any
+app setup doesn't install. Manager tests now expect Web + Python to plan and use a
+local-catalogue profile for a genuine single-setting conflict.
+
+**VERIFIED — offline/fake:** `make test-provisioning-selection` (49),
+`test-provisioning-package` (7 Swift, 8 Python), `test-provisioning-appearance` (11)
+and `test-provisioning-review` (36) pass with no VM, guest, network or signing.
+**TO PROVE:** real installation and placement through manager setup.

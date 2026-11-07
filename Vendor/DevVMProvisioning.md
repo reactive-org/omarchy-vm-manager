@@ -1,6 +1,13 @@
 # Pinned developer provisioning source
 
-`dev-vm/` uses an immutable base export from
+**Current pin (7 November 2026, issue #18):** `dev-vm/` is the unpatched export of
+the dev-vm commit named by `revision` in `Config/DevVMProvisioning.lock.json`
+(107 files: the paths listed below). `integrationPatches` is empty and `baseFiles`
+equals `files`; the four former patches are part of that commit. The export adds
+the list-merge rule, the three multi-workspace layout examples and layout needs.
+The history below describes earlier pins and is kept as a record.
+
+Originally, `dev-vm/` used an immutable base export from
 `https://github.com/reactive-org/dev-vm`, commit
 `bb3fae22be45b38035fac52aefa0eb270a9d0fea`, plus the exact content-hashed
 `Patches/dev-vm-durable-state.patch`. This is explicit private coupling to the

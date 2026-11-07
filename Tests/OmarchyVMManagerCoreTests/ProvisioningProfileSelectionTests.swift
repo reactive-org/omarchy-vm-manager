@@ -42,10 +42,20 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: f.source.appendingPathComponent(ProvisioningService.selectionManifest).path))
         await f.assertInert(); await f.close()
     }
-    @Test func siblingConflictsAreRefusedRatherThanChoosingAWinner() async throws {
+    @Test func siblingListsCombineButSingleSettingConflictsAreRefused() async throws {
+        // Bundled profiles that both set a list now combine it.
+        let combined = try await CreationFixture()
+        let review = try await combined.service.prepareCreation(source: .init(profiles: ["web", "python"]))
+        let features = try #require(await combined.service.creations[review.id]?.frozen.plan.document.object?["features"]?.object)
+        #expect(features["options"]?.object?["databases"]?.object?["clients"] == .array([.string("postgresql"), .string("sqlite")]))
+        await combined.assertInert(); await combined.close()
+        // A profile whose single setting disagrees is still refused rather than choosing a winner.
         let f = try await CreationFixture()
+        try Data("schema_version: 1\nnamespace: team\nfeatures: {}\nprofiles: {native: {features: [docker], options: {docker: {access: native}}}}\n".utf8)
+            .write(to: f.source.appendingPathComponent("catalogue.yml"))
+        try Data("schema_version: 1\nid: conflicting-profiles\nsetup: {catalogues: [catalogue.yml], profiles: [team.native]}\n".utf8).write(to: f.source.appendingPathComponent("vm.yml"))
         await #expect(throws: ProvisioningReviewFailure.conflictingProfiles) {
-            _ = try await f.service.prepareCreation(source: .init(profiles: ["web", "python"]))
+            _ = try await f.service.prepareCreation(source: .init(directory: f.source.path, profiles: ["web"]))
         }
         #expect(await f.service.reviewCount == 0)
         await f.assertInert(); await f.close()

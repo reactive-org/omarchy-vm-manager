@@ -91,7 +91,6 @@ public enum GuestOperation: String, Sendable, Codable, CaseIterable {
     case quiesceOwnedWork, revokeGrant, verifyGrantInactive, removePayload, verifyOwnerDockerAccess
     var interactive: Bool { [.requestPersistentGrant, .updateSystem, .configureDockerOwnerAccess, .installManifestPackages].contains(self) }
     var bodyTimeoutSeconds: Int {
-        if [.requestPersistentGrant, .configureDockerOwnerAccess].contains(self) { return 120 }
         if self == .verifyIdentity { return 10 }
         if [.resetGrant, .clearAuthenticationCache, .verifyGrantActive].contains(self) { return 30 }
         return 3600

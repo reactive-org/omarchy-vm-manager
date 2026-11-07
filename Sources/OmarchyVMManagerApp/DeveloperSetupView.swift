@@ -396,6 +396,8 @@ struct DeveloperSetupView: View {
             let theme = look.theme.map { $0.hasPrefix("https://github.com/") ? String($0.dropFirst(19)) + " theme" : $0 == "most-starred" ? "the most-starred theme" : $0 == "random" ? "a random theme" : $0 }
             steps.append("Applies " + [layout, theme].compactMap { $0 }.joined(separator: " and ") + " at the next desktop login.")
         }
+        if let adds = look.layoutAddsSentence { steps.append(adds) }
+        steps += look.layoutNotInstalledSentences
         if !value.tasks.isEmpty { steps.append("Runs \(value.tasks.count) custom task\(value.tasks.count == 1 ? "" : "s") from this configuration.") }
         if review.persistentGrantRequired { steps.append("Uses temporary admin access while it runs; cleanup removes it.") }
         steps.append("Finishes with a restart and a configuration check, each reviewed before it runs.")

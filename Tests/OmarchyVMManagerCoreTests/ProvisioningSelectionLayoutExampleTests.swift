@@ -5,14 +5,21 @@ import Testing
 
 @Suite("Bundled layout cards — frozen local inputs") struct ProvisioningSelectionLayoutExampleTests {
     @Test(arguments: ProvisioningLayoutExampleID.allCases)
-    func selectingAnExampleFreezesItsExactLuaWithoutInstallingApps(id: ProvisioningLayoutExampleID) async throws {
+    func selectingAnExampleFreezesItsExactLuaAndPlansItsApps(id: ProvisioningLayoutExampleID) async throws {
         let f = try await CreationFixture()
         let source = ProvisioningSetupSource(profiles: ["developer"], appearance: .init(layoutExample: id))
         let review = try await f.service.prepareCreation(source: source)
         let frozen = try #require(await f.service.creations[review.id]?.frozen)
         #expect(frozen.plan.snapshot.data(for: ProvisioningService.selectionLayout) == (try LayoutExamples.source(id)))
         #expect(frozen.plan.document.object?["vm"]?.object?["packages"] == .array([]))
-        #expect(ProvisioningAppearanceSummary(proposal: review.proposal).layoutExample?.id == id)
+        let summary = ProvisioningAppearanceSummary(proposal: review.proposal)
+        #expect(summary.layoutExample?.id == id)
+        // Developer has neither Chromium nor VS Code, so the plan adds every app the layout can install;
+        // Claude Desktop has no setup feature yet and is reported instead.
+        let example = try #require(try LayoutExamples.catalogue().first { $0.id == id })
+        #expect(summary.layoutAdds == example.needs.filter { $0.feature != nil }.map(\.application))
+        #expect(summary.layoutNotInstalled.map(\.application) == example.needs.filter { $0.feature == nil }.map(\.application))
+        #expect(summary.layoutAddsSentence == (summary.layoutAdds.isEmpty ? nil : "Layout adds " + summary.layoutAdds.joined(separator: " and ") + "."))
         #expect(try await f.service.creation(review.id) == review)
         _ = try await f.create(review)
         await f.assertInert(); await f.close()
@@ -26,6 +33,36 @@ import Testing
         let frozen = try #require(await f.service.creations[old.id]?.frozen)
         #expect(frozen.plan.snapshot.data(for: ProvisioningService.selectionLayout) == (try LayoutExamples.source(.fourTerminals)))
         await f.assertInert(); await f.close()
+    }
+    @Test func webAlreadyHasChromiumSoTheVSCodeLayoutAddsOnlyVSCode() async throws {
+        let f = try await CreationFixture()
+        let review = try await f.service.prepareCreation(source: .init(profiles: ["web"], appearance: .init(layoutExample: .vscodeBrowser)))
+        let summary = ProvisioningAppearanceSummary(proposal: review.proposal)
+        #expect(summary.layoutAdds == ["VS Code"])
+        #expect(summary.layoutAddsSentence == "Layout adds VS Code.")
+        #expect(summary.layoutNotInstalledSentences.isEmpty)
+        let claude = ProvisioningAppearanceSummary(proposal: try await f.service.prepareCreation(
+            source: .init(profiles: ["web"], appearance: .init(layoutExample: .claudeWorkspace))).proposal)
+        #expect(claude.layoutAdds.isEmpty)
+        #expect(claude.layoutNotInstalledSentences == ["This layout also needs Claude Desktop, which setup doesn’t install yet."])
+        await f.assertInert(); await f.close()
+    }
+    @Test func profilesThatShareAListNowPlanTogether() async throws {
+        let f = try await CreationFixture()
+        for profiles in [["python", "web"], ["project-managed", "python"]] {
+            let review = try await f.service.prepareCreation(source: .init(profiles: profiles))
+            let document = try PlainDataParser.parse(review.proposal, format: .json)
+            let clients = document.object?["features"]?.object?["options"]?.object?["databases"]?.object?["clients"]?.array?.compactMap(\.string)
+            #expect(Set(clients ?? []) == ["postgresql", "sqlite"] && clients?.count == 2)
+        }
+        await f.assertInert(); await f.close()
+    }
+    @Test func aProposalWithoutALayoutReportAddsNothing() {
+        let summary = ProvisioningAppearanceSummary(proposal: Data(#"{"features":{"options":{}}}"#.utf8))
+        #expect(summary.layoutAdds.isEmpty && summary.layoutNotInstalled.isEmpty && summary.layoutAddsSentence == nil)
+        let odd = ProvisioningAppearanceSummary(proposal: Data(#"{"layout":{"adds":[{"application":3},"x",{"application":"VS Code"}],"not_installed":[{"application":"Chromium","reason":"disabled"}]}}"#.utf8))
+        #expect(odd.layoutAdds == ["VS Code"])
+        #expect(odd.layoutNotInstalledSentences == ["This layout also needs Chromium, which this configuration turns off."])
     }
     @Test func examplesCannotBeCombinedWithCustomFileOrRemovalAndOldSourcesStayCompatible() throws {
         for value in [ProvisioningAppearanceSelection(layoutFile: "/private/tmp/fixture.lua", layoutExample: .fourTerminals), .init(removeLayout: true, layoutExample: .fourTerminals)] {

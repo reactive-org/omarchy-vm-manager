@@ -9,6 +9,7 @@
       "applications": [
         "Foot"
       ],
+      "needs": [],
       "windows": [
         {
           "label": "Terminal 1",
@@ -54,6 +55,17 @@
         "Foot",
         "Chromium"
       ],
+      "needs": [
+        {
+          "application": "Chromium",
+          "feature": "browsers",
+          "options": {
+            "browsers": [
+              "chromium"
+            ]
+          }
+        }
+      ],
       "windows": [
         {
           "label": "Terminal",
@@ -82,6 +94,26 @@
       "applications": [
         "VS Code",
         "Chromium"
+      ],
+      "needs": [
+        {
+          "application": "VS Code",
+          "feature": "editors",
+          "options": {
+            "editors": [
+              "vscode"
+            ]
+          }
+        },
+        {
+          "application": "Chromium",
+          "feature": "browsers",
+          "options": {
+            "browsers": [
+              "chromium"
+            ]
+          }
+        }
       ],
       "windows": [
         {
@@ -112,6 +144,20 @@
         "Claude Desktop",
         "Foot",
         "Chromium"
+      ],
+      "needs": [
+        {
+          "application": "Chromium",
+          "feature": "browsers",
+          "options": {
+            "browsers": [
+              "chromium"
+            ]
+          }
+        },
+        {
+          "application": "Claude Desktop"
+        }
       ],
       "windows": [
         {
@@ -149,6 +195,309 @@
         }
       ],
       "sha256": "d8deb32ae7bc50424c1e7b52a0dc571e17fb3f49f5e153ec16304ece28cf398d"
+    },
+    {
+      "id": "multi-workspace",
+      "title": "Three workspaces",
+      "summary": "VS Code + browser on 1, four terminals on 2, Claude with two terminals on 3.",
+      "file": "multi-workspace.lua",
+      "applications": [
+        "VS Code",
+        "Chromium",
+        "Foot",
+        "Claude Desktop"
+      ],
+      "needs": [
+        {
+          "application": "VS Code",
+          "feature": "editors",
+          "options": {
+            "editors": [
+              "vscode"
+            ]
+          }
+        },
+        {
+          "application": "Chromium",
+          "feature": "browsers",
+          "options": {
+            "browsers": [
+              "chromium"
+            ]
+          }
+        },
+        {
+          "application": "Claude Desktop"
+        }
+      ],
+      "windows": [
+        {
+          "label": "VS Code",
+          "kind": "editor",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.57,
+          "height": 0.92,
+          "workspace": 1
+        },
+        {
+          "label": "Browser",
+          "kind": "browser",
+          "x": 0.61,
+          "y": 0.04,
+          "width": 0.37,
+          "height": 0.92,
+          "workspace": 1
+        },
+        {
+          "label": "Terminal 1",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.47,
+          "height": 0.44,
+          "workspace": 2
+        },
+        {
+          "label": "Terminal 2",
+          "kind": "terminal",
+          "x": 0.51,
+          "y": 0.04,
+          "width": 0.47,
+          "height": 0.44,
+          "workspace": 2
+        },
+        {
+          "label": "Terminal 3",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.52,
+          "width": 0.47,
+          "height": 0.44,
+          "workspace": 2
+        },
+        {
+          "label": "Terminal 4",
+          "kind": "terminal",
+          "x": 0.51,
+          "y": 0.52,
+          "width": 0.47,
+          "height": 0.44,
+          "workspace": 2
+        },
+        {
+          "label": "Terminal 5",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.37,
+          "height": 0.44,
+          "workspace": 3
+        },
+        {
+          "label": "Terminal 6",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.52,
+          "width": 0.37,
+          "height": 0.44,
+          "workspace": 3
+        },
+        {
+          "label": "Claude",
+          "kind": "claude",
+          "x": 0.41,
+          "y": 0.04,
+          "width": 0.57,
+          "height": 0.92,
+          "workspace": 3
+        }
+      ],
+      "sha256": "adff65d20ba6ac3eb888609a00da071bbb814acec70bf38455b322b8293489f2"
+    },
+    {
+      "id": "claude-browser-code-terminals",
+      "title": "Claude, code, terminals",
+      "summary": "Claude + browser on 1, VS Code on 2, four terminals on 3.",
+      "file": "claude-browser-code-terminals.lua",
+      "applications": [
+        "Claude Desktop",
+        "Chromium",
+        "VS Code",
+        "Foot"
+      ],
+      "needs": [
+        {
+          "application": "VS Code",
+          "feature": "editors",
+          "options": {
+            "editors": [
+              "vscode"
+            ]
+          }
+        },
+        {
+          "application": "Chromium",
+          "feature": "browsers",
+          "options": {
+            "browsers": [
+              "chromium"
+            ]
+          }
+        },
+        {
+          "application": "Claude Desktop"
+        }
+      ],
+      "windows": [
+        {
+          "label": "Claude",
+          "kind": "claude",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.57,
+          "height": 0.92,
+          "workspace": 1
+        },
+        {
+          "label": "Browser",
+          "kind": "browser",
+          "x": 0.61,
+          "y": 0.04,
+          "width": 0.37,
+          "height": 0.92,
+          "workspace": 1
+        },
+        {
+          "label": "VS Code",
+          "kind": "editor",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.96,
+          "height": 0.92,
+          "workspace": 2
+        },
+        {
+          "label": "Terminal 1",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.47,
+          "height": 0.44,
+          "workspace": 3
+        },
+        {
+          "label": "Terminal 2",
+          "kind": "terminal",
+          "x": 0.51,
+          "y": 0.04,
+          "width": 0.47,
+          "height": 0.44,
+          "workspace": 3
+        },
+        {
+          "label": "Terminal 3",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.52,
+          "width": 0.47,
+          "height": 0.44,
+          "workspace": 3
+        },
+        {
+          "label": "Terminal 4",
+          "kind": "terminal",
+          "x": 0.51,
+          "y": 0.52,
+          "width": 0.47,
+          "height": 0.44,
+          "workspace": 3
+        }
+      ],
+      "sha256": "f027c09bc8135880755a16dec77cd4112c284308a17e60a54aacb641a38d1690"
+    },
+    {
+      "id": "small-screen",
+      "title": "Small screen",
+      "summary": "One app per workspace for a laptop display: Claude, browser, VS Code, then two terminals.",
+      "file": "small-screen.lua",
+      "applications": [
+        "Claude Desktop",
+        "Chromium",
+        "VS Code",
+        "Foot"
+      ],
+      "needs": [
+        {
+          "application": "VS Code",
+          "feature": "editors",
+          "options": {
+            "editors": [
+              "vscode"
+            ]
+          }
+        },
+        {
+          "application": "Chromium",
+          "feature": "browsers",
+          "options": {
+            "browsers": [
+              "chromium"
+            ]
+          }
+        },
+        {
+          "application": "Claude Desktop"
+        }
+      ],
+      "windows": [
+        {
+          "label": "Claude",
+          "kind": "claude",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.96,
+          "height": 0.92,
+          "workspace": 1
+        },
+        {
+          "label": "Browser",
+          "kind": "browser",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.96,
+          "height": 0.92,
+          "workspace": 2
+        },
+        {
+          "label": "VS Code",
+          "kind": "editor",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.96,
+          "height": 0.92,
+          "workspace": 3
+        },
+        {
+          "label": "Terminal 1",
+          "kind": "terminal",
+          "x": 0.02,
+          "y": 0.04,
+          "width": 0.47,
+          "height": 0.92,
+          "workspace": 4
+        },
+        {
+          "label": "Terminal 2",
+          "kind": "terminal",
+          "x": 0.51,
+          "y": 0.04,
+          "width": 0.47,
+          "height": 0.92,
+          "workspace": 4
+        }
+      ],
+      "sha256": "56ba737ffd8d05bbe92717544fc8a5e0da119c58592c7304ca6787fd7be80620"
     }
   ]
 }

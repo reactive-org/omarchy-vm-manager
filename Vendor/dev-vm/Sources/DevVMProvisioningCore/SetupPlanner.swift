@@ -22,10 +22,19 @@ public enum SetupPlanner {
             _ = try builder.document(path)
             return try FeatureCatalogue(data: builder.freeze().data(for: path)!, format: sourceFormat(path), sourceID: path)
         }
-        let features = try FeaturePlanner.resolve(selection: manifest.selection, catalogues: catalogues)
+        var features = try FeaturePlanner.resolve(selection: manifest.selection, catalogues: catalogues)
+        var layoutReport: ManifestValue?
         if let layout = features.options["workstation"]?.object?["layout"]?.string, !layout.isEmpty {
             _ = try builder.capture(layout)
-            guard builder.freeze().data(for: layout) != nil else { throw ManifestError(.file) }
+            guard let bytes = builder.freeze().data(for: layout) else { throw ManifestError(.file) }
+            // A byte-identical bundled example brings the apps it arranges; any other file adds nothing.
+            if let example = try LayoutExamples.catalogue().first(where: { $0.sourceSHA256 == digest(bytes) }) {
+                let needs = try LayoutNeedsPlanner(example: example, base: features, selection: manifest.selection)
+                if let request = needs.request {
+                    features = try FeaturePlanner.resolve(selection: manifest.selection, catalogues: catalogues, layout: request)
+                }
+                layoutReport = needs.report(final: features)
+            }
         }
         var dotfiles: [ManifestValue] = [], targets = Set<String>()
         for entry in manifest.dotfiles {
@@ -72,6 +81,7 @@ public enum SetupPlanner {
                 "removals": .array(removals.map(ManifestValue.string)),
                 "update_policy": .string("Apply updates Omarchy and all system packages through omarchy update -y before installing selected software; restart and check are reviewed afterward. Check mode never updates. " + (manifest.vm.leanDeveloper ? "Opt-in optional-app trim through Omarchy; candidates only, installed state and dependency safety checked in the guest; selected software and required components retained." : "Native Omarchy/mise ownership; no implicit removal.")),
                 "factory_admission": .string("manager_verification_required")])]
+        if let layoutReport { document["layout"] = layoutReport }
         document["plan_digest"] = .string(digest(try canonicalData(ManifestValue.object(document))))
         return SetupPlan(document: .object(document), snapshot: snapshot, manifestPath: path)
     }
@@ -86,5 +96,58 @@ public enum SetupPlanner {
                   let data = try? Data(contentsOf: url), expected == .string(digest(data)) else { throw ManifestError(.resource) }
         }
         return doc
+    }
+}
+
+/// Works out what a recognised layout example adds to a plan, against the same plan
+/// without the layout. Lists are added to each feature's effective value (defaults
+/// included), so a layout's VS Code never displaces a profile's Neovim.
+struct LayoutNeedsPlanner {
+    let example: LayoutExample
+    let base: ResolvedFeatures
+    private(set) var request: LayoutRequest?
+    private var present: [ManifestValue] = [], missing: [ManifestValue] = []
+    private var added: [(need: LayoutNeed, items: [String])] = []
+
+    init(example: LayoutExample, base: ResolvedFeatures, selection: ManifestValue) throws {
+        self.example = example; self.base = base
+        let disabled = Set(try strings(selection.object?["features"]?.object?["disable"] ?? .array([]))
+            .map { $0.hasPrefix("builtin.") ? String($0.dropFirst(8)) : $0 })
+        var features: [String] = [], options: [String: [String: ManifestValue]] = [:]
+        for need in example.needs {
+            guard let feature = need.feature, let lists = need.options else {
+                missing.append(.object(["application": .string(need.application), "reason": .string("no_feature")])); continue
+            }
+            guard !disabled.contains(feature) else {
+                missing.append(.object(["application": .string(need.application), "feature": .string(feature), "reason": .string("disabled")])); continue
+            }
+            let selected = base.features.contains(feature)
+            var newItems: [String] = []
+            for key in lists.keys.sorted() {
+                let effective = (options[feature]?[key] ?? (selected ? base.options[feature]?.object?[key] : nil))?.array ?? []
+                let needed = lists[key]!.map(ManifestValue.string)
+                newItems += needed.filter { !effective.contains($0) }.compactMap(\.string)
+                options[feature, default: [:]][key] = .array(selected || options[feature]?[key] != nil ? mergedList(effective, needed) : needed)
+            }
+            if !newItems.isEmpty, !features.contains(feature) { features.append(feature) }
+            if newItems.isEmpty { present.append(.object(["application": .string(need.application), "feature": .string(feature)])) }
+            else { added.append((need, newItems)) }
+        }
+        if !added.isEmpty {
+            request = LayoutRequest(id: example.id.rawValue, features: features, options: options.mapValues { .object($0) })
+        }
+    }
+
+    func report(final: ResolvedFeatures) -> ManifestValue {
+        let before = Set(base.document.object?["packages"]?.object?.keys.map { $0 } ?? [])
+        let after = final.document.object?["packages"]?.object ?? [:]
+        let adds = added.map { need, items -> ManifestValue in
+            let feature = need.feature!
+            let packages = after.filter { !before.contains($0.key) && ($0.value.array ?? []).contains(.string(feature)) }.keys.sorted()
+            return .object(["application": .string(need.application), "feature": .string(feature),
+                            "items": .array(items.map(ManifestValue.string)), "packages": .array(packages.map(ManifestValue.string))])
+        }
+        return .object(["example": .string(example.id.rawValue), "sha256": .string(example.sourceSHA256),
+                        "adds": .array(adds), "already_selected": .array(present), "not_installed": .array(missing)])
     }
 }

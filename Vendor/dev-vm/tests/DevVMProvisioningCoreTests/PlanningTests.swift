@@ -149,6 +149,34 @@ private final class PlanningFixture {
     #expect(try FeaturePlanner.resolve(features: []).features.isEmpty)
 }
 
+@Test func siblingListsCombineInOrderAndSingleSettingsStillConflict() throws {
+    func list(_ items: String...) -> Choice { .value(.array(items.map(ManifestValue.string))) }
+    #expect(list("postgresql", "sqlite").siblings(list("sqlite", "mysql")) == list("postgresql", "sqlite", "mysql"))
+    #expect(list("sqlite").siblings(list("postgresql", "sqlite")) == list("sqlite", "postgresql"))
+    #expect(list().siblings(list("chromium")) == list("chromium"))
+    #expect(list("chromium").siblings(list("chromium")) == list("chromium"))
+    let nested = Choice(.object(["clients": .array([.string("sqlite")]), "tools": .object(["node": .string("lts")])]))
+        .siblings(Choice(.object(["clients": .array([.string("mysql")]), "tools": .object(["uv": .string("")])])))
+    #expect(try nested.plain() == .object(["clients": .array([.string("sqlite"), .string("mysql")]), "tools": .object(["node": .string("lts"), "uv": .string("")])]))
+    for (left, right) in [(Choice.value(.string("native")), Choice.value(.string("sudoless"))), (list("chromium"), .value(.string("chromium"))),
+                          (list("chromium"), .value(.null)), (.map([:]), .value(.string("x")))] {
+        #expect(left.siblings(right) == .conflict)
+    }
+    // A child profile's or the owner's own value still replaces a list outright.
+    #expect(list("postgresql", "sqlite").overlay(list()) == list())
+
+    for (profiles, clients) in [(["web", "python"], ["postgresql", "sqlite"]), (["python", "web"], ["sqlite", "postgresql"]),
+                                (["python", "project-managed"], ["sqlite", "postgresql"])] {
+        let plan = try FeaturePlanner.resolve(profiles: profiles)
+        #expect(plan.options["databases"]?.object?["clients"] == .array(clients.map(ManifestValue.string)))
+    }
+    let combined = try FeaturePlanner.resolve(profiles: ["web", "python"])
+    #expect(combined.options["languages"]?.object?["tools"] == .object(["node": .string("lts"), "pnpm": .string(""), "python": .string("3"), "uv": .string("")]))
+    let team = Data(#"{"schema_version":1,"namespace":"team","features":{},"profiles":{"native":{"features":["docker"],"options":{"docker":{"access":"native"}}}}}"#.utf8)
+    let catalogue = try FeatureCatalogue(data: team, format: .json, sourceID: "team.json")
+    #expect(throws: ManifestError(.conflict)) { try FeaturePlanner.resolve(catalogues: [catalogue], profiles: ["web", "team.native"]) }
+}
+
 @Test func engineInventoryAndRelocatablePlanIdentity() throws {
     let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     let engine = try SetupPlanner.engine()

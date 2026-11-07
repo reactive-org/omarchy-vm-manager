@@ -22,6 +22,11 @@ public enum FeaturePlanner {
     public static func resolve(selection: ManifestValue = .object([:]), catalogues: [FeatureCatalogue] = [],
                                profiles: [String] = [], features: [String]? = nil,
                                overrides: ManifestValue = .object([:])) throws -> ResolvedFeatures {
+        try resolve(selection: selection, catalogues: catalogues, profiles: profiles, features: features, overrides: overrides, layout: nil)
+    }
+    static func resolve(selection: ManifestValue = .object([:]), catalogues: [FeatureCatalogue] = [],
+                        profiles: [String] = [], features: [String]? = nil,
+                        overrides: ManifestValue = .object([:]), layout: LayoutRequest?) throws -> ResolvedFeatures {
         // Reject changed bundled schemas/catalogue before interpreting their structure.
         _ = try SetupPlanner.engine()
         for value in [selection, overrides] {
@@ -33,8 +38,16 @@ public enum FeaturePlanner {
         let supplied = Set(catalogues.map { $0.source.object!["path"]!.string! })
         guard Set(declared).isSubset(of: supplied) else { throw ManifestError(.reference) }
         let resolver = try Resolver(catalogues: catalogues)
-        return try resolver.resolve(selection: selection, profiles: profiles, features: features, overrides: overrides)
+        return try resolver.resolve(selection: selection, profiles: profiles, features: features, overrides: overrides, layout: layout)
     }
+}
+
+/// What a recognised layout example adds to a plan: builtin features to select and
+/// their complete list values (already the union with the plan's effective lists).
+struct LayoutRequest: Sendable {
+    let id: String
+    let features: [String]
+    let options: [String: ManifestValue]
 }
 
 indirect enum Choice: Equatable {
@@ -54,12 +67,23 @@ indirect enum Choice: Equatable {
         for (k, v) in rightMap { left[k] = left[k].map { $0.overlay(v) } ?? v }
         return .map(left)
     }
+    /// Combines two independent choices (sibling profiles or parents). Lists add up in
+    /// order, left first, without duplicates; any other disagreement stays a conflict
+    /// until a child profile or the owner overlays an explicit value.
     func siblings(_ right: Choice) -> Choice {
         if self == right { return self }
+        if case .value(.array(let left)) = self, case .value(.array(let items)) = right { return .value(.array(mergedList(left, items))) }
         guard case .map(var left) = self, case .map(let rightMap) = right, !left.isEmpty, !rightMap.isEmpty else { return .conflict }
         for (k, v) in rightMap { left[k] = left[k].map { $0.siblings(v) } ?? v }
         return .map(left)
     }
+}
+
+/// Order-stable union: the left list's order first, then the right side's new items.
+func mergedList(_ left: [ManifestValue], _ right: [ManifestValue]) -> [ManifestValue] {
+    var result = left
+    for item in right where !result.contains(item) { result.append(item) }
+    return result
 }
 
 final class Resolver {
@@ -187,7 +211,8 @@ final class Resolver {
         if !overrides.isEmpty, case .map(let merged) = Choice.map(values).overlay(Choice(.object(overrides))) { values = merged }
         cache[name] = (chosen, values); return (chosen, values)
     }
-    func resolve(selection: ManifestValue, profiles addedProfiles: [String], features additions: [String]?, overrides: ManifestValue) throws -> ResolvedFeatures {
+    func resolve(selection: ManifestValue, profiles addedProfiles: [String], features additions: [String]?, overrides: ManifestValue,
+                 layout: LayoutRequest? = nil) throws -> ResolvedFeatures {
         try SelectionSchema.validate(selection)
         let setup = selection.object!
         let chosenProfiles = try refs(.array((setup["profiles"]?.array ?? []) + addedProfiles.map(ManifestValue.string)))
@@ -210,6 +235,17 @@ final class Resolver {
         let merged = overrideValues.isEmpty ? user : user.overlay(Choice(.object(overrideValues)))
         if case .map(let values) = merged {
             for (name, value) in values { choices[name] = choices[name].map { $0.overlay(value) } ?? value }
+        }
+        // A layout adds after the owner's own choices; its lists already include them.
+        if let layout {
+            for name in layout.features where !disabled.contains(name) {
+                guard definitions[name] != nil else { throw ManifestError(.reference) }
+                selected.insert(name); reasons[name, default: []].append("layout " + layout.id)
+            }
+            for (name, value) in layout.options where !disabled.contains(name) {
+                let current = choices[name] ?? .map([:])
+                choices[name] = current == .conflict ? .conflict : current.overlay(Choice(value))
+            }
         }
         var ordered: [String] = [], visited = Set<String>()
         func include(_ name: String) throws {

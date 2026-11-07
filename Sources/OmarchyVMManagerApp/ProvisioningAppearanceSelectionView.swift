@@ -162,6 +162,10 @@ struct ProvisioningReviewedAppearanceView: View {
             }
             if summary.layoutIncluded { Label((summary.layoutExample?.title ?? "Custom layout") + " · next desktop login", systemImage: "rectangle.3.group").font(.caption).foregroundStyle(.secondary) }
             if summary.layoutRemoved { Label("Omarchy default layout · next desktop login", systemImage: "rectangle.3.group").font(.caption).foregroundStyle(.secondary) }
+            if let adds = summary.layoutAddsSentence { Label(adds, systemImage: "plus.square.on.square").font(.caption).foregroundStyle(.secondary) }
+            ForEach(summary.layoutNotInstalledSentences, id: \.self) { note in
+                Label(note, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }

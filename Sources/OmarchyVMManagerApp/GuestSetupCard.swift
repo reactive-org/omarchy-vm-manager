@@ -225,7 +225,7 @@ struct GuestSetupCardHost: View {
                 let look = ProvisioningAppearanceSummary(proposal: preview.proposal)
                 let layout = look.layoutExample?.title ?? (look.layoutIncluded ? "Custom layout" : look.layoutRemoved ? "Omarchy default layout" : "Omarchy default layout")
                 let theme = look.theme.map { $0.hasPrefix("https://github.com/") ? String($0.dropFirst(19)) + " theme" : $0 == "random" ? "Random theme" : $0 == "most-starred" ? "Most-starred theme" : $0 } ?? "Omarchy default theme"
-                desktop = layout + " · " + theme
+                desktop = layout + (look.layoutAdds.isEmpty ? "" : " (adds " + look.layoutAdds.joined(separator: ", ") + ")") + " · " + theme
             }
     }
 }
