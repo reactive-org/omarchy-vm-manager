@@ -4332,3 +4332,15 @@ the previous pin need a fresh review.
 setup, window placement at the next login (including multi-workspace on this
 path), the official factory treating the additions as already installed, and how
 the review reads natively. No VM, factory, signing or guest operation was used.
+
+**DESIGN DECISION — New VM order (issue #18):** New VM shows a **layout** pane
+holding only the layout cards, then a **customise** pane (renamed from software)
+with the source, profiles, trim and the optional theme. Both edit one shared draft.
+Choosing a layout example or custom file while setup is off turns setup on with
+the Developer profile, since a layout only applies when setup runs; choosing
+Omarchy default never turns it off. A saved desktop default doesn't turn setup on;
+it applies when setup is turned on (a chosen layout keeps priority, the default
+theme still applies). With setup unavailable, the layout pane explains that instead
+of offering cards. Guest Defaults and Change setup keep the combined layout and theme
+view. **VERIFIED — offscreen/fake:** 187 screen checks including pane order, layout
+turn-on and Omarchy default keeping setup on. **TO PROVE:** physical interaction.
