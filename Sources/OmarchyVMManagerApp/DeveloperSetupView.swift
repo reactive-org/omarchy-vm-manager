@@ -231,7 +231,13 @@ struct DeveloperSetupView: View {
             } else { showingSavedLog = false }
         }
         .task(id: snapshot.id.uuidString + String(model.setupService != nil)) {
-            guard showsChange, frozen == nil, source == "none" else { return }
+            guard showsChange else {
+                // View output follows the latest run too, not the first finished row by ID.
+                if selectedWorkflow == nil, let service = model.setupService as? any ProvisioningRetrying,
+                   let run = await service.latestSetup(vmID: snapshot.id)?.workflow, selectedWorkflow == nil { selectedWorkflow = run.id }
+                return
+            }
+            guard frozen == nil, source == "none" else { return }
             await loadLatest()
         }
         .background {
