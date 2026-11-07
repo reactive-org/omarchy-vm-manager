@@ -1,7 +1,4 @@
 name: Build and no-VM checks
-# Pull requests cover work branches; pushes run only for the branches that
-# publish releases, so a PR branch doesn't use two Mac runners per push.
-#
 # Changes that never reach the build skip the whole workflow, including the
 # release a push to next or main would otherwise publish. LICENSE and
 # THIRD_PARTY_NOTICES.md are deliberately not listed: Scripts/assemble_app.py
@@ -13,6 +10,8 @@ name: Build and no-VM checks
 # filter into a "changes" job and gate the other jobs with `if:`, so skipped
 # jobs report success instead of leaving the check pending.
 on:
+  # Pushes only for the release branches; any other branch is checked through
+  # its pull request, so each PR commit uses one Mac runner rather than two.
   push:
     branches: [main, next]
     paths-ignore:

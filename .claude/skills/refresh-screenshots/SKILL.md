@@ -125,7 +125,7 @@ Capture the whole manager window at each step, in this order:
 
 Afterwards, shut Example VM down from its Home page (if that's what the user chose), wait for **Stopped**, and confirm its guest window process has exited (`ps -p <pid>`). Release both apps. In the docs, record the factory, layout, profile, who answered prompts, any reused capture and the final state in `docs/media/README.md` and the Validation entry. Adding the flow images brings the media close to the 2 MB budget, so report the total.
 
-Waiting is long and uneventful. Run `sleep` in the background (2–4 minutes at a time) between checks rather than repeatedly taking screenshots, and check with a scaled `app_screenshot`. If setup fails, capture nothing more, report what the app shows, and ask the user how to proceed. Don't retry setup from the failed VM's Home page: a known bug makes a retry re-run the old saved plan.
+Waiting is long and uneventful. Run `sleep` in the background (2–4 minutes at a time) between checks rather than repeatedly taking screenshots, and check with a scaled `app_screenshot`. If setup fails, capture nothing more, report what the app shows, and ask the user how to proceed. Don't retry on your own. Builds that include **Run setup again** in Change setup make a fresh plan, but a retry on a real guest is still unproven. Older builds silently re-run the old saved plan. Usually the cleaner route is for the user to delete the failed VM and start the flow again.
 
 ## 4. Review, crop and convert each image
 
