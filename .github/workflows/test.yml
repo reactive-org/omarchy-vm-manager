@@ -1,10 +1,33 @@
 name: Build and no-VM checks
+# Changes that never reach the build skip the whole workflow, including the
+# release a push to next or main would otherwise publish. LICENSE and
+# THIRD_PARTY_NOTICES.md are deliberately not listed: Scripts/assemble_app.py
+# bundles them and Scripts/verify_layout.py checks them. Avoid broad patterns
+# such as '**.md' for the same reason.
+#
+# Branch protection has no required status checks today, so a skipped
+# workflow doesn't block merging. If required checks are added, move this
+# filter into a "changes" job and gate the other jobs with `if:`, so skipped
+# jobs report success instead of leaving the check pending.
 on:
   # Pushes only for the release branches; any other branch is checked through
   # its pull request, so each PR commit uses one Mac runner rather than two.
   push:
     branches: [main, next]
+    paths-ignore:
+      - 'docs/**'
+      - '.claude/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'intent.md'
   pull_request:
+    # Keep this list identical to the push list above.
+    paths-ignore:
+      - 'docs/**'
+      - '.claude/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'intent.md'
 permissions:
   contents: read
 jobs:
@@ -38,9 +61,7 @@ jobs:
   managed-ssh:
     # These branches use fake/local acceptance only. This fixture builds a real
     # Docker image, so leave it for a separately authorized integration pass.
-    if: >-
-      github.ref != 'refs/heads/codex/factory-image-builder' && github.head_ref != 'codex/factory-image-builder' &&
-      github.ref != 'refs/heads/codex/setup-system-update' && github.head_ref != 'codex/setup-system-update'
+    if: github.head_ref != 'codex/factory-image-builder' && github.head_ref != 'codex/setup-system-update'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

@@ -37,7 +37,7 @@ enum FactoryReferencePolicy {
 extension FactoryCatalog {
     static func validateDeletionSelector(_ selector: String) throws {
         guard selector != "official", selector != FactoryIdentity.official.manifestSHA256 else {
-            throw VMFailure(code: "factory-protected", message: "The built-in Offical Try Omarchy factory cannot be deleted.")
+            throw VMFailure(code: "factory-protected", message: "The built-in Official Try Omarchy factory cannot be deleted.")
         }
         guard VMFactorySelection.isDigest(selector) else {
             throw VMFailure(code: "factory-selector-invalid", message: "Use the imported manifest SHA-256 reported by factories.")

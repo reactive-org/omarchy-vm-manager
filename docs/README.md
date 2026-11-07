@@ -1,8 +1,8 @@
 # Omarchy VM Manager user guide
 
-Create independent Omarchy guests, configure their resources, and connect from your Mac over SSH. This guide describes the current private macOS build, **0.9.3 (16)**.
+Create independent Omarchy guests, configure their resources, and connect from your Mac over SSH. This guide describes the current private macOS build. Its screenshots show the Dev build **0.11.3 (187)**.
 
-![The current manager library with two stopped guests, Import Factory and New VM controls](media/library.webp)
+![The manager library with five stopped guests and the Import factory and New VM toolbar buttons](media/library.webp)
 
 ## Start here
 
@@ -18,25 +18,26 @@ Create independent Omarchy guests, configure their resources, and connect from y
 
 [Watch or download the 48-second MP4 tour](media/quick-tour.mp4) · approximately **748 KB**.
 
-The silent tour is assembled from real screenshots of the running manager. It shows stopped-guest settings, experimental suspend readiness and the factory import form; it is not a continuous recording of installation or guest startup. The twelve screenshots and video together are approximately **1.2 MB**. [Captions and a text transcript](media/README.md) are included.
+The silent tour is assembled from real screenshots of the running manager. It shows stopped-guest settings, experimental suspend readiness and the factory import form; it is not a continuous recording of installation or guest startup. The tour still shows version 0.9.3 (16) and is older than the screenshots in these guides. The screenshots and video together are approximately **1.8 MB**. [Captions and a text transcript](media/README.md) are included.
 
-Screenshots were captured on 1 November 2026. Guest names and the illustrated SSH port belong to this installation; yours will differ. The New VM, configuration and factory import forms were cancelled. No guest was launched, changed, shut down or deleted for these captures. Both existing guests remained stopped. The SSH and configuration images are cropped to omit a personal public-key fingerprint and generated guest hostname.
+Screenshots were captured on 8 November 2026 from the Dev build, so the window title, library header and sidebar footer show Dev branding. Guest names and the illustrated SSH port belong to this installation; yours will differ. The [Getting started](getting-started.md) walkthrough follows a real **Example VM**, created and launched with the Four terminals layout and the Developer setup profile on a lean custom factory, and then shut down. For the other screenshots, the configuration and factory import forms were cancelled, and the five existing guests stayed stopped and unchanged. The SSH image is cropped to omit a personal public-key fingerprint, and the configuration image keeps the access section closed so the generated guest hostname is not shown.
 
 ## Current capabilities
 
 | Task | Current behavior |
 | --- | --- |
-| Create guests | Independent disks; optional saved owner setup; SSH on by default |
-| Configure | Name, CPU, memory, grow-only disk capacity, clipboard and immersive mode while stopped |
+| Create guests | Separate system and home disks by default; optional saved owner setup and developer setup; SSH on by default |
+| Configure | Name, cores, memory, grow-only system and home disk capacity, clipboard, immersive mode, guest Touch ID and a shared host folder while stopped |
 | Connect | NAT networking and a separate localhost SSH port for each enabled guest |
+| Share files | One opt-in [host folder](SharedFolders.md) per guest, read and write at `/mnt/mac` |
 | Organize windows | Native Dock assignment to Mission Control Spaces |
 | Remove a guest | Move its stopped guest folder to macOS Trash |
 | Choose a factory | Official image or a verified compatible custom bundle, selected when creating a guest |
 | Reuse downloads | Shared verified factory-image cache in Downloads |
 
-The local 0.9.4 (17) update adds [CLI owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm) for a new guest without changing Guest Defaults. Its app and CLI pass installation/bundle checks; creation and real boot with overrides remain untested. The screenshots above remain from 0.9.3 (16).
+The local 0.9.4 (17) update adds [CLI owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm) for a new guest without changing Guest Defaults. Its app and CLI pass installation/bundle checks; creation and real boot with overrides remain untested.
 
-Shared folders, USB, camera, authentication bridges, general port-forward editing, snapshots and importing existing VMs are unavailable in this build. The library's retained POC entries keep their original configuration; stopped entries can be moved to Trash through the normal confirmed deletion flow.
+USB, camera, the optional authentication bridges, general port-forward editing, snapshots and importing existing VMs are unavailable in this build. [Guest Touch ID](GuestTouchID.md) is a separate opt-in setting. The library's retained POC entries keep their original configuration; stopped entries can be moved to Trash through the normal confirmed deletion flow.
 
 ## Further reference
 
