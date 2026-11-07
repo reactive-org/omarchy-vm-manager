@@ -4301,3 +4301,34 @@ manager terminal tests and 140 offscreen UI checks pass, including synthetic
 click-to-PTY input and ownership refusal. **TO PROVE:** actual future live guest
 prompt interaction after these changes. Existing private target restriction,
 ordinary disabled gate, Main isolation and frozen artifact/pin policy remain.
+
+
+## Layouts install the apps they arrange — 7 November 2026
+
+**USER REQUEST / DESIGN DECISION (issue #18):** choosing a bundled layout example
+now installs the apps that layout puts on screen. This supersedes the 3 November
+decision that choosing a card “does not implicitly add app installs”. Owners still
+choose profiles, not packages; the manager adds no package picker. dev-vm owns the
+merge: each catalogue example lists its needs as builtin features and list items,
+and the shared `SetupPlanner` recognises the frozen layout bytes by SHA-256 (no new
+provisioning input, keeping the 7 November card mapping) and adds what the selected
+profiles lack. Lists from combined profiles now add up instead of conflicting
+(Web + Python, Python + Project-managed); single settings that disagree still fail.
+A feature the setup disables stays disabled. Claude Desktop has no setup feature
+yet, so Claude layouts report it as not installed. The manager only displays the
+plan's `layout` report: the setup review and guest card say “Layout adds …” and
+name any app setup doesn't install. All seven bundled examples appear as cards,
+grouped by workspace count; multi-workspace cards draw workspace 1 and say how many
+workspaces they use.
+
+**PRIVATE COUPLING:** the active package pin moves to the merged dev-vm commit
+recorded in `Config/DevVMProvisioning.lock.json`, with an empty integration-patch
+list (all four former patches are in that commit). Historical patch files, frozen
+candidate pins, receipts and consumed plans are unchanged and keep their own
+bindings. Every plan digest and the engine identity change, so setups saved under
+the previous pin need a fresh review.
+
+**TO PROVE:** real installation of the added apps on a lean guest through manager
+setup, window placement at the next login (including multi-workspace on this
+path), the official factory treating the additions as already installed, and how
+the review reads natively. No VM, factory, signing or guest operation was used.

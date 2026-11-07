@@ -155,8 +155,8 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try driver.send("selection", .profiles(["developer", "web"])); tick()
             try until { driver.scopes["appearance"] != nil }
             try check(driver.state("appearance", "card") == "omarchy-default", suffix + "-layout-starts-at-omarchy-default")
-            try until { driver.state("layout-cards", "count") == "4" }
-            try check(driver.state("layout-cards", "cards") == "four-terminals,terminal-browser,vscode-browser,claude-two-terminals-browser,omarchy-default,custom-file", suffix + "-bundled-cards-omit-setup-folder")
+            try until { driver.state("layout-cards", "count") == "7" }
+            try check(driver.state("layout-cards", "cards") == "four-terminals,terminal-browser,vscode-browser,claude-two-terminals-browser,multi-workspace,claude-browser-code-terminals,small-screen,omarchy-default,custom-file", suffix + "-bundled-cards-omit-setup-folder")
             try driver.send("appearance", .themeChoice(.repository)); tick()
             try check(driver.state("editor", "canSave") == "false" && driver.state("editor", "validation").contains("Enter a GitHub repository URL"), suffix + "-appearance-error-explained")
             try driver.send("appearance", .themeRepository("https://github.com/example/omarchy-fixture-theme")); tick()
@@ -168,7 +168,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             host.scroll(fraction: 0.35); tick(); try capture(host, "new-vm-trim-" + suffix + ".png"); host.scroll(bottom: false); tick()
             host.scroll(fraction: 0.50); tick(); try capture(host, "new-vm-appearance-" + suffix + ".png"); host.scroll(bottom: false); tick()
             try driver.send("appearance", .layoutExample(nil)); tick()
-            try until { driver.state("layout-cards", "count") == "4" }
+            try until { driver.state("layout-cards", "count") == "7" }
             try check(driver.state("appearance", "card") == "omarchy-default" && driver.state("selection", "layout").isEmpty && driver.state("editor", "canSave") == "true", suffix + "-omarchy-default-adds-no-layout")
             try driver.send("layout-cards", .layoutExample(.fourTerminals)); tick()
             try check(driver.state("selection", "layout") == ProvisioningLayoutExampleID.fourTerminals.rawValue && driver.state("editor", "canSave") == "true", suffix + "-layout-card-draft-ready")
@@ -233,7 +233,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try check(setupDriver.state("setup", "preview").isEmpty && setupDriver.state("setup", "inspected") == "0", suffix + "-source-edit-clears-inspection")
             try setupDriver.send("setup", .trim(true)); tick()
             try until { setupDriver.scopes["appearance"] != nil }
-            try until { setupDriver.state("layout-cards", "count") == "4" }
+            try until { setupDriver.state("layout-cards", "count") == "7" }
             try check(setupDriver.state("layout-cards", "cards").contains("setup-folder") && setupDriver.state("appearance", "card") == "setup-folder", suffix + "-local-cards-offer-setup-folder")
             try setupDriver.send("setup", .appearance(.init(theme: "https://github.com/example/omarchy-fixture-theme", removeLayout: true))); tick()
             try setupDriver.send("setup", .folder(output.appendingPathComponent("selected-source"))); try setupDriver.send("setup", .preview)
@@ -246,7 +246,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try check(service.sources[localID]?.appearance?.removeLayout == true && service.sources[localID]?.appearance?.theme?.hasPrefix("https://github.com/") == true, suffix + "-existing-theme-layout-forwarded")
             try capture(setup, "setup-appearance-" + suffix + ".png", screen: setupDriver.terminalScreen)
             try setupDriver.send("appearance", .layoutExample(nil)); tick()
-            try until { setupDriver.state("layout-cards", "count") == "4" }
+            try until { setupDriver.state("layout-cards", "count") == "7" }
             try setupDriver.send("layout-cards", .layoutExample(.claudeWorkspace)); tick()
             try setupDriver.send("setup", .preview); try until { !setupDriver.state("setup", "preview").isEmpty }
             let chosenLayoutID = try UUID(uuidString: setupDriver.state("setup", "preview")).unwrap()

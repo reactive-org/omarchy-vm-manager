@@ -88,13 +88,25 @@ public struct ProvisioningAppearanceSummary: Sendable {
     public let layoutIncluded: Bool
     public let layoutRemoved: Bool
     public let layoutExample: ProvisioningLayoutExample?
+    /// Apps the plan installs only because of the chosen layout example.
+    public let layoutAdds: [String]
+    /// Apps the layout arranges that this setup doesn't install, with why.
+    public let layoutNotInstalled: [(application: String, disabled: Bool)]
     public init(proposal: Data) {
-        var values: [String: ManifestValue] = [:], receipts: [ManifestValue] = []
-        if let parsed = try? PlainDataParser.parse(proposal, format: .json), case .object(let doc) = parsed,
-           case .object(let features) = doc["features"], case .object(let options) = features["options"], case .object(let workstation) = options["workstation"] {
-            values = workstation
-            if case .array(let inputs) = doc["inputs"] { receipts = inputs }
+        var values: [String: ManifestValue] = [:], receipts: [ManifestValue] = [], layout: [String: ManifestValue] = [:]
+        if let parsed = try? PlainDataParser.parse(proposal, format: .json), case .object(let doc) = parsed {
+            if case .object(let features) = doc["features"], case .object(let options) = features["options"], case .object(let workstation) = options["workstation"] {
+                values = workstation
+                if case .array(let inputs) = doc["inputs"] { receipts = inputs }
+            }
+            if case .object(let value) = doc["layout"] { layout = value }
         }
+        func entries(_ key: String) -> [(application: String, item: [String: ManifestValue])] {
+            guard case .array(let items) = layout[key] else { return [] }
+            return items.compactMap { if case .object(let item) = $0, case .string(let name) = item["application"] { return (name, item) }; return nil }
+        }
+        layoutAdds = entries("adds").map(\.application)
+        layoutNotInstalled = entries("not_installed").map { ($0.application, $0.item["reason"] == .string("disabled")) }
         if case .string(let value) = values["theme"], !value.isEmpty { theme = value } else { theme = nil }
         if case .string(let value) = values["layout"], !value.isEmpty { layoutIncluded = true } else { layoutIncluded = false }
         layoutRemoved = values["remove_layout"] == .bool(true)
@@ -129,5 +141,29 @@ struct DesktopDefaultsStore {
         let value = value?.isEmpty == true ? nil : value
         try value?.validate(); try PrivateFiles.directory(directory, create: true)
         try PrivateFiles.write(JSONEncoder().encode(Record(schemaVersion: 1, appearance: value)), name: Self.name, in: directory)
+    }
+}
+
+extension ProvisioningAppearanceSummary {
+    /// "Layout adds Chromium and VS Code.", or nil when the layout adds nothing.
+    public var layoutAddsSentence: String? {
+        guard !layoutAdds.isEmpty else { return nil }
+        return "Layout adds " + ProvisioningAppearanceSummary.list(layoutAdds) + "."
+    }
+    /// What the layout needs that this setup won't install, in plain words.
+    public var layoutNotInstalledSentences: [String] {
+        let missing = layoutNotInstalled.filter { !$0.disabled }.map(\.application)
+        let disabled = layoutNotInstalled.filter(\.disabled).map(\.application)
+        var result: [String] = []
+        if !missing.isEmpty {
+            result.append("This layout also needs " + Self.list(missing) + ", which setup doesn’t install yet.")
+        }
+        if !disabled.isEmpty {
+            result.append("This layout also needs " + Self.list(disabled) + ", which this configuration turns off.")
+        }
+        return result
+    }
+    static func list(_ names: [String]) -> String {
+        names.count <= 2 ? names.joined(separator: " and ") : names.dropLast().joined(separator: ", ") + " and " + names.last!
     }
 }

@@ -2,10 +2,16 @@ import Foundation
 import Testing
 @testable import DevVMProvisioningCore
 
-@Test func bundledLayoutExamplesBindTheFourOriginalLuaFilesAndIllustrations() throws {
+@Test func bundledLayoutExamplesBindTheOriginalLuaFilesAndIllustrations() throws {
     let examples = try LayoutExamples.catalogue()
-    #expect(examples.map(\.id) == [.fourTerminals, .terminalBrowser, .vscodeBrowser, .claudeWorkspace])
-    #expect(examples.map { $0.windows.count } == [4, 2, 2, 4])
+    #expect(examples.map(\.id) == [.fourTerminals, .terminalBrowser, .vscodeBrowser, .claudeWorkspace,
+                                   .multiWorkspace, .claudeBrowserCodeTerminals, .smallScreen])
+    #expect(examples.map { $0.windows.count } == [4, 2, 2, 4, 9, 7, 5])
+    #expect(examples.map(\.workspaces) == [1, 1, 1, 1, 3, 3, 4])
+    // Each multi-workspace layout puts its windows on the workspaces its docs describe.
+    #expect(examples[4].windows.map(\.workspaceNumber) == [1, 1, 2, 2, 2, 2, 3, 3, 3])
+    #expect(examples[5].windows.map(\.kind) == [.claude, .browser, .editor, .terminal, .terminal, .terminal, .terminal])
+    #expect(examples[6].windows.filter { $0.workspaceNumber == 4 }.allSatisfy { $0.kind == .terminal })
     for example in examples {
         let bytes = try LayoutExamples.source(example.id)
         #expect(digest(bytes) == example.sourceSHA256)

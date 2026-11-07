@@ -321,8 +321,8 @@
     "files": {}
   },
   {
-    "name": "sibling-conflict",
-    "valid": false,
+    "name": "sibling-lists-merge",
+    "valid": true,
     "manifest": {
       "schema_version": 1,
       "id": "fixture",
@@ -334,6 +334,61 @@
       }
     },
     "files": {}
+  },
+  {
+    "name": "python-project-managed",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "python",
+          "project-managed"
+        ]
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "sibling-scalar-conflict",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "web",
+          "team.native-docker"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"native-docker\": {\"features\": [\"docker\"], \"options\": {\"docker\": {\"access\": \"native\"}}}, \"node24\": {\"features\": [\"languages\"], \"options\": {\"languages\": {\"tools\": {\"node\": \"24\"}}}}}}"
+    }
+  },
+  {
+    "name": "sibling-tool-selector-conflict",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "web",
+          "team.node24"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"native-docker\": {\"features\": [\"docker\"], \"options\": {\"docker\": {\"access\": \"native\"}}}, \"node24\": {\"features\": [\"languages\"], \"options\": {\"languages\": {\"tools\": {\"node\": \"24\"}}}}}}"
+    }
   },
   {
     "name": "sibling-repaired",

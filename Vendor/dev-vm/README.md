@@ -335,8 +335,9 @@ Attempt completion is never a VM `.exited` boundary; consumers must retain VM
 clients/reservations under the manager's existing lifecycle rules.
 
 Commands carry adapter deadlines: identity checks 10 seconds; grant/cache probes
-and cleanup 30 seconds; interactive commands 120 seconds; setup operations 3,600
-seconds. Actual deadline enforcement/local-process exit belongs to a concrete
+and cleanup 30 seconds; setup operations, including the interactive grant and
+Docker owner-access prompts, 3,600 seconds so an unattended prompt does not time
+out after two minutes. Actual deadline enforcement/local-process exit belongs to a concrete
 transport. Fake timeout replies test state transitions; they do not prove hard
 wall-clock bounds, uncooperative-adapter termination or descendant cleanup.
 
@@ -1416,8 +1417,8 @@ private manifest. The source folder stays unchanged. Profile edits require a new
 frozen review/acknowledgment, with proposal identifiers and raw data under Details.
 
 The shared resolver still owns combination/dependency/option conflict semantics.
-Sibling conflicts are refused, not resolved by card order; an explicit local option
-can resolve a conflict. Legacy preset CLI requests remain compatible; the native
+Sibling profiles' lists combine without duplicates; conflicting single settings are
+refused, not resolved by card order, and an explicit local option can resolve them. Legacy preset CLI requests remain compatible; the native
 source DTO adds strict optional bundled/profile fields on the existing protocol.
 Local custom catalogue profiles remain manifest-defined; native cards cover the
 four bundled profiles. No task/sudo/Docker or execution authority comes from cards.
@@ -2637,3 +2638,39 @@ metadata and damaged archives. All 93 shared Swift tests pass locally using
 fake Docker and disposable process/filesystem fixtures; the hosted rerun remains
 pending until separately recorded. No shipped archive/recipe bytes or frozen
 private candidate pin is regenerated.
+
+### Multi-workspace layout examples in the shared catalogue — 7 November 2026
+
+The bundled layout catalogue now also describes `multi-workspace`,
+`claude-browser-code-terminals` and `small-screen`, copied unchanged from
+`omarchy/examples/layouts/` with their source hashes. Catalogue windows carry an
+optional `workspace` (absent means workspace 1); a layout's workspaces must be
+contiguous from 1, and an example may describe up to 16 windows on up to 10
+workspaces. The resource sync copies every Lua file the catalogue names. Wireframes
+remain illustrations of intended placement, not observed guest state; the Lua
+files and their live validation records are unchanged.
+
+### Layout examples bring the apps they arrange — 7 November 2026
+
+Each bundled layout example lists its `needs`: an application plus the builtin
+feature and list items that install it (`browsers: [chromium]`,
+`editors: [vscode]`), or only the application when no setup feature installs it
+yet (Claude Desktop). Needs may only add list items, so a layout can never cause a
+single-setting conflict or change the workstation feature. `SetupPlanner`
+recognises a selected layout by the SHA-256 of its captured bytes, works out what
+the plan without the layout lacks, and resolves again with those additions applied
+after the owner's own options. Added items join each feature's effective list, so
+Developer's Neovim stays beside the layout's VS Code. Added features are ordinary
+selections with a `layout <id>` reason, so the lean trim keeps them. A feature the
+setup disables stays disabled and is reported instead.
+
+Plans with a recognised example carry a top-level `layout` object (`example`,
+`sha256`, `adds` with items and packages, `already_selected`, `not_installed`),
+covered by `plan_digest`. Nothing is written back into the owner's selection, so
+switching or clearing the layout removes its additions. Edited copies and other
+layout files add nothing. The Python oracle shares the list-merge rule; layout
+needs are planned by the Swift package only, and the bootstrap runbooks keep
+selecting apps with `OMARCHY_VM_PACKAGES`. A Python test keeps each example's
+needs equal to its runbook's packages. **TO PROVE:** installation and placement on
+a real guest through this path, and that the official factory treats the additions
+as already installed.

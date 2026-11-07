@@ -35,8 +35,7 @@ enum DesktopLayoutCard: Hashable {
 }
 
 /// Layout cards grouped by how many workspaces they arrange, each group one
-/// horizontally scrolling row of fixed-width cards. The bundled dev-vm
-/// catalogue describes one workspace per example; a group appears only when it
+/// horizontally scrolling row of fixed-width cards. A group appears only when it
 /// has cards.
 struct DesktopLayoutPicker: View {
     #if DEBUG
@@ -55,13 +54,24 @@ struct DesktopLayoutPicker: View {
         let summary: String
         let needs: String
         var windows: [ProvisioningLayoutWindow] = []
+        var workspaces = 1
         var id: String { card.key }
     }
 
     private var selected: DesktopLayoutCard { DesktopLayoutCard(draft, localSource: localSource) }
     private var exampleEntries: [Entry] {
         examples.map { Entry(card: .example($0.id), title: $0.title, summary: $0.summary,
-                             needs: "Needs " + $0.applications.joined(separator: " · "), windows: $0.windows) }
+                             needs: Self.needs($0), windows: $0.windows, workspaces: $0.workspaces) }
+    }
+    /// What setup does for the apps a layout arranges, from the dev-vm catalogue.
+    /// The plan decides what is actually added; the review shows that.
+    static func needs(_ example: ProvisioningLayoutExample) -> String {
+        let installs = example.needs.filter { $0.feature != nil }.map(\.application)
+        let missing = example.needs.filter { $0.feature == nil }.map(\.application)
+        var parts: [String] = []
+        if !installs.isEmpty { parts.append("Setup installs " + installs.joined(separator: " and ") + " if your profiles don’t") }
+        if !missing.isEmpty { parts.append(missing.joined(separator: " and ") + (missing.count == 1 ? " isn’t" : " aren’t") + " installed by setup yet") }
+        return parts.isEmpty ? "Nothing extra" : parts.joined(separator: " · ")
     }
     private var startEntries: [Entry] {
         var entries = [Entry(card: .omarchyDefault, title: "Omarchy default",
@@ -85,7 +95,9 @@ struct DesktopLayoutPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !exampleEntries.isEmpty { group("one workspace", exampleEntries) }
+            let single = exampleEntries.filter { $0.workspaces == 1 }, several = exampleEntries.filter { $0.workspaces > 1 }
+            if !single.isEmpty { group("one workspace", single) }
+            if !several.isEmpty { group("several workspaces", several) }
             if unavailable {
                 Text("The bundled layout examples are unavailable. Check the setup resources.").font(Theme.note).foregroundStyle(Theme.amber)
             }
@@ -184,7 +196,7 @@ struct DesktopLayoutPicker: View {
 
     @ViewBuilder private func thumbnail(_ entry: Entry) -> some View {
         switch entry.card {
-        case .example: LayoutExampleWireframe(windows: entry.windows)
+        case .example: LayoutExampleWireframe(windows: entry.windows, workspaces: entry.workspaces)
         case .omarchyDefault:
             screen { FrameMark(size: 34) }
         case .setupFolder:
@@ -224,19 +236,30 @@ struct DesktopLayoutPicker: View {
     }
 }
 
+/// Draws workspace 1; a layout with more workspaces says how many in the corner.
 private struct LayoutExampleWireframe: View {
     let windows: [ProvisioningLayoutWindow]
+    var workspaces = 1
     var body: some View {
         Color.clear.aspectRatio(16 / 9, contentMode: .fit)
             .overlay {
                 GeometryReader { geometry in
                     ZStack(alignment: .topLeading) {
-                        ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
+                        ForEach(Array(windows.filter { $0.workspaceNumber == 1 }.enumerated()), id: \.offset) { _, window in
                             tile(window)
                                 .frame(width: geometry.size.width * window.width, height: geometry.size.height * window.height)
                                 .offset(x: geometry.size.width * window.x, y: geometry.size.height * window.y)
                         }
                     }
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if workspaces > 1 {
+                    Text("1 of \(workspaces)").font(Theme.mono(8, weight: .medium)).foregroundStyle(Theme.text.opacity(0.85))
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 2).fill(Theme.ground.opacity(0.92)))
+                        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.strongBorder))
+                        .padding(3)
                 }
             }
             .background(RoundedRectangle(cornerRadius: 3).fill(Theme.ground))

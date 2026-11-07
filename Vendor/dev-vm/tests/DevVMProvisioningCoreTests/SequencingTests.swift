@@ -407,3 +407,13 @@ func failedUpdateStopsFeatureInstallsAndRetainsCleanupProof(failure: SequencingF
         }
     }
 }
+
+@Test func interactivePromptsShareTheSetupDeadline() {
+    // Omarchy's passwordless-sudo and Docker owner prompts may wait for the
+    // owner, so they get the same deadline as other setup operations.
+    #expect(GuestOperation.requestPersistentGrant.bodyTimeoutSeconds == 3600)
+    #expect(GuestOperation.configureDockerOwnerAccess.bodyTimeoutSeconds == 3600)
+    #expect(GuestOperation.updateSystem.bodyTimeoutSeconds == 3600)
+    #expect(GuestOperation.verifyIdentity.bodyTimeoutSeconds == 10)
+    #expect(GuestOperation.verifyGrantActive.bodyTimeoutSeconds == 30)
+}

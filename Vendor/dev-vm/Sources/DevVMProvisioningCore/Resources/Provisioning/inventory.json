@@ -1,8 +1,11 @@
 {
   "group_vars/all.yml": "b9e7ebfe844765f1e33910ce33d59fc77c67ae28bea621c2c7a7f30bb6bec03e",
-  "omarchy/examples/layouts/catalogue.json": "e4dea68118b92c8a4a21e9df6381214f68bcfb067cb77bd0e682f5d0a48e3cc8",
+  "omarchy/examples/layouts/catalogue.json": "819f69d7162a6411acd0c34f239bc1071ef7098fb559fa7f201ea5da969b28e9",
+  "omarchy/examples/layouts/claude-browser-code-terminals.lua": "f027c09bc8135880755a16dec77cd4112c284308a17e60a54aacb641a38d1690",
   "omarchy/examples/layouts/claude-two-terminals-browser.lua": "d8deb32ae7bc50424c1e7b52a0dc571e17fb3f49f5e153ec16304ece28cf398d",
   "omarchy/examples/layouts/four-terminals.lua": "6289607b1be0fd8bd49c45449df0b69ba62e2ed2e0336c20be23f3b083ef96ad",
+  "omarchy/examples/layouts/multi-workspace.lua": "adff65d20ba6ac3eb888609a00da071bbb814acec70bf38455b322b8293489f2",
+  "omarchy/examples/layouts/small-screen.lua": "56ba737ffd8d05bbe92717544fc8a5e0da119c58592c7304ca6787fd7be80620",
   "omarchy/examples/layouts/terminal-browser.lua": "da18bb3a01c584ad35aaf7e96c423f1b7b1ba21189ca1725db8638bf457efac1",
   "omarchy/examples/layouts/vscode-browser.lua": "67fd8bd91c2dc515142579dacbfe44aca2209a44761940511d81b7379f5812c3",
   "omarchy/features/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
