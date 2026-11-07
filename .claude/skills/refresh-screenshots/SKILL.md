@@ -44,9 +44,9 @@ Note new screens or tabs the guide doesn't cover, and propose them as additions,
 
 Also gather:
 
-- **The Dev app version.** Get the running Dev bundle's path with `lsappinfo info -only bundlepath "$(lsappinfo find bundleid=dev.omarchy.vm-manager.dev)" | sed -n 's/.*bundle path="\(.*\)"/\1/p'`, then `defaults read "<path>/Contents/Info" CFBundleShortVersionString` and `CFBundleVersion`. Don't use `lsappinfo list`: it prints every running app's details, which can include personal account names and email addresses. Format it like `0.9.3 (16)`.
+- **The Dev app version.** Run `lsappinfo find bundleid=dev.omarchy.vm-manager.dev` to get its ASN, then `lsappinfo info -only bundlepath '<ASN>'` and read the `bundle path=` line. Keep these as two separate commands: a worktree-isolated session refuses command substitution. Then run `defaults read "<path>/Contents/Info" CFBundleShortVersionString` and `CFBundleVersion`. Don't use `lsappinfo list`: it prints every running app's details, which can include personal account names and email addresses. Format it like `0.9.3 (16)`.
 - **Guest states.** List each guest in the Dev library and say whether it is stopped. Several shots say the guests stayed stopped. If a guest is running, that's the user's business: don't stop it, just note it and take the stopped-state shots from a stopped guest.
-- **Dev branding.** The Dev app shows Dev titles, a purple DEV icon and `[Dev]` guest name prefixes, while the guide describes the everyday app. Point this out once, in the step 2 summary, so the user can decide whether Dev branding in published images is acceptable.
+- **Dev branding.** The Dev app shows "Omarchy VM Manager Dev" in the title bar, a purple DEV badge on the library header and "Omarchy VM Manager Dev <version>" in the sidebar footer, while the guide describes the everyday app. Guest names carry no Dev prefix. Point this out once, in the step 2 summary, so the user can decide whether Dev branding in published images is acceptable.
 
 ## 2. Confirm with the user
 
@@ -65,7 +65,7 @@ Wait for "ready". Don't capture before it.
 
 ### Keep each shot's shape
 
-Keep every existing file name and aspect ratio, so the guides lay out the same. The full-window shots are 1280 × 891 (aspect ≈ 1.437), which came from a main window of about **1120 × 780 points** captured at 2×. Before capturing, check the main window's `bounds` with `app_list_windows`. If its aspect ratio is noticeably different, tell the user the size you need and let them resize the window; don't resize it yourself. Sheets (New VM, Configure, Import Factory) have their own sizes; compare each one's aspect ratio with its existing image.
+Keep every existing file name and aspect ratio, so the guides lay out the same. The full-window shots are 1280 × 891 (aspect ≈ 1.437), which came from a main window of about **1120 × 780 points** captured at 2×. Before capturing, check the main window's `bounds` with `app_list_windows`. If its aspect ratio is noticeably different, tell the user the size you need and let them resize the window; don't resize it yourself. An exact size is hard to set by hand. If the user says to use the current size, do so, and record in the media README and Validation entry that the images' height changed. Sheets (New VM, Configure, Import Factory) have their own sizes; compare each one's aspect ratio with its existing image.
 
 A cropped shot (for example `configure` and `ssh`, which keep only the upper part of the page to leave out personal rows) should keep the same width and roughly the same height as before. If the UI has grown so that the same content no longer fits that shape, tell the user rather than squashing or padding the image.
 
@@ -73,16 +73,19 @@ A cropped shot (for example `configure` and `ssh`, which keep only the upper par
 
 - **Drive** with the background `app_*` tools. Use `app_click` for sidebar items, tabs and buttons, `app_scroll` to return to the top of a page, and `app_menu` for menu commands. Take an `app_screenshot` after each step to confirm you're on the right screen.
 - **Capture to disk** with `computer_batch`, using `screenshot` or `zoom` with `save_to_disk: true`. `app_screenshot` and `app_zoom` only return images to you; they don't write files. `computer_batch` needs full-screen control, so call `request_full_control` and say why ("to save the Dev window captures to disk"). Call `switch_display` to the target display first, so nothing from another display is captured. Keep each full-control batch short, and call `release_full_control` after each capture or small group, so the user gets their screen back.
-- Take one full-screen `screenshot` (scaled is fine) to find the Dev window. Then `zoom` exactly to the window's rectangle, or the sheet's, at `scale: 1` with `save_to_disk: true`. Zoom regions use the full-screen screenshot's coordinate frame, not window coordinates.
-- Keep the raw captures in `.build/user-doc-captures-<YYYY-MM-DD>/`, named after the output file (for example `configure.png`). `.build/` is ignored by git, so originals stay out of the repo but are available for review.
-- After the **first** capture, check its pixel size. A full-window raw capture should be at least 1280 pixels wide (2240 at 2×). If it's smaller, stop and sort it out with the user before capturing the rest. Never upscale.
+- **The two kinds of tool can't hold the app at the same time.** While an `app_*` call holds the Dev window, `computer_batch` is refused, so call `app_release` before each capture batch. `app_release` also forgets the last window capture, so start the next `app_batch` with a `screenshot` action (scale 0.2 is enough) before any `click` by coordinate or `element_index`. A working rhythm for each shot is: `app_batch` [screenshot, click], then `app_release`, then `computer_batch` [zoom].
+- Take one full-screen `screenshot` (scaled is fine) to find the Dev window. Then `zoom` exactly to the window's rectangle, or the sheet's, at `scale: 1` with `save_to_disk: true`. Zoom regions use the full-screen screenshot's coordinate frame, not window coordinates. To find the edges precisely, zoom at `scale: 1` into small regions around two opposite corners. The window stays put between shots, so you can reuse the same region for every full-window capture. Re-measure each sheet.
+- **What gets saved:** the tool result's `[Image: source: …/tool-results/mcp-computer-use-blob-….jpg]` line is the saved file. It is a JPEG, scaled to about 1.2 megapixels (a full window comes out about 1,260 pixels wide), not a full-resolution PNG. Copy it straight away to `.build/user-doc-captures-<YYYY-MM-DD>/<name>.jpg`, named after the output file (for example `configure.jpg`). `.build/` is ignored by git, so originals stay out of the repo but are available for review.
+- After the **first** capture, check its pixel size with `sips`. If it's narrower than the existing image, stop and agree with the user how to proceed: accept the native width, or capture tiles at full resolution and join them. Never upscale.
 
 ### Per-shot notes
 
-- **New VM**: open it and type an unsaved example. The last refresh used a guest named "Development", 4 cores, 4 GiB and SSH on. If the form shows saved owner defaults that carry a personal public key or username, turn them off **in this unsaved form only**. Capture, then Cancel. Never press Create, and never save defaults.
-- **Configure**: open it for a stopped guest, capture, then Cancel. Crop above the generated hostname row (see step 4).
-- **SSH**: capture the page for a stopped guest. Crop above the personal public-key fingerprint row (see step 4).
-- **Import Factory**: open it, capture before any bundle is chosen, then Cancel. Never pick a file in the open panel.
+The New VM and Configure forms use collapsible sections, and only one section is open at a time. Opening a section to photograph it is fine. Prefer an arrangement that shows nothing personal over one that needs a privacy crop.
+
+- **New VM** (the toolbar **+**): click the name field and type an unsaved example. The last refresh used "Development", with the **resources** section open showing the defaults. Keep the **access** section closed, because it can show owner defaults (username, hostname, key). If saved owner defaults would carry a personal key or username into view, turn them off **in this unsaved form only**. Capture, then Cancel. Never press Create or Create and launch, and never save defaults.
+- **Configure** (the **Configure…** button on Home or the Virtual machine tab, for a stopped guest): open **resources** and keep **access** closed. Access shows an "owner defaults" line containing the generated hostname. Capture, then Cancel.
+- **SSH**: capture the tab for a stopped guest. The personal key fingerprint ("your key") is the third row, so crop above it (see step 4).
+- **Import factory** (the toolbar import button, or the **Factory images** page): capture before any bundle is chosen, then Cancel. Never press Choose bundle….
 - **Spaces**, **Permissions**, **Runtime**: capture as shown. Don't click Enable, Grant, Open System Settings or anything similar.
 
 Ask the user instead of working around it when a shot needs any of these:
@@ -107,13 +110,17 @@ Check every image for:
 
 Recapture anything that fails. If a shot can't be made clean without breaking the ground rules, skip it and say why.
 
+A little desktop at the rounded window corners, and a sliver of the window behind a sheet, are acceptable. Crop a sheet capture only to remove distracting background (for example a strip of ghosted text above the sheet).
+
+**Shell commands in a worktree.** A worktree-isolated session refuses shell commands it can't verify, such as loops, variables, command substitution or inline heredoc scripts. Write one plain `magick` command per image. For anything longer, such as updating `manifest.json` or applying several doc edits, write a small Python script to the scratchpad and run it with `python3 <script>`. Have doc-edit scripts check that each old string matches exactly once.
+
 Convert each passing capture over the existing file. Keep the name, scale to the old width, and strip metadata. For example:
 
 ```bash
-magick <raw>.png [-crop WxH+0+0 +repage] -colorspace sRGB -resize 1280x\> -strip -quality 90 -define webp:method=6 docs/media/<name>.webp
+magick .build/user-doc-captures-<date>/<name>.jpg [-crop WxH+X+Y +repage] [-resize <old width>x] -colorspace sRGB -strip -quality 90 -define webp:method=6 docs/media/<name>.webp
 ```
 
-Use the old image's width instead of 1280 for the narrower sheet shots. Then open the WebP output again with `Read`, and confirm the size and aspect ratio match the old file and that the scaling hasn't made text unreadable.
+Scale down to the old image's width when the capture is wider; leave it at its native width when it's narrower. Then open the WebP output again with `Read`. Confirm the size and aspect ratio are what you agreed, and that the scaling hasn't made text unreadable.
 
 If the user asked for the tour to be rebuilt, make it from the new WebPs in the same style as the existing one: 1280 × 960, 4 seconds per screen, a title and caption per screen, silent H.264, matching WebVTT cues. Check a frame from each segment. If they didn't ask, leave both files alone.
 
