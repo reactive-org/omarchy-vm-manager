@@ -26,9 +26,10 @@ Screenshots were captured on 8 November 2026 from the Dev build, so the window t
 
 | Task | Current behavior |
 | --- | --- |
-| Create guests | Independent disks; optional saved owner setup; SSH on by default |
-| Configure | Name, CPU, memory, grow-only disk capacity, clipboard and immersive mode while stopped |
+| Create guests | Separate system and home disks by default; optional saved owner setup and developer setup; SSH on by default |
+| Configure | Name, cores, memory, grow-only system and home disk capacity, clipboard, immersive mode, guest Touch ID and a shared host folder while stopped |
 | Connect | NAT networking and a separate localhost SSH port for each enabled guest |
+| Share files | One opt-in [host folder](SharedFolders.md) per guest, read and write at `/mnt/mac` |
 | Organize windows | Native Dock assignment to Mission Control Spaces |
 | Remove a guest | Move its stopped guest folder to macOS Trash |
 | Choose a factory | Official image or a verified compatible custom bundle, selected when creating a guest |
@@ -36,7 +37,7 @@ Screenshots were captured on 8 November 2026 from the Dev build, so the window t
 
 The local 0.9.4 (17) update adds [CLI owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm) for a new guest without changing Guest Defaults. Its app and CLI pass installation/bundle checks; creation and real boot with overrides remain untested.
 
-Shared folders, USB, camera, authentication bridges, general port-forward editing, snapshots and importing existing VMs are unavailable in this build. The library's retained POC entries keep their original configuration; stopped entries can be moved to Trash through the normal confirmed deletion flow.
+USB, camera, the optional authentication bridges, general port-forward editing, snapshots and importing existing VMs are unavailable in this build. [Guest Touch ID](GuestTouchID.md) is a separate opt-in setting. The library's retained POC entries keep their original configuration; stopped entries can be moved to Trash through the normal confirmed deletion flow.
 
 ## Further reference
 

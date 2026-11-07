@@ -1,6 +1,6 @@
 # Native host folders
 
-Sharing is opt-in per VM. In **Configure**, enable **Share a host folder** and review the full host path. The default is `~/Shared`; edit the field to choose another dedicated folder. The folder must already exist. The guest receives **read & write** access at `/mnt/mac`. The user accepted this native destination in place of the originally requested `/mnt/shared`; no alias, bind mount or repository-owned sharing controller is installed.
+Sharing is opt-in per VM. In **Configure**, open **access**, turn on **host folder** and review the full host path. The default is `~/Shared`; edit the field to choose another dedicated folder. The folder must already exist. The guest receives **read & write** access at `/mnt/mac`. The user accepted this native destination in place of the originally requested `/mnt/shared`; no alias, bind mount or repository-owned sharing controller is installed.
 
 The Network page shows the path, destination, access mode and separate mount status. A configured mapping is not a verified mount. Managed SSH must be enabled for mount verification. It remains a separate read-only integration share at `/run/try-omarchy/managed-ssh-share`.
 

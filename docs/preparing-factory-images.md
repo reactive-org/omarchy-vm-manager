@@ -69,7 +69,7 @@ clipboard and SSH integration to the manager and its pinned guest package.
 Keep application/runtime updates under Omarchy and mise.
 
 Keep the factory free of regular users, hostnames, passwords, tokens, SSH keys
-and personal configuration. Supply per-guest identity through **Guest Defaults**
+and personal configuration. Supply per-guest identity through **Guest defaults**
 or the normal owner wizard. The builder seals machine identity and defers owner
 creation to first boot; exporting an already configured personal VM is not this
 workflow.
@@ -198,7 +198,7 @@ cli='/absolute/path/to/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm'
 ```
 
 Copy the imported entry's exact `manifestSHA256` into the following command.
-Save **Guest Defaults** first for automatic owner setup:
+Save **Guest defaults** first for automatic owner setup:
 
 ```sh
 "$cli" create custom-factory-test --factory MANIFEST_SHA256 \

@@ -6,7 +6,7 @@ Run commands from the repository root using `./bin/omarchy-vm`. The app bundle a
 
 ## Create without launching
 
-Enable and save automatic setup in **Guest Defaults** first. Its saved password must be available in the build's selected Keychain storage; see [Touch ID setup and build requirements](TouchID.md). The examples below are commands for future use: executing `create` saves a profile. Without `--start`, it creates no guest disk and launches no VM.
+Enable and save automatic setup in **Guest defaults** first. Its saved password must be available in the build's selected Keychain storage; see [Touch ID setup and build requirements](TouchID.md). The examples below are commands for future use: executing `create` saves a profile. Without `--start`, it creates no guest disk and launches no VM.
 
 ```sh
 ./bin/omarchy-vm create Development --memory 4GiB --cpus 4 --disk 64GiB
