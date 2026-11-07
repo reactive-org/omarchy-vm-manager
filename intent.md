@@ -1,5 +1,33 @@
 # Omarchy VM Manager — implementation intent
 
+## Releasing a stopped guest's cleanup hold — 7 November 2026
+
+**DESIGN DECISION — issue #24, user direction (same PR as #16):** this supersedes
+"Journal cleanup holds cannot be cleared from a stopped observation alone" for one
+explicit case. A guest whose setup stopped with temporary admin-access cleanup
+unconfirmed, and which then stopped, was permanently held: launch, configure,
+delete and backup were refused, and Recover needs the original live session. The
+hold also blocked setup preparation on every other guest. The owner can now
+release it through a reviewed **Release cleanup hold** workflow action, in the
+same spirit as the failed-restore attestation: an acknowledgement the app neither
+performs nor claims to verify. It is offered only for a stopped guest (Recover is
+offered only while the guest runs) and is refused while the guest has a session,
+lease, preparation, restart, home backup or storage change, while provisioning
+storage is unknown, or if a journal write fails. The confirmation says plainly
+that cleanup was not verified and that the owner removes any leftover passwordless
+sudo inside the guest. Every cleanup-bound job and workflow row for that VM is
+marked released without verification (`cleanupRelease: unverified`) and saved
+before the in-memory holds clear; other VMs' holds are untouched. History keeps
+saying the hold was released unverified; nothing is erased or shown as cleaned.
+
+**PRIVATE COUPLING:** the job journal writes schema 8 when a record carries
+`timedOutOperation` or `cleanupRelease`, and the workflow journal writes schema 2
+only when a row carries `cleanupRelease`; journals with neither stay readable by
+earlier builds. The CLI gains `setup prepare-release` and `setup release`.
+
+**TO PROVE:** releasing a real stopped Dev guest's hold, then launching it and
+setting up another guest, on a real Mac.
+
 ## Setup attention: badges, notifications and named timeouts — 7 November 2026
 
 **DESIGN DECISION — issue #16, user-approved plan:** one per-guest attention state

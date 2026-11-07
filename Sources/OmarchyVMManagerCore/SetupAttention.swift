@@ -29,7 +29,7 @@ public enum SetupAttentionReason: String, Sendable, Equatable, CaseIterable {
         case .review: "Setup is waiting for your review"
         case .restartReview: "Software is installed. Review the restart that finishes setup"
         case .checkReview: "The guest restarted. Review the configuration check that finishes setup"
-        case .cleanup: "Setup stopped before temporary admin access was confirmed removed. Review recovery"
+        case .cleanup: "Setup stopped before temporary admin access was confirmed removed. Review cleanup"
         }
     }
 }

@@ -155,6 +155,12 @@ struct FirstRunProgress: Equatable {
 
     /// Built only from recorded categories, never from terminal text.
     static func failureNote(_ row: ProvisioningWorkflowSnapshot, job: ProvisioningJobSnapshot?) -> String {
+        let note = recordedNote(row, job: job)
+        // Issue #24: history keeps saying the hold was released, never that cleanup happened.
+        guard row.cleanupRelease != nil else { return note }
+        return note + " Its cleanup hold was released without verification; the guest may still allow passwordless sudo."
+    }
+    private static func recordedNote(_ row: ProvisioningWorkflowSnapshot, job: ProvisioningJobSnapshot?) -> String {
         // Names the step that ran out of time and its limit, from recorded categories.
         if let timeout = SetupTimeoutNote.note(row, job: job) { return timeout }
         switch row.failure {

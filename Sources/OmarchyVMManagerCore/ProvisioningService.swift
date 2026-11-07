@@ -449,5 +449,30 @@ public actor ProvisioningService {
         await manager.setProvisioningWorkflowHold(id, vmID: row.vmID, required: false)
         return rows[id]!.snapshot
     }
+    /// Issue #24, after an acknowledged review: release a stopped guest's cleanup
+    /// hold. Jobs are saved first, then every cleanup-bound row for the VM, then
+    /// the in-memory holds clear. A failed write leaves the hold in place.
+    func releaseCleanupHold(_ id: UUID) async throws -> ProvisioningWorkflowSnapshot {
+        try enabled()
+        guard busyID == nil, let row = rows[id], row.cleanupRequired else { throw ProvisioningServiceFailure.reviewRequired }
+        let vmID = row.vmID
+        try await manager.requireProvisioningHoldReleasable(vmID)
+        try enabled()
+        guard busyID == nil, rows[id]?.cleanupRequired == true else { throw ProvisioningServiceFailure.reviewRequired }
+        busyID = id; defer { busyID = nil }
+        _ = try await coordinator.releaseUnverifiedCleanup(vmID: vmID)
+        var updated = rows
+        for (key, var value) in rows where value.vmID == vmID && value.cleanupRequired {
+            guard value.sequence < UInt64(Int64.max) - 1 else { throw ProvisioningJobFailure.journalUnavailable }
+            value.cleanupRequired = false; value.cleanupRelease = .unverified; value.sequence += 1
+            if ![.interrupted, .failed, .cancelled].contains(value.stage) { value.stage = .interrupted; value.failure = value.failure ?? .processInterrupted }
+            updated[key] = value
+        }
+        do { try workflows.save(Array(updated.values)) }
+        catch { failed = true; throw ProvisioningJobFailure.journalUnavailable }
+        rows = updated
+        try await manager.releaseProvisioningHold(vmID)
+        return rows[id]!.snapshot
+    }
     func retention() throws -> ProvisioningRetentionReport { try artifacts.retentionReport(records: jobs.load()) }
 }

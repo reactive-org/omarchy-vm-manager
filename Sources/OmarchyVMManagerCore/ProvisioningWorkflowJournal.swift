@@ -20,6 +20,8 @@ public struct ProvisioningWorkflowSnapshot: Codable, Equatable, Sendable {
     public let checkJobID: UUID?
     public let restartID: UUID?
     public let newSessionID: UUID?
+    /// The owner released this run's cleanup hold without verification (issue #24).
+    public var cleanupRelease: ProvisioningCleanupRelease? = nil
 }
 struct ProvisioningWorkflowRecord: Codable, Equatable, Sendable {
     let id: UUID, vmID: UUID, originalSessionID: UUID
@@ -36,9 +38,13 @@ struct ProvisioningWorkflowRecord: Codable, Equatable, Sendable {
     var newSessionID: UUID?
     var checkReviewDigest: String?
     var checkActivationID: UUID?
+    /// Schema 2 only, written only for a released row so earlier builds keep
+    /// reading journals that never released a hold.
+    var cleanupRelease: ProvisioningCleanupRelease?
     var snapshot: ProvisioningWorkflowSnapshot { .init(id: id, vmID: vmID, originalSessionID: originalSessionID, sequence: sequence, stage: stage,
-        cleanupRequired: cleanupRequired, failure: failure, applyJobID: applyJobID, checkJobID: checkJobID, restartID: restartID, newSessionID: newSessionID) }
-    enum CodingKeys: String, CodingKey, CaseIterable { case id, vmID, originalSessionID, planDigest, inputDigest, engineDigest, sequence, stage, cleanupRequired, failure, reviewDigest, applyJobID, checkJobID, restartID, restartReviewDigest, newSessionID, checkReviewDigest, checkActivationID }
+        cleanupRequired: cleanupRequired, failure: failure, applyJobID: applyJobID, checkJobID: checkJobID, restartID: restartID, newSessionID: newSessionID,
+        cleanupRelease: cleanupRelease) }
+    enum CodingKeys: String, CodingKey, CaseIterable { case id, vmID, originalSessionID, planDigest, inputDigest, engineDigest, sequence, stage, cleanupRequired, failure, reviewDigest, applyJobID, checkJobID, restartID, restartReviewDigest, newSessionID, checkReviewDigest, checkActivationID, cleanupRelease }
     func validate() throws {
         guard sequence > 0, sequence < UInt64(Int64.max), [planDigest, inputDigest, engineDigest].allSatisfy(provisioningDigest),
               [reviewDigest, restartReviewDigest, checkReviewDigest].compactMap({ $0 }).allSatisfy(provisioningDigest),
@@ -55,7 +61,8 @@ struct ProvisioningWorkflowRecord: Codable, Equatable, Sendable {
               restartID == nil || applyJobID != nil,
               newSessionID == nil || (restartID != nil && newSessionID != originalSessionID),
               checkReviewDigest == nil || (checkJobID != nil && newSessionID != nil),
-              checkActivationID == nil || checkReviewDigest != nil else { throw ProvisioningJobFailure.journalUnavailable }
+              checkActivationID == nil || checkReviewDigest != nil,
+              cleanupRelease == nil || (!cleanupRequired && [.interrupted, .failed, .cancelled].contains(stage)) else { throw ProvisioningJobFailure.journalUnavailable }
     }
 }
 /// Separate non-secret workflow index. No source/resource paths, raw output,
@@ -98,12 +105,13 @@ final class ProvisioningWorkflowJournal: @unchecked Sendable {
                 let data = try PrivateFiles.read(file, maximum: 256 * 1024)
                 guard !loaded || fingerprint == KitVerifier.sha256(data) else { throw ProvisioningJobFailure.journalUnavailable }
                 let object = try transportFields(DevVMProvisioningCore.PlainDataParser.parse(data, format: .json), required: ["schemaVersion", "revision", "workflows"])
-                guard object["schemaVersion"] == .integer(1), case .array(let rows) = object["workflows"], rows.count <= 128 else { throw ProvisioningJobFailure.journalUnavailable }
+                guard [.integer(1), .integer(2)].contains(object["schemaVersion"]), case .array(let rows) = object["workflows"], rows.count <= 128 else { throw ProvisioningJobFailure.journalUnavailable }
                 let required: Set<String> = ["id", "vmID", "originalSessionID", "planDigest", "inputDigest", "engineDigest", "sequence", "stage", "cleanupRequired"]
                 let all = Set(ProvisioningWorkflowRecord.CodingKeys.allCases.map(\.rawValue))
                 for row in rows {
                     let fields = try transportFields(row, required: required, optional: all.subtracting(required))
                     for key in all.subtracting(required) where fields[key] != nil { guard case .string = fields[key] else { throw ProvisioningJobFailure.journalUnavailable } }
+                    if fields["cleanupRelease"] != nil { guard object["schemaVersion"] == .integer(2) else { throw ProvisioningJobFailure.journalUnavailable } }
                 }
                 let doc = try JSONDecoder().decode(Document.self, from: data)
                 guard doc.revision > 0, Set(doc.workflows.map(\.id)).count == doc.workflows.count else { throw ProvisioningJobFailure.journalUnavailable }
@@ -118,7 +126,8 @@ final class ProvisioningWorkflowJournal: @unchecked Sendable {
                 try verify(); guard loaded, revision < UInt64(Int64.max), rows.count <= 128, Set(rows.map(\.id)).count == rows.count else { throw ProvisioningJobFailure.journalUnavailable }
                 try rows.forEach { try $0.validate() }
                 guard (PrivateFiles.exists(file) ? KitVerifier.sha256(try PrivateFiles.read(file, maximum: 256 * 1024)) : nil) == fingerprint else { throw ProvisioningJobFailure.journalUnavailable }
-                let data = try helperJSON(Document(schemaVersion: 1, revision: revision + 1, workflows: rows.sorted { $0.id.uuidString < $1.id.uuidString }))
+                let schema = rows.contains { $0.cleanupRelease != nil } ? 2 : 1
+                let data = try helperJSON(Document(schemaVersion: schema, revision: revision + 1, workflows: rows.sorted { $0.id.uuidString < $1.id.uuidString }))
                 guard data.count <= 256 * 1024 else { throw ProvisioningJobFailure.journalUnavailable }
                 try PrivateFiles.write(data, name: file.lastPathComponent, in: directory, exclusively: fingerprint == nil)
                 try verify(); guard try PrivateFiles.read(file, maximum: 256 * 1024) == data else { throw ProvisioningJobFailure.journalUnavailable }

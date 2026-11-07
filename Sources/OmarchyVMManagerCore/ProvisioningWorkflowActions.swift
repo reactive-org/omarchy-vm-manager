@@ -3,14 +3,18 @@ import Foundation
 
 public enum ProvisioningWorkflowAction: String, Codable, Sendable, CaseIterable {
     case restart, check, recover
+    /// Owner acknowledgement for a stopped guest whose cleanup can no longer be
+    /// verified (issue #24). Releases the hold; never claims cleanup happened.
+    case release
     public var title: String {
-        switch self { case .restart: "Restart guest"; case .check: "Check after restart"; case .recover: "Recover cleanup" }
+        switch self { case .restart: "Restart guest"; case .check: "Check after restart"; case .recover: "Recover cleanup"; case .release: "Release cleanup hold" }
     }
     public var explanation: String {
         switch self {
         case .restart: "Gracefully shut down this guest, wait for its matching exit, and start a fresh session. Checking that session needs a separate review."
         case .check: "Check the frozen setup in the admitted replacement session. Custom tasks are excluded and no authorization input is granted. Check mode is not a sandbox."
         case .recover: "Verify the original helper has stopped and is fenced, then attempt only the original job’s cleanup and authorization revocation. No setup is reapplied and no guest is restarted."
+        case .release: "This guest has stopped, so its setup cleanup can’t be verified. Releasing the hold lets you launch, configure or delete it again. Cleanup was not verified: the guest may still allow passwordless sudo or other temporary admin access, and you are responsible for removing it inside the guest."
         }
     }
 }
@@ -44,7 +48,7 @@ public protocol ProvisioningWorkflowActing: ProvisioningObserving {
 }
 extension ProvisioningWorkflowSnapshot {
     public var availableActions: [ProvisioningWorkflowAction] {
-        if cleanupRequired { return [.cleanupRequired, .interrupted, .failed, .cancelled].contains(stage) ? [.recover] : [] }
+        if cleanupRequired { return [.cleanupRequired, .interrupted, .failed, .cancelled].contains(stage) ? [.recover, .release] : [] }
         if stage == .restartRequired { return [.restart] }
         if [.waitingForRebind, .readyForCheck].contains(stage) { return [.check] }
         return []
@@ -60,6 +64,7 @@ struct ProvisioningActionContext: Sendable {
         case restart(ProvisioningRestartReview, ProvisioningTransportAdmission)
         case check(ProvisioningRebindReview, ProvisioningPreparedJob)
         case recover(ProvisioningJobRecord, ProvisioningTransportAdmission)
+        case release(vmID: UUID)
     }
     let review: ProvisioningWorkflowActionReview
     let detail: Detail

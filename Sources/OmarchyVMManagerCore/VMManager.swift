@@ -1105,6 +1105,23 @@ extension VMManager {
         if required { provisioningWorkflowHolds[id] = vmID } else if provisioningWorkflowHolds[id] == vmID { provisioningWorkflowHolds.removeValue(forKey: id) }
     }
     func markProvisioningStorageUnknown() { provisioningUnknownRisk = true }
+    /// Issue #24: an owner can release a cleanup hold only for a stopped guest with
+    /// no session, lease, preparation, restart, backup or storage change, and only
+    /// while provisioning storage is known. Its cleanup can no longer be verified.
+    func requireProvisioningHoldReleasable(_ vmID: UUID) throws {
+        guard !quitting, !provisioningUnknownRisk, profiles.contains(where: { $0.id == vmID }),
+              provisioningReservation?.lease.vmID != vmID, provisioningPreparation?.lease.target.vmID != vmID,
+              provisioningRestart?.lease.target.vmID != vmID, homeBackupOperations[vmID] == nil, !storageTransactions.contains(vmID)
+        else { throw ProvisioningJobFailure.busy }
+        guard sessions[vmID] == nil, (states[vmID] ?? .stopped).canStart else { throw ProvisioningJobFailure.targetChanged }
+    }
+    /// Clears this VM's in-memory holds after the release is saved in both journals.
+    /// Holds for other VMs are untouched.
+    func releaseProvisioningHold(_ vmID: UUID) throws {
+        try requireProvisioningHoldReleasable(vmID)
+        provisioningBlocks.remove(vmID)
+        for (id, held) in provisioningWorkflowHolds where held == vmID { provisioningWorkflowHolds.removeValue(forKey: id) }
+    }
     func beginProvisioningRestart(owner: UUID, workflowID: UUID, target: GuestBinding, cancel: @escaping @Sendable () async -> Void) throws -> ProvisioningRestartLease {
         guard provisioningOwner == owner, provisioningReservation == nil, provisioningPreparation == nil, provisioningRestart == nil,
               !provisioningBlocks.contains(target.vmID), !provisioningWorkflowHolds.values.contains(target.vmID),

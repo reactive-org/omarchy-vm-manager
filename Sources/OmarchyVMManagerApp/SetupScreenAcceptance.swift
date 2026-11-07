@@ -122,6 +122,10 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         NSApplication.shared.setActivationPolicy(.prohibited)
         var checks: [String] = []
         func check(_ value: Bool, _ label: String) throws { guard value else { print("failed check: " + label); throw AcceptanceFailure.check }; checks.append(label) }
+        /// Like `until`, but names the wait that timed out.
+        func waitFor(_ label: String, _ condition: () -> Bool) throws {
+            do { try until(condition) } catch { print("timed out: " + label); throw error }
+        }
         let runtime = FakeRuntime(), profile = VMProfile(id: UUID(), name: "Synthetic acceptance guest", clipboardEnabled: false)
         let support = output.appendingPathComponent("unused-support")
         let manager = VMManager(runtime: runtime, profiles: [profile], applicationSupport: support)
@@ -658,6 +662,22 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try check(SetupCardState.make(readySnapshot, workflows: [timedOut], jobs: [timedOut.id: timedOutJob], autoSetup: nil).note
                       == "Setup timed out: Omarchy’s passwordless sudo prompt wasn’t answered within an hour.", "attention-timeout-names-the-step")
 
+            // Issue #24: a stopped guest's unverifiable cleanup can only be released, never recovered.
+            let heldRow = try enabled.row(UUID(), stage: "failed", cleanupRequired: true)
+            try check(DeveloperSetupView.visibleActions(heldRow, guestRunning: false) == [.release]
+                      && DeveloperSetupView.visibleActions(heldRow, guestRunning: true) == [.recover], "cleanup-release-offered-only-when-stopped")
+            let acknowledgement = DeveloperSetupView.acknowledgement(.release)
+            try check(acknowledgement.contains("wasn’t verified") && acknowledgement.contains("passwordless sudo"), "cleanup-release-acknowledgement-says-unverified")
+            let stoppedHeld = SetupCardState.make(VMSnapshot(profile: firstRun, state: .stopped), workflows: [heldRow], jobs: [:], autoSetup: nil)
+            try check(stoppedHeld.kind == .cleanup && stoppedHeld.note.contains("can’t be verified"), "cleanup-stopped-card-explains-release")
+            let releasedRow = try JSONDecoder().decode(ProvisioningWorkflowSnapshot.self, from: JSONSerialization.data(withJSONObject: [
+                "id": heldRow.id.uuidString, "vmID": profile.id.uuidString, "originalSessionID": session.uuidString, "sequence": 3, "stage": "failed",
+                "cleanupRequired": false, "applyJobID": heldRow.id.uuidString, "cleanupRelease": "unverified"]))
+            let released = SetupCardState.make(VMSnapshot(profile: firstRun, state: .stopped), workflows: [releasedRow], jobs: [:], autoSetup: nil)
+            try check(released.kind == .failed && released.note.contains("released without verification")
+                      && SetupAttention.make(VMSnapshot(profile: firstRun, state: .stopped), workflows: [releasedRow], jobs: [:]) == nil
+                      && releasedRow.title == "Cleanup released without verification", "cleanup-released-history-says-unverified")
+
             // Sidebar: a badge only on the guest that is waiting; clicking it opens the right place.
             let second = VMProfile(id: UUID(), name: "Synthetic second guest", clipboardEnabled: false)
             // Its own model: earlier closed hosts still observe the shared fixture model.
@@ -667,20 +687,23 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             attentionModel.setupWorkflows = [sudoRow]; attentionModel.setupJobs = [sudoRow.id: try jobState(sudoRow.id, "awaitingAuthorization")]; attentionModel.autoSetup = [:]
             let sideDriver = SetupUIAcceptanceDriver()
             let side = Host(ManagerView(model: attentionModel), driver: sideDriver, width: 1200, height: 960, dark: true)
-            tick(); try until { sideDriver.scopes["manager"] != nil && sideDriver.scopes["needs-you:" + profile.id.uuidString] != nil }
+            tick(); try waitFor("attention-wait-1") { sideDriver.scopes["manager"] != nil && sideDriver.scopes["needs-you:" + profile.id.uuidString] != nil }
             try check(sideDriver.scopes["needs-you:" + second.id.uuidString] == nil && attentionModel.setupAttention.keys.sorted() == [profile.id], "attention-sidebar-badge-only-for-waiting-guest")
             try capture(side, "attention-sidebar-dark.png")
             try sideDriver.send("needs-you:" + profile.id.uuidString, .submit)
-            try until { sideDriver.state("manager", "guest") == profile.id.uuidString && sideDriver.state("manager", "sheet") == "output" }
+            tick(0.3) // Let the window handle the route before polling its state.
+            try waitFor("attention-wait-2") { sideDriver.state("manager", "guest") == profile.id.uuidString && sideDriver.state("manager", "sheet") == "output" }
             try check(sideDriver.state("manager", "page") == "Home", "attention-badge-opens-output-at-sudo-prompt")
             try check(attentionModel.visibleGuest == profile.id, "attention-visible-guest-reported")
             // A notification click calls the same route, worked out when clicked.
             attentionModel.setupWorkflows = [try enabled.row(sudoRow.id, stage: "restartRequired")]; attentionModel.setupJobs = [:]
             attentionModel.openAttention(profile.id)
-            try until { sideDriver.state("manager", "sheet") == "change" }
+            tick(0.5)
+            try waitFor("attention-wait-3") { sideDriver.state("manager", "sheet") == "change" }
             try check(sideDriver.state("manager", "guest") == profile.id.uuidString, "attention-notification-click-opens-review")
             attentionModel.openAttention(second.id)
-            try until { sideDriver.state("manager", "guest") == second.id.uuidString }
+            tick(0.5) // Sheet dismissal and the guest switch settle over a few run-loop turns.
+            try waitFor("attention-wait-4") { sideDriver.state("manager", "guest") == second.id.uuidString }
             tick(); try check(sideDriver.state("manager", "sheet").isEmpty && sideDriver.state("manager", "page") == "Home", "attention-stale-click-opens-home-only")
             side.close(); tick()
 

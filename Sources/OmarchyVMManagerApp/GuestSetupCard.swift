@@ -31,6 +31,11 @@ struct SetupCardState: Equatable {
         let attention = SetupAttention.make(snapshot, workflows: workflows, jobs: jobs, auto: SetupAutoApproval(autoSetup))?.reason
         switch attention {
         case .cleanup?:
+            if snapshot.sessionID == nil {
+                // Issue #24: recovery needs the original session, so only a release is possible.
+                return .init(kind: .cleanup, run: "Interrupted · cleanup needs review",
+                             note: "The run stopped before temporary admin access was confirmed removed, and the guest has stopped, so it can’t be verified. Review cleanup to release the hold; you then remove any leftover admin access inside the guest.")
+            }
             return .init(kind: .cleanup, run: "Interrupted · cleanup needs review",
                          note: "The run stopped before temporary admin access was confirmed removed. Recovery removes it; nothing is re-installed and the guest isn’t restarted.")
         case .sudoPrompt?:
@@ -125,7 +130,7 @@ struct GuestSetupCard: View {
             else { Button("Review…") { open(.change) }.buttonStyle(.primaryAction) }
         case .cleanup:
             Button("View output") { open(.output) }
-            Button("Review recovery…") { open(.change) }.buttonStyle(.primaryAction)
+            Button("Review cleanup…") { open(.change) }.buttonStyle(.primaryAction)
         case .configured, .failed, .succeeded, .finished:
             if state.kind != .configured { Button("View output") { open(.output) } }
             Button("Change setup…") { open(.change) }

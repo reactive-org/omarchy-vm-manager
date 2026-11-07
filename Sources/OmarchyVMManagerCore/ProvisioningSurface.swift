@@ -27,7 +27,8 @@ extension ProvisioningWorkflowSnapshot {
         }
     }
     public var title: String {
-        switch stage {
+        if cleanupRelease != nil { return "Cleanup released without verification" }
+        return switch stage {
         case .waitingForSSH: "Connecting to guest"
         case .readyForReview: "Ready for review"
         case .running: "Updating and configuring guest"
@@ -57,7 +58,8 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
     case prepareAction(UUID, ProvisioningWorkflowAction, UUID), performAction(UUID, ProvisioningWorkflowActionConsent)
     public static func parse(_ args: [String]) throws -> Self? {
         guard args.first == "setup", args.count >= 2, args[1] != "tools" else { return nil }
-        let actionCommands: [String: ProvisioningWorkflowAction] = ["restart": .restart, "check": .check, "recover": .recover, "prepare-restart": .restart, "prepare-check": .check, "prepare-recover": .recover]
+        let actionCommands: [String: ProvisioningWorkflowAction] = ["restart": .restart, "check": .check, "recover": .recover, "release": .release,
+            "prepare-restart": .restart, "prepare-check": .check, "prepare-recover": .recover, "prepare-release": .release]
         if let action = actionCommands[args[1]] {
             guard args.count >= 3, let id = UUID(uuidString: args[2]) else { throw commandFailure("usage", "Use an exact workflow UUID for setup actions.") }
             var values: [String: String] = [:], acknowledged = false, index = 3
@@ -72,7 +74,7 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
             if !args[1].hasPrefix("prepare-"), let digest = values["--review"], provisioningDigest(digest) {
                 return .performAction(id, .init(reviewID: reviewID, action: action, reviewIdentity: digest, acknowledged: acknowledged))
             }
-            throw commandFailure("usage", "Use prepare-restart|prepare-check|prepare-recover UUID --review-id UUID, then restart|check|recover UUID --review-id UUID --review SHA256 --ack.")
+            throw commandFailure("usage", "Use prepare-restart|prepare-check|prepare-recover|prepare-release UUID --review-id UUID, then restart|check|recover|release UUID --review-id UUID --review SHA256 --ack.")
         }
         if ["prepare-create", "creation", "preview", "prepare-apply", "apply", "task-source"].contains(args[1]) {
             guard args.count >= 3, let id = UUID(uuidString: args[2]) else { throw commandFailure("usage", "Use an exact UUID for setup review commands.") }

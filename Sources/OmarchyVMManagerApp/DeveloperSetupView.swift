@@ -152,6 +152,8 @@ struct DeveloperSetupView: View {
                 if workflow.cleanupRequired {
                     if workflow.stage == .running || workflow.stage == .checking {
                         Text("Setup tracks temporary admin access and will verify its removal during cleanup.").font(.caption).foregroundStyle(.secondary)
+                    } else if snapshot.sessionID == nil {
+                        Label("Cleanup has not been confirmed and this guest has stopped, so it can’t be verified. Review the cleanup hold to release it.", systemImage: "exclamationmark.shield").foregroundStyle(.orange)
                     } else { Label("Cleanup has not been confirmed. Recovery must verify the original guest and authorization state.", systemImage: "exclamationmark.shield").foregroundStyle(.orange) }
                 }
                 if mode == .full { workflowActions(workflow) }
@@ -260,12 +262,30 @@ struct DeveloperSetupView: View {
         return $showingTask
     }
     private var actingService: (any ProvisioningWorkflowActing)? { model.setupService as? any ProvisioningWorkflowActing }
+    /// Recovery needs the original live session; releasing the hold needs a stopped
+    /// guest (issue #24). Only the one that can work is offered.
+    static func visibleActions(_ workflow: ProvisioningWorkflowSnapshot, guestRunning: Bool) -> [ProvisioningWorkflowAction] {
+        workflow.availableActions.filter { action in
+            switch action {
+            case .recover: guestRunning
+            case .release: !guestRunning
+            case .restart, .check: true
+            }
+        }
+    }
+    /// What the owner confirms. Release says plainly that nothing was verified.
+    static func acknowledgement(_ action: ProvisioningWorkflowAction) -> String {
+        action == .release
+            ? "I understand cleanup wasn’t verified. This guest may still allow passwordless sudo or other temporary admin access, and I’ll remove it inside the guest."
+            : "I approve this exact " + action.title.lowercased() + " action for this guest and session."
+    }
     @ViewBuilder private func workflowActions(_ workflow: ProvisioningWorkflowSnapshot) -> some View {
-        if !workflow.availableActions.isEmpty || workflowActionReview?.workflowID == workflow.id {
+        let actions = Self.visibleActions(workflow, guestRunning: snapshot.sessionID != nil)
+        if !actions.isEmpty || workflowActionReview?.workflowID == workflow.id {
             GroupedPanel {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Reviewed workflow actions").font(Theme.sans(14, weight: .semibold))
-                    ForEach(workflow.availableActions, id: \.self) { action in
+                    ForEach(actions, id: \.self) { action in
                         HStack {
                             Text(action.explanation).font(Theme.sans(13)).foregroundStyle(.secondary)
                             Spacer()
@@ -281,7 +301,7 @@ struct DeveloperSetupView: View {
                             Text("Input fingerprint: " + review.inputDigest).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                             Text("Review: " + review.reviewIdentity).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                         }
-                        Toggle("I approve this exact " + review.action.title.lowercased() + " action for this guest and session.", isOn: $actionAcknowledged)
+                        Toggle(Self.acknowledgement(review.action), isOn: $actionAcknowledged)
                             .disabled(actionBusy || actionAttempted)
                         Button(review.action.title) { Task { await performWorkflowAction(workflow, review: review) } }
                             .disabled(actingService?.executionEnabled != true || !actionAcknowledged || actionBusy || actionAttempted)

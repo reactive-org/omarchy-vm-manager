@@ -319,6 +319,32 @@ public actor ProvisioningCoordinator {
         }
         return row.snapshot
     }
+    /// Issue #24: the owner releases a stopped guest's unverifiable cleanup hold.
+    /// Every cleanup-bound job for that VM is marked released without verification
+    /// in one journal write; nothing claims cleanup happened. The caller has checked
+    /// the VM is stopped and unleased. Returns the released job IDs.
+    func releaseUnverifiedCleanup(vmID: UUID) async throws -> [UUID] {
+        guard !closed, !admitting, active == nil, helperActive == nil else { throw ProvisioningJobFailure.busy }
+        guard !storageFailed else { throw ProvisioningJobFailure.journalUnavailable }
+        let held = jobs.values.filter { $0.vmID == vmID && $0.cleanupRequired }.sorted { $0.jobID.uuidString < $1.jobID.uuidString }
+        guard !held.contains(where: \.workerOutstanding) else { throw ProvisioningJobFailure.busy }
+        let previous = jobs
+        for var record in held {
+            record.cleanupRequired = false; record.cleanupRelease = .unverified
+            if record.state == .cleanupRequired || record.state.unfinished { record.state = .interrupted }
+            try advance(&record); jobs[record.jobID] = record
+        }
+        do { try journal.save(Array(jobs.values)) }
+        catch { jobs = previous; storageFailed = true; throw ProvisioningJobFailure.journalUnavailable }
+        for record in held {
+            recovering.removeValue(forKey: record.jobID)
+            if let identity = record.helperIdentity {
+                await (helperAuthorities[record.jobID] ?? recoveryAuthority)?.releaseAfterCleanup(jobID: record.jobID, helperIdentity: identity)
+            }
+            helperAuthorities.removeValue(forKey: record.jobID)
+        }
+        return held.map(\.jobID)
+    }
     @discardableResult
     func recover(_ jobID: UUID, target: GuestBinding? = nil, adapter: any ProvisioningGuestAdapter) async throws -> ProvisioningJobSnapshot {
         guard !closed else { throw ProvisioningJobFailure.recoveryUnavailable }

@@ -537,11 +537,15 @@ struct ManagerView: View {
         if destination == .guest(route.vmID) {
             page = .home; setupSheet = route.sheet
         } else {
+            // Dismiss any open sheet before its guest page is replaced, then open the
+            // other guest (whose page owns the sheet) on the next turn.
             setupSheet = nil
-            focusGuest(route.vmID)
-            // The guest's page (which owns the sheet) appears with this change.
-            let sheet = route.sheet
-            Task { @MainActor in page = .home; setupSheet = sheet }
+            let sheet = route.sheet, vmID = route.vmID
+            Task { @MainActor in
+                focusGuest(vmID)
+                await Task.yield()
+                page = .home; setupSheet = sheet
+            }
         }
     }
 
