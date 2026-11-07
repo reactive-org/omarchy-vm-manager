@@ -11,7 +11,7 @@ import SwiftUI
     enum Command {
         case source(String), profiles([String]), folder(URL), trim(Bool), factory(String), appearance(ProvisioningAppearanceSelection?), appearanceExpanded(Bool), themeChoice(ProvisioningThemeChoice), themeRepository(String), layoutExample(ProvisioningLayoutExampleID?)
         case ownerDefaults(Bool), name(String), resources(Int, Int, Int), preview, save, lookup(UUID), inspect, prepareApply
-        case grant(Bool, Bool, Bool), submit, search(String), requestCancel, confirmCancel, section(String)
+        case grant(Bool, Bool, Bool), submit, search(String), requestCancel, confirmCancel, section(String), runAgain
     }
     struct Scope { let action: (Command) -> Void; let snapshot: () -> [String: String] }
     var scopes: [String: Scope] = [:]
@@ -28,7 +28,7 @@ enum AcceptanceFailure: Error { case check }
 
 /// In-memory fake, deliberately implementing no process, file, transport or VM
 /// backend. Typed replies are fixture data, never an admission capability.
-@MainActor final class SetupAcceptanceService: ProvisioningCreationPlanning, ProvisioningWorkflowActing {
+@MainActor final class SetupAcceptanceService: ProvisioningCreationPlanning, ProvisioningWorkflowActing, ProvisioningRetrying {
     nonisolated let executionEnabled: Bool
     var captures = 0, preparations = 0, submissions = 0, taskReads = 0, terminalAttempts = 0, cancellations = 0
     var holdNext = false, failNext = false
@@ -117,8 +117,23 @@ enum AcceptanceFailure: Error { case check }
         fields["proposal"] = review.proposal.base64EncodedString(); previews[review.id] = try value(fields)
         return profile
     }
-    func row(_ id: UUID, stage: String, cleanupRequired: Bool = false) throws -> ProvisioningWorkflowSnapshot {
-        try value(["id": id.uuidString, "vmID": vmID.uuidString, "originalSessionID": UUID().uuidString, "sequence": 1, "stage": stage, "cleanupRequired": cleanupRequired, "applyJobID": id.uuidString])
+    func row(_ id: UUID, stage: String, cleanupRequired: Bool = false, failure: String? = nil) throws -> ProvisioningWorkflowSnapshot {
+        var fields: [String: Any] = ["id": id.uuidString, "vmID": vmID.uuidString, "originalSessionID": UUID().uuidString, "sequence": 1, "stage": stage, "cleanupRequired": cleanupRequired, "applyJobID": id.uuidString]
+        if let failure { fields["failure"] = failure }
+        return try value(fields)
+    }
+    /// Issue #14 fixtures: the guest's latest plan and a fresh plan from its choices.
+    var latestFixture: ProvisioningLatestSetup?
+    var retries = 0
+    var retryEngineChanged = false
+    func latestSetup(vmID: UUID) async -> ProvisioningLatestSetup? { vmID == self.vmID ? latestFixture : nil }
+    func prepareRetry(id: UUID, of previousID: UUID) async throws -> ProvisioningRetryPreview {
+        guard let source = sources[previousID], previews[previousID] != nil, previews[id] == nil else { throw ProvisioningReviewFailure.unavailable }
+        retries += 1
+        let preview: ProvisioningPlanPreview = try value(document(id, source: source, target: vmID))
+        previews[id] = preview; sources[id] = source
+        return .init(preview: preview, previousID: previousID, engineChanged: retryEngineChanged, planChanged: retryEngineChanged,
+                     addedFeatures: retryEngineChanged ? ["docker"] : [], removedFeatures: [])
     }
     /// Finishing actions submitted with an acknowledged consent, in order.
     var actionSubmissions: [ProvisioningWorkflowAction] = []

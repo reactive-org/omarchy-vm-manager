@@ -6,6 +6,8 @@ public enum ProvisioningWorkflowStage: String, Codable, Sendable {
     case waitingForSSH, readyForReview, running, restartRequired, waitingForExit, restarting, waitingForRebind, readyForCheck, checking
     case succeeded, checked, failed, cancelled, interrupted, cleanupRequired
     var unfinished: Bool { [.waitingForSSH, .readyForReview, .running, .waitingForExit, .restarting, .waitingForRebind, .readyForCheck, .checking].contains(self) }
+    /// Not yet at an outcome. Restart required still belongs to the same run.
+    public var inProgress: Bool { unfinished || self == .restartRequired }
 }
 public enum ProvisioningWorkflowFailure: String, Codable, Sendable {
     case disabled, cancelled, invalidReview, targetChanged, dependencyChanged, sourceChanged, sshTimeout, restartTimeout, helperUnavailable, journalUnavailable, processInterrupted, childFailed, systemUpdateFailed
@@ -22,6 +24,11 @@ public struct ProvisioningWorkflowSnapshot: Codable, Equatable, Sendable {
     public let newSessionID: UUID?
     /// The owner released this run's cleanup hold without verification (issue #24).
     public var cleanupRelease: ProvisioningCleanupRelease? = nil
+}
+extension ProvisioningWorkflowSnapshot {
+    /// The plan was applied and its run reached an outcome. Its plan is used:
+    /// only a fresh plan from the same choices can run again (issue #14).
+    public var runFinished: Bool { applyJobID != nil && !stage.inProgress }
 }
 struct ProvisioningWorkflowRecord: Codable, Equatable, Sendable {
     let id: UUID, vmID: UUID, originalSessionID: UUID
