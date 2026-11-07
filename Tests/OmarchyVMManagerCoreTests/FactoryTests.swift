@@ -21,7 +21,7 @@ struct FactoryFixture {
             try Data(path.utf8).write(to: target)
         }
         let contractProvenance: [String: Any] = ["version": 1, "reportVersion": 1, "sourceCommit": kit.lock.patchCommit,
-            "contracts": ["official": VMOwnerSetupContract.official, "lean-e4fffc6": VMOwnerSetupContract.lean]]
+            "contracts": VMOwnerSetupContract.provenanceContracts]
         try JSONSerialization.data(withJSONObject: contractProvenance, options: .sortedKeys).write(to: kit.kit.bundleURL.appendingPathComponent(VMOwnerSetupContract.provenancePath))
         var provenance = kit.lock
         provenance.customFactoryVersion = 1; provenance.managedSSHVersion = 1; provenance.managedSetupVersion = 1

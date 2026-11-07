@@ -127,7 +127,7 @@ public enum KitVerifier {
         if let version = lock.homeDiskVersion, version != 1 { throw invalid("Persistent home-disk support is unknown.") }
         if let version = lock.managerChannelsVersion, version != 1 { throw invalid("Manager channel isolation is unknown.") }
         if lock.homeDiskVersion == 1 {
-            guard lock.files["Contents/Resources/guest-packages/try-omarchy-0.1.0-47.1-aarch64.pkg.tar.zst"] == VMGuestIntegrationContract.runtimeLeanPackageSHA256 else {
+            guard lock.files["Contents/Resources/guest-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst"] == VMGuestIntegrationContract.runtimeLeanPackageSHA256 else {
                 throw invalid("Native-rendering guest integration is unproven.")
             }
         }

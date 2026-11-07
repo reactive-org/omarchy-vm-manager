@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-47-aarch64.pkg.tar.zst'
+PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-48-aarch64.pkg.tar.zst'
 
 
 def read_regular(path, maximum=None):
@@ -50,15 +50,23 @@ def is_digest(value):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
 
 
+LEAN_CONTRACTS = {'lean-e4fffc6': ('LeanOwnerSetupContract.json', '0.1.0-43.1'),
+                  'lean-a948d8a': ('LeanOwnerSetupContract-a948d8a.json', '0.1.0-48.1')}
+
+
 def reviewed_contract():
     contract = metadata(ROOT / 'Config/GuestIntegrationCompatibility.json')
     capabilities = {'guestStatus': 1, 'managedSSH': 1, 'managedSetup': 1, 'ownerSetupContracts': 1, 'ownerSetupReport': 1}
+    leans = contract.get('leanContracts') if isinstance(contract, dict) else None
     if (not isinstance(contract, dict)
-            or any(type(contract.get(key)) is not int or contract[key] != 1 for key in ('schemaVersion', 'contractVersion'))
+            or type(contract.get('schemaVersion')) is not int or contract['schemaVersion'] != 2
+            or type(contract.get('contractVersion')) is not int or contract['contractVersion'] != 1
             or contract.get('capabilities') != capabilities
             or any(type(value) is not int for value in contract.get('capabilities', {}).values())
-            or contract.get('leanPackageVersion') != '0.1.0-43.1'
-            or any(not is_digest(contract.get(key)) for key in ('runtimePackageSHA256', 'leanPackageSHA256', 'ownerSetupContractSHA256'))):
+            or not is_digest(contract.get('runtimePackageSHA256'))
+            or not isinstance(leans, list) or not leans
+            or any(not isinstance(lean, dict) or set(lean) != {'leanPackageVersion', 'leanPackageSHA256', 'ownerSetupContractSHA256'}
+                   or not is_digest(lean['leanPackageSHA256']) or not is_digest(lean['ownerSetupContractSHA256']) for lean in leans)):
         raise ValueError('The reviewed guest compatibility policy is malformed or unsupported; restore the reviewed source policy')
     return contract
 
@@ -103,12 +111,12 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
                    or not is_digest(value) for path, value in runtime_files.items())):
         raise ValueError('The runtime inventory is missing, unsafe or incompatible')
     contracts = {'official': ROOT / 'Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json',
-                 'lean-e4fffc6': ROOT / 'Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json'}
+                 **{name: ROOT / 'Sources/OmarchyVMManagerCore/Resources' / file for name, (file, _) in LEAN_CONTRACTS.items()}}
     if owner_contract not in contracts:
         raise ValueError('Unknown reviewed owner contract')
     selected = contracts[owner_contract]
     extra = {}
-    if owner_contract == 'lean-e4fffc6':
+    if owner_contract in LEAN_CONTRACTS:
         if (type(lock.get('ownerSetupContractsVersion')) is not int or lock['ownerSetupContractsVersion'] != 1
                 or 'Contents/Resources/owner-setup-provenance.json' not in runtime_files):
             raise ValueError('Build the reviewed owner-contract capable kit first')
@@ -118,7 +126,13 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
         build = metadata(bundle / image_build)
         expected = metadata(selected)['programs'].copy()
         del expected['/usr/share/omarchy/install/provisioning/progress-icon.sh']
-        contract = reviewed_contract()
+        policy = reviewed_contract()
+        matches = [lean for lean in policy['leanContracts'] if lean['ownerSetupContractSHA256'] == digest(selected)
+                   and lean['leanPackageVersion'] == LEAN_CONTRACTS[owner_contract][1]]
+        if len(matches) != 1:
+            raise ValueError('The reviewed guest compatibility policy does not support this lean owner contract')
+        contract = {**matches[0], 'runtimePackageSHA256': policy['runtimePackageSHA256'],
+                    'contractVersion': policy['contractVersion'], 'capabilities': policy['capabilities']}
         if type(lock.get('factoryCompatibilityVersion')) is not int or lock['factoryCompatibilityVersion'] != 1:
             raise ValueError('Build the reviewed factory-compatibility capable runtime kit first')
         if not isinstance(evidence, dict) or evidence.get('owner_programs') != expected:
@@ -139,7 +153,7 @@ def prepare(bundle, name, provisioning, runtime_lock=ROOT / 'Config/TryOmarchyRu
                                       'packageFile': integration_package, 'packageSHA256': files[integration_package]}}
 
     value = {
-        'format': 2 if owner_contract == 'lean-e4fffc6' else 1, 'name': name, 'architecture': 'aarch64', 'boot': 'uefi-limine',
+        'format': 2 if owner_contract in LEAN_CONTRACTS else 1, 'name': name, 'architecture': 'aarch64', 'boot': 'uefi-limine',
         'customFactoryVersion': 1, 'managedSSHVersion': 1, 'managedSetupVersion': 1, 'ownerSetupReportVersion': 1,
         'integrationPackageSHA256': lock['files'][PACKAGE],
         'ownerSetupContractSHA256': digest(selected),
@@ -156,7 +170,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bundle', type=Path)
     parser.add_argument('--name', required=True)
-    parser.add_argument('--owner-contract', choices=['official', 'lean-e4fffc6'], default='official')
+    parser.add_argument('--owner-contract', choices=['official', *LEAN_CONTRACTS], default='official')
     parser.add_argument('--compatibility', help='Included compatibility evidence filename for lean')
     parser.add_argument('--integration-package', help='Included complete reviewed lean package archive; also select it with --provisioning')
     parser.add_argument('--image-build', help='Included integration source evidence filename for lean')

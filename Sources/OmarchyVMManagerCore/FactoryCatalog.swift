@@ -115,10 +115,13 @@ public struct FactoryCatalog: Sendable {
         }
         let receipt = FactoryImportReceipt(schemaVersion: manifest.format == 2 ? 2 : 1, factory: factory,
                                            runtimeLockSHA256: KitVerifier.sha256(lockData), importedAt: Date(),
-                                           guestIntegrationContractSHA256: manifest.format == 2 ? integrationContractSHA256 : nil)
+                                           guestIntegrationContractSHA256: manifest.format == 2 ? try receiptContractSHA256(for: manifest) : nil)
         try PrivateFiles.write(JSONEncoder().encode(receipt), name: receiptURL(factory.manifestSHA256).lastPathComponent, in: receipts, exclusively: true)
     }
-    var integrationContractSHA256: String {
+    /// The receipt identity of one reviewed lean pairing. It hashes the same
+    /// schema-1 field set as before the contract set existed, so the unchanged
+    /// e4fffc6/43.1 entry keeps its digest and existing receipts stay valid.
+    func integrationContractSHA256(_ lean: VMGuestIntegrationContract.LeanContract) -> String {
         struct GuestContract: Encodable {
             let schemaVersion: Int
             let contractVersion: Int
@@ -128,16 +131,24 @@ public struct FactoryCatalog: Sendable {
             let ownerSetupContractSHA256: String
         }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        let guest = GuestContract(schemaVersion: integrationContract.schemaVersion, contractVersion: integrationContract.contractVersion,
-            capabilities: integrationContract.capabilities, leanPackageVersion: integrationContract.leanPackageVersion,
-            leanPackageSHA256: integrationContract.leanPackageSHA256, ownerSetupContractSHA256: integrationContract.ownerSetupContractSHA256)
+        let guest = GuestContract(schemaVersion: 1, contractVersion: integrationContract.contractVersion,
+            capabilities: integrationContract.capabilities, leanPackageVersion: lean.leanPackageVersion,
+            leanPackageSHA256: lean.leanPackageSHA256, ownerSetupContractSHA256: lean.ownerSetupContractSHA256)
         return KitVerifier.sha256(try! encoder.encode(guest))
     }
+    var integrationContractSHA256s: Set<String> { Set(integrationContract.leanContracts.map(integrationContractSHA256)) }
+    func receiptContractSHA256(for manifest: VMFactoryManifest) throws -> String {
+        guard let evidence = manifest.guestIntegration,
+              let lean = integrationContract.leanContract(ownerSetupContractSHA256: manifest.ownerSetupContractSHA256, packageSHA256: evidence.packageSHA256) else {
+            throw Self.invalid("The factory uses an unsupported guest integration contract.")
+        }
+        return integrationContractSHA256(lean)
+    }
     func acceptsReceiptContract(_ digest: String) -> Bool {
-        if digest == integrationContractSHA256 { return true }
+        if integrationContractSHA256s.contains(digest) { return true }
         // Explicit review of the unchanged image/owner contract permits its
         // former runtime-bound receipt without changing the saved bytes.
-        return integrationContractSHA256 == "c3cbd5eb1b061ada97f3951d91b3d21e1afeb508b8a367f6c308c0e87da56a55" &&
+        return integrationContractSHA256s.contains("c3cbd5eb1b061ada97f3951d91b3d21e1afeb508b8a367f6c308c0e87da56a55") &&
             digest == "9c430c34e68e720d0a0368983a1cd1bd58ccad6877a42c2d19c8777e0072dade"
     }
     static func invalid(_ message: String) -> VMFailure { VMFailure(code: "factory-verification-failed", message: message) }
@@ -177,7 +188,7 @@ public struct FactoryCatalog: Sendable {
             guard lock.factoryCompatibilityVersion == 1 else { throw Self.invalid("The runtime lacks reviewed factory compatibility support. Build and verify the updated runtime kit first.") }
             guard lock.files[VMFactorySelection.packagePath] == integrationContract.runtimePackageSHA256 else { throw Self.invalid("Runtime guest integration package checksum is not supported by the reviewed compatibility contract.") }
         }
-        guard manifest.ownerSetupContractSHA256 != VMOwnerSetupContract.lean || lock.ownerSetupContractsVersion == 1 else { throw Self.invalid("The runtime lacks reviewed lean owner contract support.") }
+        guard !VMOwnerSetupContract.isLean(manifest.ownerSetupContractSHA256) || lock.ownerSetupContractsVersion == 1 else { throw Self.invalid("The runtime lacks reviewed lean owner contract support.") }
         let image = try Self.decodeImage(VMFactorySelection.readMetadata(url.appendingPathComponent("factory.json")), expectedSHA256: manifest.files["factory.json"])
         return FactoryIdentity(kind: .custom, name: manifest.name, manifestSHA256: digest, diskSHA256: image.disk.sha256)
     }

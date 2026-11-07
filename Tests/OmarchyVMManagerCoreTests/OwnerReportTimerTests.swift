@@ -5,7 +5,7 @@ import TryOmarchyKitClient
 
 @Suite("Owner completion report after real host cleanup — isolated guests")
 struct OwnerReportTimerTests {
-    @Test("both contracts report across host finish and repeated fresh reporter processes", arguments: [VMOwnerSetupContract.official, VMOwnerSetupContract.lean])
+    @Test("both contracts report across host finish and repeated fresh reporter processes", arguments: [VMOwnerSetupContract.official] + VMOwnerSetupContract.leanContracts.map(\.digest))
     func hostCleanup(_ contract: String) throws {
         let fixture = try RegistryFixture(); defer { fixture.cleanup() }
         var profile = fixture.profile(name: "Isolated owner reporter")
