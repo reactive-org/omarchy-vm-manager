@@ -1,5 +1,17 @@
 # Omarchy VM Manager — implementation intent
 
+## CI toolchain moves to Xcode 27 — 7 November 2026
+
+**USER DIRECTION / DESIGN DECISION:** CI's macOS test and branch-release jobs move
+from Xcode 26.0.1 on `macos-15` to Xcode 27.0 (27A266a) on GitHub's `xcode-27`
+image, matching the local development toolchain. Branch releases are therefore
+built with the toolchain the tests ran with. Xcode 26.0.1 had rejected a SwiftUI
+body that Xcode 27 accepted (PR #23), so CI and local builds now agree. The
+`xcode-27` image is a GitHub **preview** on macOS 27 (macOS 27.0.1); the deployment
+target stays macOS 15. The notarization status check keeps its own runner.
+
+**TO PROVE:** a green hosted run and a branch release on the preview image.
+
 ## Releasing a stopped guest's cleanup hold — 7 November 2026
 
 **DESIGN DECISION — issue #24, user direction (same PR as #16):** this supersedes
