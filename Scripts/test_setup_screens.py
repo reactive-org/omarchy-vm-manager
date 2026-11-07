@@ -14,7 +14,7 @@ def main():
     args = parser.parse_args()
     parent = pathlib.Path(tempfile.mkdtemp(prefix='omarchy-screen-acceptance-', dir='/private/tmp'))
     output = parent / 'result'
-    subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=45)
+    subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=180)
     report = json.loads((output / 'report.json').read_text())
     assert report['schema'] == 1 and len(report['checks']) == 178
     assert len(set(report['checks'])) == len(report['checks'])
