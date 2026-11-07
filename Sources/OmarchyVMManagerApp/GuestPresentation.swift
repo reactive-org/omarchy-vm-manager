@@ -20,7 +20,7 @@ struct GuestArtwork: View {
                     RoundedRectangle(cornerRadius: size * 0.185).fill(Theme.ground)
                         .overlay(RoundedRectangle(cornerRadius: size * 0.185).strokeBorder(Theme.border))
                         .frame(width: size * 0.81, height: size * 0.81)
-                    FrameMark(size: size * 0.62, tracer: Theme.green)
+                    FrameMark(size: size * 0.62, tracer: Theme.green, loading: true)
                 }.transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 1.12)))
             } else {
                 Group {
@@ -195,19 +195,19 @@ struct GuestControls: View {
                     Button { resume() } label: { Label("Resume", systemImage: "play.fill").frame(width: 96) }
                         .buttonStyle(.primaryAction)
                 } else if snapshot.sessionID != nil {
-                    Button { stop() } label: { Text("Shut Down").frame(width: 96) }
+                    Button { stop() } label: { Text("Shut down").frame(width: 96) }
                         .disabled(snapshot.state == .stopping)
                 } else { Text("Please wait…").font(Theme.sans(13)).foregroundStyle(.secondary) }
             }.frame(width: 116, height: 30)
             Menu {
                 if snapshot.state == .running {
                     Button("Pause", systemImage: "pause.fill") { pause() }.disabled(snapshot.suspension != nil)
-                    Button("Suspend to Disk (Experimental)…", systemImage: "moon.zzz") { suspendToDisk() }
+                    Button("Suspend to disk (experimental)…", systemImage: "moon.zzz") { suspendToDisk() }
                         .disabled(!snapshot.canAttemptExperimentalSuspend)
                 }
-                if snapshot.state == .paused { Button("Shut Down") { stop() } }
+                if snapshot.state == .paused { Button("Shut down") { stop() } }
                 Divider()
-                Button("Force Stop…", role: .destructive) { forceStop() }
+                Button("Force stop…", role: .destructive) { forceStop() }
             } label: { Image(systemName: "ellipsis") }
                 .menuStyle(.borderlessButton).frame(width: 24)
                 .opacity(snapshot.sessionID == nil ? 0 : 1).disabled(snapshot.sessionID == nil)
@@ -237,9 +237,9 @@ struct ExperimentalPowerReview: Identifiable {
     }
     var button: String {
         switch action {
-        case .suspend: "Opt In and Attempt Suspension"
-        case .restore: "Attempt Restore / Recovery"
-        case .acceptColdBoot: "Confirm Guest Image Cleared"
+        case .suspend: "Opt in and attempt suspension"
+        case .restore: "Attempt restore / recovery"
+        case .acceptColdBoot: "Confirm guest image cleared"
         }
     }
 }
@@ -249,7 +249,7 @@ struct GuestHibernationPanel: View {
     let review: (ExperimentalPowerReview.Action) -> Void
     var recheck: () -> Void = {}
     private var detail: String {
-        if snapshot.profile.homeDisk != nil { return "Experimental hibernation is unavailable for separate-home guests until both disks can be protected and restored together." }
+        if snapshot.profile.homeDisk != nil { return "Hibernation needs both disks protected and restored together, which isn’t supported yet." }
         if snapshot.experimentalPowerBusy && snapshot.suspension == nil { return "Rechecking guest prerequisites and preparing the experimental attempt…" }
         if snapshot.suspensionMetadataUnsafe { return "Saved-session metadata needs manual recovery. Ordinary launch, configuration and deletion are blocked." }
         if snapshot.suspension?.restoreAttempted == true && snapshot.sessionID == nil { return "An earlier restore was unresolved. Another boot is blocked because it could reuse stale memory after filesystem changes. Manual recovery is required." }
@@ -269,17 +269,17 @@ struct GuestHibernationPanel: View {
                     if snapshot.experimentalPowerBusy { ProgressView().controlSize(.small) }
                 }.frame(width: 34)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Suspend to Disk · Experimental").font(Theme.sans(14, weight: .medium))
-                    Text(snapshot.profile.homeDisk != nil ? "Separate home disk" : snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(Theme.sans(13)).lineLimit(1)
+                    Text("Suspend to disk · Experimental").font(Theme.sans(14, weight: .medium))
+                    Text(snapshot.profile.homeDisk != nil ? "Unavailable with a separate home disk" : snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(Theme.sans(13)).lineLimit(1)
                     Text(detail).font(Theme.note).foregroundStyle(.secondary).lineLimit(3).help(detail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Group {
                 if snapshot.suspension?.stage == .coldBootDetected && snapshot.state == .running {
-                    Button("Accept Cold Boot…") { review(.acceptColdBoot) }
+                    Button("Accept cold boot…") { review(.acceptColdBoot) }
                 } else if snapshot.suspension != nil && snapshot.sessionID == nil {
                     Button("Restore / Recover…") { review(.restore) }.disabled(!snapshot.canRestoreExperimentalSuspension)
                 } else if snapshot.suspension?.restoreAttempted == true && snapshot.suspension?.stage == .recoveryRequired && snapshot.state == .running {
-                    Button("Recheck Recovery") { recheck() }
+                    Button("Recheck recovery") { recheck() }
                 } else {
                     Button("Suspend…") { review(.suspend) }.disabled(!snapshot.canAttemptExperimentalSuspend)
                 }

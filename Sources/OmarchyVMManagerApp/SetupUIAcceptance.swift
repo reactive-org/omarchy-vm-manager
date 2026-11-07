@@ -28,7 +28,7 @@ enum AcceptanceFailure: Error { case check }
 
 /// In-memory fake, deliberately implementing no process, file, transport or VM
 /// backend. Typed replies are fixture data, never an admission capability.
-@MainActor final class SetupAcceptanceService: ProvisioningCreationPlanning {
+@MainActor final class SetupAcceptanceService: ProvisioningCreationPlanning, ProvisioningWorkflowActing {
     nonisolated let executionEnabled: Bool
     var captures = 0, preparations = 0, submissions = 0, taskReads = 0, terminalAttempts = 0, cancellations = 0
     var holdNext = false, failNext = false
@@ -120,9 +120,25 @@ enum AcceptanceFailure: Error { case check }
     func row(_ id: UUID, stage: String, cleanupRequired: Bool = false) throws -> ProvisioningWorkflowSnapshot {
         try value(["id": id.uuidString, "vmID": vmID.uuidString, "originalSessionID": UUID().uuidString, "sequence": 1, "stage": stage, "cleanupRequired": cleanupRequired, "applyJobID": id.uuidString])
     }
+    /// Finishing actions submitted with an acknowledged consent, in order.
+    var actionSubmissions: [ProvisioningWorkflowAction] = []
+    func prepareAction(_ workflowID: UUID, action: ProvisioningWorkflowAction, reviewID: UUID) async throws -> ProvisioningWorkflowActionReview {
+        guard executionEnabled, action != .recover, let preview = previews[workflowID] else { throw ProvisioningReviewFailure.unavailable }
+        return try value(["id": reviewID.uuidString, "workflowID": workflowID.uuidString, "vmID": vmID.uuidString, "sessionID": UUID().uuidString,
+                          "jobID": UUID().uuidString, "action": action.rawValue, "workflowSequence": 2, "planDigest": preview.planDigest,
+                          "inputDigest": preview.inputDigest, "dependencyDigest": String(repeating: "b", count: 64), "reviewIdentity": String(repeating: "e", count: 64)])
+    }
+    func performAction(_ workflowID: UUID, consent: ProvisioningWorkflowActionConsent) async throws -> ProvisioningWorkflowSnapshot {
+        guard executionEnabled, consent.acknowledged, consent.reviewIdentity == String(repeating: "e", count: 64) else { throw ProvisioningReviewFailure.consentRequired }
+        actionSubmissions.append(consent.action)
+        return try row(workflowID, stage: consent.action == .restart ? "restarting" : "checking")
+    }
     func statuses() async -> [ProvisioningWorkflowSnapshot] { [] }
     func status(_ id: UUID) async -> ProvisioningWorkflowSnapshot? { nil }
     func jobStatus(_ id: UUID) async -> ProvisioningJobSnapshot? { nil }
+    /// Synthetic saved output; the harness never reads the support directory.
+    var savedLog: Data?
+    func setupLog(vmID: UUID) async -> Data? { vmID == self.vmID ? savedLog : nil }
     func cancel(_ id: UUID) async throws { cancellations += 1 }
     func attachTerminal(_ id: UUID) async throws -> ProvisioningTerminalAttachment { terminalAttempts += 1; throw ProvisioningReviewFailure.unavailable }
 }

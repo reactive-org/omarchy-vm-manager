@@ -151,9 +151,9 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try driver.send("selection", .trim(true)); tick()
             try driver.send("selection", .profiles(["developer", "web"])); tick()
             try until { driver.scopes["appearance"] != nil }
-            try check(driver.state("appearance", "expanded") == "false", suffix + "-appearance-starts-collapsed")
-            try driver.send("appearance", .appearanceExpanded(true)); tick()
-            try check(driver.state("appearance", "columns") == "1", suffix + "-appearance-narrow-stacks")
+            try check(driver.state("appearance", "card") == "omarchy-default", suffix + "-layout-starts-at-omarchy-default")
+            try until { driver.state("layout-cards", "count") == "4" }
+            try check(driver.state("layout-cards", "cards") == "four-terminals,terminal-browser,vscode-browser,claude-two-terminals-browser,omarchy-default,custom-file", suffix + "-bundled-cards-omit-setup-folder")
             try driver.send("appearance", .themeChoice(.repository)); tick()
             try check(driver.state("editor", "canSave") == "false" && driver.state("editor", "validation").contains("Enter a GitHub repository URL"), suffix + "-appearance-error-explained")
             try driver.send("appearance", .themeRepository("https://github.com/example/omarchy-fixture-theme")); tick()
@@ -166,7 +166,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             host.scroll(fraction: 0.50); tick(); try capture(host, "new-vm-appearance-" + suffix + ".png"); host.scroll(bottom: false); tick()
             try driver.send("appearance", .layoutExample(nil)); tick()
             try until { driver.state("layout-cards", "count") == "4" }
-            try check(driver.state("appearance", "valid") == "false" && driver.state("editor", "canSave") == "false", suffix + "-example-gallery-requires-selection")
+            try check(driver.state("appearance", "card") == "omarchy-default" && driver.state("selection", "layout").isEmpty && driver.state("editor", "canSave") == "true", suffix + "-omarchy-default-adds-no-layout")
             try driver.send("layout-cards", .layoutExample(.fourTerminals)); tick()
             try check(driver.state("selection", "layout") == ProvisioningLayoutExampleID.fourTerminals.rawValue && driver.state("editor", "canSave") == "true", suffix + "-layout-card-draft-ready")
             host.scroll(fraction: 0.53); tick(); try capture(host, "new-vm-layout-cards-" + suffix + ".png")
@@ -230,8 +230,8 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try check(setupDriver.state("setup", "preview").isEmpty && setupDriver.state("setup", "inspected") == "0", suffix + "-source-edit-clears-inspection")
             try setupDriver.send("setup", .trim(true)); tick()
             try until { setupDriver.scopes["appearance"] != nil }
-            try setupDriver.send("appearance", .appearanceExpanded(true)); tick()
-            try check(setupDriver.state("appearance", "columns") == "2", suffix + "-appearance-wide-columns")
+            try until { setupDriver.state("layout-cards", "count") == "4" }
+            try check(setupDriver.state("layout-cards", "cards").contains("setup-folder") && setupDriver.state("appearance", "card") == "setup-folder", suffix + "-local-cards-offer-setup-folder")
             try setupDriver.send("setup", .appearance(.init(theme: "https://github.com/example/omarchy-fixture-theme", removeLayout: true))); tick()
             try setupDriver.send("setup", .folder(output.appendingPathComponent("selected-source"))); try setupDriver.send("setup", .preview)
             try until { !setupDriver.state("setup", "preview").isEmpty }
@@ -247,7 +247,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             try setupDriver.send("layout-cards", .layoutExample(.claudeWorkspace)); tick()
             try setupDriver.send("setup", .preview); try until { !setupDriver.state("setup", "preview").isEmpty }
             let chosenLayoutID = try UUID(uuidString: setupDriver.state("setup", "preview")).unwrap()
-            try check(setupDriver.state("appearance", "columns") == "1" && service.sources[chosenLayoutID]?.appearance?.layoutExample == .claudeWorkspace, suffix + "-existing-layout-gallery-full-width")
+            try check(setupDriver.state("appearance", "card") == "claude-two-terminals-browser" && service.sources[chosenLayoutID]?.appearance?.layoutExample == .claudeWorkspace, suffix + "-existing-layout-card-forwarded")
             setup.scroll(fraction: 0.55); tick(); try capture(setup, "setup-layout-cards-" + suffix + ".png", screen: setupDriver.terminalScreen)
             let wrongID = UUID(); _ = try run { try await service.preview(id: wrongID, vmID: UUID(), source: .init(preset: "web")) }
             let original = setupDriver.state("setup", "preview")
@@ -427,6 +427,93 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); try capture(pageHost, name); pageHost.close(); tick()
         }
+        // A failed run says what failed from recorded categories and keeps its ended terminal entry.
+        let failedRun = try enabled.row(installing.id, stage: "failed")
+        let failedJob = try JSONDecoder().decode(ProvisioningJobSnapshot.self, from: JSONSerialization.data(withJSONObject: [
+            "jobID": job.jobID.uuidString, "vmID": profile.id.uuidString, "sessionID": session.uuidString, "sequence": 2, "state": "failed",
+            "engineFailure": "adapterFailed", "cleanupFailures": [] as [Any], "cleanupRequired": false, "workerOutstanding": false]))
+        let failedProgress = progress(.running, ssh: .ready(user: "fixture_owner", command: "synthetic-unused"), [failedRun], jobs: [failedRun.id: failedJob])
+        try check(failedProgress?.tone == .problem && failedProgress?.note.contains("task failed inside the guest") == true, "first-run-failure-names-recorded-category")
+        try check(failedProgress?.terminal?.workflowID == failedRun.id && failedProgress?.terminal?.live == false, "first-run-failed-keeps-ended-terminal")
+        // Installing finished and the run waits for a reviewed restart: say so, don't look stuck.
+        let restartRun = try enabled.row(installing.id, stage: "restartRequired")
+        let restartJob = try JSONDecoder().decode(ProvisioningJobSnapshot.self, from: JSONSerialization.data(withJSONObject: [
+            "jobID": job.jobID.uuidString, "vmID": profile.id.uuidString, "sessionID": session.uuidString, "sequence": 2, "state": "restartRequired",
+            "cleanupFailures": [] as [Any], "cleanupRequired": false, "workerOutstanding": false]))
+        let restartProgress = progress(.running, ssh: .ready(user: "fixture_owner", command: "synthetic-unused"), [restartRun], jobs: [restartRun.id: restartJob])
+        try check(restartProgress?.step == .restart && restartProgress?.tone == .needsYou && restartProgress?.setupAction == "Review restart…"
+                  && restartProgress?.note.hasPrefix("Software installed") == true && restartProgress?.terminal?.live == false, "first-run-restart-required-is-not-installing")
+        // Official image download shows where the image comes from, from pinned manifests only.
+        do {
+            let source = try OfficialFactorySource.acceptanceFixture().unwrap()
+            try check(source.releaseTag == "v1.3.0" && source.parts.count == 3, "factory-source-fixture-parses")
+            var downloadingProfile = profile; downloadingProfile.factory = .official
+            let downloadingSnapshot = VMSnapshot(profile: downloadingProfile, state: .downloading(phase: .downloading, percent: 48), sessionID: UUID())
+            try check(GuestFactoryDownloadCard.phase(downloadingSnapshot) != nil
+                      && GuestFactoryDownloadCard.phase(.init(profile: downloadingProfile, state: .running, sessionID: session)) == nil, "factory-download-card-only-while-downloading")
+            enabledModel.officialFactorySource = source
+            enabledModel.snapshots = [downloadingSnapshot]; enabledModel.setupWorkflows = []; enabledModel.setupJobs = [:]
+            let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+            tick(); try capture(pageHost, "guest-factory-download-dark.png"); pageHost.close(); tick()
+        }
+        // Home setup card (replaces the Setup tab): state only from recorded workflow and job state.
+        func card(_ rows: [ProvisioningWorkflowSnapshot], jobs: [UUID: ProvisioningJobSnapshot] = [:], auto: AutoSetupState? = nil, profile p: VMProfile? = nil) -> SetupCardState {
+            SetupCardState.make(.init(profile: p ?? firstRun, state: .running, sessionID: session), workflows: rows, jobs: jobs, autoSetup: auto)
+        }
+        try check(card([], profile: profile).kind == .none && card([]).kind == .configured, "setup-card-none-and-configured")
+        try check(card([installing], jobs: [installing.id: job]).kind == .running && card([installing], jobs: [installing.id: job]).progress == 0, "setup-card-running-shows-progress")
+        try check(card([restartRun]).kind == .needsYou && card([restartRun]).run.contains("Restart"), "setup-card-manual-restart-needs-review")
+        let followingAuto = AutoSetupState.following(receipt: try firstRun.developerSetup.unwrap(), workflowID: restartRun.id, attempted: [.restart])
+        try check(card([restartRun], auto: followingAuto).kind == .running, "setup-card-approved-restart-is-progress")
+        try check(card([try enabled.row(installing.id, stage: "failed", cleanupRequired: true)]).kind == .cleanup, "setup-card-cleanup-needs-recovery")
+        try check(card([failedRun], jobs: [failedRun.id: failedJob]).kind == .failed && card([try enabled.row(installing.id, stage: "checked")]).kind == .succeeded, "setup-card-failed-and-succeeded")
+        do {
+            enabledModel.snapshots = [.init(profile: firstRun, state: .running, sessionID: session, sshReadiness: .ready(user: "fixture_owner", command: "synthetic-unused"))]
+            enabledModel.setupWorkflows = [try enabled.row(installing.id, stage: "checked")]; enabledModel.setupJobs = [:]
+            let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+            tick(); pageHost.scroll(bottom: true); tick(); try capture(pageHost, "guest-setup-card-dark.png"); pageHost.close(); tick()
+            let current = enabledModel.snapshots[0]
+            for (name, mode, title) in [("setup-change-sheet-dark.png", DeveloperSetupView.Mode.change, "Change setup"), ("setup-output-sheet-dark.png", .output, "Setup output")] {
+                let status = mode == .output ? SetupCardState.make(current, workflows: enabledModel.setupWorkflows, jobs: [:], autoSetup: nil) : nil
+                let sheet = Host(SetupSheetFrame(title: title, subtitle: current.profile.name, status: status, close: {}) { DeveloperSetupView(model: enabledModel, snapshot: current, mode: mode) },
+                                 driver: SetupUIAcceptanceDriver(), width: 960, height: 820, dark: true)
+                tick(); try capture(sheet, name); sheet.close(); tick()
+            }
+            enabledModel.setupWorkflows = []
+        }
+        enabledModel.snapshots = [.init(profile: firstRun, state: .running, sessionID: session, sshReadiness: .ready(user: "fixture_owner", command: "synthetic-unused"))]
+        enabledModel.setupWorkflows = [failedRun]; enabledModel.setupJobs = [failedRun.id: failedJob]
+        let failedHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
+        // A freshly built page never watched this run, so no empty output panel appears.
+        tick(); try capture(failedHost, "first-run-failed-dark.png"); failedHost.close(); tick()
+        // The Setup tab shows the saved last-run log for a finished run, read-only.
+        enabled.savedLog = Data("[Omarchy VM Manager setup output · apply · synthetic fixture]\r\nTASK [synthetic : Install packages] ***\r\n\u{001B}[31mfatal: [workstation]: FAILED! synthetic saved failure\u{001B}[0m\r\n\r\n[setup failed]\r\n".utf8)
+        let attemptsBeforeLog = enabled.terminalAttempts
+        enabledModel.snapshots = [.init(profile: firstRun, state: .running, sessionID: session, sshReadiness: .ready(user: "fixture_owner", command: "synthetic-unused"))]
+        enabledModel.setupWorkflows = [failedRun]; enabledModel.setupJobs = [failedRun.id: failedJob]
+        let logDriver = SetupUIAcceptanceDriver()
+        let logHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Setup"), driver: logDriver, width: 1200, height: 960, dark: true)
+        tick(); try until { logDriver.state("setup", "savedLog") == "true" }
+        try check(logDriver.terminalScreen != nil, "setup-tab-saved-log-screen-bound")
+        let logScreen = logDriver.terminalScreen!
+        try check(String(decoding: logScreen.view.getBufferAsData(), as: UTF8.self).contains("synthetic saved failure"), "setup-tab-shows-saved-log")
+        try check(enabled.terminalAttempts == attemptsBeforeLog, "setup-tab-saved-log-does-not-reattach-ended-job")
+        logHost.scroll(bottom: true); tick(); try capture(logHost, "setup-saved-log-dark.png", screen: logScreen); logHost.close(); tick()
+        enabled.savedLog = nil
+        // Loading mark: a filmstrip across both laps (back square, then front square).
+        let line = StrokeStyle(lineWidth: 120 * 7 / 300, lineCap: .round, lineJoin: .round)
+        let strip = VStack(spacing: 16) {
+            ForEach(0..<2, id: \.self) { row in
+                HStack(spacing: 16) {
+                    ForEach(0..<6, id: \.self) { column in
+                        CyclingFramesFrame(time: CyclingFramesFrame.lap * (Double(row) + (Double(column) + 0.5) / 6), frame: Theme.idleFrame, tracer: Theme.green, line: line)
+                            .frame(width: 120, height: 120)
+                    }
+                }
+            }
+        }.padding(24).frame(width: 880, height: 780).background(Theme.ground)
+        let stripHost = Host(strip, driver: SetupUIAcceptanceDriver(), width: 880, height: 780, dark: true)
+        tick(); try capture(stripHost, "loading-mark-filmstrip-dark.png"); stripHost.close(); tick()
         // Approve at creation: one automatic first apply, admin access only, single use.
         let autoID = UUID()
         let autoPreview = try run { try await enabled.preview(id: autoID, vmID: profile.id, source: .init(preset: "developer")) }
@@ -463,7 +550,27 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         try check(enabled.submissions == submissionsBefore + 1 && enabled.lastConsent?.persistentGrantAcknowledged == true
                   && enabled.lastConsent?.dockerRootAccessAcknowledged == false && enabled.lastConsent?.taskTrustIdentity == nil, "auto-setup-submits-admin-only-consent")
         enabledModel.advanceAutoSetup(); tick()
-        try check(enabled.submissions == submissionsBefore + 1 && enabledModel.autoSetup[profile.id] == .consumed, "auto-setup-single-use")
+        let following: Bool = { if case .following(_, let id, let tried) = enabledModel.autoSetup[profile.id], id == autoID, tried.isEmpty { return true }; return false }()
+        try check(enabled.submissions == submissionsBefore + 1 && following, "auto-setup-single-use")
+        // The same approval finishes setup: restart once, then check once; never recovery.
+        enabled.actionSubmissions = []
+        // While installing, the run is marked cleanup-required until admin access is removed; keep following.
+        enabledModel.setupWorkflows = [try enabled.row(autoID, stage: "running", cleanupRequired: true)]; enabledModel.advanceAutoSetup(); tick()
+        let stillFollowing: Bool = { if case .following = enabledModel.autoSetup[profile.id] { return true }; return false }()
+        try check(stillFollowing && enabled.actionSubmissions.isEmpty, "auto-setup-follows-through-install-cleanup")
+        enabledModel.setupWorkflows = [try enabled.row(autoID, stage: "restartRequired")]; enabledModel.advanceAutoSetup()
+        try until { enabled.actionSubmissions == [.restart] }
+        let restarting = FirstRunProgress.make(enabledModel.snapshots[0], workflows: enabledModel.setupWorkflows, jobs: [:], autoSetup: enabledModel.autoSetup[profile.id])
+        try check(restarting?.step == .restart && restarting?.tone == .working && restarting?.setupAction == nil, "auto-setup-restart-shown-as-progress")
+        enabledModel.advanceAutoSetup(); tick()
+        try check(enabled.actionSubmissions == [.restart], "auto-setup-restarts-once")
+        enabledModel.setupWorkflows = [try enabled.row(autoID, stage: "readyForCheck")]; enabledModel.advanceAutoSetup()
+        try until { enabled.actionSubmissions == [.restart, .check] }
+        enabledModel.advanceAutoSetup(); tick()
+        try check(enabled.actionSubmissions == [.restart, .check], "auto-setup-checks-once")
+        enabledModel.setupWorkflows = [try enabled.row(autoID, stage: "failed", cleanupRequired: true)]; enabledModel.advanceAutoSetup(); tick()
+        try check(enabled.actionSubmissions == [.restart, .check] && enabledModel.autoSetup[profile.id] == .consumed, "auto-setup-never-recovers")
+        enabledModel.setupWorkflows = []
         enabledModel.autoSetup = [:]; enabledModel.snapshots = [autoSnapshot(session, .connecting)]
         enabledModel.armAutoSetup(profile.id); enabledModel.advanceAutoSetup()
         enabledModel.snapshots = [autoSnapshot(UUID(), ready)]; enabledModel.advanceAutoSetup(); tick()

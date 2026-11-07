@@ -144,7 +144,7 @@ public struct FactoryCatalog: Sendable {
 
     func verify(_ url: URL, digest: String) throws -> FactoryIdentity {
         let receipt = try receipt(for: digest)
-        guard reviewed.contains(digest) || receipt != nil else { throw Self.invalid("Import this prepared factory through Import Factory before selecting it.") }
+        guard reviewed.contains(digest) || receipt != nil else { throw Self.invalid("Import this prepared factory through Import factory before selecting it.") }
         let identity = try verifyCandidate(url, digest: digest)
         if let receipt {
             guard receipt.factory == identity else { throw Self.invalid("The imported factory differs from its saved identity.") }

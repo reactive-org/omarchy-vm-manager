@@ -1,0 +1,231 @@
+import OmarchyVMManagerCore
+import SwiftUI
+
+/// Which setup sheet the guest's Home tab is showing.
+enum SetupSheet: String, Identifiable {
+    case change, output
+    var id: String { rawValue }
+}
+
+/// The setup card's state, read only from recorded workflow stage, job state and
+/// the in-memory approval from New VM, the same rule as the first-run tracker.
+struct SetupCardState: Equatable {
+    enum Kind: Equatable { case none, configured, running, needsYou, cleanup, failed, succeeded, finished }
+    var kind: Kind
+    var run = ""
+    var note = ""
+    /// Index into Install, Restart, Check while a run is live.
+    var progress: Int?
+
+    static func make(_ snapshot: VMSnapshot, workflows: [ProvisioningWorkflowSnapshot], jobs: [UUID: ProvisioningJobSnapshot],
+                     autoSetup: AutoSetupState?) -> SetupCardState {
+        let rows = workflows.filter { $0.vmID == snapshot.id }
+        guard !rows.isEmpty else {
+            if snapshot.profile.developerSetup == nil { return .init(kind: .none) }
+            return .init(kind: .configured, run: "Not run yet", note: "Setup runs after the guest starts and SSH is ready.")
+        }
+        let reviewStages: [ProvisioningWorkflowStage] = [.readyForReview, .restartRequired, .waitingForRebind, .readyForCheck]
+        // UUID order is not chronology: only a cleanup-bound, live or waiting run is "current".
+        guard let row = rows.first(where: \.cleanupRequired) ?? rows.first(where: \.canCancel) ?? rows.first(where: { reviewStages.contains($0.stage) })
+                ?? (rows.count == 1 ? rows.first : nil) else {
+            return .init(kind: .finished, run: "Finished", note: "View output shows the most recent run.")
+        }
+        if row.cleanupRequired, !row.canCancel {
+            return .init(kind: .cleanup, run: "Interrupted · cleanup needs review",
+                         note: "The run stopped before temporary admin access was confirmed removed. Recovery removes it; nothing is re-installed and the guest isn’t restarted.")
+        }
+        let automatic: Bool = { if case .following = autoSetup { return true }; return false }()
+        switch row.stage {
+        case .waitingForSSH:
+            return .init(kind: .running, run: "Preparing", note: "Preparing the setup review in the guest.", progress: 0)
+        case .running:
+            let waiting = jobs[row.id]?.state == .awaitingAuthorization
+            return .init(kind: waiting ? .needsYou : .running, run: waiting ? "Waiting for authorization" : "Installing",
+                         note: waiting ? "Setup is waiting for authorization in the terminal. Open View output to respond." : "You can use the guest while this runs. It restarts once near the end.", progress: 0)
+        case .restartRequired, .readyForCheck, .waitingForRebind:
+            if automatic {
+                return .init(kind: .running, run: row.stage == .restartRequired ? "Restarting" : "Checking",
+                             note: "Finishing automatically, as approved when you created this VM.", progress: row.stage == .restartRequired ? 1 : 2)
+            }
+            let restart = row.stage == .restartRequired
+            return .init(kind: .needsYou, run: restart ? "Restart needs your review" : "Check needs your review",
+                         note: restart ? "Software is installed. Review the restart that finishes setup." : "The guest restarted. Review the configuration check that finishes setup.")
+        case .waitingForExit, .restarting:
+            return .init(kind: .running, run: "Restarting", note: "Restarting the guest to finish setup.", progress: 1)
+        case .checking:
+            return .init(kind: .running, run: "Checking", note: "Checking the configuration after the restart.", progress: 2)
+        case .readyForReview:
+            if let reason = autoSetup?.blockedReason { return .init(kind: .needsYou, run: "Waiting for your review", note: reason) }
+            return .init(kind: .needsYou, run: "Waiting for your review", note: "Review what this setup changes and approve it to start.")
+        case .succeeded, .checked:
+            return .init(kind: .succeeded, run: "Succeeded",
+                         note: row.stage == .checked ? "Updated Omarchy, applied your selections, restarted and checked." : "Updated Omarchy and applied your selections.")
+        case .failed, .cancelled, .interrupted, .cleanupRequired:
+            return .init(kind: .failed, run: row.stage == .cancelled ? "Cancelled" : "Failed", note: FirstRunProgress.failureNote(row, job: jobs[row.id]))
+        }
+    }
+}
+
+/// Setup on the guest's Home tab, replacing the Setup tab: what is configured, how
+/// the last run went, and the one action that matters now. Change setup and View
+/// output open as sheets.
+struct GuestSetupCard: View {
+    let state: SetupCardState
+    let software: String?
+    let desktop: String?
+    let open: (SetupSheet) -> Void
+
+    private var tint: Color {
+        switch state.kind {
+        case .needsYou, .cleanup, .failed: Theme.amber
+        case .running: Theme.lavender
+        default: Theme.green
+        }
+    }
+    private var emphasised: Bool { [.needsYou, .cleanup, .running].contains(state.kind) }
+
+    var body: some View {
+        GroupedPanel {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Text("setup").font(Theme.mono(13, weight: .medium)).foregroundStyle(tint).accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: 0)
+                    actions
+                }.padding(.bottom, 8)
+                if state.kind == .none {
+                    Text("Install developer tools, a desktop layout and a theme. Setup updates Omarchy first, then restarts and checks the guest; you review it once before it runs.")
+                        .font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+                } else {
+                    if let software { row("software", software) }
+                    if let desktop { row("desktop", desktop) }
+                    row(state.kind == .running ? "running" : "last run", state.run, tint: state.kind == .succeeded ? Theme.green : emphasised || state.kind == .failed ? tint : nil, note: state.note, progress: state.progress)
+                }
+            }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 4)
+        }
+        .overlay {
+            if emphasised { RoundedRectangle(cornerRadius: Theme.paneRadius).strokeBorder(tint.opacity(0.8)) }
+        }
+        .accessibilityIdentifier("guest.setup-card")
+    }
+
+    @ViewBuilder private var actions: some View {
+        switch state.kind {
+        case .none:
+            Button("Set up…") { open(.change) }.buttonStyle(.primaryAction)
+        case .running:
+            Button("View output") { open(.output) }
+        case .needsYou:
+            if state.run == "Waiting for authorization" { Button("View output") { open(.output) }.buttonStyle(.primaryAction) }
+            else { Button("Review…") { open(.change) }.buttonStyle(.primaryAction) }
+        case .cleanup:
+            Button("View output") { open(.output) }
+            Button("Review recovery…") { open(.change) }.buttonStyle(.primaryAction)
+        case .configured, .failed, .succeeded, .finished:
+            if state.kind != .configured { Button("View output") { open(.output) } }
+            Button("Change setup…") { open(.change) }
+        }
+    }
+
+    private func row(_ key: String, _ value: String, tint: Color? = nil, note: String? = nil, progress: Int? = nil) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 88, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(value).font(Theme.mono(14)).foregroundStyle(tint ?? Theme.text)
+                if let progress {
+                    HStack(spacing: 4) {
+                        ForEach(Array(["Install", "Restart", "Check"].enumerated()), id: \.offset) { index, label in
+                            VStack(alignment: .leading, spacing: 4) {
+                                RoundedRectangle(cornerRadius: 1).fill(index < progress ? Theme.green : index == progress ? Theme.lavender : Theme.quietFrame).frame(height: 3)
+                                Text(label).font(Theme.sans(11)).foregroundStyle(index <= progress ? Theme.text.opacity(0.8) : .secondary)
+                            }
+                        }
+                    }.frame(maxWidth: 360).accessibilityHidden(true)
+                }
+                if let note { Text(note).font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 9)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+    }
+}
+
+/// Chrome for the Change setup and View output sheets around the shared setup view.
+struct SetupSheetFrame<Content: View>: View {
+    let title: String
+    let subtitle: String
+    /// The run's status, shown on View output beside the title.
+    var status: SetupCardState? = nil
+    let close: () -> Void
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(title).font(Theme.sans(20, weight: .semibold))
+                        if let status, !status.run.isEmpty {
+                            HStack(spacing: 6) {
+                                Rectangle().fill(statusTint(status)).frame(width: 7, height: 7)
+                                Text(status.run).font(Theme.sans(13)).foregroundStyle(statusTint(status))
+                            }
+                        }
+                    }
+                    Text(subtitle).font(Theme.note).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 16)
+                if let status, status.kind == .running || status.kind == .succeeded {
+                    let now = status.kind == .succeeded ? 3 : status.progress ?? 0
+                    HStack(spacing: 4) {
+                        ForEach(Array(["Install", "Restart", "Check"].enumerated()), id: \.offset) { index, label in
+                            VStack(alignment: .leading, spacing: 4) {
+                                RoundedRectangle(cornerRadius: 1).fill(index < now ? Theme.green : index == now ? Theme.lavender : Theme.quietFrame).frame(height: 3)
+                                Text(label).font(Theme.sans(11)).foregroundStyle(index <= now ? Theme.text.opacity(0.8) : .secondary)
+                            }
+                        }
+                    }.frame(width: 300).accessibilityHidden(true)
+                }
+                Button("Close", action: close).keyboardShortcut(.cancelAction)
+            }.padding(.horizontal, 20).padding(.vertical, 14)
+            Divider()
+            ScrollView { content.padding(20) }
+        }
+        .frame(minWidth: 820, idealWidth: 920, minHeight: 640, idealHeight: 780)
+        .background(Theme.pane)
+        .font(Theme.body).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle())
+    }
+    private func statusTint(_ status: SetupCardState) -> Color {
+        switch status.kind {
+        case .succeeded: Theme.green
+        case .running: Theme.lavender
+        case .needsYou, .cleanup, .failed: Theme.amber
+        default: .secondary
+        }
+    }
+}
+
+/// Loads the configured software and desktop from the VM's frozen setup receipt
+/// so the card can show them without opening a sheet.
+struct GuestSetupCardHost: View {
+    @ObservedObject var model: AppModel
+    let snapshot: VMSnapshot
+    let open: (SetupSheet) -> Void
+    @State private var software: String?
+    @State private var desktop: String?
+    var body: some View {
+        GuestSetupCard(state: SetupCardState.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id]),
+                       software: software, desktop: desktop, open: open)
+            .task(id: snapshot.profile.developerSetup?.reviewID) {
+                software = nil; desktop = nil
+                guard let receipt = snapshot.profile.developerSetup, let service = model.setupService as? any ProvisioningReviewing,
+                      let preview = try? await service.preview(receipt.reviewID) else { return }
+                let names = ProvisioningReviewedProfilesView.names(preview.proposal)
+                software = names.isEmpty ? nil : names.joined(separator: " + ")
+                let look = ProvisioningAppearanceSummary(proposal: preview.proposal)
+                let layout = look.layoutExample?.title ?? (look.layoutIncluded ? "Custom layout" : look.layoutRemoved ? "Omarchy default layout" : "Omarchy default layout")
+                let theme = look.theme.map { $0.hasPrefix("https://github.com/") ? String($0.dropFirst(19)) + " theme" : $0 == "random" ? "Random theme" : $0 == "most-starred" ? "Most-starred theme" : $0 } ?? "Omarchy default theme"
+                desktop = layout + " · " + theme
+            }
+    }
+}

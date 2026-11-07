@@ -15,16 +15,13 @@ struct FactoryImagesView: View {
     init(model: AppModel, use: @escaping (FactoryIdentity) -> Void) { self.model = model; builder = model.factoryBuilder; self.use = use }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Factory images").font(.largeTitle.bold())
-                    Text("Reusable starting images for new virtual machines.").foregroundStyle(.secondary)
+            ScreenHeader("Factory images", subtitle: "Reusable starting images for new virtual machines.", symbol: "square.3.layers.3d") {
+                HStack(spacing: 8) {
+                    Button("Import factory…", systemImage: "square.and.arrow.down") { importing = true }.disabled(model.factoryImportInProgress)
+                    Button("Build factory…", systemImage: "hammer") { builder.showingBuild = true }
+                        .disabled(!builder.service.enabled || builder.jobs.contains { $0.active || $0.cleanupRequired } || model.registryError != nil)
+                        .accessibilityIdentifier("factory.build")
                 }
-                Spacer()
-                Button("Import factory…", systemImage: "square.and.arrow.down") { importing = true }.disabled(model.factoryImportInProgress)
-                Button("Build factory…", systemImage: "hammer") { builder.showingBuild = true }
-                    .disabled(!builder.service.enabled || builder.jobs.contains { $0.active || $0.cleanupRequired } || model.registryError != nil)
-                    .accessibilityIdentifier("factory.build")
             }
             if let error = builder.error { Text(error).foregroundStyle(.orange).font(.callout).accessibilityIdentifier("factory.error") }
             if let job = builder.current, showJob {
@@ -34,7 +31,7 @@ struct FactoryImagesView: View {
                     HStack { Label(FactoryBuildModel.title(job), systemImage: "hammer"); Spacer(); Button("View build") { showJob = true } }.padding(16).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
-                    factoryCard(title: "Try Omarchy", subtitle: "Official factory", icon: "opticaldisc", description: "Omarchy’s standard desktop and application collection, ready to make your own.", status: "Downloads when needed", action: "Use for new VM") { use(.official) }
+                    factoryCard(title: "Try Omarchy", subtitle: "Official factory", icon: "opticaldisc", description: "Omarchy’s standard desktop and application collection, ready to make your own.", status: "Downloads when a VM first starts", action: "Use for new VM", source: model.officialFactorySource) { use(.official) }
                     factoryCard(title: "Lean Omarchy", subtitle: "Reviewed lean foundation", icon: "square.3.layers.3d", description: "The essential Omarchy desktop, native Mac integration, Git, Python and build tools. Choose additional apps per VM.", status: "Build once, reuse for new VMs", action: "Build lean factory…", disabled: !builder.service.enabled || builder.jobs.contains { $0.active || $0.cleanupRequired }) { builder.showingBuild = true }
                     ForEach(model.factories.filter { $0.kind == .custom }, id: \.selector) { factory in
                         factoryCard(title: factory.name, subtitle: "Custom factory", icon: "externaldrive", description: "Verified for this runtime and available for new virtual machines.", status: "Built or imported · Boot validation is separate", action: "Use for new VM") { use(factory) }
@@ -78,13 +75,16 @@ struct FactoryImagesView: View {
         #endif
         return $builder.showingBuild
     }
-    private func factoryCard(title: String, subtitle: String, icon: String, description: String, status: String, action: String, disabled: Bool = false, perform: @escaping () -> Void) -> some View {
+    private func factoryCard(title: String, subtitle: String, icon: String, description: String, status: String, action: String, disabled: Bool = false,
+                             source: OfficialFactorySource? = nil, perform: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack(spacing: 13) {
                 Image(systemName: icon).font(.system(size: 29)).foregroundStyle(.purple).frame(width: 54, height: 54).background(.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 3) { Text(title).font(.headline); Text(subtitle).font(.caption).foregroundStyle(.secondary) }
+                if source != nil { Spacer(minLength: 8); OfficialSourceBadge(compact: true) }
             }
             Text(description).font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 65, alignment: .topLeading)
+            if let source { FactorySourceDetails(source: source, compact: true) }
             Divider()
             Text(status).font(.caption).foregroundStyle(.secondary)
             Button(action, action: perform).frame(maxWidth: .infinity).disabled(disabled)

@@ -14,18 +14,20 @@ struct OwnerDefaultsView: View {
     @State private var disks = DiskDefaults()
     @State private var disksSaved = false
     @State private var wide = true
+    @State private var desktop = ProvisioningAppearanceDraft()
+    @State private var desktopSaved = false
     private let protectedPasswordsAvailable = KeychainOwnerSecretStore.supportsProtectedStorage
     private let developmentPasswords = KeychainOwnerSecretStore.usesDevelopmentKeychain
     private var upgradeButtonTitle: String {
         switch model.passwordUpgradeResult {
         case .authenticationPending: "Retry Touch ID upgrade…"
         case .upgraded, .alreadyProtected: "Touch ID storage configured"
-        case nil: "Upgrade Saved Password to Touch ID…"
+        case nil: "Upgrade saved password to Touch ID…"
         }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.gap) {
-            ScreenHeader("Guest Defaults", subtitle: "Save your account details once and they apply automatically to new virtual machines. You can choose manual account setup for an individual VM. Existing guests keep their saved settings.")
+            ScreenHeader("Guest defaults", subtitle: "Save your account details and desktop once and they apply automatically to new virtual machines. You can choose manual account setup for an individual VM. Existing guests keep their saved settings.", symbol: "person.crop.circle.badge.checkmark")
             if let failure = model.defaultsError { Text(failure).foregroundStyle(.red) }
             AnyLayout(wide ? AnyLayout(HStackLayout(alignment: .top, spacing: Theme.gap)) : AnyLayout(VStackLayout(spacing: Theme.gap))) {
                 VStack(spacing: Theme.gap) {
@@ -70,7 +72,7 @@ struct OwnerDefaultsView: View {
                     }
                     if let publicKey, let fingerprint = try? SSHPublicKey.fingerprint(publicKey) {
                         SpecNote(fingerprint).textSelection(.enabled)
-                        Button("Remove Key") { self.publicKey = nil; saved = false }
+                        Button("Remove key") { self.publicKey = nil; saved = false }
                     }
                     SpecNote("Added to new SSH-enabled guests alongside the manager’s own per-guest key. Private keys are never imported.").padding(.vertical, 6)
                     }
@@ -97,7 +99,7 @@ struct OwnerDefaultsView: View {
                     SpecStepperRow("system disk", value: $disks.systemDiskGiB, in: 64...8192, step: 16, unit: " GiB")
                     SpecStepperRow("home disk", value: $disks.homeDiskGiB, in: 16...8192, step: 16, unit: " GiB").disabled(!disks.separateHome)
                     SpecNote("With a separate home disk, a replacement system can reuse its data. Turning this off puts the home on the system disk. Existing guests are unchanged.").padding(.vertical, 6)
-                    Button(disksSaved ? "Disk Defaults Saved" : "Save Disk Defaults") {
+                    Button(disksSaved ? "Disk defaults saved" : "Save disk defaults") {
                         saving = true; error = nil
                         Task { disksSaved = await model.saveDiskDefaults(disks); if !disksSaved { error = model.defaultsError }; saving = false }
                     }
@@ -106,11 +108,21 @@ struct OwnerDefaultsView: View {
                 }
             }.disabled(saving)
             .onGeometryChange(for: Bool.self, of: { $0.size.width >= 760 }, action: { wide = $0 })
+            SpecPane("desktop") {
+                ProvisioningAppearanceSelectionView(draft: $desktop, note: "Used when a new VM includes developer setup")
+                SpecNote("New VMs start with this layout and theme; you can change both when creating a VM. Existing guests keep theirs.").padding(.bottom, 6)
+                Button(desktopSaved ? "Desktop defaults saved" : "Save desktop defaults") {
+                    error = nil
+                    Task { desktopSaved = await model.saveDesktopDefaults(desktop.selection); if !desktopSaved { error = model.defaultsError } }
+                }
+                .disabled(desktop.failure != nil || saving)
+                .onChange(of: desktop) { desktopSaved = false }.padding(.bottom, 6)
+            }
             if let error { Text(error).foregroundStyle(.red) }
             HStack {
                 if saved, configuration == model.ownerDefaults?.configuration, publicKey == model.ownerDefaults?.sshPublicKey, password.isEmpty, confirmation.isEmpty { Label("Defaults saved", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
                 Spacer()
-                Button(saving ? "Saving…" : "Save Defaults") {
+                Button(saving ? "Saving…" : "Save defaults") {
                     error = nil; saved = false
                     guard password == confirmation else { error = "The passwords do not match."; return }
                     saving = true
@@ -125,7 +137,7 @@ struct OwnerDefaultsView: View {
             Text("Automatic setup supports the reviewed prepared factory image. Disk partitioning, encryption and Tailscale settings from the ISO guide are outside this flow. If the image’s setup scripts change, the guest returns to normal setup and the manager reports why.").font(Theme.sans(13)).foregroundStyle(.secondary)
             Link("Omarchy’s unattended-install guide", destination: URL(string: "https://omarchy.org/manual/unattended-installs/")!)
         }
-        .task { await model.loadDefaults(); disks = model.diskDefaults; if let value = model.ownerDefaults { configuration = value.configuration; publicKey = value.sshPublicKey } }
+        .task { await model.loadDefaults(); disks = model.diskDefaults; desktop = ProvisioningAppearanceDraft(model.desktopDefaults); if let value = model.ownerDefaults { configuration = value.configuration; publicKey = value.sshPublicKey } }
         .onDisappear { password = ""; confirmation = "" }
     }
 }

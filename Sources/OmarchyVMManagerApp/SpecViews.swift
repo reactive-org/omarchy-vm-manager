@@ -240,28 +240,55 @@ extension SpecPane where Action == EmptyView {
     init(_ title: String, @ViewBuilder content: () -> Content) { self.init(title, action: { EmptyView() }, content: content) }
 }
 
+/// Whether any guest is running, for the frame mark on manager page headers.
+private struct GuestsRunningKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var guestsRunning: Bool {
+        get { self[GuestsRunningKey.self] }
+        set { self[GuestsRunningKey.self] = newValue }
+    }
+}
+
+/// Manager page header in the guest header's language: the page's symbol in a
+/// tile, and the frame mark behind, bright green while any guest is running and
+/// faint lavender otherwise.
 struct ScreenHeader<Trailing: View>: View {
     let title: String
     var subtitle: String?
+    var symbol: String?
     @ViewBuilder let trailing: Trailing
-    init(_ title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> Trailing) {
-        self.title = title; self.subtitle = subtitle; self.trailing = trailing()
+    @Environment(\.guestsRunning) private var running
+    init(_ title: String, subtitle: String? = nil, symbol: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+        self.title = title; self.subtitle = subtitle; self.symbol = symbol; self.trailing = trailing()
     }
     var body: some View {
         GroupedPanel {
-            HStack(spacing: 12) {
+            HStack(spacing: 24) {
+                if let symbol {
+                    Image(systemName: symbol).font(.system(size: 28, weight: .light)).foregroundStyle(Theme.lavender)
+                        .frame(width: 68, height: 68)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.ground))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.border))
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title).font(Theme.sans(26, weight: .semibold)).accessibilityAddTraits(.isHeader)
                     if let subtitle { Text(subtitle).font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 trailing
-            }.padding(.horizontal, 24).padding(.vertical, 18)
+            }
+            .padding(.horizontal, 24).padding(.vertical, 22).frame(minHeight: 120)
+            .background(alignment: .topTrailing) {
+                FrameMark(size: 170, frame: running ? Theme.green.opacity(0.55) : Theme.quietFrame,
+                          tracer: running ? Theme.tracer : Theme.lavender.opacity(0.7)).offset(x: -190, y: 6)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.paneRadius))
         }
     }
 }
 
 extension ScreenHeader where Trailing == EmptyView {
-    init(_ title: String, subtitle: String? = nil) { self.init(title, subtitle: subtitle) { EmptyView() } }
+    init(_ title: String, subtitle: String? = nil, symbol: String? = nil) { self.init(title, subtitle: subtitle, symbol: symbol) { EmptyView() } }
 }
 
 /// A row that opens in place. Its content stays mounted while closed so edits

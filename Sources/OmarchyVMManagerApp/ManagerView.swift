@@ -3,7 +3,7 @@ import OmarchyVMManagerCore
 import SwiftUI
 
 private enum Destination: Hashable { case library, guest(UUID), permissions, runtime, defaults, provisioningTools, factoryImages }
-private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual Machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces", setup = "Setup" }
+private enum GuestPage: String, CaseIterable { case home = "Home", resources = "Virtual machine", network = "Network", startup = "Startup", ssh = "SSH", spaces = "Spaces", setup = "Setup" }
 
 struct ManagerView: View {
     @ObservedObject var model: AppModel
@@ -11,6 +11,7 @@ struct ManagerView: View {
     @State private var editor: EditorSelection?
     @State private var importingFactory = false
     @State private var page: GuestPage = .home
+    @State private var setupSheet: SetupSheet?
     @State private var detailPresentation = UUID()
     @FocusState private var sidebarFocused: Bool
     init(model: AppModel) { self.model = model }
@@ -61,7 +62,7 @@ struct ManagerView: View {
                                 }
                             }
                             sidebarHeader("manager")
-                            sidebarLink("Guest Defaults", systemImage: "person.crop.circle.badge.checkmark", .defaults)
+                            sidebarLink("Guest defaults", systemImage: "person.crop.circle.badge.checkmark", .defaults)
                             sidebarLink("Factory images", systemImage: "square.3.layers.3d", .factoryImages)
                             sidebarLink("Permissions", systemImage: "hand.raised", .permissions)
                             sidebarLink("Runtime", systemImage: "checkmark.shield", .runtime)
@@ -107,7 +108,7 @@ struct ManagerView: View {
                     default: library
                     }
                 }.padding(Theme.gap).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
-            }.id(detailPresentation).font(Theme.body).background(Theme.ground).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle())
+            }.id(detailPresentation).environment(\.guestsRunning, model.snapshots.contains { $0.sessionID != nil }).font(Theme.body).background(Theme.ground).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle())
         }
         .navigationTitle(AppChannel.current.displayName)
         .toolbar {
@@ -117,7 +118,7 @@ struct ManagerView: View {
                     .buttonStyle(.plain).help("Show all virtual machines").accessibilityLabel("All virtual machines")
             }
             ToolbarItem(placement: .primaryAction) {
-                Button { importingFactory = true } label: { Label("Import Factory", systemImage: "square.and.arrow.down") }
+                Button { importingFactory = true } label: { Label("Import factory", systemImage: "square.and.arrow.down") }
                     .disabled(model.registryError != nil || model.shuttingDown || model.checking || model.diagnostics == nil || model.factoryImportInProgress)
             }
             ToolbarItem(placement: .primaryAction) {
@@ -181,7 +182,7 @@ struct ManagerView: View {
     private var backupConfirmationContent: some View {
         navigationContent
         .alert("Back up the guest home?", isPresented: Binding(get: { model.homeBackupReview != nil }, set: { if !$0 { model.homeBackupReview = nil } })) {
-            Button("Back Up Home") {
+            Button("Back up home") {
                 if let snapshot = model.homeBackupReview {
                     model.homeBackupReview = nil
                     Task { await model.beginHomeBackup(snapshot.id) }
@@ -196,11 +197,11 @@ struct ManagerView: View {
     private var storageConfirmationContent: some View {
         backupConfirmationContent
         .alert("Power off this VM?", isPresented: Binding(get: { model.forceStopID != nil }, set: { if !$0 { model.forceStopID = nil } })) {
-            Button("Force Stop", role: .destructive) { if let id = model.forceStopID { model.forceStopID = nil; Task { await model.forceStop(id) } } }
+            Button("Force stop", role: .destructive) { if let id = model.forceStopID { model.forceStopID = nil; Task { await model.forceStop(id) } } }
             Button("Cancel", role: .cancel) { model.forceStopID = nil }
         } message: { Text("Unsaved guest work can be lost. Prefer Shut Down when the guest responds.") }
         .alert("Move this VM to Trash?", isPresented: Binding(get: { model.deletionReview != nil }, set: { if !$0 { model.deletionReview = nil } })) {
-            Button(model.deletionReview?.identity == nil ? "Remove Profile" : "Move to Trash", role: .destructive) {
+            Button(model.deletionReview?.identity == nil ? "Remove profile" : "Move to Trash", role: .destructive) {
                 if let review = model.deletionReview { model.deletionReview = nil; Task { await model.delete(review) } }
             }
             Button("Cancel", role: .cancel) { model.deletionReview = nil }
@@ -237,7 +238,7 @@ struct ManagerView: View {
             if !model.snapshots.isEmpty {
                 GroupedPanel {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Virtual Machines").font(Theme.sans(15, weight: .semibold)).padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 10)
+                        Text("Virtual machines").font(Theme.sans(15, weight: .semibold)).padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 10)
                         ForEach(model.snapshots) { snapshot in
                             GuestLibraryRow(snapshot: snapshot, open: { focusGuest(snapshot.id) }) { controls(snapshot) }
                         }
@@ -248,6 +249,19 @@ struct ManagerView: View {
     }
 
     private func guest(_ snapshot: VMSnapshot) -> some View {
+        guestPage(snapshot)
+            .sheet(item: $setupSheet) { sheet in
+                let current = model.snapshots.first(where: { $0.id == snapshot.id }) ?? snapshot
+                SetupSheetFrame(title: sheet == .output ? "Setup output" : current.profile.developerSetup == nil && !model.setupWorkflows.contains(where: { $0.vmID == current.id }) ? "Set up " + current.profile.name : "Change setup",
+                                subtitle: current.profile.name + (sheet == .output ? " · closing this leaves setup running" : " · setup runs in the guest and restarts it once to finish"),
+                                status: sheet == .output ? SetupCardState.make(current, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[current.id]) : nil,
+                                close: { setupSheet = nil }) {
+                    DeveloperSetupView(model: model, snapshot: current, mode: sheet == .output ? .output : .change)
+                }
+            }
+    }
+
+    private func guestPage(_ snapshot: VMSnapshot) -> some View {
         VStack(alignment: .leading, spacing: Theme.gap) {
             GuestHeaderPane(snapshot: snapshot) { controls(snapshot) }
             GuestTabs(page: $page)
@@ -284,10 +298,7 @@ struct ManagerView: View {
             }
             HStack(spacing: 12) {
                 if !snapshot.profile.isRetainedPOC {
-                    Button("Rename or Configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
-                    if snapshot.profile.homeDisk != nil {
-                        Button("Replace System…") { editor = EditorSelection(profile: nil, reuseSource: snapshot.profile) }.disabled(!editable(snapshot))
-                    }
+                    Button("Rename or configure…") { editor = EditorSelection(profile: snapshot.profile) }.disabled(!editable(snapshot))
                 }
                 OmarchyAttribution().frame(maxWidth: .infinity)
                 Button("Delete VM…", role: .destructive) { Task { await model.reviewDeletion(snapshot) } }.disabled(!deletable(snapshot))
@@ -298,13 +309,16 @@ struct ManagerView: View {
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
         let firstRun = FirstRunProgress.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id])
         return VStack(alignment: .leading, spacing: Theme.gap) {
+            if let source = model.officialFactorySource, let (phase, percent) = GuestFactoryDownloadCard.phase(snapshot) {
+                GuestFactoryDownloadCard(source: source, phase: phase, percent: percent)
+            }
             if let firstRun {
-                FirstRunTracker(progress: firstRun) { page = .setup }
+                FirstRunTracker(progress: firstRun) { setupSheet = .change }
                 if let terminal = firstRun.terminal {
-                    FirstRunTerminal(model: model, workflowID: terminal.workflowID, attachmentKey: terminal.key) { page = .setup }
+                    FirstRunTerminal(model: model, workflowID: terminal.workflowID, attachmentKey: terminal.key, live: terminal.live) { setupSheet = .output }
                 }
             } else if model.setupCompletedThisRun.contains(snapshot.id) {
-                FirstRunComplete(viewLog: { page = .setup }, dismiss: { model.setupCompletedThisRun.remove(snapshot.id) })
+                FirstRunComplete(viewLog: { setupSheet = .output }, dismiss: { model.setupCompletedThisRun.remove(snapshot.id) })
             }
             GroupedPanel {
                 HStack(spacing: 20) {
@@ -318,7 +332,7 @@ struct ManagerView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             SpecLine("cores", value: "\(snapshot.profile.cpus)")
                             SpecLine("memory", value: "\(snapshot.profile.memoryMiB / 1024) GiB")
-                            SpecLine("disk", value: snapshot.profile.diskSummary)
+                            SpecLine("disk", value: snapshot.profile.homeDisk == nil ? snapshot.profile.diskSummary : (snapshot.profile.diskGiB.map { "\($0) GiB" } ?? "Factory capacity") + " system", note: snapshot.profile.homeDisk == nil ? nil : "The home disk is under home.")
                             SpecLine("used", value: ByteCountFormatter.string(fromByteCount: model.storageBytes[snapshot.id] ?? 0, countStyle: .file))
                             SpecLine("clipboard", value: snapshot.profile.clipboardEnabled ? "Enabled" : "Off", note: snapshot.profile.clipboardEnabled ? "Syncs with the Mac while this guest is focused." : "Clipboard sharing is off for this guest.", tint: snapshot.profile.clipboardEnabled ? Theme.green : nil)
                             SpecLine("touch id", value: GuestTouchIDRecord(snapshot).hostBridge.capitalized, note: "Pair through Setup → Security → Touch ID for sudo inside the guest. Guest pairing status is unknown to the manager.")
@@ -326,13 +340,14 @@ struct ManagerView: View {
                     }
                 }.padding(.leading, 16).padding(.trailing, 20).padding(.vertical, 14)
             }
-            if firstRun == nil, !model.setupCompletedThisRun.contains(snapshot.id), let job = model.setupSummary(for: snapshot.id) {
-                Button { page = .setup } label: { Label(job.title, systemImage: job.cleanupRequired ? "exclamationmark.shield" : "terminal") }.buttonStyle(.plain).padding(.horizontal, 4)
+            if firstRun == nil {
+                GuestSetupCardHost(model: model, snapshot: snapshot) { setupSheet = $0 }
             }
             GuestHibernationPanel(snapshot: snapshot, review: { action in model.experimentalPowerReview = .init(id: snapshot.id, action: action) }, recheck: { Task { await model.recheckExperimentalRecovery(snapshot.id) } })
-            GuestHomeBackupPanel(snapshot: snapshot,
-                                 review: { model.homeBackupReview = snapshot },
-                                 cancel: { Task { await model.cancelHomeBackup(snapshot.id) } })
+            GuestHomePanel(snapshot: snapshot, canReplaceSystem: editable(snapshot) && !snapshot.profile.isRetainedPOC,
+                           review: { model.homeBackupReview = snapshot },
+                           cancel: { Task { await model.cancelHomeBackup(snapshot.id) } },
+                           replaceSystem: { editor = EditorSelection(profile: nil, reuseSource: snapshot.profile) })
         }
     }
 
@@ -404,11 +419,11 @@ struct ManagerView: View {
             }
             if case .ready(let user, let command) = snapshot.sshReadiness {
                 paneNote("Authenticated as \(user). The guest’s host identity is pinned.")
-                Button("Copy SSH Command") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string) }.buttonStyle(.primaryAction).padding(.horizontal, 4)
+                Button("Copy SSH command") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string) }.buttonStyle(.primaryAction).padding(.horizontal, 4)
             } else if snapshot.profile.ssh != nil {
                 paneNote("Complete the guest’s normal owner-account setup. The manager then verifies key-based SSH independently of its desktop and clipboard. Guest host keys are provisioned once and checked on every connection.")
                 if snapshot.sessionID != nil {
-                    Button("Retry SSH Check") { Task { await model.retrySSH(snapshot.id) } }.disabled(snapshot.state != .running).padding(.horizontal, 4)
+                    Button("Retry SSH check") { Task { await model.retrySSH(snapshot.id) } }.disabled(snapshot.state != .running).padding(.horizontal, 4)
                 }
             } else {
                 paneNote("SSH is enabled by default when creating a new VM. Existing profiles are unchanged; retained POC disks stay protected.")
@@ -442,7 +457,7 @@ struct ManagerView: View {
 
     private var permissions: some View {
         VStack(alignment: .leading, spacing: Theme.gap) {
-            ScreenHeader("Permissions")
+            ScreenHeader("Permissions", subtitle: "Optional macOS permissions the manager can use. Each stays off until you enable it.", symbol: "hand.raised")
             SpecPane("permissions") {
                 SpecRow("accessibility", note: "Needed for native Super shortcuts such as Command+Space inside guests.") {
                     if model.accessibilityTrusted { Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green) }
@@ -456,9 +471,9 @@ struct ManagerView: View {
 
     private var runtime: some View {
         VStack(alignment: .leading, spacing: Theme.gap) {
-            ScreenHeader("Runtime")
+            ScreenHeader("Runtime", subtitle: "The pinned runtime and Try Omarchy kit this manager runs guests with.", symbol: "checkmark.shield")
             SpecPane("try omarchy kit", action: {
-                Button("Check Again") { Task { await model.refresh() } }.disabled(model.checking)
+                Button("Check again") { Task { await model.refresh() } }.disabled(model.checking)
             }) {
                 SpecRow("runtime", value: model.diagnostics == nil ? (model.diagnosticError ?? "Checking…") : "Pinned private runtime · Focus-aware clipboard")
                 if let d = model.diagnostics {
@@ -510,7 +525,8 @@ private struct GuestTabs: View {
     var body: some View {
         GroupedPanel {
             HStack(spacing: 4) {
-                ForEach(GuestPage.allCases, id: \.self) { item in
+                // Setup lives on Home (card and sheets); the page remains only for the acceptance harness.
+                ForEach(GuestPage.allCases.filter { $0 != .setup }, id: \.self) { item in
                     let selected = item == page
                     Button { page = item } label: {
                         Text(item.rawValue).font(Theme.sans(13, weight: selected ? .medium : .regular)).foregroundStyle(selected ? Theme.text : Color.secondary)
@@ -629,7 +645,7 @@ struct VMEditor: View {
     }
     private var identity: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(profile == nil ? "New Virtual Machine" : "Configure Virtual Machine").font(Theme.sans(20, weight: .semibold)).padding(.bottom, 10)
+            Text(profile == nil ? "New virtual machine" : "Configure virtual machine").font(Theme.sans(20, weight: .semibold)).padding(.bottom, 10)
             SpecRow("name") {
                 TextField("Name", text: $name, prompt: Text("Enter a name")).labelsHidden().specField().frame(width: 400)
             }
@@ -638,9 +654,12 @@ struct VMEditor: View {
                     Picker("Factory image", selection: $factory) {
                         ForEach(model.factories, id: \.selector) { image in Text(image.displayName).tag(image.selector) }
                     }.labelsHidden().frame(maxWidth: 250)
-                    Button("Import Factory…") { importingFactory = true }
+                    // Short labels keep the row on one line beside long factory names; the full action is in help and VoiceOver.
+                    Button("Import…") { importingFactory = true }
+                        .fixedSize().help("Import a factory image").accessibilityLabel("Import factory")
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
-                    Button("Build lean factory…", systemImage: "hammer") { buildingFactory = true }
+                    Button("Build…") { buildingFactory = true }
+                        .fixedSize().help("Build a lean factory image").accessibilityLabel("Build lean factory")
                         .disabled(saving || !model.factoryBuilder.service.enabled || model.registryError != nil)
                         .accessibilityIdentifier("newvm.buildFactory")
                 }
@@ -704,7 +723,7 @@ struct VMEditor: View {
                 .onChange(of: sshEnabled) { _, value in if !value { share = false } }
             if sshEnabled, profile == nil {
                 SpecRow("public key", note: "Optional") {
-                    if selectedPublicKey != nil { Button("Remove Selected Key") { selectedPublicKey = nil } }
+                    if selectedPublicKey != nil { Button("Remove selected key") { selectedPublicKey = nil } }
                     Button("Choose .pub…") { choosePublicKey() }
                 }
                 if let key = selectedPublicKey, let fingerprint = try? SSHPublicKey.fingerprint(key) {
@@ -738,15 +757,15 @@ struct VMEditor: View {
                     // Plain Create stays available; launching is a separate, explicit choice.
                     if launchAvailable {
                         Button("Create") { save() }.accessibilityIdentifier("new-vm.create").disabled(!canSave)
-                        Button(setupSource != nil && sshEnabled ? "Create, Launch & Set Up" : "Create and Launch") { save(launch: true) }
+                        Button(setupSource != nil && sshEnabled ? "Create, launch & set up" : "Create and launch") { save(launch: true) }
                             .accessibilityIdentifier("new-vm.create-launch").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
                     } else {
-                        Button("Create and Launch") {}.disabled(true).help("Launching is unavailable right now. Create the VM, then launch it from its page.")
+                        Button("Create and launch") {}.disabled(true).help("Launching is unavailable right now. Create the VM, then launch it from its page.")
                             .accessibilityIdentifier("new-vm.create-launch")
                         Button("Create VM") { save() }.accessibilityIdentifier("new-vm.create").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
                     }
                 } else {
-                    Button("Save Changes") { save() }.accessibilityIdentifier("new-vm.create").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
+                    Button("Save changes") { save() }.accessibilityIdentifier("new-vm.create").buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canSave)
                 }
             }
             }.padding(.horizontal, 20).padding(.vertical, 12).overlay(alignment: .top) { Rectangle().fill(Theme.strongBorder).frame(height: 1) }
@@ -818,7 +837,7 @@ struct ManagerLoadingView: View {
     var body: some View {
         VStack(spacing: 20) {
             // The library's frame mark with its tracer stands in for a spinner; Reduce Motion falls back to the system one.
-            FrameMark(size: 120, tracer: reduceMotion ? nil : Theme.green)
+            FrameMark(size: 120, tracer: reduceMotion ? nil : Theme.green, loading: true)
             VStack(spacing: 6) {
                 Text(AppChannel.current.displayName).font(Theme.sans(22, weight: .semibold))
                 Text("loading guests…").font(Theme.mono(13)).foregroundStyle(Theme.label)

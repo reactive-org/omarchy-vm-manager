@@ -88,8 +88,8 @@ struct NewVMSetupSelectionView: View {
                 }
                 ProvisioningProfileSelectionView(selection: $profiles, localSource: source == "local")
                 if factory == "official" { ProvisioningTrimSelectionView(selection: $trimOptionalApps) }
-                ProvisioningAppearanceSelectionView(draft: $appearance)
-                SpecNote("Setup updates Omarchy and system packages, then applies these selections. Create, Launch & Set Up approves this exact plan for this VM’s first launch, including temporary admin access while setup runs; the restart and configuration check that finish setup are reviewed on the guest’s page. If anything changes before setup starts, it pauses and asks again. Create alone saves the plan for a later review.")
+                ProvisioningAppearanceSelectionView(draft: $appearance, localSource: source == "local")
+                SpecNote("Setup updates Omarchy and system packages, then applies these selections. Create, launch & set up approves this exact plan for this VM’s first launch, including temporary admin access while setup runs and the restart and configuration check that finish it, so you end at an updated, configured desktop. If anything changes before setup starts, it pauses and asks again. Create alone saves the plan for a later review.")
             }
         }
         .background {
@@ -109,6 +109,7 @@ struct NewVMSetupSelectionView: View {
             #endif
         }
         .onChange(of: source) { _, _ in profiles = source == "bundled" ? ["developer"] : []; publish() }
+        .task { if appearance == ProvisioningAppearanceDraft(), let defaults = model.desktopDefaults { appearance = ProvisioningAppearanceDraft(defaults) } }
         .onChange(of: factory) { _, _ in trimOptionalApps = false; publish() }
         .onChange(of: appearance) { _, _ in publish() }
         .onChange(of: trimOptionalApps) { _, _ in publish() }

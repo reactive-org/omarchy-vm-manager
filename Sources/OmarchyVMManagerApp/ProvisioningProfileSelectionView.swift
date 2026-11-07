@@ -90,7 +90,9 @@ struct ProvisioningProfileSelectionView: View {
 /// without choosing a new source. Technical proposal data remains under Details.
 struct ProvisioningReviewedProfilesView: View {
     let proposal: Data
-    private var names: [String] {
+    private var names: [String] { Self.names(proposal) }
+    /// Display names of the profiles a frozen proposal resolves.
+    static func names(_ proposal: Data) -> [String] {
         guard let document = try? JSONSerialization.jsonObject(with: proposal) as? [String: Any],
               let features = document["features"] as? [String: Any], let profiles = features["profiles"] as? [String] else { return [] }
         return profiles.map { raw in

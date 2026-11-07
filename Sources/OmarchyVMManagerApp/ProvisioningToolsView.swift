@@ -8,14 +8,12 @@ struct ProvisioningToolsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                Text("Provisioning tools").font(Theme.sans(26, weight: .semibold))
-                Spacer()
-                if checking { ProgressView().controlSize(.small) }
-                Button("Check again") { Task { await refresh() } }.disabled(checking)
+            ScreenHeader("Provisioning tools", subtitle: "Check the host tools needed for developer setup. Offline previews work in both channels. Dev setup requires a verified Dev guest, a reviewed plan and the permissions shown in Setup; Stable execution remains disabled.", symbol: "wrench.and.screwdriver") {
+                HStack(spacing: 8) {
+                    if checking { ProgressView().controlSize(.small) }
+                    Button("Check again") { Task { await refresh() } }.disabled(checking)
+                }
             }
-            Text("Check the host tools needed for developer setup. Offline previews work in both channels. Dev setup requires a verified Dev guest, a reviewed plan and the permissions shown in Setup; Stable execution remains disabled.")
-                .foregroundStyle(.secondary)
             if failed { Label("Tool checks could not finish. Try again.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
             if let report {
                 ForEach(report.tools) { tool in

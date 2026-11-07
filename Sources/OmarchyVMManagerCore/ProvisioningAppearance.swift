@@ -106,3 +106,28 @@ public struct ProvisioningAppearanceSummary: Sendable {
         layoutExample = matching
     }
 }
+
+/// The desktop layout and theme new VMs start with when they include developer
+/// setup. A manager preference only: it never changes existing guests, and a
+/// custom layout path is copied into reviewed inputs only when a VM is created.
+struct DesktopDefaultsStore {
+    let applicationSupport: URL
+    private let channel: AppChannel
+    init(applicationSupport: URL, channel: AppChannel = .current) { self.applicationSupport = applicationSupport; self.channel = channel }
+    private var directory: URL { channel.directory(in: applicationSupport) }
+    private static let name = "desktop-defaults.json"
+    private struct Record: Codable { let schemaVersion: Int; let appearance: ProvisioningAppearanceSelection? }
+    func load() throws -> ProvisioningAppearanceSelection? {
+        let path = directory.appendingPathComponent(Self.name)
+        guard PrivateFiles.exists(path) else { return nil }
+        let record = try JSONDecoder().decode(Record.self, from: PrivateFiles.read(path))
+        guard record.schemaVersion == 1 else { throw ProvisioningAppearanceFailure.invalidLayout }
+        try record.appearance?.validate()
+        return record.appearance
+    }
+    func save(_ value: ProvisioningAppearanceSelection?) throws {
+        let value = value?.isEmpty == true ? nil : value
+        try value?.validate(); try PrivateFiles.directory(directory, create: true)
+        try PrivateFiles.write(JSONEncoder().encode(Record(schemaVersion: 1, appearance: value)), name: Self.name, in: directory)
+    }
+}

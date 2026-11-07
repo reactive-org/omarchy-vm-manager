@@ -409,3 +409,52 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 **VERIFIED — fake/local:** seven new offscreen checks cover the armed tracker without an Approve step, refusal of wider permissions (Docker and task trust) with fallback to review, an admin-only submission with exact consent (grant on, Docker off, no task trust), single use across repeated refreshes, binding to the first session, and no arming without setup and SSH. Two new renders: `first-run-auto-connecting` and `first-run-auto-blocked`.
 
 **TO PROVE:** automatic apply on a real disposable guest. Setups that need Docker (Web, Project managed) or custom tasks still stop for the Setup-tab review by design, and the Docker restart is not automated.
+
+## First-run failure presentation — 7 November 2026
+
+**USER DIRECTION / DESIGN DECISION:** when a first-run setup fails, Home keeps the terminal output it watched, labelled "Setup output", with a Dismiss button. The output lives only in that view: a restart or rebuilt page starts empty, and an ended run is never reattached or replayed. The tracker's failure note now comes from the job's recorded categories (for example, `adapterFailed` reads "a task failed inside the guest"; helper refusal, manager restart, guest lifecycle and tool changes have their own notes) and never from terminal text.
+
+**VERIFIED — fake/local:** two new offscreen checks cover the category-based note and the ended terminal entry, with a new `first-run-failed` render showing a rebuilt page with no stale output panel. A real failed run on "Testing 123" (Developer, approved at creation) was caused by the upstream dev-vm playbook (`git-lfs 3.8.0-1` missing from the mirror) and confirmed read-only from the guest's package log.
+
+**TO PROVE:** retained output and Dismiss with a real failing job in the running app.
+
+## Saved setup output — 7 November 2026
+
+**DESIGN DECISION — user direction:** see `intent.md`. The coordinator attaches a view-only recorder after the helper registers and before activation, so it sees output from the first byte. Reads come in short bursts with pauses, back off on a busy reply, and never claim input. The recorder drains for up to two seconds before the helper is released, and an aborted job is marked. The file is `<VM root>/.manager-setup/last-run.log` (0700/0600), replaced by an apply job and appended by a check job. It keeps the first 1 MiB plus a rolling 2 MiB tail with an omission marker, and marks output gaps and omitted interactive sections. It is written only into an existing VM root and never named in the job journal. The Setup tab shows it read-only (with Reveal in Finder) when no run is live, and never reattaches an ended job.
+
+**VERIFIED — fake/local:** six new core tests cover apply-replaces and check-appends with private modes, never creating a missing root, the head/tail bound with its omission marker, refusing links and shared files, and a scripted recorder (busy back-off, gap marker, interactive section omitted, final drain and detach, abort marker). Three new offscreen checks and the `setup-saved-log` render cover the Setup tab showing a saved log without reattaching.
+
+**TO PROVE:** a real run's recording, recording alongside Home, Setup and CLI viewers with input taken, and the drain timing before helper release.
+
+## Desktop layout picker, defaults and page headers — 7 November 2026
+
+**DESIGN DECISION — user direction:** see `intent.md`. New VM and the Setup tab show the card picker (layout first, then a theme row with Omarchy default, GitHub, Random and Most starred). Guest defaults gains a desktop pane with its own save. Manager pages (Guest defaults, Factory images, Permissions, Runtime, Provisioning tools) use the guest header's language: a symbol tile and the frame mark, bright green while any guest runs and lavender otherwise. The loading screen, busy guest tiles and the first-run tracker use the cycling loading mark.
+
+**VERIFIED — fake/local:** three core tests cover the desktop defaults store (missing file, round trip and clearing, refusing an invalid selection). Offscreen checks cover the default Omarchy default card, bundled cards without the setup-folder card, Omarchy default adding no layout, the local setup-folder card and an example card reaching the frozen source; the loading-mark filmstrip render samples both laps.
+
+**TO PROVE:** hover and arrow scrolling with a real pointer, a saved desktop default seeding a real New VM, and multi-workspace examples once dev-vm provides them.
+
+## Approve at creation finishes setup; home card — 7 November 2026
+
+**DESIGN DECISION — user direction:** see `intent.md`. Create, launch & set up now also covers the restart and configuration check of the workflow it started; the tracker shows them as progress under a new Restart step. Without that approval, the Restart step is amber with "Review restart…", keeps the ended output and says the full output is saved on the Setup tab. Home-disk items move into one **home** card on the guest's Home tab (storage, backup with its state, and Replace system for a separate home disk); the resources disk line shows the system disk, and the suspend card reads "Unavailable with a separate home disk".
+
+**VERIFIED — fake/local:** offscreen checks cover the restart shown as progress, restart and check each submitted once with an acknowledged consent bound to the approved plan, recovery never submitted automatically, and a manual restart-required run reading as Restart rather than Installing.
+
+**TO PROVE:** a real Create, launch & set up run completing through restart and check unattended, and the restart's session handoff timing on a real guest.
+
+## Setup moves to Home — 7 November 2026
+
+**DESIGN DECISION — user direction:** the guest's Setup tab is removed. A **setup** card on Home (shown once the first-run tracker is done) summarises the configured software and desktop and the last run, and offers the one action that matters: Set up…, Review…, Review recovery…, View output or Change setup…. **Change setup** opens a sheet with the same selection, frozen review, separate consents (admin access, Docker root access, task trust after inspection) and reviewed restart, check and recovery actions as before. **View output** opens a sheet with the live terminal or the saved last-run log, cancel and job details. Both sheets reuse the former tab's view in a mode, so review and consent behaviour is unchanged; the acceptance harness drives both modes together because it cannot capture sheets.
+
+**VERIFIED — fake/local:** six offscreen checks cover the card's states (none, configured, running with progress, manual restart needing review, approved restart as progress, cleanup recovery, failed and succeeded); renders of the card and both sheets; all earlier setup checks still pass against the shared view.
+
+**TO PROVE:** the sheets on a real guest, including typing into the terminal from View output during authorization.
+
+## Official image source shown while it downloads — 7 November 2026
+
+**DESIGN DECISION — user direction:** make it clear the factory image is the official one and where it comes from. While a guest's official image downloads or is verified, its Home tab shows a factory image card: phase and progress, the GitHub repository and release (`github.com/omacom/try-omarchy`, release tag), the file and its parts, that each part and the image are checked against SHA-256 checksums pinned in the app, and the Omarchy version, kernel and build date. The Factory images page shows the same source on the Try Omarchy card. Everything comes from the kit's `guest/download.json` and `guest/factory.json`, accepted only when both match the runtime lock's digests and every part is an HTTPS download from the omacom/try-omarchy GitHub releases; otherwise nothing is shown.
+
+**VERIFIED — fake/local:** three core tests (pinned release read; manifests that don't match the lock refused; parts from another host or owner refused); two offscreen checks and a guest render mid-download; the factory screens render the source on the Try Omarchy card.
+
+**TO PROVE:** the card during a real first-launch download, including the waiting, paused and reconnecting phases.
+

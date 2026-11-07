@@ -8,7 +8,7 @@ import SwiftUI
 /// Setup page, which owns the exact consent review.
 struct FirstRunProgress: Equatable {
     enum Step: Int, CaseIterable {
-        case created, starting, firstBoot, connecting, approve, installing, ready
+        case created, starting, firstBoot, connecting, approve, installing, restart, ready
         var title: String {
             switch self {
             case .created: "Created"
@@ -17,6 +17,7 @@ struct FirstRunProgress: Equatable {
             case .connecting: "Connecting"
             case .approve: "Approve"
             case .installing: "Installing"
+            case .restart: "Restart"
             case .ready: "Ready"
             }
         }
@@ -28,15 +29,16 @@ struct FirstRunProgress: Equatable {
     var note: String
     /// Title of a button that opens the Setup page, when that is the next move.
     var setupAction: String?
-    /// The workflow whose live output Home shows, with its terminal attachment key.
-    var terminal: (workflowID: UUID, key: String)?
+    /// The workflow whose output Home shows, its attachment key, and whether the job is
+    /// still live. Ended runs keep showing output that Home already received.
+    var terminal: (workflowID: UUID, key: String, live: Bool)?
     /// Approved in New VM (Create, Launch & Set Up): no Approve step is shown.
     var approvedAtCreation = false
 
     var steps: [Step] { approvedAtCreation ? Step.allCases.filter { $0 != .approve } : Step.allCases }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.step == rhs.step && lhs.tone == rhs.tone && lhs.note == rhs.note && lhs.setupAction == rhs.setupAction && lhs.terminal?.key == rhs.terminal?.key
+        lhs.step == rhs.step && lhs.tone == rhs.tone && lhs.note == rhs.note && lhs.setupAction == rhs.setupAction && lhs.terminal?.key == rhs.terminal?.key && lhs.terminal?.live == rhs.terminal?.live
             && lhs.approvedAtCreation == rhs.approvedAtCreation
     }
 
@@ -52,16 +54,24 @@ struct FirstRunProgress: Equatable {
         else if let row = rows.first(where: \.cleanupRequired) ?? rows.first(where: \.canCancel) ?? (rows.count == 1 ? rows.first : nil) {
             value = workflowProgress(row, job: jobs[row.id])
         } else {
-            return .init(step: .installing, tone: .problem, note: "Earlier setup runs did not finish. Review their results before trying again.", setupAction: "Open Setup")
+            return .init(step: .installing, tone: .problem, note: "Earlier setup runs did not finish. Review their results before trying again.", setupAction: "Open setup…")
         }
         guard let autoSetup else { return value }
         if let reason = autoSetup.blockedReason {
             // The one-time approval no longer applies; the manual review takes over.
-            if value.step <= .approve, value.tone != .problem { value = .init(step: .approve, tone: .needsYou, note: reason, setupAction: "Review Setup…") }
+            if value.step <= .approve, value.tone != .problem { value = .init(step: .approve, tone: .needsYou, note: reason, setupAction: "Review setup…") }
+            else if value.step == .restart, value.tone == .needsYou { value.note = reason }
             return value
         }
         value.approvedAtCreation = true
         if value.step == .connecting, value.tone == .working { value.note = "Waiting for the guest’s SSH service. Setup starts automatically when it’s ready." }
+        if case .following = autoSetup, value.step == .restart, value.tone == .needsYou {
+            // Covered by the approval given in New VM: submitted automatically, once.
+            value.tone = .working; value.setupAction = nil
+            value.note = value.note.hasPrefix("Software installed")
+                ? "Software installed. Restarting the guest to finish setup; the configuration is checked after it starts."
+                : "The guest restarted. Checking the configuration to finish setup."
+        }
         if value.step == .approve {
             // Approval was given in New VM: the review is prepared and submitted automatically.
             value = .init(step: .installing, tone: .working, note: "Starting setup. You approved it when you created this VM.", approvedAtCreation: true)
@@ -90,7 +100,7 @@ struct FirstRunProgress: Equatable {
         if case .failed(let message) = snapshot.ownerSetupReadiness { return .init(step: .firstBoot, tone: .problem, note: message) }
         switch snapshot.sshReadiness {
         case .ready:
-            return .init(step: .approve, tone: .needsYou, note: "The guest is ready. Review setup to approve admin access and install the selected software.", setupAction: "Review Setup…")
+            return .init(step: .approve, tone: .needsYou, note: "The guest is ready. Review setup to approve admin access and install the selected software.", setupAction: "Review setup…")
         case .waitingForOwner:
             let note = snapshot.profile.ownerSetup != nil ? "Omarchy is creating your account from Guest Defaults." : "Finish Omarchy’s account setup in the guest window."
             return .init(step: .firstBoot, tone: .working, note: note)
@@ -109,26 +119,64 @@ struct FirstRunProgress: Equatable {
         let attachKey = job.flatMap { $0.state == .queued ? nil : row.id.uuidString + ":" + $0.jobID.uuidString }
         switch row.stage {
         case .waitingForSSH:
-            return .init(step: .approve, tone: .working, note: "Preparing the setup review in the guest.", setupAction: "Open Setup")
+            return .init(step: .approve, tone: .working, note: "Preparing the setup review in the guest.", setupAction: "Open setup…")
         case .readyForReview:
-            return .init(step: .approve, tone: .needsYou, note: "Approve admin access to start installing.", setupAction: "Review Setup…")
+            return .init(step: .approve, tone: .needsYou, note: "Approve admin access to start installing.", setupAction: "Review setup…")
         case .running, .checking:
-            var value = FirstRunProgress(step: .installing, tone: .working, note: "Installing software. You can use the guest while this runs.")
+            var value = row.stage == .checking
+                ? FirstRunProgress(step: .restart, tone: .working, note: "Checking the configuration after the restart.")
+                : FirstRunProgress(step: .installing, tone: .working, note: "Installing software. You can use the guest while this runs.")
             if job?.state == .awaitingAuthorization { value.tone = .needsYou; value.note = "Setup is waiting for authorization in the terminal." }
-            if let attachKey { value.terminal = (row.id, attachKey) }
+            if let attachKey { value.terminal = (row.id, attachKey, true) }
             return value
         case .restartRequired:
-            return .init(step: .installing, tone: .needsYou, note: "Setup needs a reviewed restart to finish.", setupAction: "Review Restart…")
+            // Installing finished; the run is waiting for the user, not stuck. Keep the
+            // output Home received and point at the saved copy on the Setup tab.
+            var value = FirstRunProgress(step: .restart, tone: .needsYou,
+                note: "Software installed. Restart the guest to finish: setup restarts it, then checks the configuration. The full output is kept in View output.",
+                setupAction: "Review restart…")
+            if let attachKey { value.terminal = (row.id, attachKey, false) }
+            return value
         case .waitingForExit, .restarting:
-            return .init(step: .installing, tone: .working, note: "Restarting the guest to finish setup.")
+            return .init(step: .restart, tone: .working, note: "Restarting the guest to finish setup.")
         case .waitingForRebind, .readyForCheck:
-            return .init(step: .installing, tone: .needsYou, note: "Review the configuration check to finish setup.", setupAction: "Review Check…")
+            return .init(step: .restart, tone: .needsYou, note: "The guest restarted. Review the configuration check to finish setup.", setupAction: "Review check…")
         case .failed, .cancelled, .interrupted, .cleanupRequired:
             let cleanup = row.cleanupRequired ? " Cleanup of temporary admin access needs review." : ""
-            return .init(step: .installing, tone: .problem, note: row.title + "." + cleanup, setupAction: "Open Setup")
+            var value = FirstRunProgress(step: .installing, tone: .problem, note: failureNote(row, job: job) + cleanup, setupAction: "Open setup…")
+            // Keep showing output Home received; it is not replayed once the job ends.
+            if let attachKey { value.terminal = (row.id, attachKey, false) }
+            return value
         case .succeeded, .checked:
             return .init(step: .ready, tone: .idle, note: row.title + ".")
         }
+    }
+
+    /// Built only from recorded categories, never from terminal text.
+    static func failureNote(_ row: ProvisioningWorkflowSnapshot, job: ProvisioningJobSnapshot?) -> String {
+        switch row.failure {
+        case .systemUpdateFailed?: return "Setup failed: the Omarchy update failed before your selections were applied."
+        case .helperUnavailable?: return "Setup could not start: this build can’t run the setup helper."
+        default: break
+        }
+        switch job?.engineFailure {
+        case .adapterFailed?: return "Setup failed: a task failed inside the guest."
+        case .timedOut?: return "Setup timed out before it finished."
+        case .dependencyChanged?: return "Setup stopped because the Mac’s setup tools changed while it ran."
+        case .identityMismatch?, .sourceChanged?: return "Setup stopped because the guest or its inputs changed while it ran."
+        case .cancelled?: return "Setup was cancelled."
+        default: break
+        }
+        switch job?.failure {
+        case .helperUnavailable?: return "Setup could not start: this build can’t run the setup helper."
+        case .managerRestarted?: return "Setup stopped because the manager quit while it ran."
+        case .lifecycleChanged?: return "Setup stopped because the guest stopped or restarted."
+        case .dependencyChanged?: return "Setup stopped because the Mac’s setup tools changed."
+        case .sourceChanged?: return "Setup stopped because its inputs changed."
+        default: break
+        }
+        if job == nil, row.stage == .failed { return "Setup could not start in the guest. Open setup for details." }
+        return row.title + "."
     }
 }
 
@@ -153,7 +201,7 @@ struct FirstRunTracker: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("First run, step \((progress.steps.firstIndex(of: progress.step) ?? 0) + 1) of \(progress.steps.count): \(progress.step.title)")
                 HStack(alignment: .center, spacing: 12) {
-                    if progress.tone == .working, progress.step < .approve { FrameMark(size: 28, tracer: Theme.green) }
+                    if progress.tone == .working, progress.step < .approve { FrameMark(size: 28, tracer: Theme.green, loading: true) }
                     Text(progress.note).font(Theme.sans(13)).foregroundStyle(progress.tone == .problem ? Theme.amber : .secondary)
                         .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                     if let action = progress.setupAction {
@@ -162,7 +210,7 @@ struct FirstRunTracker: View {
                     }
                 }.accessibilityElement(children: .contain)
                 if progress.approvedAtCreation {
-                    Label("Approved when you created this VM, including temporary admin access.", systemImage: "checkmark")
+                    Label("Approved when you created this VM, including temporary admin access and the restart that finishes setup.", systemImage: "checkmark")
                         .font(Theme.note).foregroundStyle(.secondary).labelStyle(ApprovedLabelStyle())
                 }
             }.padding(.horizontal, 20).padding(.vertical, 16)
@@ -223,27 +271,40 @@ struct FirstRunTerminal: View {
     @ObservedObject var model: AppModel
     let workflowID: UUID
     let attachmentKey: String
+    let live: Bool
     let openSetup: () -> Void
+    /// Output lives only in this view. After the job ends it stays until dismissed;
+    /// a restart or rebuilt page starts empty, so an ended run is not shown again.
     @StateObject private var screen = ProvisioningTerminalScreen()
+    @State private var watched = false
+    @State private var dismissed = false
 
     var body: some View {
+        if live || (watched && !dismissed) { terminal }
+    }
+
+    private var terminal: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Rectangle().fill(screen.connected ? Theme.green : Theme.label).frame(width: 7, height: 7)
-                Text("Live terminal").font(Theme.sans(13, weight: .medium))
+                Text(live ? "Live terminal" : "Setup output").font(Theme.sans(13, weight: .medium))
                 Spacer(minLength: 8)
                 Toggle("Follow output", isOn: $screen.follow).toggleStyle(SpecSwitchToggleStyle()).font(Theme.sans(13))
-                if screen.ownsInput { Button("Release Input") { Task { await screen.releaseInput() } } }
-                if !screen.connected, let service = model.setupService {
+                if screen.ownsInput { Button("Release input") { Task { await screen.releaseInput() } } }
+                if live, !screen.connected, let service = model.setupService {
                     Button("Reconnect") { Task { await screen.attach(service: service, workflowID: workflowID) } }
                 }
-                Button("Open in Setup", action: openSetup)
+                Button("View output", action: openSetup)
+                if !live {
+                    Button { dismissed = true } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)) }
+                        .accessibilityLabel("Dismiss setup output").help("Dismiss setup output")
+                }
             }
             .buttonStyle(.quietAction).padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 6)
             .background(Theme.pane).overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
             ProvisioningNativeTerminal(screen: screen).frame(height: 340).clipped()
             HStack {
-                Text(screen.connected ? "You can leave this page. Setup will continue." : screen.message)
+                Text(!live ? "Live output has ended. Scroll up to see where setup stopped." : screen.connected ? "You can leave this page. Setup will continue." : screen.message)
                     .font(Theme.sans(13)).foregroundStyle(.secondary)
                 Spacer()
                 if screen.acceptsInput { Label("Interactive input available", systemImage: "keyboard").font(Theme.note).foregroundStyle(.secondary) }
@@ -254,10 +315,12 @@ struct FirstRunTerminal: View {
         .background(Color.black, in: RoundedRectangle(cornerRadius: Theme.paneRadius))
         .clipShape(RoundedRectangle(cornerRadius: Theme.paneRadius))
         .overlay(RoundedRectangle(cornerRadius: Theme.paneRadius).strokeBorder(Theme.border))
-        .task(id: attachmentKey) {
-            // Attach only to an admitted job; never reclaim input automatically.
-            if let service = model.setupService { await screen.attach(service: service, workflowID: workflowID) }
+        .task(id: attachmentKey + (live ? ":live" : ":ended")) {
+            // Attach only to a live admitted job; never reclaim input automatically.
+            // An ended job is never reattached, so retained output is not reset.
+            if live, !screen.connected, let service = model.setupService { await screen.attach(service: service, workflowID: workflowID) }
         }
+        .onChange(of: screen.connected) { _, connected in if connected { watched = true } }
         .onDisappear { Task { await screen.detach() } }
     }
 }
@@ -270,7 +333,7 @@ struct FirstRunComplete: View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.green).accessibilityHidden(true)
             Text("Setup complete. The selected software is installed.").font(Theme.sans(14)).frame(maxWidth: .infinity, alignment: .leading)
-            Button("View Log", action: viewLog).buttonStyle(.quietAction)
+            Button("View log", action: viewLog).buttonStyle(.quietAction)
             Button(action: dismiss) { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)) }
                 .buttonStyle(.quietAction).accessibilityLabel("Dismiss")
         }

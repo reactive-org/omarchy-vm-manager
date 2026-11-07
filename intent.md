@@ -324,6 +324,52 @@ mismatch stop with a reason and fall back to the Setup-tab review. The approval 
 only in the running manager's memory, is used at most once and is never persisted or
 replayed. Existing guests and later runs keep the manual review.
 
+**DESIGN DECISION — user direction, 7 November 2026 (approve at creation finishes
+setup):** the same creation-time approval also covers the restart and configuration
+check that finish that one workflow, so the user lands on an updated, configured
+desktop without stopping for a restart approval. After its apply, the manager follows
+only the workflow it submitted: when restart is required it prepares the normal
+restart review and, when the replacement session is ready for check, the normal check
+review; each is submitted once, and only if it names this VM and workflow and matches
+the creation receipt's plan and input digests. Recovery of cleanup is never automatic;
+a failure, cancellation, interruption, cleanup requirement or mismatch ends the
+automatic path and leaves the reviewed Setup-tab actions. The sheet discloses the
+restart and check before creation. The approval stays in memory only; a manager
+restart mid-way leaves the remaining actions to manual review.
+
+**DESIGN DECISION — user direction, 7 November 2026 (saved setup output):** to aid
+diagnostics, the manager saves the output of the most recent setup run for each VM to
+one private file, `<VM root>/.manager-setup/last-run.log` (0700 folder, 0600 file). A
+view-only recorder owned by the coordinator attaches before the helper starts, never
+claims input, and paces its reads so UI and CLI viewers keep working. An apply job
+replaces the file; a check job in the same run appends to it. The file is bounded: the
+head is written directly and the rest is kept as a rolling tail, with an explicit marker
+for any omitted bytes or output gap. Output that arrives while the job accepts
+interactive input is not saved; an "interactive section omitted" marker is written
+instead. It is written only into an existing VM root, never journaled, and moves to
+Trash with the VM. It is not redacted and may contain anything setup printed. The Setup
+tab shows it read-only when no run is live. Raw input is still never recorded, and
+terminal bytes stay out of journals, app logs and crash reports.
+
+**DESIGN DECISION — user direction, 7 November 2026 (desktop layout and defaults):**
+the desktop layout is chosen before the theme, from cards in horizontally scrolling
+rows: the bundled dev-vm examples, Omarchy default, a local folder's own layout (local
+sources only) and a custom file. The cards map onto the existing appearance selection
+without new provisioning inputs: Omarchy default keeps the source's layout for bundled
+setup (which names none) and removes a managed layout for a local folder. Guest
+defaults stores a desktop default in a private manager preference
+(`desktop-defaults.json`, per channel); New VM starts from it and existing guests are
+never changed. The vendored dev-vm catalogue currently describes one workspace per
+example; multi-workspace examples need a dev-vm update before they can appear.
+Page titles, sidebar items, tabs and buttons use sentence case; proper names, the
+Setup tab's name and macOS menu commands keep their capitals.
+
+**DESIGN DECISION — user direction, 7 November 2026 (setup on Home):** the guest's
+Setup tab is replaced by a setup card on Home with Change setup and View output sheets.
+Consent stays exactly as reviewed before: separate acknowledgements for temporary admin
+access, Docker root access and inspected task trust, each shown only when the review
+requires it, and reviewed restart, check and recovery actions.
+
 The current pass permits source integration and fake/local/CI validation only.
 No VM launch, real signing, host installation, Main app or Main VM operation is
 authorized. **TO PROVE:** fresh signed normal-Dev and real-guest acceptance after

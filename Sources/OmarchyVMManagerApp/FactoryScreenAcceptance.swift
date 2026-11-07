@@ -65,6 +65,7 @@ import SwiftUI
             model.isolatedFactoryBuildService = service
             var selected: FactoryIdentity?
             let driver = SetupUIAcceptanceDriver()
+            model.officialFactorySource = OfficialFactorySource.acceptanceFixture()
             let host = SetupScreenAcceptance.Host(ScrollView { FactoryImagesView(model: model) { selected = $0; model.builtFactoryAvailable($0) }.padding(24) }, driver: driver, width: 1200, height: 960, dark: dark)
             defer { host.window.close() }
             try SetupScreenAcceptance.until { driver.scopes["factory"] != nil }

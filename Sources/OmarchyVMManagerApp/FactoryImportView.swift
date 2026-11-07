@@ -17,7 +17,7 @@ struct FactoryImportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Import Factory").font(Theme.sans(20, weight: .semibold))
+            Text("Import factory").font(Theme.sans(20, weight: .semibold))
             if let imported {
                 Label(imported.displayName, systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).font(Theme.sans(14, weight: .semibold))
                 Text("Verified and imported. This factory is available for new virtual machines.")
@@ -32,7 +32,7 @@ struct FactoryImportView: View {
                     ProgressView(cancelling ? "Cancelling import…" : model.factoryImportProgress.rawValue)
                     Text("Large factory images can take a few minutes to verify and copy.").font(Theme.note).foregroundStyle(.secondary)
                 } else {
-                    Button("Choose Bundle…") { chooseBundle() }.buttonStyle(.primaryAction).disabled(choosing)
+                    Button("Choose bundle…") { chooseBundle() }.buttonStyle(.primaryAction).disabled(choosing)
                     Text("Select the folder containing factory.json and reviewed-factory.json.").font(Theme.note).foregroundStyle(.secondary)
                 }
             }
@@ -61,9 +61,9 @@ struct FactoryImportView: View {
         chooser = Task { @MainActor in
             defer { choosing = false; chooser = nil }
             let panel = NSOpenPanel()
-            panel.title = "Import Factory"
+            panel.title = "Import factory"
             panel.message = "Choose a prepared factory bundle."
-            panel.prompt = "Import Factory"
+            panel.prompt = "Import factory"
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.canCreateDirectories = false
