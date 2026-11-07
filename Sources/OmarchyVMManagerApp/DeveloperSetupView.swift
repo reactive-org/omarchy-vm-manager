@@ -45,8 +45,10 @@ struct DeveloperSetupView: View {
     @State private var inspectingTask = false
     @State private var previewLookup = ""
     @State private var actionBusy = false
-    /// The workflow whose cleanup-hold release is awaiting confirmation.
+    /// The workflow whose cleanup-hold release is awaiting confirmation. Kept apart
+    /// from the alert's presentation so dismissing it can't clear the target first.
     @State private var confirmRelease: ProvisioningWorkflowSnapshot?
+    @State private var releaseShown = false
     @State private var planning = false
     @State private var planRevision = UUID()
     @State private var failure: String?
@@ -60,7 +62,10 @@ struct DeveloperSetupView: View {
     private var workflow: ProvisioningWorkflowSnapshot? {
         workflows.first { $0.id == selectedWorkflow } ?? workflows.first { $0.canCancel || $0.cleanupRequired } ?? workflows.first
     }
-    var body: some View {
+    // The page and its modifiers are separate expressions so the type checker
+    // (notably Xcode 26 in CI) handles each within its time limit.
+    var body: some View { attach(page) }
+    private var page: some View {
         VStack(alignment: .leading, spacing: 20) {
             if showsChange {
             HStack {
@@ -176,11 +181,14 @@ struct DeveloperSetupView: View {
                 Text("No setup job for this guest. Live output will appear here when an admitted job is available.").foregroundStyle(.secondary).font(Theme.sans(13))
             }
         }
-        .onChange(of: workflow?.id) { _, _ in confirmRelease = nil }
-        .alert("Release cleanup hold?", isPresented: releasePresentation, presenting: confirmRelease) { held in
-            Button("Release cleanup hold", role: .destructive) { Task { await runWorkflowAction(held, action: .release) } }
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in Text(Self.releaseConfirmation) }
+    }
+    private func attach(_ content: some View) -> some View {
+        content
+        .onChange(of: workflow?.id) { _, _ in confirmRelease = nil; releaseShown = false }
+        // A separate modifier keeps this long body within the type checker's time limit.
+        .modifier(ReleaseConfirmation(isPresented: releasePresentation) {
+            if let held = confirmRelease { confirmRelease = nil; Task { await runWorkflowAction(held, action: .release) } }
+        })
         .onChange(of: source) { _, _ in profiles = source == "bundled" ? ["developer"] : []; invalidatePreview() }
         .onChange(of: snapshot.profile.factory) { _, _ in trimOptionalApps = false; invalidatePreview() }
         .onChange(of: appearance) { _, _ in invalidatePreview() }
@@ -252,7 +260,7 @@ struct DeveloperSetupView: View {
         #if DEBUG
         if acceptance != nil { return .constant(false) }
         #endif
-        return Binding(get: { confirmRelease != nil }, set: { if !$0 { confirmRelease = nil } })
+        return $releaseShown
     }
     private var cancelPresentation: Binding<Bool> {
         #if DEBUG
@@ -292,7 +300,7 @@ struct DeveloperSetupView: View {
                             Text(action.explanation).font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             Spacer()
                             Button(action.title + (action == .release ? "…" : "")) {
-                                if action == .release { confirmRelease = workflow } else { Task { await runWorkflowAction(workflow, action: action) } }
+                                if action == .release { confirmRelease = workflow; releaseShown = true } else { Task { await runWorkflowAction(workflow, action: action) } }
                             }
                             .buttonStyle(.primaryAction)
                             .disabled(actingService?.executionEnabled != true || actionBusy)
@@ -530,5 +538,17 @@ struct DeveloperSetupView: View {
                 taskTrustIdentity: taskConsent ? review.taskTrustIdentity : nil, persistentGrantAcknowledged: grantConsent, dockerRootAccessAcknowledged: dockerConsent))
             applyReview = nil
         } catch { failure = "Submission was not confirmed. Inspect its workflow state and exact hashes before any explicit retry. No automatic retry was made." }
+    }
+}
+
+/// Confirms the one workflow action that verifies nothing (issue #24).
+private struct ReleaseConfirmation: ViewModifier {
+    let isPresented: Binding<Bool>
+    let release: () -> Void
+    func body(content: Content) -> some View {
+        content.alert("Release cleanup hold?", isPresented: isPresented) {
+            Button("Release cleanup hold", role: .destructive, action: release)
+            Button("Cancel", role: .cancel) {}
+        } message: { Text(DeveloperSetupView.releaseConfirmation) }
     }
 }
