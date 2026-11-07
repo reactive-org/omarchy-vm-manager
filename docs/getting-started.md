@@ -79,7 +79,8 @@ Developer setup sometimes waits for you: Omarchy asks to enable passwordless sud
 in the setup terminal, or a review of the restart, the configuration check or
 cleanup is ready. The guest then shows **Needs you** in the sidebar; click it to
 open the setup output at the prompt, or the review. While a run is blocked the
-Dock icon shows **!** and bounces once if the manager isn't in front, and macOS
+Dock icon bounces once if the manager isn't in front (it may also show **!**, if
+macOS allows badges for the app), and macOS
 shows one notification naming the guest and what it's waiting for. The manager
 asks for notification permission when it opens; the badge and Dock still work if
 you decline. A saved setup that is simply waiting for your review only shows the

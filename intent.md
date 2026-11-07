@@ -34,8 +34,9 @@ two-step prepare/submit with explicit `--ack`.
 only when a row carries `cleanupRelease`; journals with neither stay readable by
 earlier builds. The CLI gains `setup prepare-release` and `setup release`.
 
-**TO PROVE:** releasing a real stopped Dev guest's hold, then launching it and
-setting up another guest, on a real Mac.
+**VERIFIED — user-observed on a real Mac, 7 November 2026:** releasing a real
+stopped Dev guest's hold (the stuck guest from #24) worked; the guest could then
+be deleted, and setup could again be prepared and run on another guest.
 
 ## Setup attention: badges, notifications and named timeouts — 7 November 2026
 
@@ -89,9 +90,17 @@ tracker starts only once setup coordination is installed, so its launch baseline
 includes saved workflows; that ordering is reasoned from `AppModel.observe()`, not
 exercised.
 
-**TO PROVE:** the macOS permission prompt, notification delivery and foreground
-banners, notification click-through, Dock marker and bounce on a real Mac with
-the Dev app and a real guest's sudo prompt.
+**VERIFIED — user-observed on a real Mac, Dev build `8dd129b`, 7 November 2026:**
+with a real Dev guest's Omarchy passwordless-sudo prompt, the Dock bounced once
+while the manager was not frontmost, one notification arrived, clicking it opened
+that guest's setup output at the prompt, and answering cleared the notification.
+The Dock "!" marker did **not** appear. The user confirmed the likely cause:
+macOS hides an app's Dock badge unless its notification settings allow badges,
+and the manager requests alert and sound authorisation only. Whether to request
+badge authorisation or draw the marker on a custom Dock tile is a follow-up.
+
+**TO PROVE:** the Dock "!" marker; foreground banners when another guest is on
+screen.
 
 ## Update-before-setup CI fixture correction — 7 November 2026
 
