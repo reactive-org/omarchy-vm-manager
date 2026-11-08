@@ -23,7 +23,7 @@ first native flow.
 On **Factory images**, each custom factory card has a trash button. **Move to
 Trash** moves the factory and its import record to the macOS Trash together, so
 it can be restored. A factory used by a VM can't be moved; its card lists those
-VMs. The official factory and the Lean foundation card can't be removed.
+VMs. The official factory can't be removed.
 
 Each build keeps its output (about 3 GB for a 20 GiB factory) after its factory
 is added to the library. Under **Build history**, **Remove** moves one finished,

@@ -83,7 +83,7 @@ import SwiftUI
                 let data = try JSONSerialization.data(withJSONObject: ["kind": "custom", "name": "Custom fixture " + digit, "manifestSHA256": String(repeating: digit, count: 64), "diskSHA256": String(repeating: "c", count: 64)])
                 model.builtFactoryAvailable(try JSONDecoder().decode(FactoryIdentity.self, from: data))
             }
-            try SetupScreenAcceptance.until { narrowDriver.state("factory", "cards") == "4" }
+            try SetupScreenAcceptance.until { narrowDriver.state("factory", "cards") == "3" }
             try check(narrowDriver.state("factory", "cardsFit") == "true", suffix + "-narrow-library-cards-fit")
             try check((Int(narrowDriver.state("factory", "minCardWidth")) ?? 0) >= 280, suffix + "-narrow-library-card-width")
             try capture(narrow, output.appendingPathComponent("factory-library-narrow-" + suffix + ".png"))

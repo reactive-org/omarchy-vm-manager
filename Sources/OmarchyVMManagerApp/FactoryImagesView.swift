@@ -52,7 +52,6 @@ struct FactoryImagesView: View {
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)], spacing: 16) {
                     factoryCard(title: "Try Omarchy", subtitle: "Official factory", icon: "opticaldisc", description: "Omarchy’s standard desktop and application collection, ready to make your own.", status: "Downloads when a VM first starts", action: "Use for new VM", source: model.officialFactorySource) { use(.official) }
-                    factoryCard(title: "Lean Omarchy", subtitle: "Reviewed lean foundation", icon: "square.3.layers.3d", description: "The essential Omarchy desktop, native Mac integration, Git, Python and build tools. Choose additional apps per VM.", status: "Build once, reuse for new VMs", action: "Build lean factory…", disabled: !builder.service.enabled || builder.jobs.contains { $0.active || $0.cleanupRequired }) { builder.showingBuild = true }
                     ForEach(model.factories.filter { $0.kind == .custom }, id: \.selector) { factory in
                         let users = model.guestsUsing(factory)
                         let deleting = deletingSelector == factory.selector
