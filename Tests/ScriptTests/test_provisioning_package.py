@@ -28,7 +28,7 @@ class ProvisioningPackageTests(unittest.TestCase):
 
     def test_source_export_pin_and_generated_swift_match(self):
         raw, lock = package.read_lock()
-        self.assertEqual(lock["revision"], "6e0dc5e1e727c2ba4ff8c81cd5cbace962e5e3c0")
+        self.assertEqual(lock["revision"], "ea73f93a07e6be42ad76cc32787ad8c05c109783")
         # The merged dev-vm commit already contains every former integration patch.
         self.assertEqual(lock["integrationPatches"], [])
         self.assertEqual(lock["baseFiles"], lock["files"])

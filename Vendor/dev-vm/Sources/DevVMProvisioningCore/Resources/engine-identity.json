@@ -82,7 +82,7 @@
     "Sources/DevVMProvisioningCore/Resources/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
     "Sources/DevVMProvisioningCore/Resources/catalogue.schema.json": "234128f6847d0b5b428d5b063261d4aa6f50129c13846d41d10812783b787ea6",
     "Sources/DevVMProvisioningCore/Resources/selection.schema.json": "351a0754a2b9091a806e1e1237485cfd251e82e018610f0e1831ba3a049d17c9",
-    "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "73f2d3e03fb574798674e7a37b12c6c380b5aa3a6b327ab4d486ef3f51468150",
+    "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "f032d184381018759b6aa8b06aa4291e825fee75732c076ccf0ee314225b3f48",
     "Sources/DevVMProvisioningCore/SelectionSchema.swift": "e46a8ee4a2f81c17c3f33cb2ff0e7cf9ad5f6e70d32c79fc5021976c32eca29d",
     "Sources/DevVMProvisioningCore/SetupManifest.swift": "15f72e2b89c520077d37308296b7cca67b0af005905b111bca35276fa37cb419",
     "Sources/DevVMProvisioningCore/SetupPlanner.swift": "c063236224497432df5aec37cfdeb522b492854946a44d09bec292e3ecaa2bf9",

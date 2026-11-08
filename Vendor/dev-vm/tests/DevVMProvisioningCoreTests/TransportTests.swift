@@ -188,6 +188,10 @@ private func jsonFile(_ url: URL) throws -> [String: ManifestValue] { try PlainD
     let setupVars = try jsonFile(URL(fileURLWithPath: String(repository.arguments[repository.arguments.firstIndex(of: "--extra-vars")! + 1].dropFirst())))
     #expect(setupVars["omarchy_setup_vars"] == .object(["secret": .string("synthetic-secret-never-log")]))
     let fixed = try jsonFile(URL(fileURLWithPath: String(repository.arguments.last!.dropFirst())))
+    for playbook in [features, repository] {
+        #expect(playbook.environment["ANSIBLE_STDOUT_CALLBACK"] == "default")
+        #expect(playbook.environment["ANSIBLE_CALLBACK_RESULT_FORMAT"] == "yaml")
+    }
     // Connection extra-vars take precedence over ansible.cfg. Check the effective layer.
     #expect(fixed["ansible_ssh_args"]?.string?.contains("-o ControlMaster=no -o ControlPersist=no -o ControlPath=none") == true)
     #expect(fixed["ansible_become"] == nil)

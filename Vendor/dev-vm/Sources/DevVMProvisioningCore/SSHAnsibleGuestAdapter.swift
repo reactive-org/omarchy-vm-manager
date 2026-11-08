@@ -135,7 +135,9 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
          "LANG": "en_US.UTF-8", "LC_CTYPE": "en_US.UTF-8", "ANSIBLE_CONFIG": workspace.url("ansible.cfg").path,
          "ANSIBLE_LOCAL_TEMP": workspace.url("tmp").path, "ANSIBLE_COLLECTIONS_PATH": workspace.url("collections").path,
          "ANSIBLE_LIBRARY": workspace.url("plugins").path, "ANSIBLE_CALLBACK_PLUGINS": workspace.url("plugins").path,
-         "ANSIBLE_STDOUT_CALLBACK": "default", "ANSIBLE_LOAD_CALLBACK_PLUGINS": "False",
+         // The built-in callback's YAML result format (pretty-printed by default) replaces the
+         // deprecated community.general.yaml callback and needs no collection.
+         "ANSIBLE_STDOUT_CALLBACK": "default", "ANSIBLE_CALLBACK_RESULT_FORMAT": "yaml", "ANSIBLE_LOAD_CALLBACK_PLUGINS": "False",
          "ANSIBLE_HOST_KEY_CHECKING": "True", "ANSIBLE_FORCE_COLOR": "1"]
     }
     private func run(_ command: GuestCommand, purpose: ProvisioningProcessPurpose, executable: ProvisioningExecutablePin,
