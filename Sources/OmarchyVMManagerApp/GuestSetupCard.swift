@@ -40,7 +40,7 @@ struct SetupCardState: Equatable {
                          note: "The run stopped before temporary admin access was confirmed removed. Recovery removes it; nothing is re-installed and the guest isn’t restarted.")
         case .sudoPrompt?:
             return .init(kind: .needsYou, run: "Waiting for authorization",
-                         note: "Omarchy is asking to enable passwordless sudo in the setup terminal. Open View output to respond.", progress: 0)
+                         note: ProvisioningSudoGrant.promptNote + " Open View output to respond.", progress: 0)
         case .restartReview?:
             return .init(kind: .needsYou, run: "Restart needs your review", note: "Software is installed. Review the restart that finishes setup.")
         case .checkReview?:

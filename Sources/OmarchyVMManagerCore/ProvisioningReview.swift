@@ -16,14 +16,18 @@ public struct ProvisioningSetupSource: Codable, Equatable, Sendable, CustomStrin
     /// nil preserves a local manifest; native controls pass an explicit choice.
     public let trimOptionalApps: Bool?
     public let appearance: ProvisioningAppearanceSelection?
-    public init(preset: String, profiles: [String]? = nil, features: ProvisioningFeatureSelection? = nil, trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil) {
-        self.preset = preset; directory = nil; manifest = nil; bundled = nil; self.profiles = profiles; self.features = features; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance
+    /// true asks Omarchy once for its "permanent" grant, false for renewed
+    /// 60-minute grants; setup revokes either at cleanup. nil preserves the
+    /// manifest's `vm.sudo_grant`; native controls pass an explicit choice.
+    public let permanentSudoGrant: Bool?
+    public init(preset: String, profiles: [String]? = nil, features: ProvisioningFeatureSelection? = nil, trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil, permanentSudoGrant: Bool? = nil) {
+        self.preset = preset; directory = nil; manifest = nil; bundled = nil; self.profiles = profiles; self.features = features; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance; self.permanentSudoGrant = permanentSudoGrant
     }
-    public init(directory: String, manifest: String? = nil, profiles: [String]? = nil, features: ProvisioningFeatureSelection? = nil, trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil) {
-        preset = nil; self.directory = directory; self.manifest = manifest; bundled = nil; self.profiles = profiles; self.features = features; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance
+    public init(directory: String, manifest: String? = nil, profiles: [String]? = nil, features: ProvisioningFeatureSelection? = nil, trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil, permanentSudoGrant: Bool? = nil) {
+        preset = nil; self.directory = directory; self.manifest = manifest; bundled = nil; self.profiles = profiles; self.features = features; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance; self.permanentSudoGrant = permanentSudoGrant
     }
-    public init(profiles: [String], trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil) {
-        preset = nil; directory = nil; manifest = nil; bundled = true; self.profiles = profiles; features = nil; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance
+    public init(profiles: [String], trimOptionalApps: Bool? = nil, appearance: ProvisioningAppearanceSelection? = nil, permanentSudoGrant: Bool? = nil) {
+        preset = nil; directory = nil; manifest = nil; bundled = true; self.profiles = profiles; features = nil; self.trimOptionalApps = trimOptionalApps; self.appearance = appearance; self.permanentSudoGrant = permanentSudoGrant
     }
     public var description: String { "ProvisioningSetupSource(redacted)" }
     public var debugDescription: String { description }

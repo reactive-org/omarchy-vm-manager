@@ -74,23 +74,31 @@ public actor ProvisioningSequencer {
             try verifyPlan()
             transition(.staging)
             try await checked(.stagePayload)
+            // A timed grant can lapse or be revoked by an omarchy-settings upgrade,
+            // so it is renewed before each later step that needs root.
+            let timed = request.mode == .apply && request.plan.timedSudoGrant
             if request.mode == .apply {
                 transition(.authorizing)
                 try await checked(.resetGrant)
                 try await checked(.clearAuthenticationCache)
-                try await checked(.requestPersistentGrant)
+                try await checked(timed ? .requestTemporaryGrant : .requestPersistentGrant)
                 try await checked(.verifyGrantActive)
                 transition(.updating)
                 try await checked(.updateSystem)
                 transition(.applying)
+                if timed { try await checked(.renewTemporaryGrant) }
                 if !(request.plan.document.object?["vm"]?.object?["packages"]?.array ?? []).isEmpty || request.plan.document.object?["vm"]?.object?["lean_developer"] == .bool(true) {
                     try await checked(.installManifestPackages)
                 }
             } else { transition(.checking) }
             if !(request.plan.document.object?["features"]?.object?["features"]?.array ?? []).isEmpty {
+                if timed { try await checked(.renewTemporaryGrant) }
                 try await checked(.configureFeatures)
             }
-            if request.dockerOptIn { try await checked(.configureDockerOwnerAccess) }
+            if request.dockerOptIn {
+                if timed { try await checked(.renewTemporaryGrant) }
+                try await checked(.configureDockerOwnerAccess)
+            }
             try await checked(.configureRepository)
             try checkpoint()
         } catch { primary = failure(error) }
@@ -164,7 +172,7 @@ public actor ProvisioningSequencer {
         // its acknowledgement is lost (including initial staging/reset).
         switch operation {
         case .stagePayload: payloadRisk = true; workRisk = true
-        case .resetGrant, .requestPersistentGrant: grantRisk = true; workRisk = true
+        case .resetGrant, .requestPersistentGrant, .requestTemporaryGrant, .renewTemporaryGrant: grantRisk = true; workRisk = true
         case .updateSystem, .installManifestPackages, .configureFeatures, .configureDockerOwnerAccess,
              .configureRepository, .verifyOwnerDockerAccess: workRisk = true
         default: break

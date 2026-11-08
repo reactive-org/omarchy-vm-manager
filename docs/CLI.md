@@ -269,7 +269,13 @@ sandbox. Inspect and trust the source independently of general Apply approval.
 For selected custom tasks, add `--trust-tasks TASK_TRUST_DIGEST` using the exact
 `applyReview.taskTrustIdentity`. It binds the reviewed request, all frozen input
 hashes and selected tasks; `true`, a stale digest or a general approval is refused.
-`--ack-sudo` separately acknowledges a persistent grant until cleanup is confirmed.
+`--ack-sudo` separately acknowledges Omarchy's passwordless sudo grant until cleanup
+is confirmed. The plan says which grant is requested: `--sudo-grant timed` on
+`preview` or `prepare-create` asks Omarchy for 60 minutes and renews it while
+setup runs; `--sudo-grant permanent` asks once for what Omarchy calls permanent.
+Cleanup turns either off. Omitting it keeps the setup's own `vm.sudo_grant`
+(permanent unless the manifest says otherwise). The app's New VM, Change setup and
+Guest defaults always choose explicitly, with timed as the default.
 Add `--ack-docker-root` only for the separately reviewed Docker root-equivalent
 access. No flag is inferred and no password/keystroke automation flag is accepted.
 
@@ -345,6 +351,7 @@ The uninstalled worktree now accepts common built-ins through repeated distinct
 and `prepare-create`. Supported names are `workstation`, `cli`, `vcs`, `editors`,
 `docker`, `build`, `toolchain`, `languages`, `browsers`, `databases`, `api`, `quality`.
 Omitting a choice preserves the source; disabling does not uninstall packages.
+`--sudo-grant timed|permanent` works the same way for the setup's sudo grant.
 Advanced profiles/catalogues/options remain in the source manifest. Resolution is
 still performed by the pinned shared planner, which may reject dependencies or
 conflicts. The manager writes a private generated manifest and preserves the

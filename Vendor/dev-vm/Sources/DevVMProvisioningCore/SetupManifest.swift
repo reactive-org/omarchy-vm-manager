@@ -82,9 +82,12 @@ public struct VMDeclaration: Sendable, Equatable {
     public let diskGiB: Int64
     public let packages: [String]
     public let leanDeveloper: Bool
+    /// `sudo_grant: timed` asks Omarchy for 60-minute grants renewed during
+    /// setup; absent or `permanent` keeps the single permanent grant.
+    public let timedSudoGrant: Bool
 
     fileprivate init(value: ManifestValue) throws {
-        let vm = try fields(value, allowed: ["name", "factory", "cpus", "memory_gib", "disk_gib", "packages", "lean_developer"])
+        let vm = try fields(value, allowed: ["name", "factory", "cpus", "memory_gib", "disk_gib", "packages", "lean_developer", "sudo_grant"])
         name = try string(vm["name"] ?? .string("Dev Omarchy"))
         guard boundedText(name, bytes: 128) else { throw ManifestError(.schema) }
         if let v = vm["factory"] {
@@ -97,6 +100,11 @@ public struct VMDeclaration: Sendable, Equatable {
         diskGiB = try integer(vm["disk_gib"] ?? .integer(64), range: 64...8192)
         guard case .bool(let lean) = vm["lean_developer"] ?? .bool(false) else { throw ManifestError(.schema) }
         leanDeveloper = lean
+        switch vm["sudo_grant"] ?? .string("permanent") {
+        case .string("permanent"): timedSudoGrant = false
+        case .string("timed"): timedSudoGrant = true
+        default: throw ManifestError(.schema)
+        }
         packages = try strings(vm["packages"] ?? .array([]))
         var seen = Set<String>()
         for package in packages {

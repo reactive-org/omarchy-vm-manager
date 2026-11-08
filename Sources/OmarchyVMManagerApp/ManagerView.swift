@@ -658,6 +658,8 @@ struct VMEditor: View {
         _selectedPublicKey = State(initialValue: profile == nil && model.ownerDefaults?.isConfigured == true ? model.ownerDefaults?.sshPublicKey : nil)
         _sshEnabled = State(initialValue: profile.map { $0.ssh != nil } ?? true)
         _factory = State(initialValue: initialFactory ?? "official")
+        var draft = NewVMSetupDraft(); draft.permanentSudoGrant = model.setupDefaults.permanentSudoGrant
+        _setupDraft = State(initialValue: draft)
     }
     private var saveBlocker: String? {
         if saving { return profile == nil ? (setupSource == nil ? "Creating VM…" : "Preparing setup and creating VM…") : "Saving changes…" }

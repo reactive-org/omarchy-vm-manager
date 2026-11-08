@@ -50,6 +50,8 @@ struct NewVMSetupDraft: Equatable {
     var folder: URL?
     var profiles: Set<String> = ["developer"]
     var trimOptionalApps = false
+    /// Starts from Guest defaults when New VM opens.
+    var permanentSudoGrant = false
     var appearance = ProvisioningAppearanceDraft()
 
     /// A layout only applies when setup runs, so choosing one turns setup on with the
@@ -83,9 +85,9 @@ struct NewVMSetupDraft: Equatable {
         guard source != "none", blocker(planning: planning) == nil else { return nil }
         let trim = factory == "official" && trimOptionalApps
         if source == "local", let folder {
-            return .init(directory: folder.path, profiles: profiles.isEmpty ? nil : profiles.sorted(), trimOptionalApps: trim, appearance: appearance.selection)
+            return .init(directory: folder.path, profiles: profiles.isEmpty ? nil : profiles.sorted(), trimOptionalApps: trim, appearance: appearance.selection, permanentSudoGrant: permanentSudoGrant)
         }
-        return .init(profiles: profiles.sorted(), trimOptionalApps: trim, appearance: appearance.selection)
+        return .init(profiles: profiles.sorted(), trimOptionalApps: trim, appearance: appearance.selection, permanentSudoGrant: permanentSudoGrant)
     }
 }
 
@@ -161,6 +163,7 @@ struct NewVMSetupSelectionView: View {
                 }
                 ProvisioningProfileSelectionView(selection: $draft.profiles, localSource: draft.source == "local")
                 if factory == "official" { ProvisioningTrimSelectionView(selection: $draft.trimOptionalApps) }
+                ProvisioningSudoGrantSelectionView(permanent: $draft.permanentSudoGrant)
                 ProvisioningThemeSelectionView(draft: $draft.appearance, localSource: draft.source == "local")
                 if draft.appearance.layoutFailure == nil, let failure = draft.appearance.failure {
                     Label(failure, systemImage: "exclamationmark.circle.fill").font(Theme.note).foregroundStyle(Theme.amber)

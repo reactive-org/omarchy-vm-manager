@@ -83,7 +83,8 @@ func jsonDoesNotFallback(source: String) {
 @Test(arguments: [
     "extra: true", "vm: {extra: true}", "vm: {cpus: true}", "vm: {cpus: 4.0}", "vm: {cpus: 3}",
     "vm: {memory_gib: 2}", "vm: {disk_gib: 32}", "vm: {name: ''}", "vm: {name: \"secret\\nname\"}",
-    "vm: {lean_developer: 1}", "vm: {packages: ['pkg:bad;command']}",
+    "vm: {lean_developer: 1}", "vm: {sudo_grant: forever}", "vm: {sudo_grant: true}",
+    "vm: {packages: ['pkg:bad;command']}",
     "vm: {packages: ['pkg:foo', foo]}", "vm: {factory: ''}", "vars: []", "tasks: command",
     "setup: {unknown: true}", "setup: {schema_version: true}", "setup: {profiles: [missing]}",
     "setup: {features: {enable: [cli, builtin.cli]}}", "setup: {features: {enable: [missing]}}",

@@ -9,10 +9,11 @@ private final class SequenceFixture {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let target: GuestBinding
     let plan: SetupPlan
-    init(docker: Bool = false, tasks: Bool = false) throws {
+    init(docker: Bool = false, tasks: Bool = false, sudoGrant: String? = nil) throws {
         target = try GuestBinding(vmID: UUID(), sessionID: UUID(), owner: "synthetic-owner", ownerUID: 1000, hostKeyDigest: hostPin)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
-        let manifest = "schema_version: 1\nid: fixture\nvm: {packages: ['pkg:jq']}\nsetup:\n  features: {enable: [cli\(docker ? ", docker" : "")]}\n" +
+        let grant = sudoGrant.map { ", sudo_grant: \($0)" } ?? ""
+        let manifest = "schema_version: 1\nid: fixture\nvm: {packages: ['pkg:jq']\(grant)}\nsetup:\n  features: {enable: [cli\(docker ? ", docker" : "")]}\n" +
             (docker ? "  options: {docker: {access: sudoless}}\n" : "") +
             (tasks ? "tasks: [{name: custom, file: task.yml}]\n" : "") +
             "vars: {synthetic: synthetic-secret-never-log}\n"
@@ -119,6 +120,48 @@ private actor FakeGuest: ProvisioningGuestAdapter {
         if command.plan == nil { #expect(command.timeoutSeconds == 30) }
         #expect(result.events.contains { $0.commandID == command.id && $0.kind == .completed })
     }
+}
+
+@Test func timedGrantRenewsBeforeEachLaterRootStep() async throws {
+    let fixture = try SequenceFixture(docker: true, sudoGrant: "timed"), request = try fixture.request(), guest = FakeGuest()
+    #expect(fixture.plan.timedSudoGrant)
+    let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
+    #expect(result.outcome == .appliedRestartRequired); #expect(result.recovery == nil)
+    let operations = await guest.operations()
+    #expect(Array(operations.prefix(12)) == [.stagePayload, .resetGrant, .clearAuthenticationCache, .requestTemporaryGrant,
+        .verifyGrantActive, .updateSystem, .renewTemporaryGrant, .installManifestPackages, .renewTemporaryGrant,
+        .configureFeatures, .renewTemporaryGrant, .configureDockerOwnerAccess])
+    #expect(!operations.contains(.requestPersistentGrant))
+    #expect(try #require(operations.lastIndex(of: .renewTemporaryGrant)) < #require(operations.firstIndex(of: .verifyGrantInactive)))
+    for command in await guest.commands where command.operation == .renewTemporaryGrant {
+        #expect(command.inputLeaseID == request.inputLeaseID)
+    }
+}
+
+@Test func permanentGrantIsTheDefaultAndKeepsPlanIdentity() throws {
+    let absent = try SequenceFixture(), explicit = try SequenceFixture(sudoGrant: "permanent"), timed = try SequenceFixture(sudoGrant: "timed")
+    #expect(!absent.plan.timedSudoGrant && !explicit.plan.timedSudoGrant)
+    #expect(absent.plan.document.object?["vm"]?.object?["sudo_grant"] == nil)
+    // Separate fixture roots have different input digests, so compare the planned VM sections.
+    let vm = { (fixture: SequenceFixture) in fixture.plan.document.object?["vm"] }
+    #expect(vm(absent) == vm(explicit) && vm(timed)?.object?["sudo_grant"] == .string("timed"))
+}
+
+@Test func failedTimedRenewalStopsSetupAndStillRevokes() async throws {
+    let fixture = try SequenceFixture(sudoGrant: "timed"), request = try fixture.request()
+    let guest = FakeGuest([.renewTemporaryGrant: [.fail(.adapterFailed)]])
+    let result = await ProvisioningSequencer().run(request, approval: approval(request), adapter: guest)
+    #expect(result.outcome == .failed && result.primaryFailure == .adapterFailed && result.recovery == nil)
+    let operations = await guest.operations()
+    #expect(!operations.contains(.installManifestPackages) && !operations.contains(.configureFeatures))
+    #expect(operations.suffix(4) == [.revokeGrant, .clearAuthenticationCache, .verifyGrantInactive, .removePayload])
+}
+
+@Test func timedCheckRequestsNoGrant() async throws {
+    let fixture = try SequenceFixture(sudoGrant: "timed"), request = try fixture.request(mode: .check), guest = FakeGuest()
+    _ = await ProvisioningSequencer().run(request, approval: approval(request, grant: false), adapter: guest)
+    let operations = await guest.operations()
+    #expect(!operations.contains(.requestTemporaryGrant) && !operations.contains(.renewTemporaryGrant))
 }
 
 @Test func dockerChecksAfterRevocationAndOnlyRequestsRestart() async throws {
@@ -393,6 +436,13 @@ func failedUpdateStopsFeatureInstallsAndRetainsCleanupProof(failure: SequencingF
     let grant = try #require(GuestOperation.requestPersistentGrant.nativeInvocation)
     #expect(grant.arguments == ["bash", "-lc", "omarchy sudo passwordless permanent"])
     #expect(grant.requiresInteractiveTerminal && !grant.acceptsNonterminalInput)
+    let timed = try #require(GuestOperation.requestTemporaryGrant.nativeInvocation)
+    #expect(timed.arguments == ["bash", "-lc", "omarchy sudo passwordless 60"])
+    #expect(timed.requiresInteractiveTerminal && !timed.acceptsNonterminalInput)
+    let renewed = try #require(GuestOperation.renewTemporaryGrant.nativeInvocation)
+    #expect(renewed.arguments == ["bash", "-lc", "omarchy sudo passwordless 60 && omarchy sudo passwordless --active && sudo -kn true"])
+    #expect(renewed.requiresInteractiveTerminal && !renewed.acceptsNonterminalInput)
+    #expect(NativeGuestInvocation.contractVersion == 3)
     let revoked = try #require(GuestOperation.verifyGrantInactive.nativeInvocation)
     #expect(revoked.arguments == ["bash", "-lc", "omarchy sudo passwordless --disable && sudo -K && if omarchy sudo passwordless --active; then exit 1; else test \"$?\" -eq 1; fi"])
     #expect(!revoked.requiresInteractiveTerminal && !revoked.acceptsNonterminalInput)
@@ -412,6 +462,8 @@ func failedUpdateStopsFeatureInstallsAndRetainsCleanupProof(failure: SequencingF
     // Omarchy's passwordless-sudo and Docker owner prompts may wait for the
     // owner, so they get the same deadline as other setup operations.
     #expect(GuestOperation.requestPersistentGrant.bodyTimeoutSeconds == 3600)
+    #expect(GuestOperation.requestTemporaryGrant.bodyTimeoutSeconds == 3600)
+    #expect(GuestOperation.renewTemporaryGrant.bodyTimeoutSeconds == 3600)
     #expect(GuestOperation.configureDockerOwnerAccess.bodyTimeoutSeconds == 3600)
     #expect(GuestOperation.updateSystem.bodyTimeoutSeconds == 3600)
     #expect(GuestOperation.verifyIdentity.bodyTimeoutSeconds == 10)

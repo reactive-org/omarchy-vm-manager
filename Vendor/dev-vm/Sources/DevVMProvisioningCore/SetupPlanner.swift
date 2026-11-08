@@ -6,6 +6,8 @@ public struct SetupPlan: Sendable, Encodable {
     public let snapshot: SourceSnapshot
     public let manifestPath: String
     public var identity: String { document.object!["plan_digest"]!.string! }
+    /// Setup asks Omarchy for renewed 60-minute grants instead of one permanent grant.
+    public var timedSudoGrant: Bool { document.object?["vm"]?.object?["sudo_grant"] == .string("timed") }
     public func encode(to encoder: any Encoder) throws { try document.encode(to: encoder) }
     public func verify(in repository: URL) throws {
         try snapshot.verify(in: repository)
@@ -65,6 +67,8 @@ public enum SetupPlanner {
             "memory_gib": .integer(manifest.vm.memoryGiB), "disk_gib": .integer(manifest.vm.diskGiB),
             "packages": .array(manifest.vm.packages.map(ManifestValue.string)), "lean_developer": .bool(manifest.vm.leanDeveloper)]
         if let factory = manifest.vm.factory { vm["factory"] = .string(factory) }
+        // Omitted when permanent, so plans that predate the field keep their identity.
+        if manifest.vm.timedSudoGrant { vm["sudo_grant"] = .string("timed") }
         let inputs = snapshot.receipts.map { ManifestValue.object(["path": .string($0.path), "sha256": .string($0.sha256), "mode": .integer(Int64($0.mode))]) }
         let removals = manifest.vm.leanDeveloper ? try LeanDeveloperPolicy.candidates(keeping: LeanDeveloperPolicy.keep(vmPackages: manifest.vm.packages, features: features.document)) : []
         let restart = features.options["docker"]?.object?["access"] == .string("sudoless")

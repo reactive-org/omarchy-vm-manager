@@ -1,5 +1,41 @@
 # Omarchy VM Manager — implementation intent
 
+## Setup's passwordless sudo: timed by default, permanent opt-in — 8 November 2026
+
+**DESIGN DECISION — issue #20, user direction:** Omarchy's full-screen prompt for
+`omarchy sudo passwordless permanent` says the grant lasts forever and survives
+reboots. That reads far worse than it is, because setup turns the grant off and
+verifies it at cleanup. The prompt belongs to Omarchy and can't be changed. Setup
+therefore asks for Omarchy's timed grant by default (`omarchy sudo passwordless 60`,
+renewed before each later step that needs root). **Ask for sudo once** (Guest
+defaults, New VM and Change setup; CLI `--sudo-grant permanent|timed`) restores
+the single permanent grant. The choice is part of the reviewed plan
+(`vm.sudo_grant`, dev-vm#17), so the review digest binds it. Cleanup, consent and
+`--ack-sudo` are unchanged. The manager's notes say "Setup turns it off when it
+finishes" while the prompt is up, and the review step names the grant that will
+be requested. This supersedes the plan's earlier "do not describe it as a
+60-minute grant", which still holds for the permanent option.
+
+**PRIVATE COUPLING — Omarchy `bin/omarchy-sudo-passwordless`, identical at e4fffc6,
+a948d8a (4.5.0) and edge 9044b7e:** a timed grant is a `NOTAFTER` sudoers rule plus
+an expiry timer, and a boot-time tmpfiles rule removes it. A renewal while it is
+active needs no confirmation or password. An `omarchy-settings` upgrade revokes
+timed grants (but not permanent ones) before its transaction, so an update can
+make the rest of `omarchy update -y` ask for the guest password and the renewal
+show Omarchy's prompt again. A timed grant refuses to enable without Omarchy's boot
+cleanup, so older images fail before setup changes anything.
+
+**VERIFIED — no-VM checks only:** dev-vm and manager unit and acceptance tests
+(see the PR). The manager shows **Needs you** only for the initial grant request,
+not for renewals, which normally finish at once.
+
+**TO PROVE:** on a real disposable Dev guest, for each option: how many prompts
+appear, Omarchy's wording, silent renewals, revocation and the inactive check at
+cleanup, the timed rule's removal at restart, and the settings-upgrade re-prompt
+(which the manager doesn't flag as **Needs you**).
+The `example-vm-07-needs-you` user-guide screenshot still shows the permanent
+prompt and needs recapturing after such a run.
+
 ## CI toolchain moves to Xcode 27 — 7 November 2026
 
 **USER DIRECTION / DESIGN DECISION:** CI's macOS test and branch-release jobs move
