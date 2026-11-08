@@ -11,7 +11,7 @@ import SwiftUI
     enum Command {
         case source(String), profiles([String]), folder(URL), trim(Bool), factory(String), appearance(ProvisioningAppearanceSelection?), appearanceExpanded(Bool), themeChoice(ProvisioningThemeChoice), themeRepository(String), layoutExample(ProvisioningLayoutExampleID?)
         case ownerDefaults(Bool), name(String), resources(Int, Int, Int), preview, save, lookup(UUID), inspect, prepareApply
-        case grant(Bool, Bool, Bool), submit, search(String), requestCancel, confirmCancel, section(String), runAgain
+        case grant(Bool, Bool, Bool), submit, search(String), requestCancel, confirmCancel, section(String), runAgain, discard, reload
     }
     struct Scope { let action: (Command) -> Void; let snapshot: () -> [String: String] }
     var scopes: [String: Scope] = [:]
@@ -35,6 +35,7 @@ enum AcceptanceFailure: Error { case check }
     /// When set, apply review needs only temporary admin access (no Docker or task trust).
     var adminOnlyReview = false
     var lastConsent: ProvisioningApplyConsent?
+    var lastApplied: UUID?
     var reviewSession: UUID?
     private var waiter: CheckedContinuation<Void, Never>?
     var waiting: Bool { waiter != nil }
@@ -55,11 +56,11 @@ enum AcceptanceFailure: Error { case check }
         let appearance = source.appearance
         let theme = appearance?.theme.map { ["random", "most-starred"].contains($0) ? "https://github.com/example/omarchy-fixture-theme" : $0 } ?? ""
         let workstation: [String: Any] = ["theme": theme, "layout": appearance?.layoutFile == nil && appearance?.layoutExample == nil ? "" : ".omarchy-manager-layout.lua", "remove_layout": appearance?.removeLayout == true]
-        var proposal: [String: Any] = ["schema_version": 1, "id": "synthetic-ui-only", "plan_digest": plan, "input_digest": input, "execution_available": false, "vm": ["name": "Source proposal only", "cpus": 8, "memory_gib": 16, "disk_gib": 256, "lean_developer": source.trimOptionalApps == true], "features": ["profiles": source.profiles ?? source.preset.map { [$0] } ?? [], "features": source.features?.enable.map(\.rawValue) ?? ["cli"], "options": ["workstation": workstation]], "requirements": ["update_policy": "Update Omarchy and system packages before applying setup", "system_update_required": true, "system_restart_required": true, "removals": [], "desktop_restart_required": true], "tasks": [["name": "synthetic", "file": "fixture-task.yml"]]]
+        var proposal: [String: Any] = ["schema_version": 1, "id": "synthetic-ui-only", "plan_digest": plan, "input_digest": input, "execution_available": false, "vm": ["name": "Source proposal only", "cpus": 8, "memory_gib": 16, "disk_gib": 256, "lean_developer": source.trimOptionalApps == true], "features": ["profiles": source.profiles ?? source.preset.map { [$0] } ?? [], "features": source.features?.enable.map(\.rawValue) ?? ["cli"], "options": ["workstation": workstation]], "requirements": ["update_policy": "Update Omarchy and system packages before applying setup", "system_update_required": true, "system_restart_required": true, "removals": [], "desktop_restart_required": !adminOnlyReview], "tasks": adminOnlyReview ? [] : [["name": "synthetic", "file": "fixture-task.yml"]]]
         if let id = appearance?.layoutExample, let example = try BundledProvisioning.layoutExamples().first(where: { $0.id == id }) {
             proposal["inputs"] = [["path": ".omarchy-manager-layout.lua", "sha256": example.sourceSHA256, "mode": 384]]
         }
-        var fields: [String: Any] = ["id": id.uuidString, "planDigest": plan, "inputDigest": input, "engineDigest": engine, "proposal": try JSONSerialization.data(withJSONObject: proposal, options: [.sortedKeys]).base64EncodedString(), "tasks": [["name": "synthetic", "file": "fixture-task.yml", "sha256": Self.hash(task)]], "restartRequired": true]
+        var fields: [String: Any] = ["id": id.uuidString, "planDigest": plan, "inputDigest": input, "engineDigest": engine, "proposal": try JSONSerialization.data(withJSONObject: proposal, options: [.sortedKeys]).base64EncodedString(), "tasks": adminOnlyReview ? [] : [["name": "synthetic", "file": "fixture-task.yml", "sha256": Self.hash(task)]], "restartRequired": true]
         if let target { fields["vmID"] = target.uuidString }
         else { fields["reviewIdentity"] = Self.hash(Data((id.uuidString + input).utf8)) }
         return fields
@@ -98,7 +99,7 @@ enum AcceptanceFailure: Error { case check }
         let wider = !adminOnlyReview
         guard executionEnabled, previews[id] != nil, consent.reviewIdentity == String(repeating: "c", count: 64), consent.persistentGrantAcknowledged,
               consent.dockerRootAccessAcknowledged == wider, consent.taskTrustIdentity == (wider ? String(repeating: "d", count: 64) : nil) else { throw ProvisioningReviewFailure.consentRequired }
-        submissions += 1; return try row(id, stage: "running")
+        submissions += 1; lastApplied = id; return try row(id, stage: "running")
     }
     func save(_ config: GuestConfigurationPatch, consent: ProvisioningCreationConsent?) async throws -> VMProfile {
         savedCalls += 1; savedConfigurations.append(config)
@@ -117,8 +118,12 @@ enum AcceptanceFailure: Error { case check }
         fields["proposal"] = review.proposal.base64EncodedString(); previews[review.id] = try value(fields)
         return profile
     }
-    func row(_ id: UUID, stage: String, cleanupRequired: Bool = false, failure: String? = nil) throws -> ProvisioningWorkflowSnapshot {
-        var fields: [String: Any] = ["id": id.uuidString, "vmID": vmID.uuidString, "originalSessionID": UUID().uuidString, "sequence": 1, "stage": stage, "cleanupRequired": cleanupRequired, "applyJobID": id.uuidString]
+    func row(_ id: UUID, stage: String, cleanupRequired: Bool = false, failure: String? = nil, ran: Bool = true,
+             restartID: UUID? = nil, newSessionID: UUID? = nil) throws -> ProvisioningWorkflowSnapshot {
+        var fields: [String: Any] = ["id": id.uuidString, "vmID": vmID.uuidString, "originalSessionID": UUID().uuidString, "sequence": 1, "stage": stage, "cleanupRequired": cleanupRequired]
+        if ran { fields["applyJobID"] = id.uuidString }
+        if let restartID { fields["restartID"] = restartID.uuidString }
+        if let newSessionID { fields["newSessionID"] = newSessionID.uuidString }
         if let failure { fields["failure"] = failure }
         return try value(fields)
     }
@@ -126,7 +131,12 @@ enum AcceptanceFailure: Error { case check }
     var latestFixture: ProvisioningLatestSetup?
     var retries = 0
     var retryEngineChanged = false
-    func latestSetup(vmID: UUID) async -> ProvisioningLatestSetup? { vmID == self.vmID ? latestFixture : nil }
+    func latestSetup(vmID: UUID) async -> ProvisioningLatestSetup? {
+        if vmID == self.vmID, let latestFixture { return latestFixture }
+        // A guest created here with setup: its creation plan, not run yet.
+        if let entry = saved.first(where: { $0.value.1.id == vmID }) { return .init(planID: entry.key, workflow: nil) }
+        return nil
+    }
     func prepareRetry(id: UUID, of previousID: UUID) async throws -> ProvisioningRetryPreview {
         guard let source = sources[previousID], previews[previousID] != nil, previews[id] == nil else { throw ProvisioningReviewFailure.unavailable }
         retries += 1

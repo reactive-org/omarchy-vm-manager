@@ -234,45 +234,24 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let retry = try model.snapshots.first(where: { $0.id == returned[2] }).unwrap()
             try check(retry.id != created.id && retry.profile.developerSetup?.reviewID != reviewID && model.configurationError == nil, suffix + "-changed-selection-gets-new-successful-attempt")
             host.scroll(bottom: true); tick(); try capture(host, "new-vm-resources-" + suffix + ".png")
+            // Change setup on the guest just created: its saved plan, not run yet. Execution is disabled here.
             let setupDriver = SetupUIAcceptanceDriver()
-            let setup = Host(ManagerView(model: model, acceptanceGuestID: created.id), driver: setupDriver, width: 1200, height: 960, dark: dark)
+            let createdNow = try model.snapshots.first(where: { $0.id == created.id }).unwrap()
+            let setup = Host(ChangeSetupView(model: model, snapshot: createdNow, close: {}, openOutput: {}), driver: setupDriver, width: 680, height: 820, dark: dark)
             defer { setup.close() }; tick()
-            try until { setupDriver.state("setup", "preview") == created.profile.developerSetup?.reviewID.uuidString }
-            try check(setupDriver.state("setup", "execution") == "false", suffix + "-product-surface-gate-disabled")
-            let preparations = service.preparations
-            try setupDriver.send("setup", .prepareApply); tick(); try check(service.preparations == preparations, suffix + "-disabled-prepare-never-delegates")
-            try setupDriver.send("setup", .inspect); try until { setupDriver.state("setup", "inspected") == "1" }
-            try check(setupDriver.state("setup", "taskBytes") == String(service.task.count), suffix + "-complete-chunked-task-inspection")
-            try capture(setup, "setup-handoff-" + suffix + ".png", screen: setupDriver.terminalScreen)
-            try setupDriver.send("setup", .source("local")); tick()
-            try check(setupDriver.state("setup", "preview").isEmpty && setupDriver.state("setup", "inspected") == "0", suffix + "-source-edit-clears-inspection")
-            try setupDriver.send("setup", .trim(true)); tick()
-            try until { setupDriver.scopes["appearance"] != nil }
-            try until { setupDriver.state("layout-cards", "count") == "7" }
-            try check(setupDriver.state("layout-cards", "cards").contains("setup-folder") && setupDriver.state("appearance", "card") == "setup-folder", suffix + "-local-cards-offer-setup-folder")
-            try setupDriver.send("setup", .appearance(.init(theme: "https://github.com/example/omarchy-fixture-theme", removeLayout: true))); tick()
-            try setupDriver.send("setup", .folder(output.appendingPathComponent("selected-source"))); try setupDriver.send("setup", .preview)
-            try until { !setupDriver.state("setup", "preview").isEmpty }
-            try check(service.sources.values.contains(where: { $0.directory?.hasSuffix("selected-source") == true }), suffix + "-explicit-local-source")
-            try check(service.sources.values.contains(where: { $0.directory?.hasSuffix("selected-source") == true && $0.profiles == nil }), suffix + "-local-profiles-inherited")
-            try check(setupDriver.state("setup", "trimAvailable") == "true" && service.sources.values.contains(where: { $0.directory?.hasSuffix("selected-source") == true && $0.trimOptionalApps == true }), suffix + "-existing-official-trim-forwarded")
-            setup.scroll(fraction: 0.45); tick(); try capture(setup, "setup-trim-" + suffix + ".png", screen: setupDriver.terminalScreen)
-            let localID = try UUID(uuidString: setupDriver.state("setup", "preview")).unwrap()
-            try check(service.sources[localID]?.appearance?.removeLayout == true && service.sources[localID]?.appearance?.theme?.hasPrefix("https://github.com/") == true, suffix + "-existing-theme-layout-forwarded")
-            try capture(setup, "setup-appearance-" + suffix + ".png", screen: setupDriver.terminalScreen)
-            try setupDriver.send("appearance", .layoutExample(nil)); tick()
-            try until { setupDriver.state("layout-cards", "count") == "7" }
-            try setupDriver.send("layout-cards", .layoutExample(.claudeWorkspace)); tick()
-            try setupDriver.send("setup", .preview); try until { !setupDriver.state("setup", "preview").isEmpty }
-            let chosenLayoutID = try UUID(uuidString: setupDriver.state("setup", "preview")).unwrap()
-            try check(setupDriver.state("appearance", "card") == "claude-two-terminals-browser" && service.sources[chosenLayoutID]?.appearance?.layoutExample == .claudeWorkspace, suffix + "-existing-layout-card-forwarded")
-            setup.scroll(fraction: 0.55); tick(); try capture(setup, "setup-layout-cards-" + suffix + ".png", screen: setupDriver.terminalScreen)
-            let wrongID = UUID(); _ = try run { try await service.preview(id: wrongID, vmID: UUID(), source: .init(preset: "web")) }
-            let original = setupDriver.state("setup", "preview")
-            try setupDriver.send("setup", .lookup(wrongID)); try until { setupDriver.state("setup", "failure") == "true" }
-            try check(setupDriver.state("setup", "preview") == original, suffix + "-cross-guest-preview-rejected")
-            let missing = UUID(); try setupDriver.send("setup", .lookup(missing)); tick()
-            try check(setupDriver.state("setup", "failure") == "true", suffix + "-lost-review-not-reconstructed")
+            try until { setupDriver.state("change", "phase") == "edit" }
+            try check(setupDriver.state("change", "title") == "Not run yet" && setupDriver.state("change", "changed") == "false"
+                      && setupDriver.state("change", "profiles") == "developer,web", suffix + "-change-opens-on-saved-plan")
+            try check(setupDriver.state("change", "primary") == "Start & set up", suffix + "-stopped-guest-offers-start-and-set-up")
+            let preparations = service.preparations, captures = service.captures, retries = service.retries
+            try setupDriver.send("change", .grant(true, true, true)); tick()
+            try check(setupDriver.state("change", "canRun") == "false", suffix + "-product-surface-gate-disabled")
+            try setupDriver.send("change", .runAgain); tick()
+            try check(service.preparations == preparations && service.captures == captures && service.retries == retries && model.autoSetup[created.id] == nil,
+                      suffix + "-disabled-prepare-never-delegates")
+            try setupDriver.send("change", .profiles(["developer"])); tick()
+            try check(setupDriver.state("change", "changed") == "true" && setupDriver.state("change", "canRun") == "false", suffix + "-edited-choices-still-gated")
+            try capture(setup, "setup-change-" + suffix + ".png")
             setup.close(); host.close()
 
             let localDriver = SetupUIAcceptanceDriver()
@@ -339,58 +318,92 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         // real execution gate or any process/guest backend.
         let enabled = SetupAcceptanceService(vmID: profile.id, enabled: true)
         let enabledModel = AppModel(isolatedManager: manager, support: support, snapshots: [.init(profile: profile, state: .stopped)], service: enabled, save: { try await enabled.save($0, consent: $1) })
-        let actionDriver = SetupUIAcceptanceDriver()
-        let actionHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id), driver: actionDriver, width: 1200, height: 960, dark: true)
-        defer { actionHost.close() }; tick(); try until { actionDriver.scopes["setup"] != nil }
-        try actionDriver.send("setup", .source("bundled")); tick()
-        try actionDriver.send("setup", .profiles(["web"])); tick()
-        try actionDriver.send("setup", .preview); try until { !actionDriver.state("setup", "preview").isEmpty }
-        try actionDriver.send("setup", .prepareApply); try until { !actionDriver.state("setup", "review").isEmpty }
-        try check(actionDriver.state("setup", "updateReviewed") == "true", "system-update-included-in-apply-review")
-        try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "apply-without-grants-refused")
-        try actionDriver.send("setup", .grant(true, false, true)); try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "docker-consent-independent")
-        try actionDriver.send("setup", .grant(true, true, true)); try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "uninspected-task-cannot-submit")
-        try actionDriver.send("setup", .inspect); try until { actionDriver.state("setup", "inspected") == "1" }
-        try actionDriver.send("setup", .grant(true, true, false)); try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 0, "task-trust-independent")
-        try actionDriver.send("setup", .grant(true, true, true)); tick(); actionHost.scroll(bottom: true); tick(); try capture(actionHost, "setup-fake-consent-dark.png", screen: actionDriver.terminalScreen)
-        try actionDriver.send("setup", .submit); try until { enabled.submissions == 1 }
-        try actionDriver.send("setup", .submit); tick(); try check(enabled.submissions == 1, "submission-attempt-not-replayed")
-        actionHost.close()
-        // Issue #14: Change setup opens on the latest run, shows how it ended and
-        // offers Run setup again; the retry is a new plan through the normal review.
-        let lastPlan = UUID()
-        _ = try run { try await enabled.preview(id: lastPlan, vmID: profile.id, source: .init(profiles: ["web"])) }
-        let lastRun = try enabled.row(lastPlan, stage: "failed", failure: "systemUpdateFailed")
-        enabled.latestFixture = .init(planID: lastPlan, workflow: lastRun); enabled.retryEngineChanged = true
+        // Change setup: the last run's choices again, approved once for the whole run.
+        var changeProfile = profile; changeProfile.ssh = SSHOptions(hostPort: 2222)
+        let changeSession = UUID(), sshReady = SSHReadiness.ready(user: "fixture_owner", command: "synthetic-unused")
+        let lastPlanID = UUID()
+        _ = try run { try await enabled.preview(id: lastPlanID, vmID: profile.id, source: .init(profiles: ["web"])) }
+        let lastRun = try enabled.row(lastPlanID, stage: "checked")
+        enabled.latestFixture = .init(planID: lastPlanID, workflow: lastRun); enabled.reviewSession = changeSession
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
         enabledModel.setupWorkflows = [lastRun]
-        let retryDriver = SetupUIAcceptanceDriver()
-        let retryHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id), driver: retryDriver, width: 1200, height: 960, dark: true)
-        defer { retryHost.close() }; tick(); try until { retryDriver.scopes["setup"] != nil }
-        func retryState(_ key: String) -> String { retryDriver.state("setup", key) }
-        try until { retryState("preview") == lastPlan.uuidString }
-        try check(retryState("runStatus") == "Last run: Failed during system update." && retryState("runAgain") == "true", "retry-failed-run-shows-outcome-and-run-again")
-        try check(retryState("reviewOffered") == "false" && retryState("workflow") == lastPlan.uuidString && retryState("failureText").isEmpty, "retry-used-plan-not-offered-for-review")
-        tick(); try capture(retryHost, "setup-last-run-failed-dark.png")
-        try retryDriver.send("setup", .runAgain); try until { !retryState("retryOf").isEmpty }
-        let retryPlan = try UUID(uuidString: retryState("preview")).unwrap()
-        try check(enabled.retries == 1 && retryPlan != lastPlan && retryState("retryOf") == lastPlan.uuidString && retryState("reviewOffered") == "true" && retryState("runStatus").isEmpty, "retry-makes-new-plan-for-normal-review")
-        try check(retryState("retrySummary").contains("dev-vm has been updated") && retryState("retrySummary").contains("docker"), "retry-review-names-engine-change")
-        try retryDriver.send("setup", .prepareApply); try until { !retryState("review").isEmpty }
-        try retryDriver.send("setup", .inspect); try until { retryState("inspected") == "1" }
-        try retryDriver.send("setup", .grant(true, true, true)); tick(); retryHost.scroll(fraction: 0.3); tick()
-        try capture(retryHost, "setup-run-again-review-dark.png")
-        try retryDriver.send("setup", .submit); try until { enabled.submissions == 2 }
-        try until { retryState("runStatus").hasPrefix("This setup is running") }
-        enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "running")]; tick()
-        try check(retryState("workflow") == retryPlan.uuidString && retryState("review").isEmpty && retryState("failureText").isEmpty, "retry-starts-second-run-with-live-state")
-        try retryDriver.send("setup", .submit); tick(); try check(enabled.submissions == 2, "retry-submission-not-replayed")
-        try check(!["runStatus", "failureText", "retrySummary", "continuation"].contains { retryState($0).contains("Submission was attempted") }, "retry-no-submission-was-attempted")
-        enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "succeeded")]; tick()
-        try until { retryState("runStatus") == "Last run: Finished." }
-        try check(retryState("runAgain") == "true", "retry-offered-after-success")
-        enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "cleanupRequired", cleanupRequired: true)]; tick()
-        try check(retryState("runAgain") == "false", "retry-not-offered-with-cleanup-hold")
-        retryHost.close(); enabled.latestFixture = nil
+        let changeDriver = SetupUIAcceptanceDriver()
+        let changeHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: {}, openOutput: {}), driver: changeDriver, width: 680, height: 820, dark: true)
+        defer { changeHost.close() }
+        func change(_ key: String) -> String { changeDriver.state("change", key) }
+        tick(); try waitFor("change sheet loads") { change("phase") == "edit" }
+        try check(change("title") == "Finished and checked" && change("primary") == "Run setup again" && change("docker") == "true", "change-finished-offers-run-setup-again")
+        try changeDriver.send("change", .profiles(["python", "web"])); tick()
+        try check(change("changed") == "true" && change("primary") == "Apply changes", "apply-changes-label-tracks-diff")
+        try changeDriver.send("change", .profiles(["web"])); tick()
+        try check(change("changed") == "false" && change("primary") == "Run setup again", "unchanged-choices-run-setup-again")
+        try changeDriver.send("change", .runAgain); tick()
+        try check(enabled.retries == 0 && enabled.submissions == 0, "apply-without-grants-refused")
+        try changeDriver.send("change", .grant(true, false, false)); tick()
+        try check(change("canRun") == "false", "docker-consent-independent")
+        try changeDriver.send("change", .grant(true, true, false)); try changeDriver.send("change", .runAgain)
+        try waitFor("custom tasks stop at approval") { change("phase") == "pending" }
+        try check(enabled.retries == 1 && enabled.preparations == 0 && enabled.submissions == 0, "custom-tasks-stop-for-separate-consent")
+        try changeDriver.send("change", .grant(true, true, true)); tick()
+        try check(change("canApprove") == "false", "uninspected-task-cannot-submit")
+        try changeDriver.send("change", .inspect); try waitFor("task inspected") { change("inspected") == "1" }
+        try check(enabled.taskReads > 0, "complete-chunked-task-inspection")
+        try changeDriver.send("change", .grant(true, true, false)); tick()
+        try check(change("canApprove") == "false", "task-trust-independent")
+        try changeDriver.send("change", .grant(true, true, true)); tick()
+        try capture(changeHost, "setup-fake-consent-dark.png")
+        try changeDriver.send("change", .submit); try waitFor("approval submitted") { enabled.submissions == 1 }
+        let retryPlan = try enabled.lastApplied.unwrap()
+        try check(retryPlan != lastPlanID && enabled.lastConsent?.persistentGrantAcknowledged == true && enabled.lastConsent?.dockerRootAccessAcknowledged == true
+                  && enabled.lastConsent?.taskTrustIdentity != nil, "approval-sends-each-consent")
+        let followingRetry: Bool = { if case .following(_, let id, _)? = enabledModel.autoSetup[profile.id] { return id == retryPlan }; return false }()
+        try check(followingRetry, "approval-follows-its-own-run")
+        try changeDriver.send("change", .submit); tick(); try check(enabled.submissions == 1, "submission-attempt-not-replayed")
+        enabled.actionSubmissions = []
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "restartRequired")]; enabledModel.advanceAutoSetup()
+        try waitFor("restart follows approval") { enabled.actionSubmissions == [.restart] }
+        try waitFor("sheet shows the restart") { change("phase") == "live" }
+        try check(change("title") == "Restarting" && enabled.actionSubmissions == [.restart], "approval-covers-restart-and-check")
+        changeHost.close(); enabledModel.autoSetup = [:]
+        // A run prepared but not approved is shown again when the sheet reopens; Discard frees the guest.
+        let pendingID = UUID()
+        _ = try run { try await enabled.preview(id: pendingID, vmID: profile.id, source: .init(profiles: ["web"])) }
+        let pendingRow = try enabled.row(pendingID, stage: "readyForReview", ran: false)
+        enabled.latestFixture = .init(planID: lastPlanID, workflow: lastRun, pending: pendingRow)
+        enabledModel.setupWorkflows = [lastRun, pendingRow]
+        let preparationsBefore = enabled.preparations, cancellationsBefore = enabled.cancellations
+        let pendingDriver = SetupUIAcceptanceDriver()
+        let pendingHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: {}, openOutput: {}), driver: pendingDriver, width: 680, height: 820, dark: true)
+        defer { pendingHost.close() }
+        func pending(_ key: String) -> String { pendingDriver.state("change", key) }
+        tick(); try waitFor("pending run shown with its review") { pending("phase") == "pending" && !pending("review").isEmpty }
+        try check(pending("pending") == pendingID.uuidString && enabled.preparations > preparationsBefore && pending("title") == "This run is ready to approve", "pending-run-survives-reopen")
+        try capture(pendingHost, "setup-pending-approval-dark.png")
+        try pendingDriver.send("change", .discard); try waitFor("pending run discarded") { enabled.cancellations == cancellationsBefore + 1 }
+        enabled.latestFixture = .init(planID: lastPlanID, workflow: lastRun)
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(pendingID, stage: "cancelled", ran: false)]
+        try waitFor("sheet returns to editing") { pending("phase") == "edit" }
+        try check(pending("primary") == "Run setup again" && pending("pending").isEmpty, "pending-run-discard-unblocks")
+        pendingHost.close()
+        // An interrupted run that got past its restart says the choices were applied.
+        let interruptedRun = try enabled.row(UUID(), stage: "interrupted", failure: "processInterrupted", restartID: UUID(), newSessionID: UUID())
+        let interruptedWords = ChangeSetupView.status(.edit, lastRun: interruptedRun, latestPlanExists: true, running: true, job: nil, auto: nil)
+        try check(interruptedWords.title == "Applied, but the final check didn’t run" && interruptedWords.steps == [.done, .done, .done, .missed]
+                  && FirstRunProgress.failureNote(interruptedRun, job: nil).contains("final check"), "interrupted-after-restart-wording")
+        // Start & set up: the approval waits for the guest's first session, even with earlier finished runs.
+        enabled.adminOnlyReview = true; enabled.lastConsent = nil
+        let startID = UUID()
+        let startPlan = try run { try await enabled.preview(id: startID, vmID: profile.id, source: .init(profiles: ["developer"])) }
+        enabledModel.setupWorkflows = [lastRun]; enabledModel.autoSetup = [:]
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .stopped)]
+        enabledModel.approveSetup(.init(preview: startPlan, dockerAcknowledged: false))
+        let armedStopped: Bool = { if case .armed(_, nil)? = enabledModel.autoSetup[profile.id] { return true }; return false }()
+        let startSession = UUID(); enabled.reviewSession = startSession
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: startSession, sshReadiness: sshReady)]
+        enabledModel.advanceAutoSetup(); enabledModel.advanceAutoSetup()
+        try waitFor("start and set up applies") { enabled.lastConsent != nil }
+        try check(armedStopped && enabled.submissions == 2 && enabled.lastApplied == startID && enabled.lastConsent?.dockerRootAccessAcknowledged == false, "start-and-set-up-binds-first-session")
+        enabled.adminOnlyReview = false; enabled.reviewSession = nil; enabledModel.autoSetup = [:]; enabled.latestFixture = nil
         let failedHistory = try enabled.row(UUID(), stage: "failed")
         let completedHistory = try enabled.row(UUID(), stage: "succeeded")
         enabledModel.setupWorkflows = [failedHistory, completedHistory]
@@ -423,13 +436,14 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let dimensions = screen.view.terminalStateSnapshot().dimensions
         try check(dimensions.cols >= 120 && dimensions.rows >= 30, "terminal-modern-grid-fits-normal-manager-width")
 
-        try runningDriver.send("setup", .requestCancel); tick(); try check(enabled.cancellations == 0 && runningDriver.state("setup", "cancelPending") == "true", "cancel-needs-confirmation")
-        try runningDriver.send("setup", .confirmCancel); try until { enabled.cancellations == 1 }
+        let cancelBase = enabled.cancellations
+        try runningDriver.send("setup", .requestCancel); tick(); try check(enabled.cancellations == cancelBase && runningDriver.state("setup", "cancelPending") == "true", "cancel-needs-confirmation")
+        try runningDriver.send("setup", .confirmCancel); try until { enabled.cancellations == cancelBase + 1 }
         try check(!screen.connected && !screen.ownsInput, "synthetic-output-grants-no-input")
         running.scroll(bottom: true); tick(); try capture(running, "setup-terminal-dark.png", screen: screen)
         enabledModel.setupWorkflows = [completedHistory]; tick()
         try check(runningDriver.state("setup", "continuation") == "Setup has finished. Its result remains saved.", "completed-setup-does-not-claim-running")
-        running.close(); tick(); try check(enabled.cancellations == 1, "view-disappear-detaches-not-cancels")
+        running.close(); tick(); try check(enabled.cancellations == cancelBase + 1, "view-disappear-detaches-not-cancels")
         // Home renders from synthetic snapshots only; nothing here is launched.
         var downloading = VMProfile(id: UUID(), name: "Synthetic downloading"); downloading.diskGiB = 64
         let failed = VMProfile(id: UUID(), name: "Synthetic failed")
@@ -516,7 +530,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         try check(card([], profile: profile).kind == .none && card([]).kind == .configured, "setup-card-none-and-configured")
         try check(card([installing], jobs: [installing.id: job]).kind == .running && card([installing], jobs: [installing.id: job]).progress == 0, "setup-card-running-shows-progress")
         try check(card([restartRun]).kind == .needsYou && card([restartRun]).run.contains("Restart"), "setup-card-manual-restart-needs-review")
-        let followingAuto = AutoSetupState.following(receipt: try firstRun.developerSetup.unwrap(), workflowID: restartRun.id, attempted: [.restart])
+        let followingAuto = AutoSetupState.following(plan: .init(receipt: try firstRun.developerSetup.unwrap()), workflowID: restartRun.id, attempted: [.restart])
         try check(card([restartRun], auto: followingAuto).kind == .running, "setup-card-approved-restart-is-progress")
         try check(card([try enabled.row(installing.id, stage: "failed", cleanupRequired: true)]).kind == .cleanup, "setup-card-cleanup-needs-recovery")
         try check(card([failedRun], jobs: [failedRun.id: failedJob]).kind == .failed && card([try enabled.row(installing.id, stage: "checked")]).kind == .succeeded, "setup-card-failed-and-succeeded")
@@ -526,12 +540,14 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); pageHost.scroll(bottom: true); tick(); try capture(pageHost, "guest-setup-card-dark.png"); pageHost.close(); tick()
             let current = enabledModel.snapshots[0]
-            for (name, mode, title) in [("setup-change-sheet-dark.png", DeveloperSetupView.Mode.change, "Change setup"), ("setup-output-sheet-dark.png", .output, "Setup output")] {
-                let status = mode == .output ? SetupCardState.make(current, workflows: enabledModel.setupWorkflows, jobs: [:], autoSetup: nil) : nil
-                let sheet = Host(SetupSheetFrame(title: title, subtitle: current.profile.name, status: status, close: {}) { DeveloperSetupView(model: enabledModel, snapshot: current, mode: mode) },
-                                 driver: SetupUIAcceptanceDriver(), width: 960, height: 820, dark: true)
-                tick(); try capture(sheet, name); sheet.close(); tick()
-            }
+            enabled.latestFixture = .init(planID: lastPlanID, workflow: enabledModel.setupWorkflows[0])
+            let changeSheet = Host(ChangeSetupView(model: enabledModel, snapshot: current, close: {}, openOutput: {}), driver: SetupUIAcceptanceDriver(), width: 680, height: 820, dark: true)
+            tick(); tick(0.3); try capture(changeSheet, "setup-change-sheet-dark.png"); changeSheet.close(); tick()
+            enabled.latestFixture = nil
+            let status = SetupCardState.make(current, workflows: enabledModel.setupWorkflows, jobs: [:], autoSetup: nil)
+            let outputSheet = Host(SetupSheetFrame(title: "Setup output", subtitle: current.profile.name, status: status, close: {}) { DeveloperSetupView(model: enabledModel, snapshot: current, mode: .output) },
+                                   driver: SetupUIAcceptanceDriver(), width: 960, height: 820, dark: true)
+            tick(); try capture(outputSheet, "setup-output-sheet-dark.png"); outputSheet.close(); tick()
             enabledModel.setupWorkflows = []
         }
         enabledModel.snapshots = [.init(profile: firstRun, state: .running, sessionID: session, sshReadiness: .ready(user: "fixture_owner", command: "synthetic-unused"))]
@@ -655,7 +671,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
                 return try JSONDecoder().decode(ProvisioningJobSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
             }
             let receipt = try firstRun.developerSetup.unwrap()
-            let autos: [AutoSetupState?] = [nil, .armed(receipt: receipt, sessionID: session), .following(receipt: receipt, workflowID: UUID(), attempted: []),
+            let autos: [AutoSetupState?] = [nil, .armed(plan: .init(receipt: receipt), sessionID: session), .following(plan: .init(receipt: receipt), workflowID: UUID(), attempted: []),
                                             .blocked("Synthetic blocked reason."), .consumed]
             let stages = ["waitingForSSH", "readyForReview", "running", "restartRequired", "waitingForExit", "restarting", "waitingForRebind",
                           "readyForCheck", "checking", "succeeded", "checked", "failed", "cancelled", "interrupted", "cleanupRequired"]
