@@ -1,10 +1,12 @@
 # Build a lean factory in Dev
 
-The **Factory images** sidebar page builds a reusable lean Omarchy foundation.
-**New VM → Build lean factory…** opens the same flow without discarding the fields
-already entered. After independent verification/import, **Use for new VM** selects
+The **Factory images** sidebar page builds a reusable lean Omarchy foundation
+with **Build factory…**. **Build…** beside the factory row in New VM opens the same
+flow without discarding the fields already entered. After independent verification/import, **Use for new VM** selects
 the resulting factory. Building never creates a VM, changes an existing disk or
 launches a guest. Official and previously imported factories remain available.
+
+![The Build lean factory sheet with the image name, the Omarchy channel set to Stable and a ready local ARM64 Docker engine](media/factory-build.webp)
 
 Choose a name, an **Omarchy channel** and, under **Advanced**, a capacity from
 20–128 GiB. **Stable** (the default) installs the latest Omarchy release;
@@ -19,6 +21,8 @@ Arbitrary build scripts, package editors and source repositories are outside thi
 first native flow.
 
 ## Removing factories and old builds
+
+![The Factory images library: the official card, a Stable lean factory used by a VM with its trash button unavailable, and an Edge lean factory that can be moved to Trash](media/factory-library.webp)
 
 On **Factory images**, each custom factory card has a trash button. **Move to
 Trash** moves the factory and its import record to the macOS Trash together, so
