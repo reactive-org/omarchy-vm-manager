@@ -174,7 +174,7 @@ and [current implementation/acceptance status](docs/DevVMProvisioningPlan.md).
 
 ## Pause and resume
 
-The development build below pauses execution while retaining RAM. The clarified requirement is suspend-to-disk to release RAM; the current accelerated runtime blocks full VM state saving, and a fresh POC confirmed the official guest kernel has hibernation disabled. See [the suspend investigation](docs/Suspend.md). The development UI now detects the running guest’s kernel capability and basic hibernation prerequisites, with an explicitly opt-in experimental suspend/restore workflow. It remains disabled for the stock kernel; reliable restoration is unproven.
+The development build below pauses execution while retaining RAM. The clarified requirement is suspend-to-disk to release RAM; the current accelerated runtime blocks full VM state saving, and a fresh POC confirmed the official guest kernel has hibernation disabled. See [the suspend investigation](docs/Suspend.md). The Dev build detects the running guest’s kernel capability and basic hibernation prerequisites, with an explicitly opt-in experimental suspend/restore workflow. It remains disabled for the stock kernel; reliable restoration is unproven. The stable build hides the workflow and skips the capability check, keeping only recovery of an existing saved session.
 
 Use a running guest’s ellipsis menu → **Pause**. Its main button becomes **Resume**. The CLI supports `pause ID`, `resume ID` and `wait ID --for paused`. Both commands wait for a helper acknowledgement before reporting success.
 

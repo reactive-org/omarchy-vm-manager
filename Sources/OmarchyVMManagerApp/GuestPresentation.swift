@@ -172,7 +172,17 @@ struct OmarchyAttribution: View {
     }
 }
 
+/// The features compiled into this channel. Previews may substitute a fixed set.
+private struct FeatureFlagsKey: EnvironmentKey { static let defaultValue = FeatureFlags.current }
+extension EnvironmentValues {
+    var featureFlags: FeatureFlags {
+        get { self[FeatureFlagsKey.self] }
+        set { self[FeatureFlagsKey.self] = newValue }
+    }
+}
+
 struct GuestControls: View {
+    @Environment(\.featureFlags) private var features
     let snapshot: VMSnapshot
     var launchEnabled = true
     let start: () -> Void
@@ -202,8 +212,10 @@ struct GuestControls: View {
             Menu {
                 if snapshot.state == .running {
                     Button("Pause", systemImage: "pause.fill") { pause() }.disabled(snapshot.suspension != nil)
-                    Button("Suspend to disk (experimental)…", systemImage: "moon.zzz") { suspendToDisk() }
-                        .disabled(!snapshot.canAttemptExperimentalSuspend)
+                    if features.experimentalSuspendToDisk {
+                        Button("Suspend to disk (experimental)…", systemImage: "moon.zzz") { suspendToDisk() }
+                            .disabled(!snapshot.canAttemptExperimentalSuspend)
+                    }
                 }
                 if snapshot.state == .paused { Button("Shut down") { stop() } }
                 Divider()
@@ -245,6 +257,7 @@ struct ExperimentalPowerReview: Identifiable {
 }
 
 struct GuestHibernationPanel: View {
+    @Environment(\.featureFlags) private var features
     let snapshot: VMSnapshot
     let review: (ExperimentalPowerReview.Action) -> Void
     var recheck: () -> Void = {}
@@ -280,7 +293,7 @@ struct GuestHibernationPanel: View {
                     Button("Restore / Recover…") { review(.restore) }.disabled(!snapshot.canRestoreExperimentalSuspension)
                 } else if snapshot.suspension?.restoreAttempted == true && snapshot.suspension?.stage == .recoveryRequired && snapshot.state == .running {
                     Button("Recheck recovery") { recheck() }
-                } else {
+                } else if features.experimentalSuspendToDisk {
                     Button("Suspend…") { review(.suspend) }.disabled(!snapshot.canAttemptExperimentalSuspend)
                 }
                 }.frame(width: 180, height: 30, alignment: .trailing)

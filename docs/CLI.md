@@ -174,9 +174,9 @@ New guests share the factory image in `~/Downloads/Omarchy VM Manager/Factory Im
 
 ## Experimental hibernation status
 
-Guest replies additionally expose `hibernation` when the current authenticated guest check is available, `experimentalSuspendAvailable`, `experimentalRestoreAvailable`, `suspension` and `suspensionMetadataUnsafe`. Kernel support is `supported`, `unsupported` or `unknown`; readiness also requires disk sleep state, persistent swap, resume setup and non-interactive guest permission. No marker token or boot identity is returned. Stopped or unverified capability never enables an attempt.
+Guest replies additionally expose `hibernation` when the current authenticated guest check is available, `experimentalSuspendAvailable`, `experimentalRestoreAvailable`, `suspension` and `suspensionMetadataUnsafe`. Kernel support is `supported`, `unsupported` or `unknown`; readiness also requires disk sleep state, persistent swap, resume setup and non-interactive guest permission. No marker token or boot identity is returned. Stopped or unverified capability never enables an attempt. Stable builds skip the capability check, so `hibernation` is absent and `experimentalSuspendAvailable` is always `false`; the saved-session fields still report.
 
-Experimental suspend/restore is an opt-in **UI** workflow. Ordinary CLI `start`, `restart`, update and delete refuse a protected saved-session disk. Use **Restore / Recover…** in the manager; a verified cold boot requires administrator cleanup of any stale resume image and explicit acknowledgement before protection is released. An unresolved restore cannot automatically boot again. CLI `resume` continues to mean in-memory resume. See [Suspend](Suspend.md).
+Experimental suspend/restore is an opt-in **UI** workflow in the Dev build; stable offers only recovery of an existing saved session. Ordinary CLI `start`, `restart`, update and delete refuse a protected saved-session disk. Use **Restore / Recover…** in the manager; a verified cold boot requires administrator cleanup of any stale resume image and explicit acknowledgement before protection is released. An unresolved restore cannot automatically boot again. CLI `resume` continues to mean in-memory resume. See [Suspend](Suspend.md).
 
 ## Factory import, selection and deletion
 

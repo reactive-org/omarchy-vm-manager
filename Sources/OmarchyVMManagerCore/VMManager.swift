@@ -41,6 +41,7 @@ public actor VMManager {
     private let trashService: (any VMTrashService)?
     private let sshProbe: (any SSHReadinessChecking)?
     private let hibernation: (any GuestHibernating)?
+    private let features: FeatureFlags
     private let sharingProbe: (any SharedFolderChecking)?
     private let homeBackup: (any GuestHomeBackingUp)?
     private struct HomeBackupOperation {
@@ -108,7 +109,8 @@ public actor VMManager {
                 hostMemoryMiB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 logicalCPUs: Int = ProcessInfo.processInfo.processorCount,
                 registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil,
-                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService(), sharingProbe: (any SharedFolderChecking)? = nil, homeBackup: (any GuestHomeBackingUp)? = nil) {
+                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService(), sharingProbe: (any SharedFolderChecking)? = nil, homeBackup: (any GuestHomeBackingUp)? = nil,
+                features: FeatureFlags = .init(experimentalSuspendToDisk: true)) {
         self.factoryTrashService = factoryTrashService
         self.runtime = runtime
         self.profiles = profiles
@@ -119,6 +121,7 @@ public actor VMManager {
         self.registry = registry
         self.trashService = trashService
         self.hibernation = hibernation
+        self.features = features
         self.sharingProbe = sharingProbe
         self.homeBackup = homeBackup
         self.sshProbe = sshProbe; self.portProbe = portProbe; self.ownerDefaults = ownerDefaults
@@ -142,7 +145,8 @@ public actor VMManager {
             try storage.withLock(profile) { try ManagedOwnerStorage(root: storage.root(for: profile)).clearSeed() }
         }
         return VMManager(runtime: runtime, profiles: profiles, applicationSupport: applicationSupport,
-                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation(), sharingProbe: SSHSharedFolderProbe(), homeBackup: SSHGuestHomeBackup())
+                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation(), sharingProbe: SSHSharedFolderProbe(), homeBackup: SSHGuestHomeBackup(),
+                         features: .current)
     }
 
     private var factoryCatalog: FactoryCatalog? = nil
@@ -1263,7 +1267,9 @@ extension VMManager {
         sessions.contains { id, session in suspensions[id] != nil || session.powerBusy }
     }
     private func beginPowerProbe(_ id: UUID, user: String) {
-        guard let hibernation, let session = sessions[id], session.powerProbeTask == nil,
+        // Without the feature there is nothing to offer, so skip the SSH check;
+        // the shared-folder check then starts without waiting for it.
+        guard features.experimentalSuspendToDisk, let hibernation, let session = sessions[id], session.powerProbeTask == nil,
               states[id] == .running, !session.shutdownRequested, !session.forceRequested,
               let profile = profiles.first(where: { $0.id == id }), profile.homeDisk == nil, suspensions[id] == nil else { return }
         let request = VMStartRequest(profile: profile, storageRoot: session.root, sessionID: session.id)
@@ -1284,6 +1290,7 @@ extension VMManager {
     }
     public func experimentalSuspend(_ id: UUID, confirmed: Bool, exitTimeout: Duration = .seconds(180)) async throws {
         try requireNoProvisioning(id)
+        guard features.experimentalSuspendToDisk else { throw VMFailure(code: "experimental-suspend-disabled", message: "Suspend to disk isn't available in this build.") }
         guard profiles.first(where: { $0.id == id })?.homeDisk == nil else { throw HomeDisk.failure("Experimental hibernation is unavailable for separate-home guests until both disks have a verified restore contract.") }
         guard confirmed else { throw VMFailure(code: "experimental-opt-in-required", message: "Confirm the experimental suspension risks before attempting it.") }
         guard let hibernation, let session = sessions[id], states[id] == .running, !session.shutdownRequested, !session.forceRequested,
