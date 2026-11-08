@@ -15,8 +15,9 @@ struct FactoryImagesView: View {
     /// build starts or one is chosen with View; a running build keeps a banner.
     @State private var showJob = false
     @State private var pendingDeletion: FactoryIdentity?
-    @State private var deletingFactory = false
+    @State private var deletingSelector: String?
     @State private var libraryError: String?
+    @State private var libraryNotice: String?
     #if DEBUG
     @State private var cardFrames: [String: CGRect] = [:]
     @State private var gridWidth: CGFloat = 0
@@ -34,6 +35,15 @@ struct FactoryImagesView: View {
             }
             if let error = builder.error { Text(error).foregroundStyle(.orange).font(.callout).accessibilityIdentifier("factory.error") }
             if let libraryError { Text(libraryError).foregroundStyle(.orange).font(.callout).accessibilityIdentifier("factory.library-error") }
+            if let libraryNotice {
+                HStack(spacing: 8) {
+                    Image(systemName: "trash").foregroundStyle(.secondary)
+                    Text(libraryNotice).font(.callout)
+                    Spacer()
+                    Button { self.libraryNotice = nil } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).accessibilityLabel("Dismiss")
+                }.padding(.horizontal, 14).padding(.vertical, 10).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("factory.library-notice")
+            }
             if let job = builder.current, showJob {
                 jobView(job)
             } else {
@@ -45,10 +55,11 @@ struct FactoryImagesView: View {
                     factoryCard(title: "Lean Omarchy", subtitle: "Reviewed lean foundation", icon: "square.3.layers.3d", description: "The essential Omarchy desktop, native Mac integration, Git, Python and build tools. Choose additional apps per VM.", status: "Build once, reuse for new VMs", action: "Build lean factory…", disabled: !builder.service.enabled || builder.jobs.contains { $0.active || $0.cleanupRequired }) { builder.showingBuild = true }
                     ForEach(model.factories.filter { $0.kind == .custom }, id: \.selector) { factory in
                         let users = model.guestsUsing(factory)
+                        let deleting = deletingSelector == factory.selector
                         factoryCard(title: factory.name, subtitle: model.factorySummary(factory).map { "Custom factory · " + $0 } ?? "Custom factory", icon: "externaldrive", description: "Verified for this runtime and available for new virtual machines.",
                                     status: users.isEmpty ? "Built or imported · Boot validation is separate" : "Used by " + users.joined(separator: ", "),
-                                    action: "Use for new VM", identifier: "factory.use." + factory.selector,
-                                    removal: .init(disabled: !users.isEmpty || deletingFactory,
+                                    action: "Use for new VM", disabled: deleting, identifier: "factory.use." + factory.selector, busy: deleting ? "Checking and moving to Trash…" : nil,
+                                    removal: .init(disabled: !users.isEmpty || deletingSelector != nil,
                                                    help: users.isEmpty ? "Move this factory to Trash" : "In use by \(users.count == 1 ? "a VM" : "\(users.count) VMs"). Delete those VMs first.",
                                                    identifier: "factory.trash." + factory.selector) { pendingDeletion = factory }) { use(factory) }
                     }
@@ -95,10 +106,15 @@ struct FactoryImagesView: View {
         .alert("Move this factory to Trash?", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })) {
             Button("Move to Trash", role: .destructive) {
                 guard let factory = pendingDeletion else { return }
-                pendingDeletion = nil; deletingFactory = true; libraryError = nil
+                pendingDeletion = nil; deletingSelector = factory.selector; libraryError = nil; libraryNotice = nil
                 Task {
-                    do { try await model.deleteFactory(factory) } catch { libraryError = error.localizedDescription }
-                    deletingFactory = false
+                    do {
+                        try await model.deleteFactory(factory)
+                        withAnimation { libraryNotice = "Moved “\(factory.name)” to Trash. You can restore it from Trash in Finder." }
+                    } catch {
+                        libraryError = "“\(factory.name)” wasn’t moved to Trash. " + error.localizedDescription
+                    }
+                    deletingSelector = nil
                 }
             }
             Button("Cancel", role: .cancel) { pendingDeletion = nil }
@@ -151,7 +167,7 @@ struct FactoryImagesView: View {
         let perform: () -> Void
     }
     private func factoryCard(title: String, subtitle: String, icon: String, description: String, status: String, action: String, disabled: Bool = false,
-                             source: OfficialFactorySource? = nil, identifier: String? = nil, removal: CardRemoval? = nil, perform: @escaping () -> Void) -> some View {
+                             source: OfficialFactorySource? = nil, identifier: String? = nil, busy: String? = nil, removal: CardRemoval? = nil, perform: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack(spacing: 13) {
                 Image(systemName: icon).font(.system(size: 29)).foregroundStyle(.purple).frame(width: 54, height: 54).background(.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -166,7 +182,11 @@ struct FactoryImagesView: View {
             Text(description).font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 65, alignment: .topLeading)
             if let source { FactorySourceDetails(source: source, compact: true) }
             Divider()
-            Text(status).font(.caption).foregroundStyle(.secondary)
+            if let busy {
+                HStack(spacing: 6) { ProgressView().controlSize(.small); Text(busy).font(.caption) }.foregroundStyle(.secondary)
+            } else {
+                Text(status).font(.caption).foregroundStyle(.secondary)
+            }
             HStack(spacing: 8) {
                 Button(action, action: perform).frame(maxWidth: .infinity).disabled(disabled).accessibilityIdentifier(identifier ?? "")
                 if let removal {
@@ -177,6 +197,8 @@ struct FactoryImagesView: View {
             }
         }.padding(20)
         .background { GeometryReader { geometry in Color.clear.preference(key: FactoryCardFrameKey.self, value: [identifier ?? title: geometry.frame(in: .named(FactoryGridGeometry.space))]) } }.background(.background, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        // A card being moved to Trash fades and ignores clicks until it's gone.
+        .opacity(busy == nil ? 1 : 0.55).allowsHitTesting(busy == nil).animation(.easeInOut(duration: 0.2), value: busy)
     }
     @ViewBuilder private func jobView(_ job: FactoryBuildJob) -> some View {
         Button("Factory library", systemImage: "chevron.left") { showJob = false }.buttonStyle(.plain).foregroundStyle(.secondary)

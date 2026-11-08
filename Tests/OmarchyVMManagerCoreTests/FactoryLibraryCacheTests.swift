@@ -62,6 +62,18 @@ struct FactoryLibraryCacheTests {
         #expect(cache.details[image.selector] == stable)
     }
 
+    @Test("a factory moved to Trash leaves the library at once and a stale refresh can't restore it")
+    func removalIsImmediate() {
+        var cache = FactoryLibraryCache()
+        let request = cache.beginRefresh()
+        _ = cache.apply(FactoryCatalogListing(factories: [.official, image], issues: [], details: [image.selector: FactoryDetails(omarchy: "4.5.0-3", channel: "stable", built: nil)]), for: request)
+        let stale = cache.beginRefresh()
+        cache.removed(image)
+        #expect(cache.factories == [.official] && cache.details.isEmpty)
+        let appliedStale = cache.apply(FactoryCatalogListing(factories: [.official, image], issues: []), for: stale)
+        #expect(!appliedStale && cache.factories == [.official])
+    }
+
     @Test("a refresh started before import cannot remove the new picker choice or publish an old error")
     func importWins() {
         var cache = FactoryLibraryCache()

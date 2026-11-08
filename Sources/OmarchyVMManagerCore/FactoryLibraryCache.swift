@@ -29,6 +29,16 @@ public struct FactoryLibraryCache: Sendable {
         details = listing.details
         return true
     }
+    /// Drop a factory that was just moved to Trash. Like an import, this
+    /// supersedes any refresh started earlier, so a stale listing can't bring
+    /// the card back.
+    public mutating func removed(_ identity: FactoryIdentity) {
+        revision = UUID()
+        refresh = nil
+        factories.removeAll { $0.selector == identity.selector }
+        issues.removeAll { $0.selector == identity.selector }
+        details.removeValue(forKey: identity.selector)
+    }
     public mutating func imported(_ identity: FactoryIdentity) {
         revision = UUID()
         refresh = nil

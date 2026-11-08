@@ -43,7 +43,8 @@ final class AppModel: ObservableObject {
     /// deletion, then refresh the library.
     func deleteFactory(_ factory: FactoryIdentity) async throws {
         _ = try await manager.deleteFactory(factory.selector)
-        await loadFactories()
+        // Remove the card now; the next library refresh re-verifies the rest.
+        factoryLibrary.removed(factory)
     }
     func factoryLabel(_ factory: FactoryIdentity) -> String {
         factorySummary(factory).map { factory.displayName + " — " + $0 } ?? factory.displayName
