@@ -468,7 +468,7 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 - Don't set up stopping a run that is still being prepared;
 - a guest without managed SSH being explained, not silently ignored.
 
-**TO PROVE:** on a real Dev guest, Run setup again and Apply changes running through restart and check unattended, Start & set up from a stopped guest, and closing and reopening the sheet with a run waiting for approval.
+**TO PROVE:** on a real Dev guest, Apply changes running through restart and check unattended, Start & set up from a stopped guest, and closing and reopening the sheet with a run waiting for approval. Run setup again was VERIFIED on `adfadf` on 9 November 2026 (see Run the check only below).
 
 ## Run the check only — 9 November 2026
 
@@ -497,7 +497,9 @@ Three issues found and fixed before merge:
 
 The offscreen check `check-only-never-pending` covers the first; the rebuilt app with all three fixes is not yet re-run on a real guest.
 
-**TO PROVE:** following a Change setup run (Run setup again or Apply changes) on Home with its live terminal on a real guest.
+**VERIFIED — real Dev guest, 9 November 2026 (user-run, `adfadf`, build `45f0f09`):** the user chose **Change setup…** then **Run setup again**, and reported that it works well. The new run (`BCD3666F`) went through install, restart and the configuration check unattended on the one approval, and finished `succeeded` with no cleanup hold. Its saved log shows `[setup restartRequired]` then `[setup checked]`.
+
+**TO PROVE:** Apply changes and Start & set up on a real guest, and reopening Change setup while a run waits for approval.
 
 ## Official image source shown while it downloads — 7 November 2026
 
