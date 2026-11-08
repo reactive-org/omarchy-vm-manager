@@ -18,6 +18,20 @@ the image. Additional profiles, apps, themes and layouts are selected per VM.
 Arbitrary build scripts, package editors and source repositories are outside this
 first native flow.
 
+## Removing factories and old builds
+
+On **Factory images**, each custom factory card has a trash button. **Move to
+Trash** moves the factory and its import record to the macOS Trash together, so
+it can be restored. A factory used by a VM can't be moved; its card lists those
+VMs. The official factory and the Lean foundation card can't be removed.
+
+Each build keeps its output (about 3 GB for a 20 GiB factory) after its factory
+is added to the library. Under **Build history**, **Remove** moves one finished,
+failed or cancelled build's files to Trash and drops it from history; **Remove
+finished builds** does this for all of them. Running builds and builds that still
+need cleanup are kept. Removing a build never removes its factory. The shared
+download and package caches are kept to speed up later builds.
+
 ## Readiness and the build action
 
 Factory building is compiled into the Dev channel. Stable can continue importing

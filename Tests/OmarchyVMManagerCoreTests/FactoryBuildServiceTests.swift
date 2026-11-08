@@ -45,6 +45,16 @@ private final class FactoryServiceFixture {
     init() throws { try PrivateFiles.directory(root, create: true); service = FactoryBuildService(fixtureRoot: root, environment: environment) }
     deinit { try? FileManager.default.removeItem(at: root) }
 }
+private actor RecordingBuildTrash: FactoryTrashService {
+    var moved: [URL] = []
+    var fail = false
+    func failNext() { fail = true }
+    func moveToTrash(_ directory: URL) async throws {
+        if fail { fail = false; throw CocoaError(.fileWriteNoPermission) }
+        moved.append(directory)
+        try FileManager.default.removeItem(at: directory)
+    }
+}
 private actor RecordingFactoryQuit { var done = false; func complete() { done = true } }
 @Suite("Factory jobs — fake environment and disposable local metadata", .serialized) struct FactoryBuildServiceTests {
     @Test func commandSocketUsesTheSameControllerWithoutResolvingOrStartingGuests() async throws {
@@ -275,6 +285,35 @@ private actor RecordingFactoryQuit { var done = false; func complete() { done = 
         #expect(!FactoryBuildService.reportsUnreviewedOmarchy(other))
         let job = FactoryBuildJob(id: UUID(), plan: try! FactoryBuildPlan(), stage: .failed, failure: FactoryBuildJob.unreviewedOmarchyFailure)
         #expect(job.failureExplanation.contains("hasn’t reviewed yet"))
+    }
+    @Test func finishedBuildsMoveToTrashAndLeaveHistoryWhileOthersAreKept() async throws {
+        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-remove-" + UUID().uuidString)
+        try PrivateFiles.directory(root, create: true); defer { try? FileManager.default.removeItem(at: root) }
+        let environment = FactoryFixtureEnvironment(), trash = RecordingBuildTrash()
+        let service = FactoryBuildService(fixtureRoot: root, environment: environment, trash: trash)
+        let review = try await service.review()
+        let job = try await service.start(reviewID: review.id)
+        #expect(await eventually { (try? await service.jobs().first?.stage) == .succeeded })
+        let workspace = root.appendingPathComponent("Jobs").appendingPathComponent(job.id.uuidString)
+        try Data("retained output".utf8).write(to: workspace.appendingPathComponent("factory.img.zst"))
+        // A failed Trash keeps the files and the history entry.
+        await trash.failNext()
+        await #expect(throws: VMFailure.self) { try await service.remove(job.id) }
+        let kept = try await service.jobs().count
+        #expect(FileManager.default.fileExists(atPath: workspace.path) && kept == 1)
+        try await service.remove(job.id)
+        #expect(await trash.moved == [workspace])
+        let remaining = try await service.jobs()
+        #expect(remaining.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Records/" + job.id.uuidString + ".json").path))
+        await #expect(throws: FactoryBuildFailure.self) { try await service.remove(job.id) }
+        // An interrupted job needs verified cleanup first and cannot be removed.
+        await environment.configure(uncertain: true)
+        let heldReview = try await service.review()
+        let held = try await service.start(reviewID: heldReview.id)
+        #expect(await eventually { (try? await service.jobs().first?.stage) == .cleanupRequired })
+        await #expect(throws: FactoryBuildFailure.self) { try await service.remove(held.id) }
+        #expect(await trash.moved.count == 1)
     }
     @Test func compiledStableGateCannotBeChangedByAnEnvironmentOrWireField() async throws {
         let f = try FactoryServiceFixture()

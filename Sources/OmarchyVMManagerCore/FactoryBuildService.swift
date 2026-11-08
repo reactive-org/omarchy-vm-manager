@@ -27,6 +27,8 @@ public struct FactoryBuildJob: Codable, Sendable, Identifiable {
     }
     public static let unreviewedOmarchyFailure = "omarchy-unreviewed"
     public var cleanupRequired: Bool { stage == .cleanupRequired }
+    /// Finished jobs whose retained files can be moved to Trash.
+    public var removable: Bool { [.succeeded, .failed, .cancelled].contains(stage) }
     public init(id: UUID, plan: FactoryBuildPlan, stage: FactoryBuildStage, createdAt: Date = Date(), finishedAt: Date? = nil, failure: String? = nil, factory: FactoryIdentity? = nil) {
         self.id = id; self.plan = plan; self.stage = stage; self.createdAt = createdAt; self.finishedAt = finishedAt; self.failure = failure; self.factory = factory
     }
@@ -38,6 +40,7 @@ public protocol FactoryBuildControlling: Sendable {
     func start(reviewID: UUID) async throws -> FactoryBuildJob
     func cancel(_ id: UUID) async throws
     func recover(_ id: UUID) async throws
+    func remove(_ id: UUID) async throws
     func output(_ id: UUID, after sequence: UInt64) async throws -> FactoryBuildOutputPage
     @discardableResult func cancelAndWait() async -> Bool
     func resumeAfterCancelledQuit() async
@@ -61,6 +64,7 @@ public actor FactoryBuildService: FactoryBuildControlling {
     public nonisolated let enabled: Bool
     private let root: URL
     private let environment: any FactoryBuildEnvironment
+    private let trash: any FactoryTrashService
     private var loaded = false
     private var records: [UUID: Record] = [:]
     private var outputs: [UUID: FactoryBuildOutput] = [:]
@@ -72,12 +76,14 @@ public actor FactoryBuildService: FactoryBuildControlling {
     private var inspections: [UUID: Task<FactoryBuildInspection, any Error>] = [:]
     private var reviewGeneration = UUID()
     private var lockFD: Int32 = -1
-    public init(applicationSupport: URL, environment: any FactoryBuildEnvironment) {
+    public init(applicationSupport: URL, environment: any FactoryBuildEnvironment, trash: any FactoryTrashService = SystemFactoryTrashService()) {
         enabled = AppChannel.current == .development
         root = ManagerStorage(applicationSupport: applicationSupport).directory.appendingPathComponent("FactoryBuilds")
-        self.environment = environment
+        self.environment = environment; self.trash = trash
     }
-    init(fixtureRoot: URL, environment: any FactoryBuildEnvironment) { enabled = true; root = fixtureRoot; self.environment = environment }
+    init(fixtureRoot: URL, environment: any FactoryBuildEnvironment, trash: any FactoryTrashService = SystemFactoryTrashService()) {
+        enabled = true; root = fixtureRoot; self.environment = environment; self.trash = trash
+    }
     deinit { if lockFD >= 0 { close(lockFD) } }
     private var jobsRoot: URL { root.appendingPathComponent("Jobs") }
     private var journal: URL { root.appendingPathComponent("Records") }
@@ -227,6 +233,26 @@ public actor FactoryBuildService: FactoryBuildControlling {
         try await environment.cleanup(id: id, admission: record.admission)
         record.job.stage = .failed; record.job.failure = "interrupted-cleanup-verified"; record.job.finishedAt = Date()
         try write(record)
+    }
+    /// Move a finished job's retained build files to Trash and drop it from
+    /// history. A succeeded job's factory already lives in the library, so this
+    /// never removes a factory. Active jobs and cleanup holds are refused, and
+    /// nothing is erased in place.
+    public func remove(_ id: UUID) async throws {
+        try load()
+        guard task == nil, !recovering, !admissionSuspended else { throw FactoryBuildFailure.busy }
+        try acquireLock(); defer { releaseLock() }
+        try load(refresh: true)
+        guard let record = records[id], record.job.removable else { throw FactoryBuildFailure.invalidRequest }
+        let workspace = jobsRoot.appendingPathComponent(id.uuidString)
+        if PrivateFiles.exists(workspace) {
+            try PrivateFiles.directory(workspace)
+            do { try await trash.moveToTrash(workspace) }
+            catch { throw VMFailure(code: "factory-build-trash-failed", message: "The build’s files could not be moved to Trash. They were kept, along with its history entry.") }
+        }
+        let path = journal.appendingPathComponent(id.uuidString + ".json")
+        guard unlink(path.path) == 0 || errno == ENOENT else { throw VMFailure(code: "factory-build-journal", message: "The build’s files are in Trash, but its history entry could not be removed.") }
+        records[id] = nil; outputs[id] = nil
     }
     public func output(_ id: UUID, after sequence: UInt64) throws -> FactoryBuildOutputPage {
         try load()

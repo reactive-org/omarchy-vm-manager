@@ -14,6 +14,9 @@ struct FactoryImagesView: View {
     /// Opening Factory images shows the library. A job page appears only when a
     /// build starts or one is chosen with View; a running build keeps a banner.
     @State private var showJob = false
+    @State private var pendingDeletion: FactoryIdentity?
+    @State private var deletingFactory = false
+    @State private var libraryError: String?
     #if DEBUG
     @State private var cardFrames: [String: CGRect] = [:]
     @State private var gridWidth: CGFloat = 0
@@ -30,6 +33,7 @@ struct FactoryImagesView: View {
                 }
             }
             if let error = builder.error { Text(error).foregroundStyle(.orange).font(.callout).accessibilityIdentifier("factory.error") }
+            if let libraryError { Text(libraryError).foregroundStyle(.orange).font(.callout).accessibilityIdentifier("factory.library-error") }
             if let job = builder.current, showJob {
                 jobView(job)
             } else {
@@ -40,16 +44,43 @@ struct FactoryImagesView: View {
                     factoryCard(title: "Try Omarchy", subtitle: "Official factory", icon: "opticaldisc", description: "Omarchy’s standard desktop and application collection, ready to make your own.", status: "Downloads when a VM first starts", action: "Use for new VM", source: model.officialFactorySource) { use(.official) }
                     factoryCard(title: "Lean Omarchy", subtitle: "Reviewed lean foundation", icon: "square.3.layers.3d", description: "The essential Omarchy desktop, native Mac integration, Git, Python and build tools. Choose additional apps per VM.", status: "Build once, reuse for new VMs", action: "Build lean factory…", disabled: !builder.service.enabled || builder.jobs.contains { $0.active || $0.cleanupRequired }) { builder.showingBuild = true }
                     ForEach(model.factories.filter { $0.kind == .custom }, id: \.selector) { factory in
-                        factoryCard(title: factory.name, subtitle: model.factorySummary(factory).map { "Custom factory · " + $0 } ?? "Custom factory", icon: "externaldrive", description: "Verified for this runtime and available for new virtual machines.", status: "Built or imported · Boot validation is separate", action: "Use for new VM", identifier: "factory.use." + factory.selector) { use(factory) }
+                        let users = model.guestsUsing(factory)
+                        factoryCard(title: factory.name, subtitle: model.factorySummary(factory).map { "Custom factory · " + $0 } ?? "Custom factory", icon: "externaldrive", description: "Verified for this runtime and available for new virtual machines.",
+                                    status: users.isEmpty ? "Built or imported · Boot validation is separate" : "Used by " + users.joined(separator: ", "),
+                                    action: "Use for new VM", identifier: "factory.use." + factory.selector,
+                                    removal: .init(disabled: !users.isEmpty || deletingFactory,
+                                                   help: users.isEmpty ? "Move this factory to Trash" : "In use by \(users.count == 1 ? "a VM" : "\(users.count) VMs"). Delete those VMs first.",
+                                                   identifier: "factory.trash." + factory.selector) { pendingDeletion = factory }) { use(factory) }
                     }
                 }
                 .modifier(FactoryGridGeometry(cardFrames: cardFramesBinding, gridWidth: gridWidthBinding))
                 Text("Each VM has its own disk and account. Building a factory does not change existing VMs.").font(.callout).foregroundStyle(.secondary)
                 if !builder.service.enabled { Text("Factory building is available in Dev.").font(.callout).foregroundStyle(.secondary) }
                 if !builder.jobs.isEmpty {
+                    let busy = builder.submitting || builder.jobs.contains { $0.active }
+                    let finished = builder.jobs.filter(\.removable).map(\.id)
                     DisclosureGroup("Build history") {
-                        ForEach(builder.jobs) { job in
-                            HStack { VStack(alignment: .leading) { Text(job.plan.name); Text(FactoryBuildModel.title(job)).font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("View") { builder.selectedID = job.id; showJob = true } }.padding(.vertical, 7)
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                Text("Each build keeps its downloaded output until you remove it. Built factories stay in your library.").font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                                Button("Remove finished builds") { Task { await builder.remove(finished) } }
+                                    .disabled(busy || finished.isEmpty).accessibilityIdentifier("factory.history.remove-all")
+                            }.padding(.vertical, 7)
+                            ForEach(builder.jobs) { job in
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(job.plan.name)
+                                        Text(FactoryBuildModel.title(job) + " · Omarchy \(job.plan.resolvedChannel.label)" + (job.finishedAt.map { " · " + $0.formatted(.dateTime.day().month(.abbreviated).hour().minute()) } ?? "")).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button("View") { builder.selectedID = job.id; showJob = true }
+                                    if job.removable {
+                                        Button("Remove", role: .destructive) { Task { await builder.remove([job.id]) } }
+                                            .disabled(busy).help("Move this build’s retained files to Trash").accessibilityIdentifier("factory.history.remove." + job.id.uuidString)
+                                    }
+                                }.padding(.vertical, 7)
+                            }
                         }
                     }
                 }
@@ -61,6 +92,21 @@ struct FactoryImagesView: View {
         .onChange(of: builder.current?.id) { _, _ in if builder.current?.active == true { showJob = true } }
         .sheet(isPresented: buildPresentation) { FactoryBuildSheet(builder: builder) }
         .sheet(isPresented: $importing) { FactoryImportView(model: model) { _ in importing = false } }
+        .alert("Move this factory to Trash?", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })) {
+            Button("Move to Trash", role: .destructive) {
+                guard let factory = pendingDeletion else { return }
+                pendingDeletion = nil; deletingFactory = true; libraryError = nil
+                Task {
+                    do { try await model.deleteFactory(factory) } catch { libraryError = error.localizedDescription }
+                    deletingFactory = false
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        } message: {
+            if let factory = pendingDeletion {
+                Text("“\(model.factoryLabel(factory))” and its import record move to Trash together. Existing VMs aren’t affected; you can restore it from Trash.")
+            }
+        }
         .background {
             #if DEBUG
             if let acceptance { Color.clear.allowsHitTesting(false).onAppear {
@@ -98,8 +144,14 @@ struct FactoryImagesView: View {
         #endif
         return $builder.showingBuild
     }
+    struct CardRemoval {
+        let disabled: Bool
+        let help: String
+        let identifier: String
+        let perform: () -> Void
+    }
     private func factoryCard(title: String, subtitle: String, icon: String, description: String, status: String, action: String, disabled: Bool = false,
-                             source: OfficialFactorySource? = nil, identifier: String? = nil, perform: @escaping () -> Void) -> some View {
+                             source: OfficialFactorySource? = nil, identifier: String? = nil, removal: CardRemoval? = nil, perform: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack(spacing: 13) {
                 Image(systemName: icon).font(.system(size: 29)).foregroundStyle(.purple).frame(width: 54, height: 54).background(.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -115,7 +167,14 @@ struct FactoryImagesView: View {
             if let source { FactorySourceDetails(source: source, compact: true) }
             Divider()
             Text(status).font(.caption).foregroundStyle(.secondary)
-            Button(action, action: perform).frame(maxWidth: .infinity).disabled(disabled).accessibilityIdentifier(identifier ?? "")
+            HStack(spacing: 8) {
+                Button(action, action: perform).frame(maxWidth: .infinity).disabled(disabled).accessibilityIdentifier(identifier ?? "")
+                if let removal {
+                    Button(role: .destructive, action: removal.perform) { Image(systemName: "trash") }
+                        .disabled(removal.disabled).help(removal.help)
+                        .accessibilityLabel("Move \(title) to Trash").accessibilityIdentifier(removal.identifier)
+                }
+            }
         }.padding(20)
         .background { GeometryReader { geometry in Color.clear.preference(key: FactoryCardFrameKey.self, value: [identifier ?? title: geometry.frame(in: .named(FactoryGridGeometry.space))]) } }.background(.background, in: RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
     }

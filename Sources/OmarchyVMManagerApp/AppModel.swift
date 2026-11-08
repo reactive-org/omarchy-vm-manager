@@ -35,6 +35,16 @@ final class AppModel: ObservableObject {
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
+    /// Guests created from a factory; a factory in use can't be deleted.
+    func guestsUsing(_ factory: FactoryIdentity) -> [String] {
+        snapshots.filter { $0.profile.factory?.selector == factory.selector }.map(\.profile.name)
+    }
+    /// Move an unused imported factory to Trash through the existing reviewed
+    /// deletion, then refresh the library.
+    func deleteFactory(_ factory: FactoryIdentity) async throws {
+        _ = try await manager.deleteFactory(factory.selector)
+        await loadFactories()
+    }
     func factoryLabel(_ factory: FactoryIdentity) -> String {
         factorySummary(factory).map { factory.displayName + " — " + $0 } ?? factory.displayName
     }

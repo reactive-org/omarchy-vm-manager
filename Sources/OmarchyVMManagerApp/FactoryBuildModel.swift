@@ -63,6 +63,16 @@ import OmarchyVMManagerCore
         submitting = true; defer { submitting = false }
         do { try await service.recover(job.id); error = nil } catch { self.error = Self.message(error) }
     }
+    /// Move finished builds' retained files to Trash, one job at a time.
+    func remove(_ ids: [UUID]) async {
+        guard !submitting else { return }
+        submitting = true; defer { submitting = false }
+        do {
+            for id in ids { try await service.remove(id) }
+            if let selectedID, ids.contains(selectedID) { self.selectedID = nil }
+            jobs = try await service.jobs(); error = nil
+        } catch { self.error = Self.message(error) }
+    }
     static func message(_ error: any Error) -> String {
         if let failure = error as? FactoryBuildFailure { return failure.explanation }
         if let failure = error as? VMFailure { return failure.message }

@@ -210,9 +210,16 @@ from 47/47.1 only in the adapter, the new contract file and its version.
 **PRIVATE COUPLING:** the six guarded install scripts are edited after
 installation, so `pacman -Qkk` reports them modified until Omarchy updates them.
 
-**TO PROVE:** a real Stable build, owner setup, managed SSH and hardware
-rendering on Omarchy 4.5 in a disposable Dev guest. No factory build, VM launch,
-signing or publication was performed for this change.
+**REPORTED LIVE — user, 8 November 2026:** the user built a Stable factory
+(Omarchy 4.5.0-3) in the branch's Dev app and booted a VM from it successfully.
+The first attempt failed at dependency resolution because Stable's packages need
+Omarchy's frozen Arch Linux ARM snapshot (`arm-stable-mirror.omarchy.org`); the
+builder now pairs each channel with its own mirror and forces the index refresh.
+Container-only checks pass for both channels.
+
+**TO PROVE:** owner setup, managed SSH and hardware rendering on the 4.5 guest
+were not separately reported, and Edge builds and real two-VM, focus and
+sleep/wake behaviour remain unobserved.
 
 ## Factory merge-readiness repairs — 6 November 2026
 

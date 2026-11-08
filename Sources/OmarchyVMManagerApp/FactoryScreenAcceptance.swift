@@ -31,6 +31,8 @@ import SwiftUI
     }
     func cancel(_ id: UUID) throws { cancellations += 1; rows[0].stage = .cancelled; rows[0].failure = "cancelled" }
     func recover(_ id: UUID) throws { recoveries += 1; rows[0].stage = .failed; rows[0].failure = "cleanup-verified" }
+    var removals = 0
+    func remove(_ id: UUID) throws { removals += 1; rows.removeAll { $0.id == id } }
     func output(_ id: UUID, after sequence: UInt64) -> FactoryBuildOutputPage { outputBuffer.page(after: sequence) }
     func cancelAndWait() -> Bool { true }
     func resumeAfterCancelledQuit() {}
