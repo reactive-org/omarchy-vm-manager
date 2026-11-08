@@ -13,7 +13,8 @@ def validate_dimensions(name, width, height, frame):
     points_width, points_height = frame['widthPoints'], frame['heightPoints']
     assert type(points_width) in (int, float) and type(points_height) in (int, float), name
     sheet = name.startswith(('factory-build-sheet-', 'factory-missing-docker-'))
-    minimum = (570, 420) if sheet else (1000, 800)
+    narrow = name.startswith('factory-library-narrow-')
+    minimum = (570, 420) if sheet else (900, 800) if narrow else (1000, 800)
     assert minimum[0] <= points_width <= 2000 and minimum[1] <= points_height <= 1400, (name, frame)
     assert any(abs(width - points_width * scale) <= 1 and abs(height - points_height * scale) <= 1 for scale in (1, 2)), (name, width, height, frame)
 
@@ -27,13 +28,14 @@ def main():
     subprocess.run([str(args.binary), '--accept-factory-screens', str(output)], check=True, timeout=60)
     report = json.loads((output / 'result.json').read_text())
     assert report['runtimeStarts'] == 0 and report['dockerCommands'] == 0
-    assert report['screenshots'] == 12
+    assert report['screenshots'] == 14
     for appearance in ['dark', 'light']:
-        for case in ['library', 'missing-docker-blocks', 'readiness-does-not-build', 'one-explicit-build', 'follow-default', 'actual-terminal-render', 'newvm-factory-handoff', 'newvm-save-selection', 'newvm-never-launches', 'cleanup-does-not-rebuild']:
+        for case in ['library', 'missing-docker-blocks', 'readiness-does-not-build', 'one-explicit-build', 'follow-default', 'actual-terminal-render', 'newvm-factory-handoff', 'newvm-save-selection', 'newvm-never-launches', 'cleanup-does-not-rebuild',
+                     'library-cards-fit', 'narrow-library-cards-fit', 'narrow-library-card-width', 'stable-by-default', 'stable-review', 'started-build-shows-job', 'revisit-opens-library']:
             assert appearance + '-' + case in report['checks']
     pngs = list(output.glob('*.png'))
     assert len(pngs) == report['screenshots']
-    expected = {f'factory-{case}-{appearance}.png' for case in ['library', 'missing-docker', 'build-sheet', 'build-running', 'ready', 'cleanup'] for appearance in ['dark', 'light']}
+    expected = {f'factory-{case}-{appearance}.png' for case in ['library', 'library-narrow', 'missing-docker', 'build-sheet', 'build-running', 'ready', 'cleanup'] for appearance in ['dark', 'light']}
     assert {p.name for p in pngs} == set(report['captures']) == expected
     for path in pngs:
         data = path.read_bytes()

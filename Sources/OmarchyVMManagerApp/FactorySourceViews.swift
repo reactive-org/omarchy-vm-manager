@@ -48,7 +48,9 @@ struct FactorySourceDetails: View {
 
     private var link: some View {
         Link(source.repository, destination: source.releaseURL)
-            .buttonStyle(.plain).font(Theme.mono(compact ? 13 : 14)).foregroundStyle(Theme.lavender).lineLimit(1).fixedSize()
+            // Truncate rather than fix the width: a fixed-size link is wider
+            // than a narrow grid cell and pushes the whole card off the edge.
+            .buttonStyle(.plain).font(Theme.mono(compact ? 13 : 14)).foregroundStyle(Theme.lavender).lineLimit(1).truncationMode(.middle)
             .help(source.releaseURL.absoluteString)
     }
     private func note(_ text: String) -> some View {

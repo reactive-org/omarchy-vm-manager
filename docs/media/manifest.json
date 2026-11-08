@@ -3,7 +3,6 @@
   "captureDate": "2026-11-08",
   "timezone": "Australia/Melbourne",
   "source": "real Dev manager window (Omarchy VM Manager Dev) captured through Computer Use",
-  "tourKind": "captioned still-screen walkthrough, not a continuous recording",
   "screens": [
     {
       "file": "library.webp",
@@ -175,19 +174,28 @@
       "sha256": "ad22ea8c1111ebacbc3fb31cbcf13065852e05c505c68acb33b9b47093aa00f5",
       "sourceSHA256": "5622566ec93bfe12f8235ff6eb2e75125d0730415331151c66d2e151f226ba88",
       "sourceResize": "1344x788 resized to 1260 wide"
+    },
+    {
+      "file": "factory-library.webp",
+      "title": "Factory images library",
+      "dimensions": "1260x952",
+      "bytes": 60006,
+      "sha256": "6be34596a685083646aff4113465a28fde3035364d133cdfd66b62ebab89e64d",
+      "sourceSHA256": "ede0f829d231acb437ae44689b3a85563ac21de8bad601e3c5c8c624c23903bf",
+      "sourceCrop": "1260x952+0+0",
+      "appVersion": "0.11.0 (27)"
+    },
+    {
+      "file": "factory-build.webp",
+      "title": "Build a lean factory",
+      "dimensions": "900x963",
+      "bytes": 45532,
+      "sha256": "8bde183ff7f03c1f1c8d37efc7bb456cb013931d538da088b0de1d27c6271e87",
+      "sourceSHA256": "ef181f75969fa72ac119ef80618cfb96d7a799836c789759f262995c7c56d6f7",
+      "sourceCrop": "1058x1132+0+6",
+      "appVersion": "0.11.0 (27)"
     }
   ],
-  "video": {
-    "file": "quick-tour.mp4",
-    "bytes": 747929,
-    "durationSeconds": 48,
-    "dimensions": "1280x960",
-    "codec": "H.264",
-    "audio": false,
-    "sha256": "43ab381527b4ade66f650f20c62831ad5d60e347f5b3ecfa369054e739edcfe1",
-    "appVersion": "0.9.3 (16)",
-    "captureDate": "2026-11-01",
-    "note": "Not rebuilt on 2026-11-08; shows the earlier screenshots."
-  },
-  "screenshotsAndVideoBytes": 1819641
+  "screenshotsBytes": 1177250,
+  "demoVideo": "https://www.reactive.org/omarchy-vm"
 }

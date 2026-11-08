@@ -31,7 +31,7 @@ Work out which images the docs actually use:
 - **Evidence captures** are everything else under `docs/media/`: the `setup-*` PNGs and their `report.json`/`evidence.json` files, linked from `DevVMUIAcceptance.md`, `DevVMProvisioningPlan.md`, `docs/README.md` and elsewhere, plus files that appear only as hashes in a folder's `evidence.json`. They record what an acceptance run observed at the time, and their hashes are part of that record. Don't recapture, replace or delete them. List them as "evidence, not refreshed" with a count (linked and hash-only), so the user can see they were considered.
 - Also note any media file that no doc links and no `evidence.json` lists, and any doc link to a media file that doesn't exist. Report these; never delete anything.
 
-For each user-guide shot record: path, pixel size (`sips -g pixelWidth -g pixelHeight`), aspect ratio, the docs and line numbers that embed it, its alt text, and the screen it shows. The alt text, the surrounding prose, `docs/media/README.md`'s transcript table and `quick-tour.vtt` all describe what each shot is meant to show. `docs/media/manifest.json` records whether a shot was cropped (`sourceCrop`) and the version it came from.
+For each user-guide shot record: path, pixel size (`sips -g pixelWidth -g pixelHeight`), aspect ratio, the docs and line numbers that embed it, its alt text, and the screen it shows. The alt text, the surrounding prose, and `docs/media/README.md` describe what each shot is meant to show. `docs/media/manifest.json` records whether a shot was cropped (`sourceCrop`) and the version it came from.
 
 Then compare against the current UI. Request access to the Dev app only, with `request_access` for `["dev.omarchy.vm-manager.dev"]` (no Finder, no browsers, no clipboard flags). Use `app_list_windows` and `app_screenshot` on the main window, and click through the sidebar and tabs with the background `app_*` tools. This is look-only: open no forms and save nothing to disk; capturing waits until the user says "ready" in step 2. For each shot decide whether it is:
 
@@ -55,10 +55,9 @@ Show the shot list as a compact table with these columns: file, current size and
 Then ask, in one message:
 
 1. Is the shot list right? Should any shots be dropped, added or renamed?
-2. The MP4 tour (`quick-tour.mp4` and `quick-tour.vtt`) is a captioned slideshow of these same screens. Should it be rebuilt this time, or left as it is and marked as older than the screenshots?
-3. The `example-vm-*` shots in Getting started walk through creating and launching a VM. Should this run recapture them? That means creating and launching a new **Example VM**, so ask for the specifics: who approves setup steps, whether to capture its guest desktop, and what to do with it afterwards. Skip this question if the user has already scoped the run to the stopped-guest shots.
-4. Which display is the window on? Ask this **only if** you can't tell. Display names come from the note on the first full-screen screenshot. Ask once.
-5. Please say **"ready"** once the Dev window is arranged.
+2. The `example-vm-*` shots in Getting started walk through creating and launching a VM. Should this run recapture them? That means creating and launching a new **Example VM**, so ask for the specifics: who approves setup steps, whether to capture its guest desktop, and what to do with it afterwards. Skip this question if the user has already scoped the run to the stopped-guest shots.
+3. Which display is the window on? Ask this **only if** you can't tell. Display names come from the note on the first full-screen screenshot. Ask once.
+4. Please say **"ready"** once the Dev window is arranged.
 
 Wait for "ready". Don't capture before it.
 
@@ -151,17 +150,17 @@ magick .build/user-doc-captures-<date>/<name>.jpg [-crop WxH+X+Y +repage] [-resi
 
 Scale down to the old image's width when the capture is wider; leave it at its native width when it's narrower. Then open the WebP output again with `Read`. Confirm the size and aspect ratio are what you agreed, and that the scaling hasn't made text unreadable.
 
-If the user asked for the tour to be rebuilt, make it from the new WebPs in the same style as the existing one: 1280 × 960, 4 seconds per screen, a title and caption per screen, silent H.264, matching WebVTT cues. Check a frame from each segment. If they didn't ask, leave both files alone.
+The demo video is hosted at https://www.reactive.org/omarchy-vm, not in this repository; don't add video files to `docs/media/`.
 
-Keep the combined size of the screenshots and video under about 2 MB. If it grows a lot, mention it.
+Keep the combined size of the screenshots under about 2 MB. If it grows a lot, mention it.
 
 ## 5. Update the docs
 
 - **Alt text and prose** in the guides, wherever the UI wording changed (button labels, tab names, option names). Match the UI exactly, in sentence case and UK/AU spelling.
-- **`docs/media/manifest.json`**: for each replaced file, update `dimensions`, `bytes`, `sha256` (`shasum -a 256`), `sourceSHA256` (of the raw capture), and `sourceCrop` if you cropped. Record `sourceCrop` as `WxH+X+Y` in the raw capture's pixels, before resizing. Older entries mix raw and resized units, so replace them rather than copying their format. Update `appVersion`, `captureDate` (`YYYY-MM-DD`, Australia/Melbourne) and `screenshotsAndVideoBytes`. Update the `video` entry only if you rebuilt the tour.
-- **`docs/media/README.md`**: the version, the capture date, the description of the guests and forms, which rows were cropped out and why, the transcript table (if you rebuilt the tour), and the byte totals. If the tour wasn't rebuilt, say it shows the earlier version.
+- **`docs/media/manifest.json`**: for each replaced file, update `dimensions`, `bytes`, `sha256` (`shasum -a 256`), `sourceSHA256` (of the raw capture), and `sourceCrop` if you cropped. Record `sourceCrop` as `WxH+X+Y` in the raw capture's pixels, before resizing. Older entries mix raw and resized units, so replace them rather than copying their format. Update `appVersion`, `captureDate` (`YYYY-MM-DD`, Australia/Melbourne) and `screenshotsBytes`.
+- **`docs/media/README.md`**: the version, the capture date, the description of the guests and forms, which rows were cropped out and why, and the byte totals.
 - **`docs/Validation.md`**: add a new dated section, like the earlier "User documentation media refresh" entries. Record what was captured, from which app and version, the guest states before and after, what was cancelled, which crops were applied and why, the checks you ran, and what was not shown (for example no running guest). Keep the VERIFIED / TO PROVE language intact.
-- If shots were added, removed or renamed with the user's agreement, update the manifest's `screens` list and the media README transcript to match.
+- If shots were added, removed or renamed with the user's agreement, update the manifest's `screens` list and the media README to match.
 
 Then check that every media link in the changed docs resolves with exact filename case, and run `git diff --check`.
 
@@ -173,7 +172,7 @@ End with a short report:
 - **Skipped**: each shot and why (needs a running guest, needs a menu the tools can't open, privacy, the user declined).
 - **Possibly a UI bug**: anything that looked wrong in the app itself, such as truncated labels, overlapping controls, stale state or misspelt text. Name the screen. Don't fix app code as part of this skill.
 - **Docs text changed**: the files, with a few words on each.
-- **Left alone**: the evidence captures, the tour (if not rebuilt), and anything else deliberately not touched.
+- **Left alone**: the evidence captures and anything else deliberately not touched.
 - Confirm that no VM was created, launched, stopped or changed, nothing was committed, and the stable app wasn't touched.
 
 Leave the changes uncommitted unless the user asks.

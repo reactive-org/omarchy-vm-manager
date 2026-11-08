@@ -4,20 +4,27 @@ import Foundation
 
 public enum FactoryBuildFailure: String, Error, Sendable { case invalidRequest, inputsChanged, dockerMissing, dockerUnavailable, remoteEngine, wrongArchitecture, engineChanged, insufficientSpace, downloadFailed, commandFailed, cancelled, cleanupRequired, invalidArtifact, busy }
 public enum FactoryBuildStage: String, Codable, Sendable { case preparing, downloading, packages, image, verifying, importing, succeeded, failed, cancelled, cleanupRequired }
+/// The Omarchy channel a factory installs from: the latest release (stable) or
+/// development builds (edge). Either way the build refuses an Omarchy release
+/// whose setup programs are not in the reviewed set.
+public enum FactoryChannel: String, Codable, CaseIterable, Sendable { case stable, edge }
 public struct FactoryBuildPlan: Codable, Equatable, Sendable {
     public let name: String
     public let sizeGiB: Int
     public let recipeSHA256: String
+    /// Absent in records written before channels existed; those built edge.
+    public let channel: FactoryChannel?
+    public var resolvedChannel: FactoryChannel { channel ?? .edge }
     public var minimumArtifactBytes: Int64 { Int64(sizeGiB + 4) * 1_073_741_824 }
     public var minimumDockerScratchBytes: Int64 { 3 * 1_073_741_824 }
     public var privilegedContainer: Bool { true }
     public var guestBootTested: Bool { false }
-    public init(name: String = "Lean Omarchy", sizeGiB: Int = 20) throws {
+    public init(name: String = "Lean Omarchy", sizeGiB: Int = 20, channel: FactoryChannel? = .stable) throws {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.utf8.count <= 128,
               !name.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 }), (20...128).contains(sizeGiB) else { throw FactoryBuildFailure.invalidRequest }
-        self.name = name; self.sizeGiB = sizeGiB; recipeSHA256 = FactoryRecipePin.sha256
+        self.name = name; self.sizeGiB = sizeGiB; recipeSHA256 = FactoryRecipePin.sha256; self.channel = channel
     }
-    init(fixtureRecipe: String) { name = "Fixture"; sizeGiB = 20; recipeSHA256 = fixtureRecipe }
+    init(fixtureRecipe: String, channel: FactoryChannel? = .stable) { name = "Fixture"; sizeGiB = 20; recipeSHA256 = fixtureRecipe; self.channel = channel }
 }
 public struct FactoryBuildCommand: Sendable {
     public let id: UUID
@@ -105,7 +112,7 @@ public struct FactoryRecipe: Sendable {
         self.archive = archive; identity = expected
         guard digest(data) == expected else { throw FactoryBuildFailure.inputsChanged }
         manifest = try JSONDecoder().decode(Manifest.self, from: data)
-        guard manifest.format == 1, manifest.files.count <= 512, manifest.downloads.count == 3,
+        guard manifest.format == 1, manifest.files.count <= 512, manifest.downloads.count == 1,
               case .object(let doc) = try PlainDataParser.parse(data, format: .json), case .object(let p) = doc["provenance"] else { throw FactoryBuildFailure.inputsChanged }
         provenance = p
         try verify()
@@ -125,6 +132,7 @@ public struct FactoryRecipe: Sendable {
     public func buildEvidence(plan: FactoryBuildPlan, imageID: String) throws -> Data {
         var value = provenance
         value["size_gib"] = .integer(Int64(plan.sizeGiB))
+        value["channel"] = .string(plan.resolvedChannel.rawValue)
         value["input_identity"] = .string(digest(try canonicalData(plan)))
         value["builder_image"] = .string(imageID)
         value["validation"] = .string("sealed-image-static-checks")

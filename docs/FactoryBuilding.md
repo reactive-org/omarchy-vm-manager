@@ -1,16 +1,40 @@
 # Build a lean factory in Dev
 
-The **Factory images** sidebar page builds a reusable lean Omarchy foundation.
-**New VM → Build lean factory…** opens the same flow without discarding the fields
-already entered. After independent verification/import, **Use for new VM** selects
+The **Factory images** sidebar page builds a reusable lean Omarchy foundation
+with **Build factory…**. **Build…** beside the factory row in New VM opens the same
+flow without discarding the fields already entered. After independent verification/import, **Use for new VM** selects
 the resulting factory. Building never creates a VM, changes an existing disk or
 launches a guest. Official and previously imported factories remain available.
 
-Choose a name and, under **Advanced**, a capacity from 20–128 GiB. The reviewed
+![The Build lean factory sheet with the image name, the Omarchy channel set to Stable and a ready local ARM64 Docker engine](media/factory-build.webp)
+
+Choose a name, an **Omarchy channel** and, under **Advanced**, a capacity from
+20–128 GiB. **Stable** (the default) installs the latest Omarchy release;
+**Edge** installs Omarchy's development builds. Either way the build uses the
+channel's current signed packages, so a new Omarchy release needs no new app.
+If a release changes setup programs this app hasn't reviewed, the build stops
+before creating a disk and says so; update Omarchy VM Manager or try the other
+channel. The reviewed
 recipe supplies the desktop, Mac integration, Git, Python and build tools inside
 the image. Additional profiles, apps, themes and layouts are selected per VM.
 Arbitrary build scripts, package editors and source repositories are outside this
 first native flow.
+
+## Removing factories and old builds
+
+![The Factory images library: the official card, a Stable lean factory used by a VM with its trash button unavailable, and an Edge lean factory that can be moved to Trash](media/factory-library.webp)
+
+On **Factory images**, each custom factory card has a trash button. **Move to
+Trash** moves the factory and its import record to the macOS Trash together, so
+it can be restored. A factory used by a VM can't be moved; its card lists those
+VMs. The official factory can't be removed.
+
+Each build keeps its output (about 3 GB for a 20 GiB factory) after its factory
+is added to the library. Under **Build history**, **Remove** moves one finished,
+failed or cancelled build's files to Trash and drops it from history; **Remove
+finished builds** does this for all of them. Running builds and builds that still
+need cleanup are kept. Removing a build never removes its factory. The shared
+download and package caches are kept to speed up later builds.
 
 ## Readiness and the build action
 
@@ -33,7 +57,8 @@ contents may require more. Before preparation/import, the manager checks space
 again against twice the actual compressed image size plus 64 MiB. Failure retains
 the finished output and does not publish an import.
 
-**Build factory** authorizes downloading the reviewed sources/packages and running
+**Build factory** authorizes downloading the pinned Node payload and the
+selected channel's signed Omarchy and Arch Linux ARM packages, and running
 an owned privileged Linux build container. Readiness or editing fields never
 starts a build. There is no additional review button or approval checkbox.
 Downloads have HTTPS host/redirect, size, time and checksum limits. Mac Python,
@@ -86,7 +111,7 @@ Use the CLI inside the matching Dev app bundle while that app is open. These
 commands do not open an installed app automatically:
 
 ```sh
-omarchy-vm factory-build plan --name 'Lean development' --size-gib 20
+omarchy-vm factory-build plan --name 'Lean development' --size-gib 20 --channel stable
 omarchy-vm factory-build start REVIEW_UUID
 omarchy-vm factory-build status JOB_UUID
 omarchy-vm factory-build logs JOB_UUID --follow
@@ -94,7 +119,8 @@ omarchy-vm factory-build cancel JOB_UUID
 omarchy-vm factory-build cleanup JOB_UUID
 ```
 
-`plan` checks readiness and returns a preview UUID. `start` is the deliberate build
+`plan` checks readiness and returns a preview UUID. `--channel` is `stable`
+(default) or `edge`. `start` is the deliberate build
 action. Closing `logs --follow` leaves the job running. Commands cannot select a
 host endpoint, private root, custom recipe or privileged command. Stable and Dev
 use their existing separate same-user command sockets and storage.

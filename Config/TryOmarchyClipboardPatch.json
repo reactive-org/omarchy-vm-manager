@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-05T00:00:00+00:00",
+  "authorDate": "2026-11-08T00:00:00+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-05T00:00:00+00:00",
-  "subject": "Isolate stable and development manager caches and authentication keys",
-  "commit": "d6dd3dbe860f55302a66be884113e647e42b0eba",
-  "patchSHA256": "2baa0c70ab412f7f1a0f9937e91973877eeff4099c28b180e37eb73eb0eb2aea"
+  "committerDate": "2026-11-08T00:00:00+00:00",
+  "subject": "Support reviewed lean owner contract sets and Omarchy 4.5",
+  "commit": "91e95a2b9d6a9399cb2fe51f8be3d3a45c085054",
+  "patchSHA256": "0d764a28d4dba9a95e3b14dc18a0a09f46f31a271ce2f3285802b6c2ec194ffb"
 }

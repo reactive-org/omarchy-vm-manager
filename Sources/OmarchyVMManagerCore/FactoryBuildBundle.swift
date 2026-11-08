@@ -17,14 +17,17 @@ enum FactoryBuildBundle {
         struct Owner: Decodable { let owner_programs: [String: String]; let packages: [String: String] }
         struct Build: Decodable { let try_commit: String; let guest_boot_tested: Bool; let validation: String }
         let owner = try JSONDecoder().decode(Owner.self, from: compatibility), provenance = try JSONDecoder().decode(Build.self, from: build)
-        guard owner.owner_programs == VMOwnerSetupContract.leanPrograms, owner.packages["try-omarchy"] == contract.leanPackageVersion,
+        // The image's evidence selects exactly one reviewed lean owner contract and
+        // its reviewed image package; anything else fails closed.
+        guard let lean = VMOwnerSetupContract.leanContracts.first(where: { $0.programs == owner.owner_programs }),
+              let reviewed = contract.leanContracts.first(where: { $0.ownerSetupContractSHA256 == lean.digest && $0.leanPackageVersion == owner.packages["try-omarchy"] }),
               provenance.try_commit.range(of: "^[a-f0-9]{40}$", options: .regularExpression) != nil,
               !provenance.guest_boot_tested, provenance.validation == "sealed-image-static-checks" else { throw failure() }
-        let package = "try-omarchy-" + contract.leanPackageVersion + "-aarch64.pkg.tar.zst"
+        let package = "try-omarchy-" + reviewed.leanPackageVersion + "-aarch64.pkg.tar.zst"
         let sources = ["factory.json": output.appendingPathComponent("factory.json"), image.compressed.path: output.appendingPathComponent(image.compressed.path),
                        "compatibility.json": output.appendingPathComponent("compatibility.json"), "image-build.json": output.appendingPathComponent("image-build.json"), package: output.appendingPathComponent("packages/" + package)]
         guard try VMFactorySelection.digest(sources[image.compressed.path]!) == image.compressed.sha256,
-              try VMFactorySelection.digest(sources[package]!) == contract.leanPackageSHA256 else { throw failure() }
+              try VMFactorySelection.digest(sources[package]!) == reviewed.leanPackageSHA256 else { throw failure() }
         // The build floor is checked before starting. Check the actual compressed
         // size again for preparation plus the catalog's independent private copy.
         let bytes = try sources[image.compressed.path]!.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max
@@ -41,11 +44,11 @@ enum FactoryBuildBundle {
         }
         let value: [String: Any] = ["format": 2, "name": name, "architecture": "aarch64", "boot": "uefi-limine",
             "customFactoryVersion": 1, "managedSSHVersion": 1, "managedSetupVersion": 1, "ownerSetupReportVersion": 1,
-            "integrationPackageSHA256": contract.runtimePackageSHA256, "ownerSetupContractSHA256": contract.ownerSetupContractSHA256,
-            "ownerSetupEvidence": "compatibility.json", "imageBuildEvidence": "image-build.json", "imageIntegrationVersion": contract.leanPackageVersion,
+            "integrationPackageSHA256": contract.runtimePackageSHA256, "ownerSetupContractSHA256": reviewed.ownerSetupContractSHA256,
+            "ownerSetupEvidence": "compatibility.json", "imageBuildEvidence": "image-build.json", "imageIntegrationVersion": reviewed.leanPackageVersion,
             "imageIntegrationSourceCommit": provenance.try_commit, "runtimeFiles": lock.files, "files": files,
             "provisioning": files.filter { $0.key != image.compressed.path && $0.key != "factory.json" },
-            "guestIntegration": ["contractVersion": contract.contractVersion, "capabilities": contract.capabilities, "packageFile": package, "packageSHA256": contract.leanPackageSHA256]]
+            "guestIntegration": ["contractVersion": contract.contractVersion, "capabilities": contract.capabilities, "packageFile": package, "packageSHA256": reviewed.leanPackageSHA256]]
         let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
         let manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: data)
         try manifest.validate()

@@ -16,7 +16,7 @@ The native SwiftUI app requires macOS 15 or later. The current private debug bui
 
 Use **Omarchy VM Manager → Check for Updates…** to check published releases for your app's channel: stable downloads for stable, Dev prereleases for Dev. An available update offers **View Release** for manual download from GitHub. See [release identity and local-build behavior](docs/Prereleases.md#manual-update-checks).
 
-**[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [48-second MP4 tour](docs/media/quick-tour.mp4)
+**[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [Demo video](https://www.reactive.org/omarchy-vm)
 
 ## Build and check
 
@@ -192,6 +192,8 @@ SHA-256 checksums. Every guest receives an independent writable disk.
 
 Dev includes a native **Factory images → Build factory…** flow for the reviewed
 lean foundation, with Docker readiness, background progress and a live terminal.
+Choose **Stable** (the latest Omarchy release, the default) or **Edge** (Omarchy's
+development builds); a release whose setup programs aren't reviewed is refused.
 See [Build a lean factory in Dev](docs/FactoryBuilding.md) for requirements, CLI
 commands and the distinction between build verification and guest boot testing.
 

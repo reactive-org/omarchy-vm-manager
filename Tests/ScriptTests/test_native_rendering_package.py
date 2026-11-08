@@ -16,7 +16,7 @@ class NativeRenderingTests(unittest.TestCase):
             recipe = Path(scratch) / 'recipe'
             shutil.copytree(ROOT / 'try-omarchy', recipe, symlinks=True)
             module.prepare(recipe)
-            self.assertIn('pkgrel=47.1', (recipe / 'PKGBUILD').read_text())
+            self.assertIn('pkgrel=48.1', (recipe / 'PKGBUILD').read_text())
             self.assertNotIn('WLR_RENDERER_ALLOW_SOFTWARE=1', (recipe / 'files/usr/lib/environment.d/90-try-omarchy.conf').read_text())
             self.assertFalse((recipe / 'files/usr/lib/try-omarchy/bin/ghostty').exists())
             self.assertFalse((recipe / 'files/usr/lib/try-omarchy/bin/kitty').exists())

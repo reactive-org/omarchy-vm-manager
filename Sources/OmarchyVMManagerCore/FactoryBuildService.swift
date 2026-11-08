@@ -18,7 +18,17 @@ public struct FactoryBuildJob: Codable, Sendable, Identifiable {
     public var failure: String?
     public var factory: FactoryIdentity?
     public var active: Bool { [.preparing, .downloading, .packages, .image, .verifying, .importing].contains(stage) }
+    /// The recorded failure as a fixed explanation for the job page.
+    public var failureExplanation: String {
+        if failure == Self.unreviewedOmarchyFailure {
+            return "This Omarchy release changes setup programs that Omarchy VM Manager hasn’t reviewed yet. Update Omarchy VM Manager, or try the other channel. No factory was added."
+        }
+        return failure.flatMap(FactoryBuildFailure.init(rawValue:))?.explanation ?? "No factory was added. The build output was preserved; inspect the terminal and build details."
+    }
+    public static let unreviewedOmarchyFailure = "omarchy-unreviewed"
     public var cleanupRequired: Bool { stage == .cleanupRequired }
+    /// Finished jobs whose retained files can be moved to Trash.
+    public var removable: Bool { [.succeeded, .failed, .cancelled].contains(stage) }
     public init(id: UUID, plan: FactoryBuildPlan, stage: FactoryBuildStage, createdAt: Date = Date(), finishedAt: Date? = nil, failure: String? = nil, factory: FactoryIdentity? = nil) {
         self.id = id; self.plan = plan; self.stage = stage; self.createdAt = createdAt; self.finishedAt = finishedAt; self.failure = failure; self.factory = factory
     }
@@ -26,10 +36,11 @@ public struct FactoryBuildJob: Codable, Sendable, Identifiable {
 public protocol FactoryBuildControlling: Sendable {
     var enabled: Bool { get }
     func jobs() async throws -> [FactoryBuildJob]
-    func review(name: String, sizeGiB: Int) async throws -> FactoryBuildReview
+    func review(name: String, sizeGiB: Int, channel: FactoryChannel) async throws -> FactoryBuildReview
     func start(reviewID: UUID) async throws -> FactoryBuildJob
     func cancel(_ id: UUID) async throws
     func recover(_ id: UUID) async throws
+    func remove(_ id: UUID) async throws
     func output(_ id: UUID, after sequence: UInt64) async throws -> FactoryBuildOutputPage
     @discardableResult func cancelAndWait() async -> Bool
     func resumeAfterCancelledQuit() async
@@ -53,6 +64,7 @@ public actor FactoryBuildService: FactoryBuildControlling {
     public nonisolated let enabled: Bool
     private let root: URL
     private let environment: any FactoryBuildEnvironment
+    private let trash: any FactoryTrashService
     private var loaded = false
     private var records: [UUID: Record] = [:]
     private var outputs: [UUID: FactoryBuildOutput] = [:]
@@ -64,12 +76,14 @@ public actor FactoryBuildService: FactoryBuildControlling {
     private var inspections: [UUID: Task<FactoryBuildInspection, any Error>] = [:]
     private var reviewGeneration = UUID()
     private var lockFD: Int32 = -1
-    public init(applicationSupport: URL, environment: any FactoryBuildEnvironment) {
+    public init(applicationSupport: URL, environment: any FactoryBuildEnvironment, trash: any FactoryTrashService = SystemFactoryTrashService()) {
         enabled = AppChannel.current == .development
         root = ManagerStorage(applicationSupport: applicationSupport).directory.appendingPathComponent("FactoryBuilds")
-        self.environment = environment
+        self.environment = environment; self.trash = trash
     }
-    init(fixtureRoot: URL, environment: any FactoryBuildEnvironment) { enabled = true; root = fixtureRoot; self.environment = environment }
+    init(fixtureRoot: URL, environment: any FactoryBuildEnvironment, trash: any FactoryTrashService = SystemFactoryTrashService()) {
+        enabled = true; root = fixtureRoot; self.environment = environment; self.trash = trash
+    }
     deinit { if lockFD >= 0 { close(lockFD) } }
     private var jobsRoot: URL { root.appendingPathComponent("Jobs") }
     private var journal: URL { root.appendingPathComponent("Records") }
@@ -99,14 +113,14 @@ public actor FactoryBuildService: FactoryBuildControlling {
         records[record.job.id] = record
     }
     public func jobs() throws -> [FactoryBuildJob] { try load(); return records.values.map(\.job).sorted { $0.createdAt > $1.createdAt } }
-    public func review(name: String = "Lean Omarchy", sizeGiB: Int = 20) async throws -> FactoryBuildReview {
+    public func review(name: String = "Lean Omarchy", sizeGiB: Int = 20, channel: FactoryChannel = .stable) async throws -> FactoryBuildReview {
         try load()
         guard task == nil, !recovering, !admissionSuspended else { throw FactoryBuildFailure.busy }
         try acquireLock()
         do { try load(refresh: true) } catch { releaseLock(); throw error }
         releaseLock()
         guard records.count < 128, !records.values.contains(where: { $0.job.cleanupRequired }) else { throw FactoryBuildFailure.busy }
-        let plan = try FactoryBuildPlan(name: name, sizeGiB: sizeGiB)
+        let plan = try FactoryBuildPlan(name: name, sizeGiB: sizeGiB, channel: channel)
         let generation = UUID(); reviewGeneration = generation; pending = nil
         let probe = Task { [environment, root = jobsRoot] in
             let value = try await environment.inspect(root: root)
@@ -161,6 +175,19 @@ public actor FactoryBuildService: FactoryBuildControlling {
         guard var record = records[id], record.job.active else { throw FactoryBuildFailure.cancelled }
         record.job.stage = stage; try write(record)
     }
+    /// The dev-vm builder's fixed fail-closed sentence for an Omarchy release
+    /// outside the reviewed set. Only this exact marker is recognised; other
+    /// output stays confined to the live terminal.
+    static let unreviewedOmarchyMarker = "changes setup programs that Omarchy VM Manager hasn't reviewed yet"
+    static func reportsUnreviewedOmarchy(_ output: FactoryBuildOutput) -> Bool {
+        var cursor: UInt64 = 0, text = Data()
+        for _ in 0..<5 {
+            let page = output.page(after: cursor)
+            guard !page.bytes.isEmpty else { break }
+            text.append(page.bytes); cursor = page.sequence
+        }
+        return text.range(of: Data(unreviewedOmarchyMarker.utf8)) != nil
+    }
     private func run(_ id: UUID, output: FactoryBuildOutput) async {
         guard var record = records[id] else { return }
         defer { releaseLock(); task = nil }
@@ -177,6 +204,9 @@ public actor FactoryBuildService: FactoryBuildControlling {
             let cancelled = Task.isCancelled || error is CancellationError || (error as? FactoryBuildFailure) == .cancelled
             record.job.stage = (error as? FactoryBuildFailure) == .cleanupRequired ? .cleanupRequired : cancelled ? .cancelled : .failed
             record.job.failure = (error as? FactoryBuildFailure)?.rawValue ?? (cancelled ? "cancelled" : "build-failed")
+            if (error as? FactoryBuildFailure) == .commandFailed, Self.reportsUnreviewedOmarchy(output) {
+                record.job.failure = FactoryBuildJob.unreviewedOmarchyFailure
+            }
         }
         record.job.finishedAt = Date()
         do { try write(record) } catch { record.job.stage = .cleanupRequired; record.job.failure = "journal-unavailable"; records[id] = record }
@@ -203,6 +233,26 @@ public actor FactoryBuildService: FactoryBuildControlling {
         try await environment.cleanup(id: id, admission: record.admission)
         record.job.stage = .failed; record.job.failure = "interrupted-cleanup-verified"; record.job.finishedAt = Date()
         try write(record)
+    }
+    /// Move a finished job's retained build files to Trash and drop it from
+    /// history. A succeeded job's factory already lives in the library, so this
+    /// never removes a factory. Active jobs and cleanup holds are refused, and
+    /// nothing is erased in place.
+    public func remove(_ id: UUID) async throws {
+        try load()
+        guard task == nil, !recovering, !admissionSuspended else { throw FactoryBuildFailure.busy }
+        try acquireLock(); defer { releaseLock() }
+        try load(refresh: true)
+        guard let record = records[id], record.job.removable else { throw FactoryBuildFailure.invalidRequest }
+        let workspace = jobsRoot.appendingPathComponent(id.uuidString)
+        if PrivateFiles.exists(workspace) {
+            try PrivateFiles.directory(workspace)
+            do { try await trash.moveToTrash(workspace) }
+            catch { throw VMFailure(code: "factory-build-trash-failed", message: "The build’s files could not be moved to Trash. They were kept, along with its history entry.") }
+        }
+        let path = journal.appendingPathComponent(id.uuidString + ".json")
+        guard unlink(path.path) == 0 || errno == ENOENT else { throw VMFailure(code: "factory-build-journal", message: "The build’s files are in Trash, but its history entry could not be removed.") }
+        records[id] = nil; outputs[id] = nil
     }
     public func output(_ id: UUID, after sequence: UInt64) throws -> FactoryBuildOutputPage {
         try load()

@@ -31,13 +31,17 @@ For different owner settings on just one VM, the CLI supports [per-VM owner over
 
 ## Choose a factory
 
-A factory is the disk image a new guest starts from. Open **Factory images** in the sidebar to see your library: the official Try Omarchy image, and any lean or custom factories you've built or imported.
+A factory is the disk image a new guest starts from. Open **Factory images** in the sidebar to see your library: the official Try Omarchy image, and any lean or custom factories you've built or imported. Each custom card shows its Omarchy channel, version and build time, so factories with the same name are easy to tell apart.
+
+![The Factory images library with the official Try Omarchy card and two lean factories, one Stable with Omarchy 4.5.0 and used by a VM, one Edge](media/factory-library.webp)
+
+The trash button on a custom card moves that factory to the Trash, so you can restore it. A factory a VM still uses can't be removed; its card says which VM uses it.
 
 Developer setup updates Omarchy before installing your selections, and that update currently fails on the official image. For a guest with developer setup, use a lean factory: build one with **Build factory…** (see [Build a lean factory in Dev](FactoryBuilding.md)) or import a prepared one with **Import factory…** (see [Prepare a factory image](preparing-factory-images.md)). When a factory is ready, **Use for new VM** opens the New VM form with that factory selected.
 
 ## Create Example VM
 
-Click **+** in the toolbar, press **Command+N**, or use **Use for new VM** on a factory. Type **Example VM** as the name and check the **factory** row. **Import…** and **Build…** beside it add a factory without leaving the form.
+Click **+** in the toolbar, press **Command+N**, or use **Use for new VM** on a factory. Type **Example VM** as the name and check the **factory** row. Its menu lists each factory with its channel, Omarchy version and build time. **Import…** and **Build…** beside it add a factory without leaving the form.
 
 ![The New virtual machine form named Example VM, with the Lean Omarchy factory selected and its four sections closed](media/example-vm-01-new-vm.webp)
 

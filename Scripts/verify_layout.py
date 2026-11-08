@@ -26,9 +26,14 @@ resources = core_resource_directory(contents / "Resources/OmarchyVMManager_Omarc
 contract = resources / "OwnerSetupContract.json"
 assert contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json").read_bytes()
 assert json.loads(contract.read_bytes())["schemaVersion"] == 1
-lean_contract = contract.with_name("LeanOwnerSetupContract.json")
-assert lean_contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json").read_bytes()
-assert json.loads(lean_contract.read_bytes())["keyboards"] == json.loads(contract.read_bytes())["keyboards"]
+official_keyboards = json.loads(contract.read_bytes())["keyboards"]
+for lean_name in ("LeanOwnerSetupContract.json", "LeanOwnerSetupContract-a948d8a.json"):
+    lean_contract = contract.with_name(lean_name)
+    assert lean_contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources" / lean_name).read_bytes()
+    # Every reviewed contract offers the manager's keyboard IDs; console keymaps
+    # may differ by Omarchy release (4.5 moved three layouts to latin1 maps).
+    assert [k["id"] for k in json.loads(lean_contract.read_bytes())["keyboards"]] == [k["id"] for k in official_keyboards]
+assert json.loads(contract.with_name("LeanOwnerSetupContract.json").read_bytes())["keyboards"] == official_keyboards
 assert (resources / "ReviewedFactories.json").read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/ReviewedFactories.json").read_bytes()
 channel = info.get("OmarchyAppChannel", "stable")
 assert channel in ("stable", "development"), "unknown app channel"

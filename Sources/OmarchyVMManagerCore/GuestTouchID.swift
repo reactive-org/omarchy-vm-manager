@@ -13,14 +13,19 @@ public struct GuestTouchIDRecord: Codable, Sendable {
 }
 
 public enum GuestTouchIDPolicy {
-    public static let reviewedRuntimePackageSHA256 = "a2912a97967d315439b4ec387bb6125912dc9db0568aee2408cdb524159fd59b"
-    public static let reviewedLeanPackageSHA256 = "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211"
+    /// try-omarchy 0.1.0-48: its UUID-scoped authentication is unchanged from the
+    /// reviewed 0.1.0-47; 48 only adds the Omarchy 4.5 lean owner contract.
+    public static let reviewedRuntimePackageSHA256 = "5c09250244da58caff58fe25af359fa76277c5d441cbdd0331f523dd9b429b65"
+    /// Image packages of the reviewed lean contracts (0.1.0-43.1 and 0.1.0-48.1).
+    public static let reviewedLeanPackageSHA256s: Set<String> = [
+        "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211",
+        "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3"]
     public static func validate(_ profile: VMProfile, lockData: Data) throws {
         guard profile.guestTouchIDEnabled else { return }
         let provenance = try JSONDecoder().decode(RuntimeProvenance.self, from: lockData)
         guard provenance.managedAuthenticationVersion == 1,
               provenance.files[VMFactorySelection.packagePath] == reviewedRuntimePackageSHA256,
-              profile.factory?.kind != .custom || VMGuestIntegrationContract.current.leanPackageSHA256 == reviewedLeanPackageSHA256 else {
+              profile.factory?.kind != .custom || Set(VMGuestIntegrationContract.current.leanContracts.map(\.leanPackageSHA256)).isSubset(of: reviewedLeanPackageSHA256s) else {
             throw VMFailure(code: "unproven-authentication-runtime", message: "Guest Touch ID requires the reviewed UUID-scoped authentication runtime. This guest was not launched.")
         }
     }

@@ -16,9 +16,9 @@ import SwiftUI
     var pending: FactoryBuildReview?
     let outputBuffer = FactoryBuildOutput()
     func jobs() -> [FactoryBuildJob] { rows }
-    func review(name: String, sizeGiB: Int) throws -> FactoryBuildReview {
+    func review(name: String, sizeGiB: Int, channel: FactoryChannel) throws -> FactoryBuildReview {
         if blocked { throw FactoryBuildFailure.dockerMissing }
-        let value = FactoryBuildReview(id: UUID(), plan: try .init(name: name, sizeGiB: sizeGiB), availableBytes: 100 * 1_073_741_824, context: "synthetic-local")
+        let value = FactoryBuildReview(id: UUID(), plan: try .init(name: name, sizeGiB: sizeGiB, channel: channel), availableBytes: 100 * 1_073_741_824, context: "synthetic-local")
         pending = value; return value
     }
     func start(reviewID: UUID) throws -> FactoryBuildJob {
@@ -31,6 +31,8 @@ import SwiftUI
     }
     func cancel(_ id: UUID) throws { cancellations += 1; rows[0].stage = .cancelled; rows[0].failure = "cancelled" }
     func recover(_ id: UUID) throws { recoveries += 1; rows[0].stage = .failed; rows[0].failure = "cleanup-verified" }
+    var removals = 0
+    func remove(_ id: UUID) throws { removals += 1; rows.removeAll { $0.id == id } }
     func output(_ id: UUID, after sequence: UInt64) -> FactoryBuildOutputPage { outputBuffer.page(after: sequence) }
     func cancelAndWait() -> Bool { true }
     func resumeAfterCancelledQuit() {}
@@ -70,7 +72,22 @@ import SwiftUI
             defer { host.window.close() }
             try SetupScreenAcceptance.until { driver.scopes["factory"] != nil }
             try check(driver.state("factory", "stage") == "none", suffix + "-library")
+            try check(driver.state("factory", "cardsFit") == "true", suffix + "-library-cards-fit")
             try capture(host, output.appendingPathComponent("factory-library-" + suffix + ".png"))
+            // #27: the reported window (about 1,165 pt with the sidebar) leaves
+            // about 894 pt for three narrow columns, with two custom factories.
+            let narrowDriver = SetupUIAcceptanceDriver()
+            let narrow = SetupScreenAcceptance.Host(ScrollView { FactoryImagesView(model: model) { _ in }.padding(24) }, driver: narrowDriver, width: 942, height: 1100, dark: dark)
+            defer { narrow.window.close() }
+            for digit in ["a", "b"] {
+                let data = try JSONSerialization.data(withJSONObject: ["kind": "custom", "name": "Custom fixture " + digit, "manifestSHA256": String(repeating: digit, count: 64), "diskSHA256": String(repeating: "c", count: 64)])
+                model.builtFactoryAvailable(try JSONDecoder().decode(FactoryIdentity.self, from: data))
+            }
+            try SetupScreenAcceptance.until { narrowDriver.state("factory", "cards") == "3" }
+            try check(narrowDriver.state("factory", "cardsFit") == "true", suffix + "-narrow-library-cards-fit")
+            try check((Int(narrowDriver.state("factory", "minCardWidth")) ?? 0) >= 280, suffix + "-narrow-library-card-width")
+            try capture(narrow, output.appendingPathComponent("factory-library-narrow-" + suffix + ".png"))
+            narrow.window.close()
             service.blocked = true
             let sheetDriver = SetupUIAcceptanceDriver()
             let sheet = SetupScreenAcceptance.Host(FactoryBuildSheet(builder: model.factoryBuilder), driver: sheetDriver, width: 640, height: 850, dark: dark)
@@ -82,6 +99,8 @@ import SwiftUI
             try sheetDriver.send("factory-sheet", .name("Reviewed UI foundation"))
             try SetupScreenAcceptance.until { sheetDriver.state("factory-sheet", "ready") == "true" }
             try check(service.starts == 0, suffix + "-readiness-does-not-build")
+            try check(sheetDriver.state("factory-sheet", "channel") == "stable", suffix + "-stable-by-default")
+            try check(service.pending?.plan.channel == .stable, suffix + "-stable-review")
             try capture(sheet, output.appendingPathComponent("factory-build-sheet-" + suffix + ".png"))
             try sheetDriver.send("factory-sheet", .save)
             try SetupScreenAcceptance.until { driver.state("factory", "stage") == "downloading" }
@@ -98,6 +117,13 @@ import SwiftUI
             try capture(host, output.appendingPathComponent("factory-build-running-" + suffix + ".png"), screen: model.factoryBuilder.terminal)
             try service.finish()
             try SetupScreenAcceptance.until { driver.state("factory", "stage") == "succeeded" }
+            try check(driver.state("factory", "showingJob") == "true", suffix + "-started-build-shows-job")
+            // Returning to Factory images later opens the library, not the finished job.
+            let revisitDriver = SetupUIAcceptanceDriver()
+            let revisit = SetupScreenAcceptance.Host(ScrollView { FactoryImagesView(model: model) { _ in }.padding(24) }, driver: revisitDriver, width: 1200, height: 960, dark: dark)
+            try SetupScreenAcceptance.until { revisitDriver.scopes["factory"] != nil }
+            try check(revisitDriver.state("factory", "stage") == "succeeded" && revisitDriver.state("factory", "showingJob") == "false", suffix + "-revisit-opens-library")
+            revisit.window.close()
             try capture(host, output.appendingPathComponent("factory-ready-" + suffix + ".png"), screen: model.factoryBuilder.terminal)
             try driver.send("factory", .save)
             try check(selected != nil, suffix + "-use-built-factory")

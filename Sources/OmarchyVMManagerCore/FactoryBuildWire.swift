@@ -29,15 +29,17 @@ public struct FactoryBuildRequest: Codable, Sendable {
     public var sizeGiB: Int?
     public var id: UUID?
     public var cursor: UInt64?
-    public init(operation: Operation, name: String? = nil, sizeGiB: Int? = nil, id: UUID? = nil, cursor: UInt64? = nil) {
-        self.operation = operation; self.name = name; self.sizeGiB = sizeGiB; self.id = id; self.cursor = cursor
+    /// Omarchy channel for a plan; absent means Stable.
+    public var channel: FactoryChannel?
+    public init(operation: Operation, name: String? = nil, sizeGiB: Int? = nil, id: UUID? = nil, cursor: UInt64? = nil, channel: FactoryChannel? = nil) {
+        self.operation = operation; self.name = name; self.sizeGiB = sizeGiB; self.id = id; self.cursor = cursor; self.channel = channel
     }
     public func validate() throws {
-        guard operation == .plan || (name == nil && sizeGiB == nil),
+        guard operation == .plan || (name == nil && sizeGiB == nil && channel == nil),
               operation == .logs || cursor == nil, cursor == nil || cursor! < UInt64(Int64.max),
               operation != .plan || id == nil,
               [.plan, .status].contains(operation) || id != nil else { throw FactoryBuildFailure.invalidRequest }
-        if operation == .plan { _ = try FactoryBuildPlan(name: name ?? "Lean Omarchy", sizeGiB: sizeGiB ?? 20) }
+        if operation == .plan { _ = try FactoryBuildPlan(name: name ?? "Lean Omarchy", sizeGiB: sizeGiB ?? 20, channel: channel ?? .stable) }
     }
 }
 public struct FactoryBuildReply: Codable, Sendable {
@@ -53,7 +55,7 @@ extension FactoryBuildControlling {
         try request.validate()
         var reply = FactoryBuildReply()
         switch request.operation {
-        case .plan: reply.review = try await review(name: request.name ?? "Lean Omarchy", sizeGiB: request.sizeGiB ?? 20)
+        case .plan: reply.review = try await review(name: request.name ?? "Lean Omarchy", sizeGiB: request.sizeGiB ?? 20, channel: request.channel ?? .stable)
         case .start: reply.jobs = [try await start(reviewID: request.id!)]
         case .status: reply.jobs = try await jobs().filter { request.id == nil || $0.id == request.id }
         case .cancel: try await cancel(request.id!); reply.jobs = try await jobs().filter { $0.id == request.id }
@@ -68,7 +70,7 @@ extension FactoryBuildControlling {
 }
 public enum FactoryBuildCLI {
     public static let help = """
-    factory-build plan [--name NAME] [--size-gib 20..128]
+    factory-build plan [--name NAME] [--size-gib 20..128] [--channel stable|edge]
     factory-build start REVIEW_UUID
     factory-build status [JOB_UUID]
     factory-build logs JOB_UUID [--follow]
@@ -76,6 +78,8 @@ public enum FactoryBuildCLI {
     factory-build cleanup JOB_UUID
     Planning checks existing Docker readiness. Start explicitly authorizes downloads
     and an owned privileged build container. No VM is created or launched.
+    --channel stable (default) builds the latest Omarchy release; edge builds
+    Omarchy's development line. A release with unreviewed setup programs is refused.
     """
     public static func parse(_ args: [String]) throws -> (FactoryBuildRequest, follow: Bool)? {
         guard args.first == "factory-build" else { return nil }
@@ -87,6 +91,7 @@ public enum FactoryBuildCLI {
                 let key = args[index]; guard seen.insert(key).inserted, index + 1 < args.count else { throw FactoryBuildFailure.invalidRequest }
                 if key == "--name" { request.name = args[index+1] }
                 else if key == "--size-gib", let size = Int(args[index+1]) { request.sizeGiB = size }
+                else if key == "--channel", let channel = FactoryChannel(rawValue: args[index+1]) { request.channel = channel }
                 else { throw FactoryBuildFailure.invalidRequest }
                 index += 2
             }

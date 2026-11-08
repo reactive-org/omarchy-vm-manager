@@ -19,12 +19,12 @@ import OmarchyVMManagerCore
     private var cursor: UInt64 = 0
     var current: FactoryBuildJob? { jobs.first { $0.id == selectedID } ?? jobs.first { $0.active || $0.cleanupRequired } ?? jobs.first }
     init(service: any FactoryBuildControlling) { self.service = service }
-    func check(name: String, size: Int) async {
+    func check(name: String, size: Int, channel: FactoryChannel = .stable) async {
         let generation = UUID(); self.generation = generation
         checking = true; review = nil; error = nil
         defer { if self.generation == generation { checking = false } }
         do {
-            let result = try await service.review(name: name, sizeGiB: size)
+            let result = try await service.review(name: name, sizeGiB: size, channel: channel)
             guard generation == self.generation, !Task.isCancelled else { return }
             review = result
         } catch { if generation == self.generation, !Task.isCancelled { self.error = Self.message(error) } }
@@ -62,6 +62,16 @@ import OmarchyVMManagerCore
         guard let job = current, !submitting else { return }
         submitting = true; defer { submitting = false }
         do { try await service.recover(job.id); error = nil } catch { self.error = Self.message(error) }
+    }
+    /// Move finished builds' retained files to Trash, one job at a time.
+    func remove(_ ids: [UUID]) async {
+        guard !submitting else { return }
+        submitting = true; defer { submitting = false }
+        do {
+            for id in ids { try await service.remove(id) }
+            if let selectedID, ids.contains(selectedID) { self.selectedID = nil }
+            jobs = try await service.jobs(); error = nil
+        } catch { self.error = Self.message(error) }
     }
     static func message(_ error: any Error) -> String {
         if let failure = error as? FactoryBuildFailure { return failure.explanation }

@@ -1,16 +1,6 @@
 {
   "downloads": [
     {
-      "name": "omarchy-e4fffc6e6b57cda15cdba400e021596d985f9dbf.tar.gz",
-      "sha256": "f7d6bb243b84d217913d0fa7fcbd9aaad573bef62920182887029fde6f29f610",
-      "url": "https://codeload.github.com/omacom/omarchy/tar.gz/e4fffc6e6b57cda15cdba400e021596d985f9dbf"
-    },
-    {
-      "name": "omarchy-pkgs-8490ac0993dcd65c9949f8c531263f4e76445488.tar.gz",
-      "sha256": "01ad28d4059c15fbcc72f1fc20247d5be55f769c52e63f454f17bc6c09d1cc0f",
-      "url": "https://codeload.github.com/omacom/omarchy-pkgs/tar.gz/8490ac0993dcd65c9949f8c531263f4e76445488"
-    },
-    {
       "name": "node-v26.13.0-linux-arm64.tar.gz",
       "sha256": "439e9c438acdf6a6ffe47418da709153d66c4bed812e30a473faacb107dd2791",
       "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-linux-arm64.tar.gz"
@@ -35,7 +25,7 @@
     },
     "profile/build-container.sh": {
       "mode": 420,
-      "sha256": "57da4c9078874aaa74f6f282928f34c82e5a6644eedef11cee1ac2bc3d7f3dcb"
+      "sha256": "bc0de1649b2695fd6f060bd1aba57799f2266136f034384c12edd75856a01d10"
     },
     "profile/check-provisioning.py": {
       "mode": 420,
@@ -47,7 +37,7 @@
     },
     "profile/compatibility.py": {
       "mode": 420,
-      "sha256": "c0b5a0dd04dc91a3c2e2998ed161d8c9fdab25fed9d1ec53e19f73924e088233"
+      "sha256": "8bca0bbd6d2371f75eb63c4928ada294df3e2b37bfcba6e333083b576ad68a59"
     },
     "profile/excluded.packages": {
       "mode": 420,
@@ -55,11 +45,11 @@
     },
     "profile/guest-integration-compatibility.json": {
       "mode": 420,
-      "sha256": "e657f31e013e139c3f17387bbfad31a898f2d35015796ba79c373d16364dd64e"
+      "sha256": "dbc6763e0c12453797350ad644e5b1a82a1dd25f3348d0eae621dd6f5a63d40b"
     },
     "profile/inputs.lock.json": {
       "mode": 420,
-      "sha256": "2a7815a0795e1f778178585b663360ca59e302d2b01a88c7c943e4c1a09100a8"
+      "sha256": "581bf8d7f382d1f4ab2943fa8e17c46b2dea431306e31e323fbdbb52941adf67"
     },
     "profile/preferences/PKGBUILD": {
       "mode": 420,
@@ -105,13 +95,13 @@
       "mode": 420,
       "sha256": "9f4cf3712433bd9d6be7f137c8f245921cdec2ce67fe46527f0abee9f7d6cbd3"
     },
-    "profile/reviewed-packages/try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst": {
+    "profile/reviewed-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst": {
       "mode": 420,
-      "sha256": "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211"
+      "sha256": "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3"
     },
     "profile/try-guest-source.tar.gz": {
       "mode": 420,
-      "sha256": "2a1970cf3768383f575b36f01dc385782f7433e21e46a5ac1b3cafbe99639940"
+      "sha256": "45aa19dd23e5ac768672034d51e09a39dd66c9cb8f45105be7f8d216351c3766"
     },
     "upstream/LICENSE": {
       "mode": 420,
@@ -143,7 +133,7 @@
     },
     "upstream/guest/factory/build-image.sh": {
       "mode": 493,
-      "sha256": "1576ca36b1b03fb779ee443f60002e91e8ea7148dfce597ef7f9406d7a9d4ef2"
+      "sha256": "2bccd66e886a2702ce37b165fe13291f5e89356d40e2e8ba1e04b4a88e1fd01c"
     },
     "upstream/guest/keys/omarchy-revoked": {
       "mode": 420,
@@ -159,11 +149,15 @@
     },
     "upstream/guest/package/README.md": {
       "mode": 420,
-      "sha256": "2ee3ba06500695a11d692a246647c6b9d07222907b77cd935736b5d3bf39bcea"
+      "sha256": "19f7578826d66e0ed54d4426ef1df723fd49a6bddae903d94a1459a8db0cc155"
     },
     "upstream/guest/package/build.sh": {
       "mode": 493,
-      "sha256": "e38d377dc1e1effbb925599385cf231639394769b9cd7ec2bc9199dcf72b8f17"
+      "sha256": "08191e26feb2d9e438d2706b6d0bd1f2bc9889ed4006b3055b6d2bfe8e6bcaa1"
+    },
+    "upstream/guest/package/native-rendering.py": {
+      "mode": 420,
+      "sha256": "dae493833abfb44925af84dc45521c7217c8326122122807799662b3ef9bf7b3"
     },
     "upstream/guest/package/tests/fixtures/owner-contracts/LICENSE": {
       "mode": 420,
@@ -171,7 +165,7 @@
     },
     "upstream/guest/package/tests/fixtures/owner-contracts/README.md": {
       "mode": 420,
-      "sha256": "a8fdd16f10ca5f692e98b11b7940380bded5fa88f3cc35210881abbffb0fae0c"
+      "sha256": "589a8b73a7fee8e5f8230e3a848c68b241a4ab05af55c8135708137b83aff124"
     },
     "upstream/guest/package/tests/fixtures/owner-contracts/lean.sh": {
       "mode": 420,
@@ -181,9 +175,13 @@
       "mode": 420,
       "sha256": "388593495ac0bec8350ccff9955a33e9f0705412898e7f7fa708d63c56556473"
     },
+    "upstream/guest/package/tests/test_managed_home.py": {
+      "mode": 420,
+      "sha256": "00c360baa0197ce03645a0ce30b2c1f935606a9437704a7d0b678a2cc5344723"
+    },
     "upstream/guest/package/tests/test_managed_setup.py": {
       "mode": 420,
-      "sha256": "812af0d8431cc29eb416dff0e07bcb30484624ff23cc900c70f348141d3215ce"
+      "sha256": "f343d5e49752844d1f0274ad84b2c4866f8fe7c33c029374bfcbdc8998a2566d"
     },
     "upstream/guest/package/tests/test_managed_ssh.py": {
       "mode": 420,
@@ -191,7 +189,7 @@
     },
     "upstream/guest/package/tests/test_owner_report_timer.py": {
       "mode": 420,
-      "sha256": "6a95eb2a0085d490d8344226131561239641d76805febc4a6c1283683933a088"
+      "sha256": "8c3adac16b78a46a7b76cfdd078816b2a04c52a83beb44b7deaf7f95113b0e32"
     },
     "upstream/guest/package/tests/test_package.py": {
       "mode": 420,
@@ -211,7 +209,7 @@
     },
     "upstream/guest/package/try-omarchy/PKGBUILD": {
       "mode": 420,
-      "sha256": "b315d656dc9617a8d01b3ad925468568d1b1b1ba39455eb51e96f647470c7d90"
+      "sha256": "56312f02d208ef2840823615c0746ded4034aa5fe0d94efc584bfabdc340b342"
     },
     "upstream/guest/package/try-omarchy/battery/Makefile": {
       "mode": 420,
@@ -347,7 +345,19 @@
     },
     "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset": {
       "mode": 420,
-      "sha256": "1549a4dc33b6859426ff5b339c1c74bef27172a31cbcfeeba3dd923520d1b86c"
+      "sha256": "e07d8b6c3f3fc862c2624176467cfac6c4a81323a8b6bb3b673686041d9cbd27"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/console-getty.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/display-manager.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/getty@.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
     },
     "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-native-battery-bridge.service": {
       "mode": 420,
@@ -369,6 +379,14 @@
       "mode": 420,
       "sha256": "7223fa10def2451bdbe7a4db37e0599f6959f6c57fabe8d35cbcbf699c0eda74"
     },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/serial-getty@.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/sshd.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
     "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-clock-recovery.service": {
       "mode": 420,
       "sha256": "17fa9abb99f4aa90aa81c460460ab3c06ca61e0792c523b4da84224fb89ed626"
@@ -389,6 +407,10 @@
       "mode": 420,
       "sha256": "a1d8e96d16066905d40953ea351b2f0b386e001d7d6d43f12d50c998d0ab3807"
     },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-home.service": {
+      "mode": 420,
+      "sha256": "4ace77432fc970831114c81fcb9e82786754238529b18271e6153be9d83a12b5"
+    },
     "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-host-config.service": {
       "mode": 420,
       "sha256": "7936403ec38c024e4cf9f060ef334edcd961a414ce7b1e43c1cf31966ac85878"
@@ -408,6 +430,10 @@
     "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service": {
       "mode": 420,
       "sha256": "95dc7bab03f25dd699a2c3aee1b262c4074cf683eefb8a6632ef5780cd7f35b3"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
     },
     "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer": {
       "mode": 420,
@@ -497,9 +523,13 @@
       "mode": 493,
       "sha256": "0d009302cd28c9e2a359cd747c93a36f1956a5a5dbb675a96a2990fecb2c00a5"
     },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-home": {
+      "mode": 493,
+      "sha256": "59484f399b5e440b7ffbfcd884831bd931b78f08fc3997e93a9df9509c0ff848"
+    },
     "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup": {
       "mode": 493,
-      "sha256": "f381f478095ff68340646642bbcd61a8e412dc0946d9cd023f594d56fb423185"
+      "sha256": "90ed00675e352130de10bf5c78cd5cc6b014f20839204e8be2913c4af757101b"
     },
     "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh": {
       "mode": 493,
@@ -609,6 +639,10 @@
       "mode": 420,
       "sha256": "e5e4e456c8be4a0ad40dc36b8fb8c1caee1dd1095a3b0214e861cd1f852a5f44"
     },
+    "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/lean-owner-setup-contract-a948d8a.json": {
+      "mode": 420,
+      "sha256": "fb73e12e5ea4ad8c5bd4fbeee7b5d1d9029708342b6fa2f3a55c7ca9f14104c5"
+    },
     "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/lean-owner-setup-contract.json": {
       "mode": 420,
       "sha256": "1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310"
@@ -623,7 +657,7 @@
     },
     "upstream/guest/package/try-omarchy/try-omarchy.install": {
       "mode": 420,
-      "sha256": "b9468f4bba72e5fb49512787007ec0df75579e1c059a7b731e14c1b38dabde13"
+      "sha256": "67eddd13e2735651a3dce239c70d3b3dcf5cad59658f3606a575ca30c580e178"
     },
     "upstream/guest/tests/builder-image.sh": {
       "mode": 493,
@@ -678,28 +712,28 @@
       "omarchy/image/OMARCHY-LICENSE": "717ba1949502290f8e47688ae2e323acd06c8ca47aec9f7596b15f678c1af4a2",
       "omarchy/image/UPSTREAM-LICENSE": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481",
       "omarchy/image/base.packages": "3a4496b9adcfe7e77ce0afbb9d36e60a9bdab9ef01b0898686cdf41c5fc53125",
-      "omarchy/image/build-container.sh": "57da4c9078874aaa74f6f282928f34c82e5a6644eedef11cee1ac2bc3d7f3dcb",
+      "omarchy/image/build-container.sh": "bc0de1649b2695fd6f060bd1aba57799f2266136f034384c12edd75856a01d10",
       "omarchy/image/check-provisioning.py": "65061dca9ed1d8f4271fe2886ef0fdf04d236e295d188244a7b094dd44ea12de",
       "omarchy/image/check-user.sh": "52b2cdad6d2095806438c4b36f61040734d6cd6f7fbcb6b1bec37320d903d4d4",
-      "omarchy/image/compatibility.py": "c0b5a0dd04dc91a3c2e2998ed161d8c9fdab25fed9d1ec53e19f73924e088233",
+      "omarchy/image/compatibility.py": "8bca0bbd6d2371f75eb63c4928ada294df3e2b37bfcba6e333083b576ad68a59",
       "omarchy/image/excluded.packages": "6744af32cfcb539d868d860627a59aaf48a95e63bb64c0f6bba648838fdec0db",
-      "omarchy/image/guest-integration-compatibility.json": "e657f31e013e139c3f17387bbfad31a898f2d35015796ba79c373d16364dd64e",
-      "omarchy/image/inputs.lock.json": "2a7815a0795e1f778178585b663360ca59e302d2b01a88c7c943e4c1a09100a8",
+      "omarchy/image/guest-integration-compatibility.json": "dbc6763e0c12453797350ad644e5b1a82a1dd25f3348d0eae621dd6f5a63d40b",
+      "omarchy/image/inputs.lock.json": "581bf8d7f382d1f4ab2943fa8e17c46b2dea431306e31e323fbdbb52941adf67",
       "omarchy/image/preferences/PKGBUILD": "ac3b33acbc318fbeb3c99d79a028bbcd82635e502c0d5d0a0a5b681fc3ee5598",
       "omarchy/image/preferences/first-login.service": "4194431bf4342f2add082875831877d8a6d25cfbddd73bc7238504a077f125df",
       "omarchy/image/preferences/first-login.sh": "3e8078e0378bd67c7ce8a91101013c264f063baccf9743d1e6d4fc421da930c6",
       "omarchy/image/preferences/preferences.install": "595ecfe1e7ffa005f4ce48772e167794647467034ad5649bb0e398927c99bcb9",
-      "omarchy/image/reviewed-packages/try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst": "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211",
-      "omarchy/image/try-guest-source.tar.gz": "2a1970cf3768383f575b36f01dc385782f7433e21e46a5ac1b3cafbe99639940",
-      "scripts/omarchy_image.py": "408859f88ef520f8d7c041f3acd2ccc154d654698f8bc463550d30eca390902f"
+      "omarchy/image/reviewed-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst": "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3",
+      "omarchy/image/try-guest-source.tar.gz": "45aa19dd23e5ac768672034d51e09a39dd66c9cb8f45105be7f8d216351c3766",
+      "scripts/omarchy_image.py": "1ec9d81fc6374b1bda3a4a1f2236494e12c4165a4333e51d0061b22ddd645d73"
     },
     "integration_package": {
-      "archive": "reviewed-packages/try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst",
-      "origin_build": "af93b5f10d206637-7816326733d14d53",
-      "origin_source_commit": "80156396a5daa795487c0f4a8308eee53f6ea68b",
-      "recipe_sha256": "92663bda1702433f374094cce7b3ac69deb404c19de61caefdd170769605f01c",
+      "archive": "reviewed-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst",
+      "origin_build": "omarchy-vm-manager-native-rendering-48.1",
+      "origin_source_commit": "91e95a2b9d6a9399cb2fe51f8be3d3a45c085054",
+      "recipe_sha256": "0ad47e4ed75f10fcd28b8099d2f7f650fa4753818ce06113ba39c687ee9ef384",
       "reused_reviewed_archive": true,
-      "sha256": "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211"
+      "sha256": "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3"
     },
     "package_profile": {
       "excluded": [
@@ -851,7 +885,7 @@
       ]
     },
     "size_gib": 20,
-    "try_commit": "85f5e561e5a277ccec08d7725c8714cb090c9011"
+    "try_commit": "91e95a2b9d6a9399cb2fe51f8be3d3a45c085054"
   },
-  "templateSHA256": "f102dc7f9bcab6cc535fbd1a5c5b42fb3386b0df0fbfc852afae02ec4c4365b0"
+  "templateSHA256": "11172109dd8ecb5164f7f384cd2eb97ba0b7e5f8924789c424462adcbee489c1"
 }
