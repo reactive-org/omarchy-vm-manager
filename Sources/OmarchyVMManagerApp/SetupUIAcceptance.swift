@@ -90,6 +90,7 @@ enum AcceptanceFailure: Error { case check }
     func prepareApply(_ id: UUID) async throws -> ProvisioningApplyReview {
         guard executionEnabled else { throw ProvisioningReviewFailure.unavailable }
         guard let preview = previews[id] else { throw ProvisioningReviewFailure.invalid }; preparations += 1
+        if holdNext { holdNext = false; await withCheckedContinuation { waiter = $0 } }
         var fields: [String: Any] = ["previewID": id.uuidString, "vmID": preview.vmID.uuidString, "sessionID": (reviewSession ?? UUID()).uuidString, "planDigest": preview.planDigest, "inputDigest": preview.inputDigest, "dependencyDigest": String(repeating: "b", count: 64), "reviewIdentity": String(repeating: "c", count: 64), "systemUpdateRequired": true, "persistentGrantRequired": true, "dockerRootAccessRequired": !adminOnlyReview]
         if !adminOnlyReview { fields["taskTrustIdentity"] = String(repeating: "d", count: 64) }
         return try value(fields)

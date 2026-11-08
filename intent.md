@@ -655,7 +655,7 @@ through its receipt. Other never-run plans have no plan record, so Change setup 
 them and starts from the last recorded plan.
 
 **VERIFIED — fake/local, 9 November 2026:** `ProvisioningRetryTests` and the offscreen
-harness (200 checks, 49 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
+harness (202 checks, 49 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
 **TO PROVE:** the same flows on a real Dev guest: Run setup again and Apply changes
 through restart and check, Start & set up, and reopening a pending run.
 

@@ -86,7 +86,7 @@ struct ChangeSetupView: View {
         return !changed && lastPlan.map { SetupProposalFacts.needsDocker($0.proposal) } == true
     }
     private var canRun: Bool {
-        guard executionEnabled, !working, grantConsent, !needsDocker || dockerConsent else { return false }
+        guard executionEnabled, snapshot.profile.ssh != nil, !working, grantConsent, !needsDocker || dockerConsent else { return false }
         if changed || lastRun == nil && lastPlan == nil { return selection != nil }
         return true
     }
@@ -327,6 +327,7 @@ struct ChangeSetupView: View {
         switch phase {
         case .edit:
             if !executionEnabled { return "Setup execution is disabled in this build. Nothing here changes this VM." }
+            if snapshot.profile.ssh == nil { return "Setup runs over the guest’s managed SSH, which is off for this guest. Turn on SSH in its settings while it’s stopped, then run setup." }
             return (running ? "" : "Starts the guest, then runs this plan once it’s reachable. ") + "Approving covers the whole run: setup updates Omarchy, applies these choices, restarts the guest once and checks the configuration."
         case .pending: return "Approving covers the whole run, including its restart and check. Discard cancels the prepared run; nothing in the guest changes."
         case .cleanup: return "Changing setup is unavailable until the hold is resolved."
@@ -434,7 +435,7 @@ struct ChangeSetupView: View {
             if pending.stage == .readyForReview, pendingReview == nil, reviewRequested != pending.id {
                 reviewRequested = pending.id
                 do { pendingReview = try await service.prepareApply(pending.id) }
-                catch { failure = "This run’s approval isn’t available any more. Discard it, then run setup again." }
+                catch { reviewRequested = nil; failure = "This run’s approval isn’t available any more. Discard it, then run setup again." }
             }
         } else if let plan = pendingPlan, rows.contains(where: { $0.id == plan.id }) {
             // The pending run has started or ended; it is no longer waiting here.
@@ -443,7 +444,7 @@ struct ChangeSetupView: View {
         loaded = true
     }
 
-    private func resetConsents() { grantConsent = false; dockerConsent = false; taskConsent = false; inspectedTasks.removeAll() }
+    private func resetConsents() { grantConsent = false; dockerConsent = false; taskConsent = false; inspectedTasks.removeAll(); reviewRequested = nil }
 
     // MARK: Actions
 
@@ -478,7 +479,9 @@ struct ChangeSetupView: View {
             pendingPlan = plan; pendingReview = nil; resetConsents(); grantConsent = admin
             return
         }
-        model.approveSetup(.init(preview: plan, dockerAcknowledged: docker && dockerConsent))
+        guard model.approveSetup(.init(preview: plan, dockerAcknowledged: docker && dockerConsent)) else {
+            failure = "Setup couldn’t be approved for this guest right now. Nothing was changed."; return
+        }
         if !running { await model.start(snapshot.id) }
     }
 
@@ -488,7 +491,9 @@ struct ChangeSetupView: View {
         let docker = SetupProposalFacts.needsDocker(plan.proposal)
         if plan.tasks.isEmpty, pendingReview == nil, !rows.contains(where: { $0.id == plan.id }) {
             // Not prepared in the guest yet: the approval prepares and runs it.
-            model.approveSetup(.init(preview: plan, dockerAcknowledged: docker && dockerConsent))
+            guard model.approveSetup(.init(preview: plan, dockerAcknowledged: docker && dockerConsent)) else {
+                failure = "Setup couldn’t be approved for this guest right now. Nothing was changed."; return
+            }
             pendingPlan = nil
             if !running { await model.start(snapshot.id) }
             return
@@ -607,7 +612,7 @@ struct ChangeSetupView: View {
                 "canApprove": String(canApprovePending), "changed": String(changed), "docker": String(needsDocker),
                 "pending": pendingPlan?.id.uuidString ?? "", "review": pendingReview?.reviewIdentity ?? "", "failure": failure ?? "",
                 "inspected": String(inspectedTasks.count), "cancelPending": String(confirmCancel), "lastRun": lastRun?.id.uuidString ?? "",
-                "profiles": draft.profiles.sorted().joined(separator: ",")]
+                "profiles": draft.profiles.sorted().joined(separator: ","), "footNote": footNote ?? ""]
     }
     #endif
 }

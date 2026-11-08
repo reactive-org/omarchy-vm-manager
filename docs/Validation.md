@@ -446,7 +446,7 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 
 ## Setup moves to Home — 7 November 2026
 
-**DESIGN DECISION — user direction:** the guest's Setup tab is removed. A **setup** card on Home (shown once the first-run tracker is done) summarises the configured software and desktop and the last run, and offers the one action that matters: Set up…, Review…, Review recovery…, View output or Change setup…. **Change setup** opens a sheet with the same selection, frozen review, separate consents (admin access, Docker root access, task trust after inspection) and reviewed restart, check and recovery actions as before. **View output** opens a sheet with the live terminal or the saved last-run log, cancel and job details. Both sheets reuse the former tab's view in a mode, so review and consent behaviour is unchanged; the acceptance harness drives both modes together because it cannot capture sheets.
+**DESIGN DECISION — user direction:** the guest's Setup tab is removed. A **setup** card on Home (shown once the first-run tracker is done) summarises the configured software and desktop and the last run, and offers the one action that matters: Set up…, Review…, Review recovery…, View output or Change setup…. **Change setup** opens a sheet with the same selection, frozen review, separate consents (admin access, Docker root access, task trust after inspection) and reviewed restart, check and recovery actions as before. **View output** opens a sheet with the live terminal or the saved last-run log, cancel and job details. Both sheets reuse the former tab's view in a mode, so review and consent behaviour is unchanged; the acceptance harness drives both modes together because it cannot capture sheets. (Superseded on 9 November 2026: Change setup is now its own sheet; see below.)
 
 **VERIFIED — fake/local:** six offscreen checks cover the card's states (none, configured, running with progress, manual restart needing review, approved restart as progress, cleanup recovery, failed and succeeded); renders of the card and both sheets; all earlier setup checks still pass against the shared view.
 
@@ -458,13 +458,15 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 
 **DESIGN DECISION — user direction:** Change setup is its own sheet in New VM's shape. It has a four-step strip (Approve · Install · Restart · Check) and one sentence for the current state, `layout` and `customise` started from the last plan's choices, the separate consents, and one button: Run setup again, Apply changes or Start & set up. One approval covers the run's restart and check (see intent.md). A pending run is listed by `latestSetup` and shown again with Approve & run and Discard this run. View output keeps the terminal, cancel and job details.
 
-**VERIFIED — fake/local:** Core tests cover a pending run found again with the same review after the sheet closes, other plans refused while it waits and allowed after Discard, and a creation plan that never ran being retried (`ProvisioningRetryTests`). The offscreen harness (200 checks, 49 images) covers:
+**VERIFIED — fake/local:** Core tests cover a pending run found again with the same review after the sheet closes, other plans refused while it waits and allowed after Discard, and a creation plan that never ran being retried (`ProvisioningRetryTests`). The offscreen harness (202 checks, 49 images) covers:
 - the button label following the choices;
 - each consent still being separate, with custom tasks stopping at Approve & run;
 - the approval following its own run through the restart;
 - a pending run surviving reopen and Discard unblocking it;
 - the interrupted-after-restart wording;
-- Start & set up binding to the guest's first session even when earlier finished runs exist.
+- Start & set up binding to the guest's first session even when earlier finished runs exist;
+- Don't set up stopping a run that is still being prepared;
+- a guest without managed SSH being explained, not silently ignored.
 
 **TO PROVE:** on a real Dev guest, Run setup again and Apply changes running through restart and check unattended, Start & set up from a stopped guest, and closing and reopening the sheet with a run waiting for approval.
 

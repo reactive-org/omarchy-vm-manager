@@ -16,7 +16,7 @@ def main():
     output = parent / 'result'
     subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=180)
     report = json.loads((output / 'report.json').read_text())
-    assert report['schema'] == 1 and len(report['checks']) == 200
+    assert report['schema'] == 1 and len(report['checks']) == 202
     assert len(set(report['checks'])) == len(report['checks'])
     for appearance in ('dark', 'light'):
         for case in ('bundled-direct-create-ready', 'all-draft-edits-have-no-backend-effects',
@@ -64,7 +64,8 @@ def main():
                  'uninspected-task-cannot-submit', 'complete-chunked-task-inspection', 'task-trust-independent',
                  'approval-sends-each-consent', 'approval-follows-its-own-run', 'submission-attempt-not-replayed',
                  'approval-covers-restart-and-check', 'pending-run-survives-reopen', 'pending-run-discard-unblocks',
-                 'interrupted-after-restart-wording', 'start-and-set-up-binds-first-session'):
+                 'interrupted-after-restart-wording', 'start-and-set-up-binds-first-session',
+                 'dont-set-up-stops-a-preparing-run', 'change-needs-ssh-explained'):
         assert case in report['checks']
     # One Change setup approval, one Start & set up approval and one
     # approve-at-creation automatic submission.

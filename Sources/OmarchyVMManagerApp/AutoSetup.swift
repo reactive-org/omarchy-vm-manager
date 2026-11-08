@@ -83,11 +83,12 @@ extension AppModel {
     /// Change setup's main button: run this plan once, with its restart and check.
     /// A running guest binds to its current session; Start & set up binds to the
     /// first session seen after launch. Replaces any earlier approval for the guest.
-    func approveSetup(_ plan: ApprovedSetupPlan) {
+    @discardableResult func approveSetup(_ plan: ApprovedSetupPlan) -> Bool {
         guard plan.origin == .change, let snapshot = snapshots.first(where: { $0.id == plan.vmID }), snapshot.profile.ssh != nil,
-              autoSetup[plan.vmID]?.isActive != true || autoSetup[plan.vmID]?.plan?.previewID == plan.previewID else { return }
+              autoSetup[plan.vmID]?.isActive != true || autoSetup[plan.vmID]?.plan?.previewID == plan.previewID else { return false }
         autoSetup[plan.vmID] = .armed(plan: plan, sessionID: snapshot.sessionID)
         advanceAutoSetup()
+        return true
     }
 
     /// Change setup approved a pending run itself (for example after inspecting custom
@@ -161,7 +162,10 @@ extension AppModel {
     private func applyAutoSetup(vmID: UUID, plan: ApprovedSetupPlan, session: UUID, service: any ProvisioningReviewing) async {
         let review: ProvisioningApplyReview
         do { review = try await service.prepareApply(plan.previewID) }
-        catch { autoSetup[vmID] = .blocked("Setup could not be prepared automatically. Review it in Change setup."); return }
+        catch { if autoSetup[vmID] == .applying { autoSetup[vmID] = .blocked("Setup could not be prepared automatically. Review it in Change setup.") }; return }
+        // Withdrawn while preparing (Don't set up): nothing is submitted; the prepared run
+        // stays pending, where Change setup can approve or discard it.
+        guard autoSetup[vmID] == .applying else { return }
         guard review.vmID == vmID, review.sessionID == session, review.previewID == plan.previewID,
               review.planDigest == plan.planDigest, review.inputDigest == plan.inputDigest else {
             autoSetup[vmID] = .blocked("The prepared setup doesn’t match what you approved. Review it in Change setup.")

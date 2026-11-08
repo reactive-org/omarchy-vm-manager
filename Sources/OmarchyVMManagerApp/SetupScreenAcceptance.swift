@@ -363,7 +363,12 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "restartRequired")]; enabledModel.advanceAutoSetup()
         try waitFor("restart follows approval") { enabled.actionSubmissions == [.restart] }
         try waitFor("sheet shows the restart") { change("phase") == "live" }
-        try check(change("title") == "Restarting" && enabled.actionSubmissions == [.restart], "approval-covers-restart-and-check")
+        let restarted = UUID()
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: restarted, sshReadiness: sshReady)]
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(retryPlan, stage: "waitingForRebind", restartID: UUID(), newSessionID: restarted)]
+        enabledModel.advanceAutoSetup()
+        try waitFor("check follows the restart") { enabled.actionSubmissions == [.restart, .check] }
+        try check(change("title") == "Checking" && enabled.actionSubmissions == [.restart, .check], "approval-covers-restart-and-check")
         changeHost.close(); enabledModel.autoSetup = [:]
         // A run prepared but not approved is shown again when the sheet reopens; Discard frees the guest.
         let pendingID = UUID()
@@ -390,6 +395,27 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let interruptedWords = ChangeSetupView.status(.edit, lastRun: interruptedRun, latestPlanExists: true, running: true, job: nil, auto: nil)
         try check(interruptedWords.title == "Applied, but the final check didn’t run" && interruptedWords.steps == [.done, .done, .done, .missed]
                   && FirstRunProgress.failureNote(interruptedRun, job: nil).contains("final check"), "interrupted-after-restart-wording")
+        // Don't set up while the approved run is still being prepared: nothing is submitted.
+        let holdID = UUID()
+        let holdPlan = try run { try await enabled.preview(id: holdID, vmID: profile.id, source: .init(profiles: ["web"])) }
+        enabledModel.setupWorkflows = [lastRun]; enabledModel.autoSetup = [:]
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
+        let heldSubmissions = enabled.submissions
+        enabled.holdNext = true
+        enabledModel.approveSetup(.init(preview: holdPlan, dockerAcknowledged: true))
+        try waitFor("approved run is preparing") { enabled.waiting }
+        enabledModel.autoSetup[profile.id] = nil
+        enabled.release(); tick(0.2)
+        try check(enabled.submissions == heldSubmissions && enabledModel.autoSetup[profile.id] == nil, "dont-set-up-stops-a-preparing-run")
+        // A guest without managed SSH can't run setup, and the sheet says why.
+        enabledModel.snapshots = [.init(profile: profile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
+        enabled.latestFixture = .init(planID: lastPlanID, workflow: lastRun)
+        let sshDriver = SetupUIAcceptanceDriver()
+        let sshHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: {}, openOutput: {}), driver: sshDriver, width: 680, height: 820, dark: true)
+        tick(); try waitFor("ssh sheet loads") { sshDriver.state("change", "phase") == "edit" }
+        try sshDriver.send("change", .grant(true, true, false)); tick()
+        try check(sshDriver.state("change", "canRun") == "false" && sshDriver.state("change", "footNote").contains("SSH"), "change-needs-ssh-explained")
+        sshHost.close()
         // Start & set up: the approval waits for the guest's first session, even with earlier finished runs.
         enabled.adminOnlyReview = true; enabled.lastConsent = nil
         let startID = UUID()
