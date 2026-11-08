@@ -518,7 +518,8 @@ this VM and the first session seen after launch, and needs no permission beyond
 temporary admin access. Docker root access, custom-task trust, a changed session or any
 mismatch stop with a reason and fall back to the Setup-tab review. The approval lives
 only in the running manager's memory, is used at most once and is never persisted or
-replayed. Existing guests and later runs keep the manual review.
+replayed. Existing guests and later runs keep the manual review (superseded for Change
+setup on 9 November 2026; see "one approval per run" below).
 
 **DESIGN DECISION — user direction, 7 November 2026 (approve at creation finishes
 setup):** the same creation-time approval also covers the restart and configuration
@@ -603,6 +604,60 @@ receipt in the VM profile is never rewritten.
 **TO PROVE:** Run setup again on a real guest, including after a dev-vm pin update, has
 been checked only with fake runtimes and local fixtures. It needs a run by hand on a
 real Mac.
+
+**DESIGN DECISION — user direction, 9 November 2026 (Change setup like New VM):**
+Change setup is its own sheet in New VM's shape, replacing the Source picker, preview
+lookup, Details and separate prepare and approve steps. It shows a four-step strip
+(Approve · Install · Restart · Check) with one sentence for the current state. Below that
+come `layout` and `customise`, started from the last recorded plan's choices, then the
+separate consents, then one button whose label says what happens. **Run setup again**
+uses `prepareRetry` for the exact frozen choices. **Apply changes** makes a new preview
+from the edited draft; a setup from a local folder needs its folder chosen again. **Start
+& set up** starts a stopped guest first. View output keeps the terminal, cancel and job
+details. The old in-sheet review panel is removed.
+
+**DESIGN DECISION — user direction, 9 November 2026 (one approval per run):** the
+approve-at-creation rules above now also cover Change setup. Its main button, or
+Approve & run, is the explicit permission for that one run's apply, restart and
+configuration check. The approval:
+- lives only in the manager's memory and is used at most once;
+- binds to the guest's current session, or for Start & set up the first session seen
+  after launch;
+- follows only the workflow it submitted;
+- prepares and submits each finishing step once, bound to the approved plan and input
+  digests;
+- never recovers cleanup automatically.
+
+A mismatch, interruption or manager restart ends the automatic path and leaves the
+reviewed actions. Restart & check in the sheet covers both steps for a run nobody is
+following.
+
+Earlier finished runs no longer stop an approval from applying. Another run in
+progress, or a cleanup hold, still does.
+
+**DESIGN DECISION — deliberate widening, 9 November 2026:** a Change setup approval may
+carry an explicit **Allow Docker without sudo** acknowledgement through the automatic
+path, because the sheet asks for it separately before the run. Creation still stops for
+Docker. Custom-task trust always stops at Approve & run, after each task is inspected.
+
+**FIX / DESIGN DECISION — pending runs, 9 November 2026:** a run prepared for approval
+(a workflow row at `waitingForSSH` or `readyForReview`) had no plan record and was lost
+when the sheet closed. It kept the service busy for every other plan, and Run setup
+again stayed disabled. `latestSetup` now reports it as `pending`. Change setup shows it
+again with Approve & run, using the same cached review from `prepareApply`, and Discard
+this run, which cancels it with no hold and frees the service. A relaunch still turns it
+into `interrupted`; reviews are never persisted.
+
+**DESIGN DECISION — retrying a plan that never ran, 9 November 2026:** `prepareRetry`
+also accepts a run that ended before it ran (discarded or interrupted, no apply job, no
+hold) when its frozen inputs can be found. In practice that is a creation plan found
+through its receipt. Other never-run plans have no plan record, so Change setup ignores
+them and starts from the last recorded plan.
+
+**VERIFIED — fake/local, 9 November 2026:** `ProvisioningRetryTests` and the offscreen
+harness (200 checks, 49 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
+**TO PROVE:** the same flows on a real Dev guest: Run setup again and Apply changes
+through restart and check, Start & set up, and reopening a pending run.
 
 The current pass permits source integration and fake/local/CI validation only.
 No VM launch, real signing, host installation, Main app or Main VM operation is

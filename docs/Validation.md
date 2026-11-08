@@ -452,6 +452,22 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 
 **TO PROVE:** the sheets on a real guest, including typing into the terminal from View output during authorization.
 
+## Change setup rebuilt like New VM — 9 November 2026
+
+**FIX:** "Review this run…" prepared a run (a workflow row at `readyForReview`) and the sheet then replaced its approval controls with "This setup is running". The review lived only in the sheet, so closing it stranded the guest: the run couldn't be approved or seen again, the service stayed busy for every other plan, and Run setup again stayed disabled. Seen on a real Dev guest on 9 November 2026.
+
+**DESIGN DECISION — user direction:** Change setup is its own sheet in New VM's shape. It has a four-step strip (Approve · Install · Restart · Check) and one sentence for the current state, `layout` and `customise` started from the last plan's choices, the separate consents, and one button: Run setup again, Apply changes or Start & set up. One approval covers the run's restart and check (see intent.md). A pending run is listed by `latestSetup` and shown again with Approve & run and Discard this run. View output keeps the terminal, cancel and job details.
+
+**VERIFIED — fake/local:** Core tests cover a pending run found again with the same review after the sheet closes, other plans refused while it waits and allowed after Discard, and a creation plan that never ran being retried (`ProvisioningRetryTests`). The offscreen harness (200 checks, 49 images) covers:
+- the button label following the choices;
+- each consent still being separate, with custom tasks stopping at Approve & run;
+- the approval following its own run through the restart;
+- a pending run surviving reopen and Discard unblocking it;
+- the interrupted-after-restart wording;
+- Start & set up binding to the guest's first session even when earlier finished runs exist.
+
+**TO PROVE:** on a real Dev guest, Run setup again and Apply changes running through restart and check unattended, Start & set up from a stopped guest, and closing and reopening the sheet with a run waiting for approval.
+
 ## Official image source shown while it downloads — 7 November 2026
 
 **DESIGN DECISION — user direction:** make it clear the factory image is the official one and where it comes from. While a guest's official image downloads or is verified, its Home tab shows a factory image card: phase and progress, the GitHub repository and release (`github.com/omacom/try-omarchy`, release tag), the file and its parts, that each part and the image are checked against SHA-256 checksums pinned in the app, and the Omarchy version, kernel and build date. The Factory images page shows the same source on the Try Omarchy card. Everything comes from the kit's `guest/download.json` and `guest/factory.json`, accepted only when both match the runtime lock's digests and every part is an HTTPS download from the omacom/try-omarchy GitHub releases; otherwise nothing is shown.
