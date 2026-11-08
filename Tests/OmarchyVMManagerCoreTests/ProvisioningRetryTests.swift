@@ -24,9 +24,9 @@ import Testing
             engineDigest: engine, dependencies: dependencies, launcher: launcher, transportPolicy: .fixture(policy), admitPackage: {}))
     }
     /// A finished run as the workflow journal records it, for a closed service directory.
-    private func writeFinishedRun(_ state: URL, id: UUID, vmID: UUID, stage: ProvisioningWorkflowStage, plan: String, input: String, engine: String) throws {
+    private func writeFinishedRun(_ state: URL, id: UUID, vmID: UUID, stage: ProvisioningWorkflowStage, plan: String, input: String, engine: String, ran: Bool = true) throws {
         var row = ProvisioningWorkflowRecord(id: id, vmID: vmID, originalSessionID: UUID(), planDigest: plan, inputDigest: input, engineDigest: engine)
-        row.stage = stage; row.reviewDigest = String(repeating: "d", count: 64); row.applyJobID = id
+        row.stage = stage; row.reviewDigest = String(repeating: "d", count: 64); row.applyJobID = ran ? id : nil
         row.cleanupRequired = stage == .cleanupRequired; row.sequence = 4
         if stage == .failed { row.failure = .systemUpdateFailed }
         let journal = try ProvisioningWorkflowJournal(directory: state.appendingPathComponent("workflows"))
@@ -150,6 +150,53 @@ import Testing
         let changed = try await updated.prepareRetry(id: UUID(), of: p.id)
         #expect(changed.engineChanged && changed.planChanged && changed.addedFeatures == nil && changed.preview.inputDigest == p.inputDigest)
         try await updated.closeForReopen(); await f.assertInert(); await f.launcher.close()
+    }
+
+    /// The stuck-approval bug: a prepared run must be findable after the sheet closes,
+    /// and discarding it must free the service for other plans.
+    @Test func aPendingRunIsFoundAgainAndDiscardingItUnblocksOtherPlans() async throws {
+        let f = try await WorkflowFixture()
+        await f.launcher.failUpdate()
+        let first = try await capture(f)
+        #expect(try await run(f, first.id).stage == .failed)
+        let p = try await capture(f), review = try await f.service.prepareApply(p.id)
+        let latest = try #require(await f.service.latestSetup(vmID: f.profile.id))
+        // The last recorded run is still the plan; the prepared one is pending beside it.
+        #expect(latest.planID == first.id && latest.pending?.id == p.id && latest.pending?.stage == .readyForReview)
+        // The sheet closed and reopened: the same review comes back, unchanged.
+        let again = try await f.service.prepareApply(p.id)
+        #expect(again.reviewIdentity == review.reviewIdentity && again.previewID == p.id)
+        // While it waits, no other plan can be prepared.
+        let other = try await capture(f)
+        await #expect(throws: ProvisioningServiceFailure.busy) { _ = try await f.service.prepareApply(other.id) }
+        // Discard: nothing ran, no hold, and the service is free again.
+        try await f.service.cancel(p.id)
+        let discarded = try #require(await f.service.status(p.id))
+        #expect(discarded.stage == .cancelled && !discarded.cleanupRequired && discarded.applyJobID == nil && discarded.endedBeforeRunning)
+        #expect(await f.service.latestSetup(vmID: f.profile.id)?.pending == nil)
+        // A refused preparation is never retried automatically; a fresh plan prepares.
+        await #expect(throws: ProvisioningServiceFailure.busy) { _ = try await f.service.prepareApply(other.id) }
+        let fresh = try await capture(f)
+        _ = try await f.service.prepareApply(fresh.id)
+        #expect(await f.service.latestSetup(vmID: f.profile.id)?.pending?.id == fresh.id)
+        try await f.service.cancel(fresh.id)
+        // Run setup again from the last finished run still works.
+        _ = try await f.service.prepareRetry(id: UUID(), of: first.id)
+        #expect(await f.launcher.launches == 1)
+        await f.close()
+    }
+
+    @Test(arguments: [ProvisioningWorkflowStage.cancelled, .interrupted])
+    func aCreationPlanThatNeverRanCanBeRetried(stage: ProvisioningWorkflowStage) async throws {
+        let f = try await CreationFixture(), p = try await f.prepare(), vmID = try await f.create(p)
+        try await f.service.closeForReopen()
+        try writeFinishedRun(f.state, id: p.id, vmID: vmID, stage: stage, plan: p.planDigest, input: p.inputDigest, engine: f.engine, ran: false)
+        let next = try await reopen(f.manager, state: f.state, dependencies: f.dependencies, launcher: f.launcher, policy: f.provider.root, engine: f.engine, enabled: false)
+        let latest = try #require(await next.latestSetup(vmID: vmID))
+        #expect(latest.planID == p.id && latest.workflow?.endedBeforeRunning == true && latest.workflow?.runFinished == false && latest.pending == nil)
+        let retry = try await next.prepareRetry(id: UUID(), of: p.id)
+        #expect(retry.previousID == p.id && retry.preview.inputDigest == p.inputDigest && retry.preview.planDigest == p.planDigest)
+        try await next.closeForReopen(); await f.assertInert(); await f.launcher.close()
     }
 
     @Test func damagedPlanHistoryIsPreservedAndNoRunStartsWithoutItsRecord() async throws {

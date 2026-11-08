@@ -2,11 +2,16 @@ import DevVMProvisioningCore
 import Foundation
 
 /// A guest's most recently accepted setup plan, or its creation plan when none
-/// has run since, with that plan's run if it has one.
+/// has run since, with that plan's run if it has one. `pending` is a run that was
+/// prepared for approval but not yet approved; it has no plan record until it runs,
+/// so it is found here and its review is fetched again with `prepareApply`.
 public struct ProvisioningLatestSetup: Equatable, Sendable {
     public let planID: UUID
     public let workflow: ProvisioningWorkflowSnapshot?
-    public init(planID: UUID, workflow: ProvisioningWorkflowSnapshot?) { self.planID = planID; self.workflow = workflow }
+    public let pending: ProvisioningWorkflowSnapshot?
+    public init(planID: UUID, workflow: ProvisioningWorkflowSnapshot?, pending: ProvisioningWorkflowSnapshot? = nil) {
+        self.planID = planID; self.workflow = workflow; self.pending = pending
+    }
 }
 
 /// A fresh plan, with a new ID, from the same frozen choices as a finished run.
@@ -36,14 +41,18 @@ public protocol ProvisioningRetrying: ProvisioningReviewing {
 
 extension ProvisioningService: ProvisioningRetrying {
     public func latestSetup(vmID: UUID) async -> ProvisioningLatestSetup? {
-        if let record = planHistory.latest(vmID: vmID) { return .init(planID: record.id, workflow: rows[record.id]?.snapshot) }
+        // At most one run is ever preparing or awaiting approval: preparation holds the service.
+        let pending = rows.values.first { $0.vmID == vmID && [.waitingForSSH, .readyForReview].contains($0.stage) }?.snapshot
+        if let record = planHistory.latest(vmID: vmID) { return .init(planID: record.id, workflow: rows[record.id]?.snapshot, pending: pending) }
         // Legacy guests and creation plans that haven't run: the creation receipt.
         guard let receipt = await manager.snapshots().first(where: { $0.id == vmID })?.profile.developerSetup, receipt.vmID == vmID else { return nil }
-        return .init(planID: receipt.reviewID, workflow: rows[receipt.reviewID]?.snapshot)
+        return .init(planID: receipt.reviewID, workflow: rows[receipt.reviewID]?.snapshot, pending: pending)
     }
 
     /// Rebuild a finished run's plan from its frozen private inputs with the current
-    /// engine, under a new ID. Never rereads the live source folder.
+    /// engine, under a new ID. Never rereads the live source folder. A plan that was
+    /// prepared but ended before it ran (discarded, or interrupted by a relaunch) is
+    /// retried the same way when its inputs can be found: in practice, a creation plan.
     public func prepareRetry(id: UUID = UUID(), of previousID: UUID) async throws -> ProvisioningRetryPreview {
         try reviewAvailable()
         if let existing = retries[id] {
@@ -53,7 +62,7 @@ extension ProvisioningService: ProvisioningRetrying {
         }
         guard id != previousID, reviewCount < 16, creations[id] == nil, drafts[id] == nil, !draftCaptures.contains(id),
               status(id) == nil, planHistory.record(id) == nil else { throw ProvisioningReviewFailure.quota }
-        guard let row = rows[previousID], row.snapshot.runFinished else { throw ProvisioningReviewFailure.unavailable }
+        guard let row = rows[previousID], row.snapshot.runFinished || row.snapshot.endedBeforeRunning else { throw ProvisioningReviewFailure.unavailable }
         // A cleanup hold is resolved by recover or release first; a new run would be refused.
         guard !row.cleanupRequired else { throw ProvisioningServiceFailure.busy }
         draftCaptures.insert(id); defer { draftCaptures.remove(id) }
