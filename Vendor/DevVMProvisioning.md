@@ -1,10 +1,10 @@
 # Pinned developer provisioning source
 
 **Current pin (8 November 2026, issue #20):** `dev-vm/` is the unpatched export of
-dev-vm branch commit `0cae7bca1cd702a71bc11109dbd4786551017626`
-(reactive-org/dev-vm#17, not yet merged), which adds `vm.sudo_grant: timed`: renewed
-60-minute Omarchy grants in place of the permanent one, and native contract version 3.
-Re-pin to the merge commit once dev-vm#17 merges.
+merged dev-vm commit `6e0dc5e1e727c2ba4ff8c81cd5cbace962e5e3c0`
+(reactive-org/dev-vm#17), which adds `vm.sudo_grant: timed`: renewed 60-minute
+Omarchy grants in place of the permanent one, and native contract version 3. Its
+exported files are identical to branch commit `0cae7bc`, vendored first.
 
 **Previous pin (8 November 2026, issues #27/#29):** `dev-vm/` is the unpatched
 export of merged dev-vm commit `2ab37fc39cef5b75dac66449dc83f84d0460d83f`
