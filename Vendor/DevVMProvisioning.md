@@ -1,12 +1,12 @@
 # Pinned developer provisioning source
 
-**Current pin (8 November 2026):** `dev-vm/` is the unpatched export of dev-vm
-branch commit `ea73f93a07e6be42ad76cc32787ad8c05c109783`
-(reactive-org/dev-vm#18, not yet merged), which sets
-`ANSIBLE_CALLBACK_RESULT_FORMAT=yaml` so setup playbook results print as
-pretty-printed YAML from the built-in `default` callback. Only
-`SSHAnsibleGuestAdapter.swift`, its transport test and `engine-identity.json`
-change. Re-pin to the merged commit once that PR lands.
+**Current pin (8 November 2026):** `dev-vm/` is the unpatched export of merged
+dev-vm commit `26cab14e6f60012fc5921d626d0d704d8dc21d9b`
+(reactive-org/dev-vm#18), which sets `ANSIBLE_CALLBACK_RESULT_FORMAT=yaml` so
+setup playbook results print as pretty-printed YAML from the built-in `default`
+callback. Only `SSHAnsibleGuestAdapter.swift`, its transport test and
+`engine-identity.json` change. Its exported files are identical to branch commit
+`ea73f93`, vendored first.
 
 **Previous pin (8 November 2026, issue #20):** `dev-vm/` is the unpatched export of
 merged dev-vm commit `6e0dc5e1e727c2ba4ff8c81cd5cbace962e5e3c0`

@@ -224,7 +224,7 @@
   "library": "DevVMProvisioningCore",
   "package": "Vendor/dev-vm",
   "resourceBundle": "DevVMProvisioning_DevVMProvisioningCore.bundle",
-  "revision": "ea73f93a07e6be42ad76cc32787ad8c05c109783",
+  "revision": "26cab14e6f60012fc5921d626d0d704d8dc21d9b",
   "setupAPI": 1,
   "source": "https://github.com/reactive-org/dev-vm",
   "sourceSnapshotSHA256": "520b0a7f726eef03272e9bdb40a2131d2d1cd29e9172064d4711533f40083a16"
