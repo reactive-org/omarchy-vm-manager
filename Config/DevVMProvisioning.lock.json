@@ -81,9 +81,9 @@
     "Sources/DevVMProvisioningCore/Resources/Yams-LICENSE.txt": "0354b0ea403d2e78059c5ae0510a2cfae9f8eb306fcef094ac9fff5b47e20bed",
     "Sources/DevVMProvisioningCore/Resources/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
     "Sources/DevVMProvisioningCore/Resources/catalogue.schema.json": "234128f6847d0b5b428d5b063261d4aa6f50129c13846d41d10812783b787ea6",
-    "Sources/DevVMProvisioningCore/Resources/engine-identity.json": "90dca8d5eda1c84ab4aa586f0d7776d2b88a59726c2afc71ed29f489f10876ef",
+    "Sources/DevVMProvisioningCore/Resources/engine-identity.json": "6f47db23580c3c35df4a894db91d3573a48a5bff183d6819d8c4204eaf7d1f4a",
     "Sources/DevVMProvisioningCore/Resources/selection.schema.json": "351a0754a2b9091a806e1e1237485cfd251e82e018610f0e1831ba3a049d17c9",
-    "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "73f2d3e03fb574798674e7a37b12c6c380b5aa3a6b327ab4d486ef3f51468150",
+    "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "f032d184381018759b6aa8b06aa4291e825fee75732c076ccf0ee314225b3f48",
     "Sources/DevVMProvisioningCore/SelectionSchema.swift": "e46a8ee4a2f81c17c3f33cb2ff0e7cf9ad5f6e70d32c79fc5021976c32eca29d",
     "Sources/DevVMProvisioningCore/SetupManifest.swift": "15f72e2b89c520077d37308296b7cca67b0af005905b111bca35276fa37cb419",
     "Sources/DevVMProvisioningCore/SetupPlanner.swift": "c063236224497432df5aec37cfdeb522b492854946a44d09bec292e3ecaa2bf9",
@@ -105,10 +105,10 @@
     "tests/DevVMProvisioningCoreTests/PlanningTests.swift": "d661d1b05ceceff27770fb70134c994b4e020929d5cdc7be60c287c9436dded0",
     "tests/DevVMProvisioningCoreTests/SequencingTests.swift": "c96a3100812ea9aa413fc667f789740f093013326bd521c9f6abe187e1c029ba",
     "tests/DevVMProvisioningCoreTests/ThemeSelectionTests.swift": "860f4c51bb67afd0456e5c67da1e1db3cdabfe2dd23e5b56358fbee695e89879",
-    "tests/DevVMProvisioningCoreTests/TransportTests.swift": "1db2efd3b4c2f6f32291b73fe71a0bfdc30d684d7548b0d9bf385660224e115d",
+    "tests/DevVMProvisioningCoreTests/TransportTests.swift": "089400db445c34f44d6a68b6267859ce8f4e88c362524e8a32423035ba5e09dd",
     "tests/ProcessFixture/main.c": "36d59d76a07eedc4cf78f06a95fa205abd22bb2cc100f88bb7e8b0cf3c005fae"
   },
-  "engineSHA256": "90dca8d5eda1c84ab4aa586f0d7776d2b88a59726c2afc71ed29f489f10876ef",
+  "engineSHA256": "6f47db23580c3c35df4a894db91d3573a48a5bff183d6819d8c4204eaf7d1f4a",
   "files": {
     "AGENTS.md": "df05f49430ac4197c88fae97e9309e16c04b36bc42c7b2ffa31526cc65a9444e",
     "Package.resolved": "1c1292adea6d7e8ccf2bca848d90a720bb644bb41c564053d500921b46e7017b",
@@ -191,9 +191,9 @@
     "Sources/DevVMProvisioningCore/Resources/Yams-LICENSE.txt": "0354b0ea403d2e78059c5ae0510a2cfae9f8eb306fcef094ac9fff5b47e20bed",
     "Sources/DevVMProvisioningCore/Resources/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
     "Sources/DevVMProvisioningCore/Resources/catalogue.schema.json": "234128f6847d0b5b428d5b063261d4aa6f50129c13846d41d10812783b787ea6",
-    "Sources/DevVMProvisioningCore/Resources/engine-identity.json": "90dca8d5eda1c84ab4aa586f0d7776d2b88a59726c2afc71ed29f489f10876ef",
+    "Sources/DevVMProvisioningCore/Resources/engine-identity.json": "6f47db23580c3c35df4a894db91d3573a48a5bff183d6819d8c4204eaf7d1f4a",
     "Sources/DevVMProvisioningCore/Resources/selection.schema.json": "351a0754a2b9091a806e1e1237485cfd251e82e018610f0e1831ba3a049d17c9",
-    "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "73f2d3e03fb574798674e7a37b12c6c380b5aa3a6b327ab4d486ef3f51468150",
+    "Sources/DevVMProvisioningCore/SSHAnsibleGuestAdapter.swift": "f032d184381018759b6aa8b06aa4291e825fee75732c076ccf0ee314225b3f48",
     "Sources/DevVMProvisioningCore/SelectionSchema.swift": "e46a8ee4a2f81c17c3f33cb2ff0e7cf9ad5f6e70d32c79fc5021976c32eca29d",
     "Sources/DevVMProvisioningCore/SetupManifest.swift": "15f72e2b89c520077d37308296b7cca67b0af005905b111bca35276fa37cb419",
     "Sources/DevVMProvisioningCore/SetupPlanner.swift": "c063236224497432df5aec37cfdeb522b492854946a44d09bec292e3ecaa2bf9",
@@ -215,7 +215,7 @@
     "tests/DevVMProvisioningCoreTests/PlanningTests.swift": "d661d1b05ceceff27770fb70134c994b4e020929d5cdc7be60c287c9436dded0",
     "tests/DevVMProvisioningCoreTests/SequencingTests.swift": "c96a3100812ea9aa413fc667f789740f093013326bd521c9f6abe187e1c029ba",
     "tests/DevVMProvisioningCoreTests/ThemeSelectionTests.swift": "860f4c51bb67afd0456e5c67da1e1db3cdabfe2dd23e5b56358fbee695e89879",
-    "tests/DevVMProvisioningCoreTests/TransportTests.swift": "1db2efd3b4c2f6f32291b73fe71a0bfdc30d684d7548b0d9bf385660224e115d",
+    "tests/DevVMProvisioningCoreTests/TransportTests.swift": "089400db445c34f44d6a68b6267859ce8f4e88c362524e8a32423035ba5e09dd",
     "tests/ProcessFixture/main.c": "36d59d76a07eedc4cf78f06a95fa205abd22bb2cc100f88bb7e8b0cf3c005fae"
   },
   "format": 1,
@@ -224,8 +224,8 @@
   "library": "DevVMProvisioningCore",
   "package": "Vendor/dev-vm",
   "resourceBundle": "DevVMProvisioning_DevVMProvisioningCore.bundle",
-  "revision": "6e0dc5e1e727c2ba4ff8c81cd5cbace962e5e3c0",
+  "revision": "26cab14e6f60012fc5921d626d0d704d8dc21d9b",
   "setupAPI": 1,
   "source": "https://github.com/reactive-org/dev-vm",
-  "sourceSnapshotSHA256": "f72aa38cc5761e4656061ed1295fcba4393ea81b166181131afe518154f7adb0"
+  "sourceSnapshotSHA256": "520b0a7f726eef03272e9bdb40a2131d2d1cd29e9172064d4711533f40083a16"
 }
