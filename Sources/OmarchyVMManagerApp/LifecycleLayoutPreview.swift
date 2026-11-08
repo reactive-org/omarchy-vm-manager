@@ -70,6 +70,8 @@ struct LifecycleLayoutPreview: View {
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
             }.coordinateSpace(name: "gallery").padding(28).frame(maxWidth: 1050).frame(maxWidth: .infinity)
         }.frame(minWidth: 660, minHeight: 650)
+        // The preview is built from the stable channel; keep the experimental panel in view.
+        .environment(\.featureFlags, FeatureFlags(experimentalSuspendToDisk: true))
     }
 }
 #else

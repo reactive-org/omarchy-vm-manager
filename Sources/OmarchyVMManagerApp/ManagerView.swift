@@ -26,6 +26,7 @@ struct ManagerView: View {
     #if DEBUG
     @Environment(\.setupAcceptance) private var acceptance
     #endif
+    @Environment(\.featureFlags) private var features
     private var active: [VMSnapshot] { model.snapshots.filter { $0.sessionID != nil } }
 
     var body: some View {
@@ -371,7 +372,9 @@ struct ManagerView: View {
             if firstRun == nil {
                 GuestSetupCardHost(model: model, snapshot: snapshot) { setupSheet = $0 }
             }
-            GuestHibernationPanel(snapshot: snapshot, review: { action in model.experimentalPowerReview = .init(id: snapshot.id, action: action) }, recheck: { Task { await model.recheckExperimentalRecovery(snapshot.id) } })
+            if features.showsSuspendPanel(for: snapshot) {
+                GuestHibernationPanel(snapshot: snapshot, review: { action in model.experimentalPowerReview = .init(id: snapshot.id, action: action) }, recheck: { Task { await model.recheckExperimentalRecovery(snapshot.id) } })
+            }
             GuestHomePanel(snapshot: snapshot, canReplaceSystem: editable(snapshot) && !snapshot.profile.isRetainedPOC,
                            review: { model.homeBackupReview = snapshot },
                            cancel: { Task { await model.cancelHomeBackup(snapshot.id) } },

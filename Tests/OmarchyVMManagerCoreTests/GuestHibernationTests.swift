@@ -16,6 +16,8 @@ private actor PowerGuest: GuestHibernating {
     let available: GuestHibernationCapability
     let result: GuestRestoreResult
     var requests = 0
+    var capabilityChecks = 0
+    var preparations = 0
     var verificationFails = false
     func failVerification(_ value: Bool) { verificationFails = value }
     var proof: GuestSuspendProof?
@@ -30,8 +32,9 @@ private actor PowerGuest: GuestHibernating {
     func releaseVerification() { verification?.resume(); verification = nil }
     var isVerifying: Bool { verification != nil }
     init(capability: GuestHibernationCapability = powerCapability(), result: GuestRestoreResult = .restored) { available = capability; self.result = result }
-    func capability(_ request: VMStartRequest, user: String) async throws -> GuestHibernationCapability { available }
+    func capability(_ request: VMStartRequest, user: String) async throws -> GuestHibernationCapability { capabilityChecks += 1; return available }
     func prepare(_ request: VMStartRequest, user: String, token: UUID) async throws -> GuestSuspendProof {
+        preparations += 1
         if pausePreparation { await withCheckedContinuation { preparation = $0 } }
         let value = GuestSuspendProof(token: token, bootID: UUID(), kernel: available.kernel); proof = value; return value
     }
@@ -57,6 +60,52 @@ struct GuestHibernationTests {
         let handle = try #require(runtime.startedHandles.first); handle.emit(.ready)
         #expect(await eventually { await manager.snapshots()[0].hibernation != nil })
         return (manager, profile, runtime, handle)
+    }
+    @Test("with the feature off, no capability check or attempt reaches the guest")
+    func disabledFeature() async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        var profile = f.profile(); profile.ssh = SSHOptions(hostPort: 22222)
+        _ = try f.storage.prepare(profile)
+        let guest = PowerGuest(), runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [profile], applicationSupport: f.support, sshProbe: PowerSSH(), portProbe: PowerPorts(), hibernation: guest,
+                                features: .init(experimentalSuspendToDisk: false))
+        try await manager.start(profile.id)
+        let handle = try #require(runtime.startedHandles.first); handle.emit(.ready)
+        #expect(await eventually { if case .ready = await manager.snapshots()[0].sshReadiness { true } else { false } })
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await guest.capabilityChecks == 0)
+        #expect(await manager.snapshots()[0].hibernation == nil)
+        #expect(!(await manager.snapshots()[0].canAttemptExperimentalSuspend))
+        do { try await manager.experimentalSuspend(profile.id, confirmed: true); Issue.record("suspension was attempted") }
+        catch let failure as VMFailure { #expect(failure.code == "experimental-suspend-disabled") }
+        #expect(await guest.capabilityChecks == 0)
+        #expect(await guest.preparations == 0)
+        #expect(await guest.requests == 0)
+        #expect(try ExperimentalSuspendStore(root: f.storage.root(for: profile)).load(vmID: profile.id) == nil)
+        handle.emit(.exited(status: 0)); #expect(await eventually { await manager.isIdle })
+    }
+    @Test("with the feature off, an existing saved session still restores and releases protection")
+    func disabledFeatureRecovery() async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let guest = PowerGuest()
+        let (manager, profile, _, handle) = try await fixture(f, guest: guest)
+        try await manager.experimentalSuspend(profile.id, confirmed: true)
+        handle.emit(.exited(status: 0)); #expect(await eventually { await manager.isIdle })
+        let checks = await guest.capabilityChecks
+        let runtime = FakeRuntime()
+        let reopened = VMManager(runtime: runtime, profiles: [profile], applicationSupport: f.support, sshProbe: PowerSSH(), portProbe: PowerPorts(), hibernation: guest,
+                                 features: .init(experimentalSuspendToDisk: false))
+        let saved = await reopened.snapshots()[0]
+        #expect(saved.suspension?.stage == .restorePending)
+        #expect(FeatureFlags(experimentalSuspendToDisk: false).showsSuspendPanel(for: saved))
+        await #expect(throws: VMFailure.self) { try await reopened.start(profile.id) }
+        try await reopened.restoreExperimentalSuspension(profile.id, confirmed: true)
+        let restored = try #require(runtime.startedHandles.first); restored.emit(.ready)
+        #expect(await eventually { await reopened.snapshots()[0].suspension == nil })
+        #expect(try ExperimentalSuspendStore(root: f.storage.root(for: profile)).load(vmID: profile.id) == nil)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await guest.capabilityChecks == checks)
+        restored.emit(.exited(status: 0)); #expect(await eventually { await reopened.isIdle })
     }
     @Test("kernel support alone never makes an attempt available")
     func requirements() {
