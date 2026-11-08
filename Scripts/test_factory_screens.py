@@ -31,7 +31,7 @@ def main():
     assert report['screenshots'] == 14
     for appearance in ['dark', 'light']:
         for case in ['library', 'missing-docker-blocks', 'readiness-does-not-build', 'one-explicit-build', 'follow-default', 'actual-terminal-render', 'newvm-factory-handoff', 'newvm-save-selection', 'newvm-never-launches', 'cleanup-does-not-rebuild',
-                     'library-cards-fit', 'narrow-library-cards-fit', 'narrow-library-card-width', 'stable-by-default', 'stable-review']:
+                     'library-cards-fit', 'narrow-library-cards-fit', 'narrow-library-card-width', 'stable-by-default', 'stable-review', 'started-build-shows-job', 'revisit-opens-library']:
             assert appearance + '-' + case in report['checks']
     pngs = list(output.glob('*.png'))
     assert len(pngs) == report['screenshots']

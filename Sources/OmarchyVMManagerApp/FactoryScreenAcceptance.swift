@@ -115,6 +115,13 @@ import SwiftUI
             try capture(host, output.appendingPathComponent("factory-build-running-" + suffix + ".png"), screen: model.factoryBuilder.terminal)
             try service.finish()
             try SetupScreenAcceptance.until { driver.state("factory", "stage") == "succeeded" }
+            try check(driver.state("factory", "showingJob") == "true", suffix + "-started-build-shows-job")
+            // Returning to Factory images later opens the library, not the finished job.
+            let revisitDriver = SetupUIAcceptanceDriver()
+            let revisit = SetupScreenAcceptance.Host(ScrollView { FactoryImagesView(model: model) { _ in }.padding(24) }, driver: revisitDriver, width: 1200, height: 960, dark: dark)
+            try SetupScreenAcceptance.until { revisitDriver.scopes["factory"] != nil }
+            try check(revisitDriver.state("factory", "stage") == "succeeded" && revisitDriver.state("factory", "showingJob") == "false", suffix + "-revisit-opens-library")
+            revisit.window.close()
             try capture(host, output.appendingPathComponent("factory-ready-" + suffix + ".png"), screen: model.factoryBuilder.terminal)
             try driver.send("factory", .save)
             try check(selected != nil, suffix + "-use-built-factory")

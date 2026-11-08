@@ -11,7 +11,9 @@ struct FactoryImagesView: View {
     @ObservedObject private var builder: FactoryBuildModel
     let use: (FactoryIdentity) -> Void
     @State private var importing = false
-    @State private var showJob = true
+    /// Opening Factory images shows the library. A job page appears only when a
+    /// build starts or one is chosen with View; a running build keeps a banner.
+    @State private var showJob = false
     #if DEBUG
     @State private var cardFrames: [String: CGRect] = [:]
     @State private var gridWidth: CGFloat = 0
@@ -77,7 +79,7 @@ struct FactoryImagesView: View {
                     let frames = cardFrames.values
                     let fits = !frames.isEmpty && frames.allSatisfy { $0.minX >= -0.5 && $0.maxX <= gridWidth + 0.5 }
                     return ["stage": builder.current?.stage.rawValue ?? "none", "enabled": String(builder.service.enabled), "buildingSheet": String(builder.showingBuild), "follow": String(builder.terminal.follow),
-                            "cards": String(frames.count), "cardsFit": String(fits), "minCardWidth": String(Int(frames.map(\.width).min() ?? 0))]
+                            "showingJob": String(showJob && builder.current != nil), "cards": String(frames.count), "cardsFit": String(fits), "minCardWidth": String(Int(frames.map(\.width).min() ?? 0))]
                 })
             } }
             #endif
