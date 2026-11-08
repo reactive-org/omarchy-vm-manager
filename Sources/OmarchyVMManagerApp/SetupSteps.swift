@@ -9,7 +9,7 @@ enum SetupStep: Int, CaseIterable {
 }
 
 enum SetupStepState: Equatable {
-    case todo, current, needsYou, done, missed
+    case todo, current, needsYou, done, missed, failed
 }
 
 enum SetupSteps {
@@ -40,10 +40,12 @@ enum SetupSteps {
         case .cleanupRequired:
             return [.done, .needsYou, .todo, .todo]
         case .failed, .cancelled, .interrupted:
+            // A failed step ran and failed; a cancelled or interrupted one didn't finish.
+            let ended: SetupStepState = row.stage == .failed ? .failed : .missed
             if row.applyJobID == nil { return [.missed, .todo, .todo, .todo] }
-            if row.newSessionID != nil { return [.done, .done, .done, .missed] }
-            if row.restartID != nil { return [.done, .done, .missed, .todo] }
-            return [.done, .missed, .todo, .todo]
+            if row.newSessionID != nil { return [.done, .done, .done, ended] }
+            if row.restartID != nil { return [.done, .done, ended, .todo] }
+            return [.done, ended, .todo, .todo]
         }
     }
 }
@@ -69,22 +71,22 @@ struct SetupStepStrip: View {
                             RoundedRectangle(cornerRadius: 1).fill(fill(state))
                         }
                     }.frame(height: 3)
-                    Text(step.title + (state == .missed ? " · didn’t run" : "")).font(Theme.sans(11)).foregroundStyle(label(state))
+                    Text(step.title + (state == .missed ? " · didn’t run" : state == .failed ? " · failed" : "")).font(Theme.sans(11)).foregroundStyle(label(state))
                 }
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(SetupStep.allCases.map { step in
             let state = step.rawValue < states.count ? states[step.rawValue] : .todo
-            let word = switch state { case .done: "done"; case .current: "in progress"; case .needsYou: "needs you"; case .missed: "didn’t run"; case .todo: "not started" }
+            let word = switch state { case .done: "done"; case .current: "in progress"; case .needsYou: "needs you"; case .missed: "didn’t run"; case .failed: "failed"; case .todo: "not started" }
             return step.title + " " + word
         }.joined(separator: ", "))
     }
     private func fill(_ state: SetupStepState) -> Color {
-        switch state { case .done: Theme.green; case .current: Theme.lavender; case .needsYou, .missed: Theme.amber; case .todo: Theme.quietFrame }
+        switch state { case .done: Theme.green; case .current: Theme.lavender; case .needsYou, .missed, .failed: Theme.amber; case .todo: Theme.quietFrame }
     }
     private func label(_ state: SetupStepState) -> Color {
-        switch state { case .done: Theme.text.opacity(0.85); case .current: Theme.lavender; case .needsYou, .missed: Theme.amber; case .todo: .secondary }
+        switch state { case .done: Theme.text.opacity(0.85); case .current: Theme.lavender; case .needsYou, .missed, .failed: Theme.amber; case .todo: .secondary }
     }
 }
 
@@ -169,7 +171,7 @@ struct SetupRunStatus: Equatable {
                 if latestPlanExists { return .init(label: "setup", title: "Not run yet", note: "This guest has a saved setup plan that hasn’t run. Review the choices below, then run it.", tint: .quiet, steps: SetupSteps.states(nil, job: nil, auto: nil)) }
                 return .init(label: "setup", title: "Not set up yet", note: "Choose software and a desktop layout. Setup updates Omarchy first, then applies them, restarts the guest once and checks the configuration.", tint: .quiet, steps: SetupSteps.states(nil, job: nil, auto: nil))
             }
-            let steps = SetupSteps.states(row, job: nil, auto: nil)
+            let steps = SetupSteps.states(row, job: job, auto: nil)
             let released = row.cleanupRelease != nil ? " Its cleanup hold was released without verification; the guest may still allow passwordless sudo." : ""
             switch row.stage {
             case .checked: return .init(label: "last run", title: "Finished and checked", note: "Updated Omarchy, applied these choices, restarted and checked." + released, tint: .good, steps: steps)
@@ -181,7 +183,9 @@ struct SetupRunStatus: Equatable {
             case .interrupted:
                 return .init(label: "last run", title: "Interrupted", note: "Setup stopped before it finished because the manager quit. Run setup again to finish it." + released, tint: .attention, steps: steps)
             case .cancelled: return .init(label: "last run", title: "Cancelled", note: "Setup was cancelled. Run it again when you’re ready." + released, tint: .attention, steps: steps)
-            default: return .init(label: "last run", title: SetupRunPresentation.outcome(row), note: "Check View output for what happened, then run setup again." + released, tint: .attention, steps: steps)
+            default:
+                // What failed, from recorded categories (the same words as the setup card).
+                return .init(label: "last run", title: SetupRunPresentation.outcome(row), note: FirstRunProgress.failureNote(row, job: job) + " View output shows where it stopped; fix the cause, then run setup again." + released, tint: .attention, steps: steps)
             }
         }
     }

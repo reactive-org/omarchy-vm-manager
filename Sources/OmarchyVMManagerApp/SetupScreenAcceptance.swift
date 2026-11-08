@@ -584,6 +584,9 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let failedProgress = progress(.running, ssh: .ready(user: "fixture_owner", command: "synthetic-unused"), [failedRun], jobs: [failedRun.id: failedJob])
         try check(failedProgress?.tone == .problem && failedProgress?.note.contains("task failed inside the guest") == true, "first-run-failure-names-recorded-category")
         try check(failedProgress?.terminal?.workflowID == failedRun.id && failedProgress?.terminal?.live == false, "first-run-failed-keeps-ended-terminal")
+        // Change setup names the step that failed and why, not "didn't run".
+        let failedWords = ChangeSetupView.status(.edit, lastRun: failedRun, latestPlanExists: true, running: true, job: failedJob, auto: nil)
+        try check(failedWords.steps == [.done, .failed, .todo, .todo] && failedWords.note.contains("task failed inside the guest"), "failed-run-names-failed-step-and-cause")
         // Installing finished and the run waits for a reviewed restart: say so, don't look stuck.
         let restartRun = try enabled.row(installing.id, stage: "restartRequired")
         let restartJob = try JSONDecoder().decode(ProvisioningJobSnapshot.self, from: JSONSerialization.data(withJSONObject: [

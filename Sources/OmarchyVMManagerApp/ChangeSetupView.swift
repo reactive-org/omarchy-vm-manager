@@ -130,7 +130,7 @@ struct ChangeSetupView: View {
 
     var currentStatus: Status {
         SetupRunStatus.make(phase, lastRun: lastRun, latestPlanExists: latest != nil || snapshot.profile.developerSetup != nil, running: running,
-                            job: phaseRow.flatMap { model.setupJobs[$0.id] }, auto: auto, checkOnly: model.checkOnlyRuns)
+                            job: (phaseRow ?? (phase == .edit ? lastRun : nil)).flatMap { model.setupJobs[$0.id] }, auto: auto, checkOnly: model.checkOnlyRuns)
     }
     private var phaseRow: ProvisioningWorkflowSnapshot? {
         switch phase { case .live(let row), .cleanup(let row): row; case .pending(let row): row; default: nil }

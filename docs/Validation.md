@@ -480,7 +480,7 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 - the check becoming the latest plan;
 - a run interrupted before its restart being refused.
 
-The offscreen harness (209 checks, 51 images) covers:
+The offscreen harness (210 checks, 51 images) covers:
 - the offer;
 - the "Checking" wording on the sheet and the card;
 - no apply being submitted;
@@ -499,7 +499,13 @@ The offscreen check `check-only-never-pending` covers the first; the rebuilt app
 
 **VERIFIED — real Dev guest, 9 November 2026 (user-run, `adfadf`, build `45f0f09`):** the user chose **Change setup…** then **Run setup again**, and reported that it works well. The new run (`BCD3666F`) went through install, restart and the configuration check unattended on the one approval, and finished `succeeded` with no cleanup hold. Its saved log shows `[setup restartRequired]` then `[setup checked]`.
 
-**TO PROVE:** Apply changes and Start & set up on a real guest, and reopening Change setup while a run waits for approval.
+**VERIFIED — real Dev guest, 9 November 2026 (user-run, `adfadf`, build `45f0f09`):**
+- **Apply changes:** adding Python and Project managed showed **Apply changes**, asked for Docker without sudo, closed the sheet and was followed on Home. The run (`D4BF47BD`) then **failed inside the guest**. dev-vm's `toolchain` feature refused with "Omarchy's native Bash mise activation is missing". That's a guest/dev-vm issue, not the manager, and it's being investigated separately.
+- **A run waiting for approval:** **Don't set up** while a Run setup again run was preparing left it waiting (`433C098D`). The card then offered **Review…**, which opened the sheet's approval view with Approve & run and Discard this run. **Discard this run** cancelled it (`cancelled`, no hold) and returned the sheet to **Run setup again**.
+
+**FIX:** the strip said "Install · didn't run" for that failed run, and the note gave no cause. A failed step now reads "failed", and the note gives the recorded reason, for example "a task failed inside the guest" (offscreen check `failed-run-names-failed-step-and-cause`).
+
+**TO PROVE:** Start & set up from a stopped guest, and an Apply changes run that completes once the toolchain issue is resolved.
 
 ## Official image source shown while it downloads — 7 November 2026
 

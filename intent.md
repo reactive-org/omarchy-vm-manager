@@ -686,10 +686,12 @@ It is still not a general check of an arbitrary guest. Home and Change setup say
 "Checking" for it from an in-memory list of check-only runs.
 
 **VERIFIED — fake/local, 9 November 2026:** `ProvisioningRetryTests` and the offscreen
-harness (209 checks, 51 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
+harness (210 checks, 51 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
 **VERIFIED — real Dev guest, 9 November 2026 (`adfadf`):** Run the check only, and Run setup
 again followed on Home through install, restart and check on one approval (see Validation).
-**TO PROVE:** Apply changes, Start & set up, and reopening a pending run on a real guest.
+A pending run reopened and discarded on `adfadf` was also VERIFIED. Apply changes was followed
+correctly, but its run failed in dev-vm's toolchain step (see Validation).
+**TO PROVE:** Start & set up, and a completed Apply changes run, on a real guest.
 
 The current pass permits source integration and fake/local/CI validation only.
 No VM launch, real signing, host installation, Main app or Main VM operation is
