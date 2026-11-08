@@ -480,7 +480,7 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 - the check becoming the latest plan;
 - a run interrupted before its restart being refused.
 
-The offscreen harness (208 checks, 51 images) covers:
+The offscreen harness (209 checks, 51 images) covers:
 - the offer;
 - the "Checking" wording on the sheet and the card;
 - no apply being submitted;
@@ -488,7 +488,16 @@ The offscreen harness (208 checks, 51 images) covers:
 - Home's run panel with its steps and actions, including Restart & check for an unfollowed restart;
 - a guest still in its first run keeping the tracker.
 
-**TO PROVE:** a check-only run on a real Dev guest, for example `adfadf`, whose run was interrupted after its restart on 8 November 2026.
+**VERIFIED — real Dev guest, 9 November 2026 (user-authorized, `adfadf`):** the guest's 8 November run was `interrupted` after its restart. Change setup showed "Applied, but the final check didn't run" with the guest's real choices (Developer, Terminal + browser) and offered **Run the check only**. One click closed the sheet, and Home's tracker showed the check in progress. The check-only workflow finished as `checked`, with no cleanup hold and no sudo prompt. Both check-mode plays reported `failed=0`, the saved log ended `[setup checked]`, and Home then showed "Setup complete" with the card's last run **Finished**.
+
+Three issues found and fixed before merge:
+- the check's own preparation row briefly appeared in the sheet as a pending approval;
+- the first-run tracker showed no live terminal for a check-only run;
+- the tracker said "Earlier setup runs did not finish" instead of naming the missed check.
+
+The offscreen check `check-only-never-pending` covers the first; the rebuilt app with all three fixes is not yet re-run on a real guest.
+
+**TO PROVE:** following a Change setup run (Run setup again or Apply changes) on Home with its live terminal on a real guest.
 
 ## Official image source shown while it downloads — 7 November 2026
 

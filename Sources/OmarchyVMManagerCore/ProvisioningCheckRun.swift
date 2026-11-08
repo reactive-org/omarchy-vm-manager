@@ -55,7 +55,7 @@ extension ProvisioningService: ProvisioningCheckRunning {
         _ = try await manager.provisioningSSHAdmission(binding)
         try frozen.storage.verifyRoot(); try frozen.plan.verify(in: frozen.storage.directory)
         guard drafts[id] == nil, rows[id] == nil else { throw ProvisioningJobFailure.jobConflict }
-        drafts[id] = draft
+        drafts[id] = draft; checkRuns.insert(id)
         _ = try await prepare(id: id, plan: frozen.plan, repository: frozen.storage.directory, target: binding, mode: .check)
         do {
             let prepared = try await prepared(id)

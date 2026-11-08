@@ -52,9 +52,15 @@ struct FirstRunProgress: Equatable {
         if rows.isEmpty { value = guestProgress(snapshot) }
         // UUID order is not chronology: only a live or cleanup-bound run is "current".
         else if let row = SetupAttention.currentRun(snapshot.id, workflows: workflows) {
-            value = checkOnly.contains(row.id) && row.stage == .running
-                ? .init(step: .restart, tone: .working, note: "Checking the configuration the last run applied. It installs nothing.")
-                : workflowProgress(row, job: jobs[row.id])
+            if checkOnly.contains(row.id), row.stage.inProgress {
+                value = .init(step: .restart, tone: .working, note: "Checking the configuration the last run applied. It installs nothing.")
+                if let job = jobs[row.id], job.state != .queued { value.terminal = (row.id, row.id.uuidString + ":" + job.jobID.uuidString, true) }
+            } else {
+                value = workflowProgress(row, job: jobs[row.id])
+            }
+        } else if rows.contains(where: { $0.stage == .interrupted && $0.applyJobID != nil && $0.restartID != nil && !$0.cleanupRequired }) {
+            // Applied and restarted, then stopped before the check (usually a manager quit).
+            return .init(step: .restart, tone: .problem, note: "Your choices were applied and the guest restarted, but the final check didn’t run. The guest is usable; open setup to run the check only or run setup again.", setupAction: "Open setup…")
         } else {
             return .init(step: .installing, tone: .problem, note: "Earlier setup runs did not finish. Review their results before trying again.", setupAction: "Open setup…")
         }

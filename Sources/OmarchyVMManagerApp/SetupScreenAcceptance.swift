@@ -414,6 +414,10 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let submissionsBeforeCheck = enabled.submissions
         try checkDriver.send("change", .checkOnly); try waitFor("check only starts") { enabled.checkRuns.count == 1 }
         let checkRun = enabled.checkRuns[0]
+        // While it prepares, the check's own row is never offered as a pending approval.
+        enabledModel.setupWorkflows = [interruptedLast, try enabled.row(checkRun, stage: "readyForReview", ran: false)]
+        try waitFor("preparing check shows as live") { checking("phase") == "live" }
+        try check(checking("title") == "Checking" && checking("pending").isEmpty, "check-only-never-pending")
         enabledModel.setupWorkflows = [interruptedLast, try enabled.row(checkRun, stage: "running")]
         try waitFor("sheet shows the check") { checking("phase") == "live" }
         let checkCard = SetupCardState.make(enabledModel.snapshots[0], workflows: enabledModel.setupWorkflows, jobs: [:], autoSetup: nil, checkOnly: enabledModel.checkOnlyRuns)

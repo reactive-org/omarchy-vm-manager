@@ -85,6 +85,9 @@ public actor ProvisioningService {
     var applyPreparations: [UUID: Task<ProvisioningApplyReview, Error>] = [:]
     var applyReviews: [UUID: ProvisioningApplyReview] = [:]
     var retries: [UUID: ProvisioningRetryPreview] = [:]
+    /// Workflows started by Run the check only. They prepare and run in one step, so
+    /// they are never offered as a pending approval or an apply review.
+    var checkRuns: Set<UUID> = []
     var applySubmissions: [UUID: (ProvisioningApplyConsent, Task<ProvisioningWorkflowSnapshot, Error>)] = [:]
     var reviewOperations = Set<UUID>()
     var actionPreparations: [UUID: ProvisioningActionPreparation] = [:]

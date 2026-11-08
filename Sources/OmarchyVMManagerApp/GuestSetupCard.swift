@@ -51,7 +51,7 @@ struct SetupCardState: Equatable {
         case nil:
             break
         }
-        if checkOnly.contains(row.id), row.stage == .running {
+        if checkOnly.contains(row.id), row.stage.inProgress {
             return .init(kind: .running, run: "Checking", note: "Checking the configuration the last run applied. It installs nothing.", progress: 2)
         }
         let approvedWhen = autoSetup?.plan?.origin == .change ? "You approved the whole run in Change setup." : "You approved it when you created this VM."

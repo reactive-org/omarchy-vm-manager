@@ -62,9 +62,9 @@ struct ChangeSetupView: View {
 
     var phase: Phase {
         guard loaded else { return .loading }
-        if let active = SetupRunPhase.active(rows, auto: auto) { return active }
+        if let active = SetupRunPhase.active(rows, auto: auto, checkOnly: model.checkOnlyRuns) { return active }
         let preparing: [ProvisioningWorkflowStage] = [.waitingForSSH, .readyForReview]
-        if let pending = rows.first(where: { preparing.contains($0.stage) }) { return .pending(pending) }
+        if let pending = rows.first(where: { preparing.contains($0.stage) && !model.checkOnlyRuns.contains($0.id) }) { return .pending(pending) }
         if pendingPlan != nil { return .pending(nil) }
         return .edit
     }
@@ -374,7 +374,7 @@ struct ChangeSetupView: View {
             }
         }
         // A pending run: show its plan and fetch the review it was prepared with.
-        if let pending = value?.pending, approvedID != pending.id {
+        if let pending = value?.pending, approvedID != pending.id, !model.checkOnlyRuns.contains(pending.id) {
             if pendingPlan?.id != pending.id { pendingPlan = try? await service.preview(pending.id); pendingReview = nil; resetConsents() }
             if pending.stage == .readyForReview, pendingReview == nil, reviewRequested != pending.id {
                 reviewRequested = pending.id

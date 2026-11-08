@@ -16,7 +16,7 @@ def main():
     output = parent / 'result'
     subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=180)
     report = json.loads((output / 'report.json').read_text())
-    assert report['schema'] == 1 and len(report['checks']) == 208
+    assert report['schema'] == 1 and len(report['checks']) == 209
     assert len(set(report['checks'])) == len(report['checks'])
     for appearance in ('dark', 'light'):
         for case in ('bundled-direct-create-ready', 'all-draft-edits-have-no-backend-effects',
@@ -66,7 +66,7 @@ def main():
                  'approval-covers-restart-and-check', 'pending-run-survives-reopen', 'pending-run-discard-unblocks',
                  'interrupted-after-restart-wording', 'start-and-set-up-binds-first-session',
                  'dont-set-up-stops-a-preparing-run', 'change-needs-ssh-explained',
-                 'check-only-offered-after-restart', 'check-only-runs-no-apply',
+                 'check-only-offered-after-restart', 'check-only-runs-no-apply', 'check-only-never-pending',
                  'approval-closes-sheet-to-home', 'home-shows-live-run-panel',
                  'home-unfollowed-restart-offers-restart-and-check', 'home-first-run-keeps-tracker'):
         assert case in report['checks']

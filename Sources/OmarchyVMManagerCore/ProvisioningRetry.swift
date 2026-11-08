@@ -42,7 +42,7 @@ public protocol ProvisioningRetrying: ProvisioningReviewing {
 extension ProvisioningService: ProvisioningRetrying {
     public func latestSetup(vmID: UUID) async -> ProvisioningLatestSetup? {
         // At most one run is ever preparing or awaiting approval: preparation holds the service.
-        let pending = rows.values.first { $0.vmID == vmID && [.waitingForSSH, .readyForReview].contains($0.stage) }?.snapshot
+        let pending = rows.values.first { $0.vmID == vmID && [.waitingForSSH, .readyForReview].contains($0.stage) && !checkRuns.contains($0.id) }?.snapshot
         if let record = planHistory.latest(vmID: vmID) { return .init(planID: record.id, workflow: rows[record.id]?.snapshot, pending: pending) }
         // Legacy guests and creation plans that haven't run: the creation receipt.
         guard let receipt = await manager.snapshots().first(where: { $0.id == vmID })?.profile.developerSetup, receipt.vmID == vmID else { return nil }

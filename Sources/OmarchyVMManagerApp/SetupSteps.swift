@@ -99,11 +99,11 @@ enum SetupRunPhase: Equatable {
 extension SetupRunPhase {
     /// A run under way: started, or approved and about to start. Nil when nothing is
     /// running; a cleanup hold is reported separately.
-    static func active(_ rows: [ProvisioningWorkflowSnapshot], auto: AutoSetupState?) -> SetupRunPhase? {
+    static func active(_ rows: [ProvisioningWorkflowSnapshot], auto: AutoSetupState?, checkOnly: Set<UUID> = []) -> SetupRunPhase? {
         if let held = rows.first(where: { $0.cleanupRequired && !$0.canCancel }) { return .cleanup(held) }
         let approvedID = auto?.isActive == true ? auto?.plan?.previewID : nil
         let preparing: [ProvisioningWorkflowStage] = [.waitingForSSH, .readyForReview]
-        if let live = rows.first(where: { $0.stage.inProgress && (!preparing.contains($0.stage) || $0.id == approvedID) }) { return .live(live) }
+        if let live = rows.first(where: { $0.stage.inProgress && (!preparing.contains($0.stage) || $0.id == approvedID || checkOnly.contains($0.id)) }) { return .live(live) }
         if auto?.isActive == true { return .starting }
         return nil
     }
@@ -124,7 +124,7 @@ struct SetupRunStatus: Equatable {
     /// The one sentence for each state, from recorded state only.
     static func make(_ phase: SetupRunPhase, lastRun: ProvisioningWorkflowSnapshot?, latestPlanExists: Bool, running: Bool,
                      job: ProvisioningJobSnapshot?, auto: AutoSetupState?, checkOnly: Set<UUID> = []) -> SetupRunStatus {
-        if case .live(let row) = phase, row.stage == .running, checkOnly.contains(row.id) {
+        if case .live(let row) = phase, row.stage.inProgress, checkOnly.contains(row.id) {
             return .init(label: "this run", title: "Checking", note: "A read-only check of the last run’s choices, with no admin access. It installs nothing; you can keep using the guest.",
                          tint: .working, steps: [.done, .done, .done, .current])
         }

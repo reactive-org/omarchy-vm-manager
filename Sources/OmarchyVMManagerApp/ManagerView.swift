@@ -342,7 +342,7 @@ struct ManagerView: View {
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
         let firstRun = FirstRunProgress.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id], checkOnly: model.checkOnlyRuns)
         // After the first run, a run under way is followed here, like New VM's first run.
-        let run: SetupRunPhase? = firstRun != nil ? nil : SetupRunPhase.active(model.setupWorkflows.filter { $0.vmID == snapshot.id }, auto: model.autoSetup[snapshot.id])
+        let run: SetupRunPhase? = firstRun != nil ? nil : SetupRunPhase.active(model.setupWorkflows.filter { $0.vmID == snapshot.id }, auto: model.autoSetup[snapshot.id], checkOnly: model.checkOnlyRuns)
             .flatMap { if case .cleanup = $0 { nil } else { $0 } }
         return VStack(alignment: .leading, spacing: Theme.gap) {
             if let source = model.officialFactorySource, let (phase, percent) = GuestFactoryDownloadCard.phase(snapshot) {
