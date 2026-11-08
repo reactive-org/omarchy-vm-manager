@@ -16,7 +16,7 @@ public struct GuestCLIInvocation: Sendable {
       setup presets                List bundled offline setup presets
       setup plan --preset NAME     Preview a bundled setup without a VM
       setup plan --from /folder    Preview local vm.yml without a VM
-      setup preview VM_UUID --from /folder|--preset NAME --preview-id UUID
+      setup preview VM_UUID --from /folder|--preset NAME --preview-id UUID [--sudo-grant timed|permanent]
                                    Freeze a manager-owned preview; retain its UUID
       setup prepare-create UUID --from /folder|--preset NAME [--enable FEATURE] [--disable FEATURE] [--sudo-grant timed|permanent]
                                    Freeze a selection before creating a VM
