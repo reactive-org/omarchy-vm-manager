@@ -286,7 +286,7 @@ struct ManagerView: View {
                 } else {
                 SetupSheetFrame(title: sheet == .output ? "Setup output" : current.profile.developerSetup == nil && !model.setupWorkflows.contains(where: { $0.vmID == current.id }) ? "Set up " + current.profile.name : "Change setup",
                                 subtitle: current.profile.name + (sheet == .output ? " · closing this leaves setup running" : " · setup runs in the guest and restarts it once to finish"),
-                                status: sheet == .output ? SetupCardState.make(current, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[current.id]) : nil,
+                                status: sheet == .output ? SetupCardState.make(current, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[current.id], checkOnly: model.checkOnlyRuns) : nil,
                                 close: { setupSheet = nil }) {
                     DeveloperSetupView(model: model, snapshot: current, mode: .output)
                 }
@@ -340,7 +340,7 @@ struct ManagerView: View {
     }
 
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
-        let firstRun = FirstRunProgress.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id])
+        let firstRun = FirstRunProgress.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id], checkOnly: model.checkOnlyRuns)
         return VStack(alignment: .leading, spacing: Theme.gap) {
             if let source = model.officialFactorySource, let (phase, percent) = GuestFactoryDownloadCard.phase(snapshot) {
                 GuestFactoryDownloadCard(source: source, phase: phase, percent: percent)

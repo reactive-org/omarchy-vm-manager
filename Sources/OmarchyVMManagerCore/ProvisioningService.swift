@@ -206,8 +206,12 @@ public actor ProvisioningService {
             let admission = try await manager.admitProvisioningTransport(target: target, report: report, policy: environment.transportPolicy)
             try current(id); try plan.verify(in: repository); try environment.admitPackage()
             try await authority.admit(admission); try current(id)
-            let request = try ProvisioningRequest(jobID: id, plan: plan, repository: repository, target: target, dependencyDigest: admission.dependencyDigest,
-                mode: mode, inputLeaseID: mode == .apply ? inputLeaseID : nil)
+            // A check on its own, like the check that finishes a run, never runs custom tasks.
+            let request = mode == .check
+                ? try ProvisioningRequest(jobID: id, plan: plan, repository: repository, target: target, dependencyDigest: admission.dependencyDigest,
+                    mode: .check, tasks: [], includeTasksInCheck: false)
+                : try ProvisioningRequest(jobID: id, plan: plan, repository: repository, target: target, dependencyDigest: admission.dependencyDigest,
+                    mode: mode, inputLeaseID: mode == .apply ? inputLeaseID : nil)
             previews[id] = .init(workflowID: id, request: request, transport: admission)
             var row = rows[id]!; row.reviewDigest = request.reviewIdentity; row.stage = .readyForReview; row.sequence += 1; try save(row)
         } catch { await fail(id, error: error) }

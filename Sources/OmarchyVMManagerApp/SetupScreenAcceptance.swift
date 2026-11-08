@@ -332,7 +332,8 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         defer { changeHost.close() }
         func change(_ key: String) -> String { changeDriver.state("change", key) }
         tick(); try waitFor("change sheet loads") { change("phase") == "edit" }
-        try check(change("title") == "Finished and checked" && change("primary") == "Run setup again" && change("docker") == "true", "change-finished-offers-run-setup-again")
+        try check(change("title") == "Finished and checked" && change("primary") == "Run setup again" && change("docker") == "true" && change("checkOnly") == "false",
+                  "change-finished-offers-run-setup-again")
         try changeDriver.send("change", .profiles(["python", "web"])); tick()
         try check(change("changed") == "true" && change("primary") == "Apply changes", "apply-changes-label-tracks-diff")
         try changeDriver.send("change", .profiles(["web"])); tick()
@@ -395,6 +396,28 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let interruptedWords = ChangeSetupView.status(.edit, lastRun: interruptedRun, latestPlanExists: true, running: true, job: nil, auto: nil)
         try check(interruptedWords.title == "Applied, but the final check didn’t run" && interruptedWords.steps == [.done, .done, .done, .missed]
                   && FirstRunProgress.failureNote(interruptedRun, job: nil).contains("final check"), "interrupted-after-restart-wording")
+        // Run the check only: offered for a run applied and restarted, then interrupted before its check.
+        let interruptedID = UUID()
+        _ = try run { try await enabled.preview(id: interruptedID, vmID: profile.id, source: .init(profiles: ["web"])) }
+        let interruptedLast = try enabled.row(interruptedID, stage: "interrupted", failure: "processInterrupted", restartID: UUID(), newSessionID: UUID())
+        enabled.latestFixture = .init(planID: interruptedID, workflow: interruptedLast); enabled.checkOnlyFixture = interruptedID
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
+        enabledModel.setupWorkflows = [interruptedLast]; enabledModel.autoSetup = [:]
+        let checkDriver = SetupUIAcceptanceDriver()
+        let checkHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: {}, openOutput: {}), driver: checkDriver, width: 680, height: 820, dark: true)
+        defer { checkHost.close() }
+        func checking(_ key: String) -> String { checkDriver.state("change", key) }
+        tick(); try waitFor("interrupted sheet loads") { checking("phase") == "edit" && checking("checkOnly") == "true" }
+        try check(checking("title") == "Applied, but the final check didn’t run" && checking("footNote").contains("Run the check only"), "check-only-offered-after-restart")
+        try capture(checkHost, "setup-check-only-dark.png")
+        let submissionsBeforeCheck = enabled.submissions
+        try checkDriver.send("change", .checkOnly); try waitFor("check only starts") { enabled.checkRuns.count == 1 }
+        let checkRun = enabled.checkRuns[0]
+        enabledModel.setupWorkflows = [interruptedLast, try enabled.row(checkRun, stage: "running")]
+        try waitFor("sheet shows the check") { checking("phase") == "live" }
+        let checkCard = SetupCardState.make(enabledModel.snapshots[0], workflows: enabledModel.setupWorkflows, jobs: [:], autoSetup: nil, checkOnly: enabledModel.checkOnlyRuns)
+        try check(checking("title") == "Checking" && enabled.submissions == submissionsBeforeCheck && checkCard.run == "Checking", "check-only-runs-no-apply")
+        checkHost.close(); enabled.checkOnlyFixture = nil; enabledModel.checkOnlyRuns = []
         // Don't set up while the approved run is still being prepared: nothing is submitted.
         let holdID = UUID()
         let holdPlan = try run { try await enabled.preview(id: holdID, vmID: profile.id, source: .init(profiles: ["web"])) }

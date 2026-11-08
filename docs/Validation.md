@@ -458,7 +458,7 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 
 **DESIGN DECISION — user direction:** Change setup is its own sheet in New VM's shape. It has a four-step strip (Approve · Install · Restart · Check) and one sentence for the current state, `layout` and `customise` started from the last plan's choices, the separate consents, and one button: Run setup again, Apply changes or Start & set up. One approval covers the run's restart and check (see intent.md). A pending run is listed by `latestSetup` and shown again with Approve & run and Discard this run. View output keeps the terminal, cancel and job details.
 
-**VERIFIED — fake/local:** Core tests cover a pending run found again with the same review after the sheet closes, other plans refused while it waits and allowed after Discard, and a creation plan that never ran being retried (`ProvisioningRetryTests`). The offscreen harness (202 checks, 49 images) covers:
+**VERIFIED — fake/local:** Core tests cover a pending run found again with the same review after the sheet closes, other plans refused while it waits and allowed after Discard, and a creation plan that never ran being retried (`ProvisioningRetryTests`). The offscreen harness (202 checks, 49 images, before Run the check only) covers:
 - the button label following the choices;
 - each consent still being separate, with custom tasks stopping at Approve & run;
 - the approval following its own run through the restart;
@@ -469,6 +469,20 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 - a guest without managed SSH being explained, not silently ignored.
 
 **TO PROVE:** on a real Dev guest, Run setup again and Apply changes running through restart and check unattended, Start & set up from a stopped guest, and closing and reopening the sheet with a run waiting for approval.
+
+## Run the check only — 9 November 2026
+
+**DESIGN DECISION — user direction:** a run interrupted after its restart, but before its configuration check, can finish with that check alone. The check is a new workflow built from the run's own frozen inputs, in check mode, against the current session, with no custom tasks and no admin grant (see intent.md). Change setup offers **Run the check only** beside **Run setup again** for such a run.
+
+**VERIFIED — fake/local:** `ProvisioningRetryTests` cover:
+- an interrupted-after-restart run finishing as `checked` through one new check-mode job;
+- a repeated request observing the same check;
+- the check becoming the latest plan;
+- a run interrupted before its restart being refused.
+
+The offscreen harness (204 checks, 50 images) covers the offer, the "Checking" wording on the sheet and the card, and no apply being submitted.
+
+**TO PROVE:** a check-only run on a real Dev guest, for example `adfadf`, whose run was interrupted after its restart on 8 November 2026.
 
 ## Official image source shown while it downloads — 7 November 2026
 

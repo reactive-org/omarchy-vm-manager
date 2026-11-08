@@ -55,6 +55,8 @@ struct ChangeSetupView: View {
     @State private var confirmCancel = false
     @State private var confirmRelease: ProvisioningWorkflowSnapshot?
     @State private var releaseShown = false
+    /// The last run can finish with Run the check only.
+    @State private var checkOnlyOffered = false
 
     private var service: (any ProvisioningRetrying)? { model.setupService as? any ProvisioningRetrying }
     private var executionEnabled: Bool { service?.executionEnabled == true }
@@ -133,8 +135,14 @@ struct ChangeSetupView: View {
     struct Status: Equatable { var label: String; var title: String; var note: String; var tint: Tint; var steps: [SetupStepState] }
     enum Tint: Equatable { case quiet, good, working, attention }
 
-    var currentStatus: Status { Self.status(phase, lastRun: lastRun, latestPlanExists: latest != nil || snapshot.profile.developerSetup != nil, running: running,
-                                             job: phaseRow.flatMap { model.setupJobs[$0.id] }, auto: auto) }
+    var currentStatus: Status {
+        if case .live(let row) = phase, row.stage == .running, model.checkOnlyRuns.contains(row.id) {
+            return .init(label: "this run", title: "Checking", note: "A read-only check of the last run’s choices, with no admin access. It installs nothing; closing this sheet doesn’t stop it.",
+                         tint: .working, steps: [.done, .done, .done, .current])
+        }
+        return Self.status(phase, lastRun: lastRun, latestPlanExists: latest != nil || snapshot.profile.developerSetup != nil, running: running,
+                                             job: phaseRow.flatMap { model.setupJobs[$0.id] }, auto: auto)
+    }
     private var phaseRow: ProvisioningWorkflowSnapshot? {
         switch phase { case .live(let row), .cleanup(let row): row; case .pending(let row): row; default: nil }
     }
@@ -328,7 +336,8 @@ struct ChangeSetupView: View {
         case .edit:
             if !executionEnabled { return "Setup execution is disabled in this build. Nothing here changes this VM." }
             if snapshot.profile.ssh == nil { return "Setup runs over the guest’s managed SSH, which is off for this guest. Turn on SSH in its settings while it’s stopped, then run setup." }
-            return (running ? "" : "Starts the guest, then runs this plan once it’s reachable. ") + "Approving covers the whole run: setup updates Omarchy, applies these choices, restarts the guest once and checks the configuration."
+            let check = checkOnlyOffered && running && !changed ? " Run the check only finishes the last run with its configuration check alone: read-only, with no admin access." : ""
+            return (running ? "" : "Starts the guest, then runs this plan once it’s reachable. ") + "Approving covers the whole run: setup updates Omarchy, applies these choices, restarts the guest once and checks the configuration." + check
         case .pending: return "Approving covers the whole run, including its restart and check. Discard cancels the prepared run; nothing in the guest changes."
         case .cleanup: return "Changing setup is unavailable until the hold is resolved."
         default: return nil
@@ -375,6 +384,9 @@ struct ChangeSetupView: View {
     @ViewBuilder private var primaryActions: some View {
         switch phase {
         case .edit:
+            if checkOnlyOffered, running, let run = lastRun, !changed {
+                Button("Run the check only") { Task { await runCheckOnly(run) } }.disabled(working || !executionEnabled).accessibilityIdentifier("setup.check-only")
+            }
             Button(primaryTitle) { Task { await runSetup() } }
                 .buttonStyle(.primaryAction).keyboardShortcut(.defaultAction).disabled(!canRun).accessibilityIdentifier("setup.run")
         case .pending:
@@ -437,10 +449,13 @@ struct ChangeSetupView: View {
                 do { pendingReview = try await service.prepareApply(pending.id) }
                 catch { reviewRequested = nil; failure = "This run’s approval isn’t available any more. Discard it, then run setup again." }
             }
-        } else if let plan = pendingPlan, rows.contains(where: { $0.id == plan.id }) {
+        } else if let plan = pendingPlan, rows.contains(where: { $0.id == plan.id }), value?.pending?.id != plan.id {
             // The pending run has started or ended; it is no longer waiting here.
             pendingPlan = nil; pendingReview = nil
         }
+        if let run = value?.workflow, let checking = service as? any ProvisioningCheckRunning {
+            checkOnlyOffered = await checking.checkOnlyAvailable(run.id)
+        } else { checkOnlyOffered = false }
         loaded = true
     }
 
@@ -483,6 +498,21 @@ struct ChangeSetupView: View {
             failure = "Setup couldn’t be approved for this guest right now. Nothing was changed."; return
         }
         if !running { await model.start(snapshot.id) }
+    }
+
+    /// A read-only check of the last run's exact plan, with no admin access and no
+    /// custom tasks. The click is the owner's consent, like the reviewed restart.
+    @MainActor private func runCheckOnly(_ run: ProvisioningWorkflowSnapshot) async {
+        guard let service = service as? any ProvisioningCheckRunning, executionEnabled, running else { return }
+        working = true; failure = nil; defer { working = false }
+        let id = UUID()
+        model.checkOnlyRuns.insert(id)
+        do { _ = try await service.runCheckOnly(id: id, of: run.id) }
+        catch ProvisioningReviewFailure.changed {
+            model.checkOnlyRuns.remove(id); failure = "The setup engine has changed since that run, so its plan can’t be checked on its own. Run setup again instead."
+        } catch {
+            model.checkOnlyRuns.remove(id); failure = "The check couldn’t start. Check the guest’s current state; nothing was changed or retried."
+        }
     }
 
     @MainActor private func approvePending() async {
@@ -588,6 +618,7 @@ struct ChangeSetupView: View {
                     case .grant(let sudo, let docker, let tasks): grantConsent = sudo; dockerConsent = docker; taskConsent = tasks
                     case .inspect: if let plan = pendingPlan, let task = plan.tasks.first { Task { await inspect(plan, task) } }
                     case .runAgain: Task { await runSetup() }
+                    case .checkOnly: if let run = lastRun { Task { await runCheckOnly(run) } }
                     case .submit: Task { await approvePending() }
                     case .discard: Task { await discard() }
                     case .requestCancel: if case .live(let row) = phase, row.canCancel { confirmCancel = true }
@@ -612,7 +643,7 @@ struct ChangeSetupView: View {
                 "canApprove": String(canApprovePending), "changed": String(changed), "docker": String(needsDocker),
                 "pending": pendingPlan?.id.uuidString ?? "", "review": pendingReview?.reviewIdentity ?? "", "failure": failure ?? "",
                 "inspected": String(inspectedTasks.count), "cancelPending": String(confirmCancel), "lastRun": lastRun?.id.uuidString ?? "",
-                "profiles": draft.profiles.sorted().joined(separator: ","), "footNote": footNote ?? ""]
+                "profiles": draft.profiles.sorted().joined(separator: ","), "footNote": footNote ?? "", "checkOnly": String(checkOnlyOffered && running && !changed)]
     }
     #endif
 }

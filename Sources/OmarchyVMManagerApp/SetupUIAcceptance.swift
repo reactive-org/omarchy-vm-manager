@@ -11,7 +11,7 @@ import SwiftUI
     enum Command {
         case source(String), profiles([String]), folder(URL), trim(Bool), factory(String), appearance(ProvisioningAppearanceSelection?), appearanceExpanded(Bool), themeChoice(ProvisioningThemeChoice), themeRepository(String), layoutExample(ProvisioningLayoutExampleID?)
         case ownerDefaults(Bool), name(String), resources(Int, Int, Int), preview, save, lookup(UUID), inspect, prepareApply
-        case grant(Bool, Bool, Bool), submit, search(String), requestCancel, confirmCancel, section(String), runAgain, discard, reload
+        case grant(Bool, Bool, Bool), submit, search(String), requestCancel, confirmCancel, section(String), runAgain, discard, reload, checkOnly
     }
     struct Scope { let action: (Command) -> Void; let snapshot: () -> [String: String] }
     var scopes: [String: Scope] = [:]
@@ -28,7 +28,7 @@ enum AcceptanceFailure: Error { case check }
 
 /// In-memory fake, deliberately implementing no process, file, transport or VM
 /// backend. Typed replies are fixture data, never an admission capability.
-@MainActor final class SetupAcceptanceService: ProvisioningCreationPlanning, ProvisioningWorkflowActing, ProvisioningRetrying {
+@MainActor final class SetupAcceptanceService: ProvisioningCreationPlanning, ProvisioningWorkflowActing, ProvisioningRetrying, ProvisioningCheckRunning {
     nonisolated let executionEnabled: Bool
     var captures = 0, preparations = 0, submissions = 0, taskReads = 0, terminalAttempts = 0, cancellations = 0
     var holdNext = false, failNext = false
@@ -145,6 +145,14 @@ enum AcceptanceFailure: Error { case check }
         previews[id] = preview; sources[id] = source
         return .init(preview: preview, previousID: previousID, engineChanged: retryEngineChanged, planChanged: retryEngineChanged,
                      addedFeatures: retryEngineChanged ? ["docker"] : [], removedFeatures: [])
+    }
+    /// Run the check only: offered for the fixture's interrupted run; never an apply.
+    var checkOnlyFixture: UUID?
+    var checkRuns: [UUID] = []
+    func checkOnlyAvailable(_ previousID: UUID) async -> Bool { executionEnabled && previousID == checkOnlyFixture }
+    func runCheckOnly(id: UUID, of previousID: UUID) async throws -> ProvisioningWorkflowSnapshot {
+        guard executionEnabled, previousID == checkOnlyFixture else { throw ProvisioningReviewFailure.unavailable }
+        checkRuns.append(id); return try row(id, stage: "running")
     }
     /// Finishing actions submitted with an acknowledged consent, in order.
     var actionSubmissions: [ProvisioningWorkflowAction] = []

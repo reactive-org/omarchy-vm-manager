@@ -16,7 +16,7 @@ def main():
     output = parent / 'result'
     subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=180)
     report = json.loads((output / 'report.json').read_text())
-    assert report['schema'] == 1 and len(report['checks']) == 202
+    assert report['schema'] == 1 and len(report['checks']) == 204
     assert len(set(report['checks'])) == len(report['checks'])
     for appearance in ('dark', 'light'):
         for case in ('bundled-direct-create-ready', 'all-draft-edits-have-no-backend-effects',
@@ -65,12 +65,13 @@ def main():
                  'approval-sends-each-consent', 'approval-follows-its-own-run', 'submission-attempt-not-replayed',
                  'approval-covers-restart-and-check', 'pending-run-survives-reopen', 'pending-run-discard-unblocks',
                  'interrupted-after-restart-wording', 'start-and-set-up-binds-first-session',
-                 'dont-set-up-stops-a-preparing-run', 'change-needs-ssh-explained'):
+                 'dont-set-up-stops-a-preparing-run', 'change-needs-ssh-explained',
+                 'check-only-offered-after-restart', 'check-only-runs-no-apply'):
         assert case in report['checks']
     # One Change setup approval, one Start & set up approval and one
     # approve-at-creation automatic submission.
     assert report['gate'] == 'unchanged-disabled' and report['fakeSubmissions'] == 3
-    assert len(report['images']) == 49
+    assert len(report['images']) == 50
     for name in report['images']:
         assert pathlib.Path(name).name == name and name.endswith('.png')
         data = (output / name).read_bytes()
@@ -78,7 +79,7 @@ def main():
         width, height = struct.unpack('>II', data[16:24])
         assert width >= 600 and height >= 760
     assert not (output / 'unused-support').exists()
-    print(f'Setup screen acceptance: {len(report["checks"])} checks, 49 PNGs; no runtime starts or on-display windows.')
+    print(f'Setup screen acceptance: {len(report["checks"])} checks, 50 PNGs; no runtime starts or on-display windows.')
     print(f'Artifacts retained for inspection: {output}')
 
 

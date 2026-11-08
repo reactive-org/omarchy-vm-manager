@@ -44,7 +44,7 @@ struct FirstRunProgress: Equatable {
 
     /// Returns nil for guests without developer setup, and once any setup run has succeeded.
     static func make(_ snapshot: VMSnapshot, workflows: [ProvisioningWorkflowSnapshot], jobs: [UUID: ProvisioningJobSnapshot],
-                     autoSetup: AutoSetupState? = nil) -> FirstRunProgress? {
+                     autoSetup: AutoSetupState? = nil, checkOnly: Set<UUID> = []) -> FirstRunProgress? {
         guard snapshot.profile.developerSetup != nil else { return nil }
         let rows = workflows.filter { $0.vmID == snapshot.id }
         if rows.contains(where: { [.succeeded, .checked].contains($0.stage) }) { return nil }
@@ -52,7 +52,9 @@ struct FirstRunProgress: Equatable {
         if rows.isEmpty { value = guestProgress(snapshot) }
         // UUID order is not chronology: only a live or cleanup-bound run is "current".
         else if let row = SetupAttention.currentRun(snapshot.id, workflows: workflows) {
-            value = workflowProgress(row, job: jobs[row.id])
+            value = checkOnly.contains(row.id) && row.stage == .running
+                ? .init(step: .restart, tone: .working, note: "Checking the configuration the last run applied. It installs nothing.")
+                : workflowProgress(row, job: jobs[row.id])
         } else {
             return .init(step: .installing, tone: .problem, note: "Earlier setup runs did not finish. Review their results before trying again.", setupAction: "Open setup…")
         }

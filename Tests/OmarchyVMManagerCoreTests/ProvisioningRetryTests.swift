@@ -199,6 +199,54 @@ import Testing
         try await next.closeForReopen(); await f.assertInert(); await f.launcher.close()
     }
 
+    /// Run the check only: a run applied and restarted, then interrupted before its
+    /// check, finishes with a check of exactly that plan, never another apply.
+    @Test func anInterruptedRunAfterItsRestartFinishesWithACheckOnly() async throws {
+        let f = try await WorkflowFixture()
+        let p = try await capture(f)
+        #expect(try await run(f, p.id).stage == .restartRequired)
+        try await f.service.closeForReopen()
+        // The manager quit after the restart, before the check: the journal as a relaunch leaves it.
+        let journal = try ProvisioningWorkflowJournal(directory: f.state.appendingPathComponent("workflows"))
+        var rows = try journal.load()
+        let index = try #require(rows.firstIndex { $0.id == p.id })
+        rows[index].stage = .interrupted; rows[index].failure = .processInterrupted; rows[index].restartID = UUID(); rows[index].restartReviewDigest = String(repeating: "f", count: 64)
+        rows[index].newSessionID = UUID(); rows[index].cleanupRequired = false; rows[index].sequence += 1
+        try journal.save(rows); journal.close()
+        let engine = try ProvisioningCoordinator.engineIdentity(f.plan), target = f.target
+        let next = try await ProvisioningService.open(manager: f.manager, directory: f.state, environment: .init(executionEnabled: true,
+            engineDigest: engine, dependencies: f.dependencies, launcher: f.launcher, transportPolicy: .fixture(f.provider.root), admitPackage: {},
+            resolveTarget: { vm, session in
+                guard vm == target.vmID, session == target.sessionID else { throw ProvisioningReviewFailure.changed }
+                return target
+            }))
+        #expect(await next.checkOnlyAvailable(p.id))
+        let launches = await f.launcher.launches
+        let checkID = UUID(), started = try await next.runCheckOnly(id: checkID, of: p.id)
+        #expect(started.id == checkID && started.vmID == f.profile.id)
+        #expect(try await next.runCheckOnly(id: checkID, of: p.id).id == checkID) // A lost reply observes, never restarts.
+        let finished = try await next.wait(checkID)
+        #expect(finished.stage == .checked && finished.applyJobID != nil && !finished.cleanupRequired)
+        #expect(await f.launcher.launches == launches + 1)
+        // The check is now the guest's latest plan, and the interrupted run is untouched.
+        #expect(await next.latestSetup(vmID: f.profile.id)?.planID == checkID)
+        #expect(await next.status(p.id)?.stage == .interrupted)
+        // Only an interrupted run that applied and restarted qualifies.
+        #expect(!(await next.checkOnlyAvailable(checkID)))
+        await #expect(throws: ProvisioningReviewFailure.unavailable) { _ = try await next.runCheckOnly(id: UUID(), of: checkID) }
+        try await next.closeForReopen(); await f.launcher.close()
+    }
+
+    @Test func aRunInterruptedBeforeItsRestartNeedsAFullRun() async throws {
+        let f = try await CreationFixture(), p = try await f.prepare(), vmID = try await f.create(p)
+        try await f.service.closeForReopen()
+        try writeFinishedRun(f.state, id: p.id, vmID: vmID, stage: .interrupted, plan: p.planDigest, input: p.inputDigest, engine: f.engine)
+        let next = try await reopen(f.manager, state: f.state, dependencies: f.dependencies, launcher: f.launcher, policy: f.provider.root, engine: f.engine, enabled: true)
+        #expect(!(await next.checkOnlyAvailable(p.id)))
+        await #expect(throws: ProvisioningReviewFailure.unavailable) { _ = try await next.runCheckOnly(id: UUID(), of: p.id) }
+        try await next.closeForReopen(); await f.assertInert(); await f.launcher.close()
+    }
+
     @Test func damagedPlanHistoryIsPreservedAndNoRunStartsWithoutItsRecord() async throws {
         let f = try await WorkflowFixture()
         try await f.service.closeForReopen()

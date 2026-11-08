@@ -654,10 +654,33 @@ hold) when its frozen inputs can be found. In practice that is a creation plan f
 through its receipt. Other never-run plans have no plan record, so Change setup ignores
 them and starts from the last recorded plan.
 
+**DESIGN DECISION — user direction, 9 November 2026 (Run the check only):** a run that
+applied and restarted, then stopped before its configuration check, can finish with that
+check alone. The run must be `interrupted` with `processInterrupted`, have an apply job and
+a restart, and have no cleanup hold. A restart is only ever approved from a clean
+restart-required apply.
+
+How the check runs:
+- `runCheckOnly` builds a new workflow from that run's own frozen inputs.
+- It refuses if the current engine would make a different plan; a full run is needed then.
+- It prepares an Ansible check-mode job against the current session, with no custom
+  tasks, and runs it at once. The click is the owner's consent, as for the reviewed
+  restart.
+- Check mode needs no admin grant. The helper channel refuses every grant and apply
+  operation in check mode, so no sudo prompt appears and no new sudo model is introduced.
+- It uses the existing workflow and job journals, with no schema change.
+- On success the new workflow is `checked`. It becomes the guest's latest plan, so Run
+  setup again repeats the same choices. The interrupted run is left as it was.
+- If preparation fails, the check is cancelled rather than left waiting.
+
+It is still not a general check of an arbitrary guest. Home and Change setup say
+"Checking" for it from an in-memory list of check-only runs.
+
 **VERIFIED — fake/local, 9 November 2026:** `ProvisioningRetryTests` and the offscreen
-harness (202 checks, 49 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
+harness (204 checks, 50 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
 **TO PROVE:** the same flows on a real Dev guest: Run setup again and Apply changes
-through restart and check, Start & set up, and reopening a pending run.
+through restart and check, Start & set up, reopening a pending run, and Run the check only
+on a guest whose run was interrupted after its restart.
 
 The current pass permits source integration and fake/local/CI validation only.
 No VM launch, real signing, host installation, Main app or Main VM operation is
