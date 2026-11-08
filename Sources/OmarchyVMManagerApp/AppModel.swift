@@ -56,6 +56,8 @@ final class AppModel: ObservableObject {
     @Published var officialFactorySource: OfficialFactorySource? = OfficialFactorySource.load(kit: .embedded(), lockData: (try? Data(contentsOf: AppModel.lockURL)) ?? Data())
     /// Desktop layout and theme that New VM starts from (Guest defaults).
     @Published var desktopDefaults: ProvisioningAppearanceSelection?
+    /// Developer setup choices New VM and Change setup start from (Guest defaults).
+    @Published var setupDefaults = SetupDefaults()
     @Published var defaultsError: String?
     @Published private var passwordUpgrade: (reference: UUID, result: OwnerPasswordUpgradeResult)?
     var passwordUpgradeResult: OwnerPasswordUpgradeResult? {
@@ -357,6 +359,11 @@ final class AppModel: ObservableObject {
         catch { defaultsError = error.localizedDescription }
         // Separate so an unreadable desktop preference never hides account defaults.
         do { desktopDefaults = try await manager.desktopDefaults() } catch { desktopDefaults = nil }
+        do { setupDefaults = try await manager.setupDefaults() } catch { setupDefaults = SetupDefaults() }
+    }
+    func saveSetupDefaults(_ value: SetupDefaults) async -> Bool {
+        do { try await manager.saveSetupDefaults(value); setupDefaults = value; defaultsError = nil; return true }
+        catch { defaultsError = error.localizedDescription; return false }
     }
     func saveDesktopDefaults(_ value: ProvisioningAppearanceSelection?) async -> Bool {
         do { try await manager.saveDesktopDefaults(value); desktopDefaults = value?.isEmpty == true ? nil : value; defaultsError = nil; return true }

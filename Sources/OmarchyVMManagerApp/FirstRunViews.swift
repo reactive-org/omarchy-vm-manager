@@ -127,7 +127,7 @@ struct FirstRunProgress: Equatable {
             var value = row.stage == .checking
                 ? FirstRunProgress(step: .restart, tone: .working, note: "Checking the configuration after the restart.")
                 : FirstRunProgress(step: .installing, tone: .working, note: "Installing software. You can use the guest while this runs.")
-            if job?.state == .awaitingAuthorization { value.tone = .needsYou; value.note = "Omarchy is asking to enable passwordless sudo. Answer it in the terminal below." }
+            if job?.state == .awaitingAuthorization { value.tone = .needsYou; value.note = ProvisioningSudoGrant.promptNote + " Answer it in the terminal below." }
             if let attachKey { value.terminal = (row.id, attachKey, true) }
             return value
         case .restartRequired:

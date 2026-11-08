@@ -183,7 +183,8 @@ public enum SetupTimeoutNote {
     static func step(_ operation: GuestOperation) -> String {
         let within = " within " + duration(limitSeconds(operation))
         switch operation {
-        case .requestPersistentGrant: return "Omarchy’s passwordless sudo prompt wasn’t answered" + within
+        // A renewal only waits when Omarchy revoked the timed grant and asks again.
+        case .requestPersistentGrant, .requestTemporaryGrant, .renewTemporaryGrant: return "Omarchy’s passwordless sudo prompt wasn’t answered" + within
         case .updateSystem: return "the Omarchy update didn’t finish" + within
         case .installManifestPackages: return "installing packages didn’t finish" + within
         case .configureFeatures: return "installing your selected features didn’t finish" + within
@@ -203,4 +204,11 @@ public enum SetupTimeoutNote {
         if seconds % 60 == 0 { return seconds == 60 ? "a minute" : "\(seconds / 60) minutes" }
         return "\(seconds) seconds"
     }
+}
+
+extension GuestOperation {
+    /// The step that shows Omarchy's passwordless sudo prompt. A timed grant's
+    /// renewal normally finishes at once without one, so it isn't counted: only
+    /// an omarchy-settings upgrade can make it ask again (TO PROVE on a guest).
+    var asksForSudoGrant: Bool { self == .requestPersistentGrant || self == .requestTemporaryGrant }
 }

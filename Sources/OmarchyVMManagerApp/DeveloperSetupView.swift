@@ -19,11 +19,17 @@ struct DeveloperSetupView: View {
     @ObservedObject var model: AppModel
     let snapshot: VMSnapshot
     var mode: Mode = .full
+    init(model: AppModel, snapshot: VMSnapshot, mode: Mode = .full) {
+        self.model = model; self.snapshot = snapshot; self.mode = mode
+        // A changed setup starts from Guest defaults, like New VM.
+        _permanentSudoGrant = State(initialValue: model.setupDefaults.permanentSudoGrant)
+    }
     private var showsChange: Bool { mode != .output }
     private var showsOutput: Bool { mode != .change }
     @StateObject private var screen = ProvisioningTerminalScreen()
     @State private var source = "none"
     @State private var trimOptionalApps = false
+    @State private var permanentSudoGrant = false
     @State private var appearance = ProvisioningAppearanceDraft()
     @State private var profiles: Set<String> = ["developer"]
     @State private var selectedWorkflow: UUID?
@@ -100,6 +106,7 @@ struct DeveloperSetupView: View {
                     if source != "none", ProvisioningTrim.isAvailable(for: snapshot.profile.factory) {
                         ProvisioningTrimSelectionView(selection: $trimOptionalApps).disabled(planning || preparingApply || submitting || applyReview != nil)
                     }
+                    if source != "none" { ProvisioningSudoGrantSelectionView(permanent: $permanentSudoGrant).disabled(planning || preparingApply || submitting || applyReview != nil) }
                     if source != "none" { ProvisioningAppearanceSelectionView(draft: $appearance, localSource: source == "local").disabled(planning || preparingApply || submitting || applyReview != nil) }
                     if let folder, source == "local" { Text(folder.lastPathComponent + "/vm.yml").font(.caption).foregroundStyle(.secondary) }
                     Text("Setup updates Omarchy and system packages before applying your selections. Review software, removals, dotfiles and the restart requirement below. Custom tasks require separate trust.").font(Theme.sans(13)).foregroundStyle(.secondary)
@@ -200,6 +207,7 @@ struct DeveloperSetupView: View {
         .onChange(of: snapshot.profile.factory) { _, _ in trimOptionalApps = false; invalidatePreview() }
         .onChange(of: appearance) { _, _ in invalidatePreview() }
         .onChange(of: trimOptionalApps) { _, _ in invalidatePreview() }
+        .onChange(of: permanentSudoGrant) { _, _ in invalidatePreview() }
         .onChange(of: profiles) { _, _ in invalidatePreview() }
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { invalidatePreview(); folder = url }
@@ -441,7 +449,7 @@ struct DeveloperSetupView: View {
         if let adds = look.layoutAddsSentence { steps.append(adds) }
         steps += look.layoutNotInstalledSentences
         if !value.tasks.isEmpty { steps.append("Runs \(value.tasks.count) custom task\(value.tasks.count == 1 ? "" : "s") from this configuration.") }
-        if review.persistentGrantRequired { steps.append("Uses temporary admin access while it runs; cleanup removes it.") }
+        if review.persistentGrantRequired { steps.append(ProvisioningSudoGrant.reviewStep(timed: ProvisioningSudoGrant.isTimed(in: value.proposal))) }
         steps.append("Finishes with a restart and a configuration check, each reviewed before it runs.")
         return steps
     }
@@ -511,8 +519,8 @@ struct DeveloperSetupView: View {
         let revision = UUID(); planRevision = revision
         let id = frozen == nil ? (captureID ?? UUID()) : UUID(); captureID = id; frozen = nil
         let selection: ProvisioningSetupSource
-        if source == "local", let folder { selection = .init(directory: folder.path, profiles: profiles.isEmpty ? nil : profiles.sorted(), trimOptionalApps: ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && trimOptionalApps, appearance: appearance.selection) }
-        else { selection = .init(profiles: profiles.sorted(), trimOptionalApps: ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && trimOptionalApps, appearance: appearance.selection) }
+        if source == "local", let folder { selection = .init(directory: folder.path, profiles: profiles.isEmpty ? nil : profiles.sorted(), trimOptionalApps: ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && trimOptionalApps, appearance: appearance.selection, permanentSudoGrant: permanentSudoGrant) }
+        else { selection = .init(profiles: profiles.sorted(), trimOptionalApps: ProvisioningTrim.isAvailable(for: snapshot.profile.factory) && trimOptionalApps, appearance: appearance.selection, permanentSudoGrant: permanentSudoGrant) }
         defer { planning = false }
         do {
             let value = try await service.preview(id: id, vmID: snapshot.id, source: selection)

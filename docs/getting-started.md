@@ -101,6 +101,8 @@ With the official image, the first launch also downloads and verifies the factor
 
 During **Installing**, Omarchy asks whether to enable passwordless sudo, which setup needs. The guest shows **Needs you** in the sidebar, and the **Live terminal** on its Home page shows the prompt. Answer it there: choose **Yes** or **No**, then press Return.
 
+Omarchy's prompt warns about the risk in its own words. By default setup asks for 60 minutes, renews it while it runs, and turns it off when it finishes. With **Ask for sudo once** (in the setup options, and in **Guest defaults**), Omarchy asks once and calls it permanent; setup still turns it off when it finishes.
+
 ![Example VM waiting at Installing, with Omarchy's passwordless sudo prompt in the live terminal and Needs you in the sidebar](media/example-vm-07-needs-you.webp)
 
 While a run is blocked, the Dock icon bounces once if the manager isn't in front, and macOS shows one notification naming the guest and what it's waiting for. The Dock icon may also show **!** if macOS allows badges for the app. The manager asks for notification permission when it opens; the badge and Dock still work if you decline. If a step runs out of time, the failure names it, for example "Omarchy's passwordless sudo prompt wasn't answered within an hour".

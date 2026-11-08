@@ -5,13 +5,16 @@ import Foundation
 /// A future transport must route through the pinned non-root guest connection,
 /// quote argv correctly at the SSH boundary, and use the approved input lease.
 public struct NativeGuestInvocation: Sendable {
-    public static let contractVersion = 2
+    public static let contractVersion = 3
     public let arguments: [String]
     public let requiresInteractiveTerminal: Bool
     public let acceptsNonterminalInput: Bool
 }
 
 extension GuestOperation {
+    /// Fixed duration for Omarchy's timed grant; never caller supplied.
+    public static let temporaryGrantMinutes = 60
+
     /// Data-only command construction. No user strings, paths or credentials are
     /// interpolated into these scripts, and no host execution adapter is supplied.
     public var nativeInvocation: NativeGuestInvocation? {
@@ -23,6 +26,13 @@ extension GuestOperation {
             script = "sudo -K"
         case .requestPersistentGrant:
             script = "omarchy sudo passwordless permanent"
+        case .requestTemporaryGrant:
+            // Omarchy's timed grant expires on its own and is cleared at boot.
+            script = "omarchy sudo passwordless \(Self.temporaryGrantMinutes)"
+        case .renewTemporaryGrant:
+            // While a timed grant is active Omarchy renews it without a prompt.
+            // If an omarchy-settings upgrade revoked it, Omarchy asks again here.
+            script = "omarchy sudo passwordless \(Self.temporaryGrantMinutes) && omarchy sudo passwordless --active && sudo -kn true"
         case .verifyGrantActive:
             script = "omarchy sudo passwordless --active && sudo -kn true"
         case .updateSystem:

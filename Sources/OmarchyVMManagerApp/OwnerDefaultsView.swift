@@ -16,6 +16,8 @@ struct OwnerDefaultsView: View {
     @State private var wide = true
     @State private var desktop = ProvisioningAppearanceDraft()
     @State private var desktopSaved = false
+    @State private var setup = SetupDefaults()
+    @State private var setupSaved = false
     private let protectedPasswordsAvailable = KeychainOwnerSecretStore.supportsProtectedStorage
     private let developmentPasswords = KeychainOwnerSecretStore.usesDevelopmentKeychain
     private var upgradeButtonTitle: String {
@@ -118,6 +120,16 @@ struct OwnerDefaultsView: View {
                 .disabled(desktop.failure != nil || saving)
                 .onChange(of: desktop) { desktopSaved = false }.padding(.bottom, 6)
             }
+            SpecPane("developer setup") {
+                ProvisioningSudoGrantSelectionView(permanent: $setup.permanentSudoGrant).padding(.vertical, 6)
+                SpecNote("New VMs start with this choice; you can change it for each VM. Existing guests keep theirs.").padding(.bottom, 6)
+                Button(setupSaved ? "Setup defaults saved" : "Save setup defaults") {
+                    error = nil
+                    Task { setupSaved = await model.saveSetupDefaults(setup); if !setupSaved { error = model.defaultsError } }
+                }
+                .disabled(saving)
+                .onChange(of: setup) { setupSaved = false }.padding(.bottom, 6)
+            }
             if let error { Text(error).foregroundStyle(.red) }
             HStack {
                 if saved, configuration == model.ownerDefaults?.configuration, publicKey == model.ownerDefaults?.sshPublicKey, password.isEmpty, confirmation.isEmpty { Label("Defaults saved", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
@@ -137,7 +149,7 @@ struct OwnerDefaultsView: View {
             Text("Automatic setup supports the reviewed prepared factory image. Disk partitioning, encryption and Tailscale settings from the ISO guide are outside this flow. If the image’s setup scripts change, the guest returns to normal setup and the manager reports why.").font(Theme.sans(13)).foregroundStyle(.secondary)
             Link("Omarchy’s unattended-install guide", destination: URL(string: "https://omarchy.org/manual/unattended-installs/")!)
         }
-        .task { await model.loadDefaults(); disks = model.diskDefaults; desktop = ProvisioningAppearanceDraft(model.desktopDefaults); if let value = model.ownerDefaults { configuration = value.configuration; publicKey = value.sshPublicKey } }
+        .task { await model.loadDefaults(); disks = model.diskDefaults; desktop = ProvisioningAppearanceDraft(model.desktopDefaults); setup = model.setupDefaults; if let value = model.ownerDefaults { configuration = value.configuration; publicKey = value.sshPublicKey } }
         .onDisappear { password = ""; confirmation = "" }
     }
 }

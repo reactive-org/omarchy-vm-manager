@@ -91,7 +91,7 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
             var values: [String: String] = [:], flags = Set<String>(), index = 3
             let isSource = ["preview", "prepare-create"].contains(args[1])
             var features = ProvisioningFeatureSelection()
-            let options: Set<String> = isSource ? ["--from", "--manifest", "--preset", "--preview-id", "--theme", "--theme-min-stars", "--layout-file", "--layout-example"] : ["--review", "--trust-tasks"]
+            let options: Set<String> = isSource ? ["--from", "--manifest", "--preset", "--preview-id", "--theme", "--theme-min-stars", "--layout-file", "--layout-example", "--sudo-grant"] : ["--review", "--trust-tasks"]
             while index < args.count {
                 let option = args[index]; index += 1
                 if isSource, ["--enable", "--disable"].contains(option) {
@@ -112,7 +112,10 @@ public enum ProvisioningSetupCLI: Sendable, Equatable {
                 let appearance = ProvisioningAppearanceSelection(theme: values["--theme"], minimumStars: stars,
                     layoutFile: values["--layout-file"], removeLayout: flags.contains("--remove-layout"), layoutExample: example)
                 let selection: ProvisioningFeatureSelection? = features.isEmpty ? nil : features
-                let source = values["--from"].map { ProvisioningSetupSource(directory: $0, manifest: values["--manifest"], features: selection, appearance: appearance.isEmpty ? nil : appearance) } ?? .init(preset: values["--preset"]!, features: selection, appearance: appearance.isEmpty ? nil : appearance)
+                // Omitted keeps the setup's own vm.sudo_grant (dev-vm's permanent default).
+                guard [nil, "permanent", "timed"].contains(values["--sudo-grant"]) else { throw commandFailure("usage", "Use --sudo-grant permanent or --sudo-grant timed.") }
+                let permanent = values["--sudo-grant"].map { $0 == "permanent" }
+                let source = values["--from"].map { ProvisioningSetupSource(directory: $0, manifest: values["--manifest"], features: selection, appearance: appearance.isEmpty ? nil : appearance, permanentSudoGrant: permanent) } ?? .init(preset: values["--preset"]!, features: selection, appearance: appearance.isEmpty ? nil : appearance, permanentSudoGrant: permanent)
                 do { try source.validate() } catch { throw commandFailure("usage", "Choose a bundled preset or an absolute setup folder, a GitHub theme URL/random/most-starred, and an absolute layout file or --remove-layout.") }
                 if args[1] == "prepare-create", values["--preview-id"] == nil { return .prepareCreation(id, source) }
                 if args[1] == "preview", let token = values["--preview-id"], let previewID = UUID(uuidString: token) { return .createPreview(id, previewID, source) }

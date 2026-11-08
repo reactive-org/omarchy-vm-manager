@@ -487,7 +487,7 @@ public actor ProvisioningCoordinator {
         record.payloadID = command.context.payloadID; record.commandID = command.id; record.operation = command.operation
         if !cleanup { bodyOperations[record.jobID] = command.operation }
         if cleanup { record.state = .cleaningUp }
-        else if command.operation == .requestPersistentGrant { record.state = .awaitingAuthorization }
+        else if command.operation.asksForSudoGrant { record.state = .awaitingAuthorization }
         else if command.operation != .verifyIdentity { record.state = .running }
         try advance(&record)
         do { try persist(record) }
@@ -772,7 +772,7 @@ extension ProvisioningCoordinator {
             else if status.phase == .running, [.running, .awaitingAuthorization].contains(row.state) {
                 // Omarchy's passwordless-sudo prompt is never a cleanup step, so the
                 // reported operation alone says when the owner is being asked.
-                row.state = status.operation == .requestPersistentGrant ? .awaitingAuthorization : .running
+                row.state = status.operation?.asksForSudoGrant == true ? .awaitingAuthorization : .running
             }
             try advance(&row)
             do { try persist(row) }

@@ -1,6 +1,12 @@
 # Pinned developer provisioning source
 
-**Current pin (8 November 2026, issues #27/#29):** `dev-vm/` is the unpatched
+**Current pin (8 November 2026, issue #20):** `dev-vm/` is the unpatched export of
+dev-vm branch commit `0cae7bca1cd702a71bc11109dbd4786551017626`
+(reactive-org/dev-vm#17, not yet merged), which adds `vm.sudo_grant: timed`: renewed
+60-minute Omarchy grants in place of the permanent one, and native contract version 3.
+Re-pin to the merge commit once dev-vm#17 merges.
+
+**Previous pin (8 November 2026, issues #27/#29):** `dev-vm/` is the unpatched
 export of merged dev-vm commit `2ab37fc39cef5b75dac66449dc83f84d0460d83f`
 (reactive-org/dev-vm#16), which builds factories from the selected Omarchy
 channel with that channel's Arch Linux ARM mirror and fails closed on

@@ -70,7 +70,7 @@ extension ProvisioningService {
         guard try ProvisioningCoordinator.engineIdentity(proposed) == environment.engineDigest else { throw ProvisioningReviewFailure.changed }
         let archive = try FrozenInputsArchive(privateArchive: proposed.snapshot.privateArchive(), expectedIdentity: proposed.snapshot.identity)
         let projected: Data?
-        if source.profiles?.isEmpty == false || source.features?.isEmpty == false || source.trimOptionalApps != nil || appearance != nil {
+        if source.profiles?.isEmpty == false || source.features?.isEmpty == false || source.trimOptionalApps != nil || source.permanentSudoGrant != nil || appearance != nil {
             guard archive.data(for: Self.selectionManifest) == nil, !archive.directoryPaths.contains(Self.selectionManifest),
                   let original = archive.data(for: manifest), case .object(var fields) = try PlainDataParser.parse(original, format: manifest.hasSuffix("json") ? .json : .yaml) else { throw ProvisioningReviewFailure.invalid }
             var setup: [String: ManifestValue] = [:], choices: [String: ManifestValue] = [:]
@@ -111,10 +111,11 @@ extension ProvisioningService {
                 choices["enable"] = .array(enabled); setup["features"] = .object(choices)
             }
             fields["setup"] = .object(setup)
-            if let trim = source.trimOptionalApps {
+            if source.trimOptionalApps != nil || source.permanentSudoGrant != nil {
                 var vm: [String: ManifestValue] = [:]
                 if case .object(let value) = fields["vm"] { vm = value }
-                vm["lean_developer"] = .bool(trim)
+                if let trim = source.trimOptionalApps { vm["lean_developer"] = .bool(trim) }
+                if let permanent = source.permanentSudoGrant { vm["sudo_grant"] = .string(permanent ? "permanent" : "timed") }
                 fields["vm"] = .object(vm)
             }
             var assets: [ManifestValue] = []

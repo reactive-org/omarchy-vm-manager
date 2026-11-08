@@ -47,6 +47,8 @@ Those observations describe the existing Python implementation, not the proposed
 
 **VERIFIED — local dev-vm implementation:** setup enables a native persistent passwordless guest sudo grant, then revokes it and clears cached authentication. The grant has no automatic expiry and can survive a reboot. Do not describe it as a 60-minute grant. Failure to verify revocation must remain actionable.
 
+**DESIGN DECISION — issue #20, 8 November 2026 (supersedes the default above, not its description):** setup now asks for Omarchy's timed grant by default (`vm.sudo_grant: timed`, `omarchy sudo passwordless 60`, renewed before each later step that needs root; dev-vm#17). **Ask for sudo once** keeps the permanent grant described above. Cleanup is unchanged for both. See `intent.md` for the Omarchy coupling and what remains TO PROVE.
+
 dev-vm source and reference documentation:
 
 - [Repository](https://github.com/reactive-org/dev-vm)

@@ -423,6 +423,12 @@ public actor VMManager {
         try registry.checkRevision()
         try DesktopDefaultsStore(applicationSupport: applicationSupport).save(value)
     }
+    public func setupDefaults() throws -> SetupDefaults { try SetupDefaultsStore(applicationSupport: applicationSupport).load() }
+    public func saveSetupDefaults(_ value: SetupDefaults) throws {
+        guard !quitting, let registry else { throw VMFailure(code: "setup-defaults-unavailable", message: "Setup defaults are unavailable while quitting.") }
+        try registry.checkRevision()
+        try SetupDefaultsStore(applicationSupport: applicationSupport).save(value)
+    }
     public func saveDiskDefaults(_ value: DiskDefaults) throws {
         guard !quitting, let registry else { throw HomeDisk.failure("Disk defaults are unavailable while quitting.") }
         try registry.checkRevision()

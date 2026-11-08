@@ -70,7 +70,8 @@ public actor SSHAnsibleGuestAdapter: ProvisioningGuestAdapter {
         guard command.context.target == connection.binding, command.mode == command.context.mode else { throw SequencingFailure.identityMismatch }
         if let context { guard context == command.context else { throw SequencingFailure.identityMismatch } }
         else { context = command.context }
-        if command.mode == .check, [.resetGrant, .clearAuthenticationCache, .requestPersistentGrant, .verifyGrantActive,
+        if command.mode == .check, [.resetGrant, .clearAuthenticationCache, .requestPersistentGrant, .requestTemporaryGrant,
+                                    .renewTemporaryGrant, .verifyGrantActive,
                                     .updateSystem, .installManifestPackages, .configureDockerOwnerAccess, .revokeGrant, .verifyGrantInactive].contains(command.operation) {
             throw SequencingFailure.invalidRequest
         }
