@@ -341,6 +341,9 @@ struct ManagerView: View {
 
     private func guestHome(_ snapshot: VMSnapshot) -> some View {
         let firstRun = FirstRunProgress.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id], checkOnly: model.checkOnlyRuns)
+        // After the first run, a run under way is followed here, like New VM's first run.
+        let run: SetupRunPhase? = firstRun != nil ? nil : SetupRunPhase.active(model.setupWorkflows.filter { $0.vmID == snapshot.id }, auto: model.autoSetup[snapshot.id])
+            .flatMap { if case .cleanup = $0 { nil } else { $0 } }
         return VStack(alignment: .leading, spacing: Theme.gap) {
             if let source = model.officialFactorySource, let (phase, percent) = GuestFactoryDownloadCard.phase(snapshot) {
                 GuestFactoryDownloadCard(source: source, phase: phase, percent: percent)
@@ -350,6 +353,8 @@ struct ManagerView: View {
                 if let terminal = firstRun.terminal {
                     FirstRunTerminal(model: model, workflowID: terminal.workflowID, attachmentKey: terminal.key, live: terminal.live) { setupSheet = .output }
                 }
+            } else if let run {
+                SetupRunPanel(model: model, snapshot: snapshot, phase: run) { setupSheet = $0 }
             } else if model.setupCompletedThisRun.contains(snapshot.id) {
                 FirstRunComplete(viewLog: { setupSheet = .output }, dismiss: { model.setupCompletedThisRun.remove(snapshot.id) })
             }
@@ -373,7 +378,7 @@ struct ManagerView: View {
                     }
                 }.padding(.leading, 16).padding(.trailing, 20).padding(.vertical, 14)
             }
-            if firstRun == nil {
+            if firstRun == nil, run == nil {
                 GuestSetupCardHost(model: model, snapshot: snapshot) { setupSheet = $0 }
             }
             if features.showsSuspendPanel(for: snapshot) {

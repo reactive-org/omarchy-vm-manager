@@ -328,7 +328,8 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
         enabledModel.setupWorkflows = [lastRun]
         let changeDriver = SetupUIAcceptanceDriver()
-        let changeHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: {}, openOutput: {}), driver: changeDriver, width: 680, height: 820, dark: true)
+        var sheetCloses = 0
+        let changeHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: { sheetCloses += 1 }, openOutput: {}), driver: changeDriver, width: 680, height: 820, dark: true)
         defer { changeHost.close() }
         func change(_ key: String) -> String { changeDriver.state("change", key) }
         tick(); try waitFor("change sheet loads") { change("phase") == "edit" }
@@ -404,7 +405,7 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
         enabledModel.setupWorkflows = [interruptedLast]; enabledModel.autoSetup = [:]
         let checkDriver = SetupUIAcceptanceDriver()
-        let checkHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: {}, openOutput: {}), driver: checkDriver, width: 680, height: 820, dark: true)
+        let checkHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: { sheetCloses += 1 }, openOutput: {}), driver: checkDriver, width: 680, height: 820, dark: true)
         defer { checkHost.close() }
         func checking(_ key: String) -> String { checkDriver.state("change", key) }
         tick(); try waitFor("interrupted sheet loads") { checking("phase") == "edit" && checking("checkOnly") == "true" }
@@ -417,7 +418,26 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         try waitFor("sheet shows the check") { checking("phase") == "live" }
         let checkCard = SetupCardState.make(enabledModel.snapshots[0], workflows: enabledModel.setupWorkflows, jobs: [:], autoSetup: nil, checkOnly: enabledModel.checkOnlyRuns)
         try check(checking("title") == "Checking" && enabled.submissions == submissionsBeforeCheck && checkCard.run == "Checking", "check-only-runs-no-apply")
+        try check(sheetCloses == 2, "approval-closes-sheet-to-home")
         checkHost.close(); enabled.checkOnlyFixture = nil; enabledModel.checkOnlyRuns = []
+        // Home follows a run after the first one, like New VM's first run: the run panel replaces the setup card.
+        let homeRun = UUID()
+        enabledModel.autoSetup = [:]
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(homeRun, stage: "running")]
+        let homeDriver = SetupUIAcceptanceDriver()
+        let runHomeHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: homeDriver, width: 1200, height: 960, dark: true)
+        tick(); try waitFor("home run panel") { homeDriver.scopes["run-panel"] != nil }
+        try check(homeDriver.state("run-panel", "title") == "Installing" && homeDriver.state("run-panel", "steps") == "done,current,todo,todo"
+                  && homeDriver.state("run-panel", "actions") == "View output|Cancel setup…", "home-shows-live-run-panel")
+        try capture(runHomeHost, "guest-setup-run-dark.png"); runHomeHost.close(); tick()
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(homeRun, stage: "restartRequired")]
+        let restartDriver = SetupUIAcceptanceDriver()
+        let restartHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: restartDriver, width: 1200, height: 960, dark: true)
+        tick(); try waitFor("home restart panel") { restartDriver.scopes["run-panel"] != nil }
+        try check(restartDriver.state("run-panel", "actions").hasSuffix("Restart & check") && restartDriver.state("run-panel", "steps") == "done,done,needsYou,todo",
+                  "home-unfollowed-restart-offers-restart-and-check")
+        restartHost.close(); tick()
         // Don't set up while the approved run is still being prepared: nothing is submitted.
         let holdID = UUID()
         let holdPlan = try run { try await enabled.preview(id: holdID, vmID: profile.id, source: .init(profiles: ["web"])) }
@@ -542,6 +562,15 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             enabledModel.setupWorkflows = rows; enabledModel.setupJobs = jobs
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); try capture(pageHost, name); pageHost.close(); tick()
+        }
+        do {
+            // A guest still in its first run keeps the first-run tracker; the run panel is for later runs.
+            enabledModel.snapshots = [.init(profile: firstRun, state: .running, sessionID: session, sshReadiness: .ready(user: "fixture_owner", command: "synthetic-unused"))]
+            enabledModel.setupWorkflows = [installing]; enabledModel.setupJobs = [installing.id: job]
+            let trackerDriver = SetupUIAcceptanceDriver()
+            let trackerHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: trackerDriver, width: 1200, height: 960, dark: true)
+            tick(); tick(0.2)
+            try check(trackerDriver.scopes["run-panel"] == nil, "home-first-run-keeps-tracker"); trackerHost.close(); tick()
         }
         // A failed run says what failed from recorded categories and keeps its ended terminal entry.
         let failedRun = try enabled.row(installing.id, stage: "failed")

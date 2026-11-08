@@ -480,7 +480,13 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 - the check becoming the latest plan;
 - a run interrupted before its restart being refused.
 
-The offscreen harness (204 checks, 50 images) covers the offer, the "Checking" wording on the sheet and the card, and no apply being submitted.
+The offscreen harness (208 checks, 51 images) covers:
+- the offer;
+- the "Checking" wording on the sheet and the card;
+- no apply being submitted;
+- approving closing the sheet;
+- Home's run panel with its steps and actions, including Restart & check for an unfollowed restart;
+- a guest still in its first run keeping the tracker.
 
 **TO PROVE:** a check-only run on a real Dev guest, for example `adfadf`, whose run was interrupted after its restart on 8 November 2026.
 

@@ -654,6 +654,15 @@ hold) when its frozen inputs can be found. In practice that is a creation plan f
 through its receipt. Other never-run plans have no plan record, so Change setup ignores
 them and starts from the last recorded plan.
 
+**DESIGN DECISION — user direction, 9 November 2026 (follow a run on Home):** as with New
+VM, approving in Change setup (Run setup again, Apply changes, Start & set up, Approve & run
+or Run the check only) closes the sheet. The guest's Home then follows the run. For a guest
+past its first run, a setup panel replaces the setup card while a run is under way. It shows
+the four-step strip, one sentence, Cancel setup…, Restart & check for an unfollowed restart,
+and the same inline live terminal as the first-run tracker. A guest still in its first run
+keeps the first-run tracker. A cleanup hold stays on the setup card. Change setup keeps a live
+view only as a fallback when it is opened during a run.
+
 **DESIGN DECISION — user direction, 9 November 2026 (Run the check only):** a run that
 applied and restarted, then stopped before its configuration check, can finish with that
 check alone. The run must be `interrupted` with `processInterrupted`, have an apply job and
@@ -677,7 +686,7 @@ It is still not a general check of an arbitrary guest. Home and Change setup say
 "Checking" for it from an in-memory list of check-only runs.
 
 **VERIFIED — fake/local, 9 November 2026:** `ProvisioningRetryTests` and the offscreen
-harness (204 checks, 50 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
+harness (208 checks, 51 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
 **TO PROVE:** the same flows on a real Dev guest: Run setup again and Apply changes
 through restart and check, Start & set up, reopening a pending run, and Run the check only
 on a guest whose run was interrupted after its restart.

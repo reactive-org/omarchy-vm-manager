@@ -139,7 +139,7 @@ Tick **Allow temporary admin access while setup runs**, plus **Allow Docker with
 - **Apply changes** makes a new plan from what you changed. A setup that came from a local folder asks you to choose the folder again.
 - **Start & set up** starts a stopped guest, then runs the plan once the guest is reachable.
 
-That one approval covers the whole run, including its restart and configuration check. If the plan includes custom tasks, the sheet stops at **Approve & run** so you can inspect each task and allow it separately.
+That one approval covers the whole run, including its restart and configuration check. The sheet closes and the guest's **Home** follows the run, as it does after New VM: the setup panel shows the four steps, what's happening now and the live terminal, with **Cancel setup…** if you need it. When the run ends, the setup card returns. If the plan includes custom tasks, the sheet stops at **Approve & run** so you can inspect each task and allow it separately.
 
 ## If setup stops
 

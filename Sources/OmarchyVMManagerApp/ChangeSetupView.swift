@@ -16,12 +16,7 @@ struct ChangeSetupView: View {
     let close: () -> Void
     let openOutput: () -> Void
 
-    enum Phase: Equatable {
-        case loading, edit, starting
-        case pending(ProvisioningWorkflowSnapshot?)
-        case live(ProvisioningWorkflowSnapshot)
-        case cleanup(ProvisioningWorkflowSnapshot)
-    }
+    typealias Phase = SetupRunPhase
     private enum Pane { case layout, customise }
     @State private var openPane: Pane?
     @State private var loaded = false
@@ -67,10 +62,8 @@ struct ChangeSetupView: View {
 
     var phase: Phase {
         guard loaded else { return .loading }
-        if let held = rows.first(where: { $0.cleanupRequired && !$0.canCancel }) { return .cleanup(held) }
+        if let active = SetupRunPhase.active(rows, auto: auto) { return active }
         let preparing: [ProvisioningWorkflowStage] = [.waitingForSSH, .readyForReview]
-        if let live = rows.first(where: { $0.stage.inProgress && (!preparing.contains($0.stage) || $0.id == approvedID) }) { return .live(live) }
-        if auto?.isActive == true { return .starting }
         if let pending = rows.first(where: { preparing.contains($0.stage) }) { return .pending(pending) }
         if pendingPlan != nil { return .pending(nil) }
         return .edit
@@ -132,80 +125,19 @@ struct ChangeSetupView: View {
         }.padding(.horizontal, 20).padding(.vertical, 14)
     }
 
-    struct Status: Equatable { var label: String; var title: String; var note: String; var tint: Tint; var steps: [SetupStepState] }
-    enum Tint: Equatable { case quiet, good, working, attention }
+    typealias Status = SetupRunStatus
+    typealias Tint = SetupRunStatus.Tint
 
     var currentStatus: Status {
-        if case .live(let row) = phase, row.stage == .running, model.checkOnlyRuns.contains(row.id) {
-            return .init(label: "this run", title: "Checking", note: "A read-only check of the last run’s choices, with no admin access. It installs nothing; closing this sheet doesn’t stop it.",
-                         tint: .working, steps: [.done, .done, .done, .current])
-        }
-        return Self.status(phase, lastRun: lastRun, latestPlanExists: latest != nil || snapshot.profile.developerSetup != nil, running: running,
-                                             job: phaseRow.flatMap { model.setupJobs[$0.id] }, auto: auto)
+        SetupRunStatus.make(phase, lastRun: lastRun, latestPlanExists: latest != nil || snapshot.profile.developerSetup != nil, running: running,
+                            job: phaseRow.flatMap { model.setupJobs[$0.id] }, auto: auto, checkOnly: model.checkOnlyRuns)
     }
     private var phaseRow: ProvisioningWorkflowSnapshot? {
         switch phase { case .live(let row), .cleanup(let row): row; case .pending(let row): row; default: nil }
     }
-
-    /// The one sentence for each state, from recorded state only.
     static func status(_ phase: Phase, lastRun: ProvisioningWorkflowSnapshot?, latestPlanExists: Bool, running: Bool,
                        job: ProvisioningJobSnapshot?, auto: AutoSetupState?) -> Status {
-        switch phase {
-        case .loading:
-            return .init(label: "setup", title: "Loading…", note: "", tint: .quiet, steps: SetupSteps.states(nil, job: nil, auto: nil))
-        case .starting:
-            let title = auto == .applying ? "Preparing setup" : running ? "Waiting for the guest" : "Starting the guest"
-            return .init(label: "this run", title: title, note: "Setup runs once the guest is reachable over SSH, then restarts it and checks the configuration. You can close this sheet.",
-                         tint: .working, steps: SetupSteps.states(nil, job: nil, auto: auto))
-        case .pending(let row):
-            return .init(label: "waiting for you", title: "This run is ready to approve",
-                         note: "It hasn’t changed anything in the guest yet. Approve it to run it, including its restart and check, or discard it to change the choices first.",
-                         tint: .attention, steps: row.map { SetupSteps.states($0, job: nil, auto: nil) } ?? [.needsYou, .todo, .todo, .todo])
-        case .cleanup(let row):
-            let note = running
-                ? "Setup couldn’t confirm it removed passwordless sudo. Recover checks this guest and removes it; nothing is re-installed and the guest isn’t restarted."
-                : "Setup couldn’t confirm it removed passwordless sudo, and the guest has stopped, so it can’t be checked. Release the hold to carry on, then remove any leftover admin access inside the guest."
-            return .init(label: "cleanup", title: "Temporary admin access may still be on", note: note, tint: .attention, steps: SetupSteps.states(row, job: job, auto: auto))
-        case .live(let row):
-            let steps = SetupSteps.states(row, job: job, auto: auto)
-            let following = steps.contains(.current)
-            switch row.stage {
-            case .waitingForSSH, .readyForReview:
-                return .init(label: "this run", title: "Preparing setup", note: "Connecting to the guest and preparing the approved plan.", tint: .working, steps: steps)
-            case .running where job?.state == .awaitingAuthorization:
-                return .init(label: "waiting for you", title: "Omarchy is asking for sudo", note: ProvisioningSudoGrant.promptNote + " Answer it in View output.", tint: .attention, steps: steps)
-            case .running:
-                return .init(label: "this run", title: "Installing", note: "Updating Omarchy, then applying your choices. You can use the guest while this runs; it restarts once near the end. Closing this sheet doesn’t stop setup.", tint: .working, steps: steps)
-            case .restartRequired where !following:
-                return .init(label: "waiting for you", title: "Software installed. Restart to finish", note: "Setup restarts the guest, waits for it to come back, then runs a read-only check that the configuration applied. Nothing else is installed.", tint: .attention, steps: steps)
-            case .restartRequired, .waitingForExit, .restarting:
-                return .init(label: "this run", title: "Restarting", note: "Restarting the guest to finish setup. The configuration check follows.", tint: .working, steps: steps)
-            case .waitingForRebind, .readyForCheck:
-                if following { return .init(label: "this run", title: "Checking", note: "Waiting for the restarted guest, then checking the configuration.", tint: .working, steps: steps) }
-                return .init(label: "waiting for you", title: "The guest restarted. Check to finish", note: "A read-only check that the configuration applied. It installs nothing.", tint: .attention, steps: steps)
-            default:
-                return .init(label: "this run", title: "Checking", note: "A read-only check that the configuration applied after the restart.", tint: .working, steps: steps)
-            }
-        case .edit:
-            guard let row = lastRun else {
-                if latestPlanExists { return .init(label: "setup", title: "Not run yet", note: "This guest has a saved setup plan that hasn’t run. Review the choices below, then run it.", tint: .quiet, steps: SetupSteps.states(nil, job: nil, auto: nil)) }
-                return .init(label: "setup", title: "Not set up yet", note: "Choose software and a desktop layout. Setup updates Omarchy first, then applies them, restarts the guest once and checks the configuration.", tint: .quiet, steps: SetupSteps.states(nil, job: nil, auto: nil))
-            }
-            let steps = SetupSteps.states(row, job: nil, auto: nil)
-            let released = row.cleanupRelease != nil ? " Its cleanup hold was released without verification; the guest may still allow passwordless sudo." : ""
-            switch row.stage {
-            case .checked: return .init(label: "last run", title: "Finished and checked", note: "Updated Omarchy, applied these choices, restarted and checked." + released, tint: .good, steps: steps)
-            case .succeeded: return .init(label: "last run", title: "Finished", note: "Updated Omarchy and applied these choices." + released, tint: .good, steps: steps)
-            case .interrupted where row.newSessionID != nil || row.restartID != nil:
-                return .init(label: "last run", title: "Applied, but the final check didn’t run", note: "Setup installed your software and restarted the guest, then stopped before the configuration check. The guest is usable as it is; run setup again to finish with a check." + released, tint: .attention, steps: steps)
-            case .interrupted where row.applyJobID == nil, .cancelled where row.applyJobID == nil:
-                return .init(label: "last plan", title: "Prepared, but never approved", note: "Nothing ran. Review the choices below and run setup when you’re ready." + released, tint: .quiet, steps: steps)
-            case .interrupted:
-                return .init(label: "last run", title: "Interrupted", note: "Setup stopped before it finished because the manager quit. Run setup again to finish it." + released, tint: .attention, steps: steps)
-            case .cancelled: return .init(label: "last run", title: "Cancelled", note: "Setup was cancelled. Run it again when you’re ready." + released, tint: .attention, steps: steps)
-            default: return .init(label: "last run", title: SetupRunPresentation.outcome(row), note: "Check View output for what happened, then run setup again." + released, tint: .attention, steps: steps)
-            }
-        }
+        SetupRunStatus.make(phase, lastRun: lastRun, latestPlanExists: latestPlanExists, running: running, job: job, auto: auto)
     }
 
     private var status: some View {
@@ -498,6 +430,7 @@ struct ChangeSetupView: View {
             failure = "Setup couldn’t be approved for this guest right now. Nothing was changed."; return
         }
         if !running { await model.start(snapshot.id) }
+        close() // Follow the run on Home, as New VM does.
     }
 
     /// A read-only check of the last run's exact plan, with no admin access and no
@@ -507,7 +440,7 @@ struct ChangeSetupView: View {
         working = true; failure = nil; defer { working = false }
         let id = UUID()
         model.checkOnlyRuns.insert(id)
-        do { _ = try await service.runCheckOnly(id: id, of: run.id) }
+        do { _ = try await service.runCheckOnly(id: id, of: run.id); close() }
         catch ProvisioningReviewFailure.changed {
             model.checkOnlyRuns.remove(id); failure = "The setup engine has changed since that run, so its plan can’t be checked on its own. Run setup again instead."
         } catch {
@@ -526,6 +459,7 @@ struct ChangeSetupView: View {
             }
             pendingPlan = nil
             if !running { await model.start(snapshot.id) }
+            close()
             return
         }
         do {
@@ -537,6 +471,7 @@ struct ChangeSetupView: View {
             let run = try await service.apply(plan.id, consent: consent)
             model.followApprovedSetup(.init(preview: plan, dockerAcknowledged: review.dockerRootAccessRequired && dockerConsent), workflowID: run.id)
             pendingPlan = nil; pendingReview = nil
+            close()
         } catch {
             failure = SetupRunPresentation.submissionFailure(error)
         }
