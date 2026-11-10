@@ -42,6 +42,15 @@ OH_MY_ZSH_THEMES = ('ZSH_THEME=""', 'ZSH_THEME="${ZSH_THEME-robbyrussell}"')
 STARSHIP_STARTUP = ('if command -v starship >/dev/null 2>&1; then\n'
                     '  eval "$(starship init zsh)"\nfi')
 STARSHIP_CONFIG = Path(".config/dev-vm/starship.toml")
+# Omarchy's Bash init activates mise and then, in a terminal, Starship. Starship
+# moves an existing PROMPT_COMMAND into STARSHIP_PROMPT_COMMAND and runs it from
+# starship_precmd, so mise's prompt hook may be chained there instead.
+BASH_MISE_ACTIVATION_PROBE = (
+    '[[ "$MISE_SHELL" == bash ]] && declare -F mise >/dev/null && '
+    '{ [[ "${PROMPT_COMMAND[*]}" == *_mise_hook* ]] || '
+    '{ [[ "${PROMPT_COMMAND[*]}" == *starship_precmd* ]] && '
+    '[[ "${STARSHIP_PROMPT_COMMAND-}" == *_mise_hook* ]]; }; }'
+)
 CONTENT_HASH = "# dev-vm content-sha256: "
 
 
@@ -268,7 +277,7 @@ class FeatureRunner:
             return
         # Use the owner's existing interactive rc chain, from HOME, without
         # adding startup files, trusting projects or installing declared tools.
-        result = native(["bash", "-ic", 'declare -F mise >/dev/null && [[ "${PROMPT_COMMAND[*]}" == *mise* ]]'], check=False)
+        result = native(["bash", "-ic", BASH_MISE_ACTIVATION_PROBE], check=False)
         if result.returncode:
             raise FeatureError("Omarchy's native Bash mise activation is missing; restore the native shell integration before retrying. No shell configuration was replaced")
         self.notes.append("Native Bash mise activation verified; project tools remain project-managed")

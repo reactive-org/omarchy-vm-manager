@@ -1,6 +1,15 @@
 # Pinned developer provisioning source
 
-**Current pin (8 November 2026):** `dev-vm/` is the unpatched export of merged
+**Current pin (11 November 2026):** `dev-vm/` is the unpatched export of merged
+dev-vm commit `64547746b4b2dce9d00b742495ff07928c9089e5`
+(reactive-org/dev-vm#19). The `toolchain` feature's Bash check now accepts
+mise's prompt hook when Omarchy's Starship prompt chains it through
+`STARSHIP_PROMPT_COMMAND`. Before this, a setup that added a profile needing
+`toolchain` to a guest with Starship failed with "Omarchy's native Bash mise
+activation is missing". Only the guest `apply-features.py`, the provisioning
+`inventory.json` and `engine-identity.json` change.
+
+**Previous pin (8 November 2026):** `dev-vm/` is the unpatched export of merged
 dev-vm commit `26cab14e6f60012fc5921d626d0d704d8dc21d9b`
 (reactive-org/dev-vm#18), which sets `ANSIBLE_CALLBACK_RESULT_FORMAT=yaml` so
 setup playbook results print as pretty-printed YAML from the built-in `default`
