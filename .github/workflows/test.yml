@@ -43,6 +43,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - name: Fetch the pinned try-omarchy release tag
+        # A shallow submodule checkout fetches the pinned commit by SHA, which
+        # brings no tags once upstream main moves past it. Source preparation
+        # proves the vendor is exactly v1.3.0, so fetch that tag explicitly.
+        run: git -C Vendor/try-omarchy fetch --depth=1 --no-tags origin +refs/tags/v1.3.0:refs/tags/v1.3.0
       - name: Verify the preinstalled Swift 6.2+ toolchain
         run: swift --version
       - name: Manager and artifact contracts
@@ -68,6 +73,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - name: Fetch the pinned try-omarchy release tag
+        # A shallow submodule checkout fetches the pinned commit by SHA, which
+        # brings no tags once upstream main moves past it. Source preparation
+        # proves the vendor is exactly v1.3.0, so fetch that tag explicitly.
+        run: git -C Vendor/try-omarchy fetch --depth=1 --no-tags origin +refs/tags/v1.3.0:refs/tags/v1.3.0
       - name: Real SSH with synthetic credentials and isolated containers
         run: make test-ssh
 
@@ -92,6 +102,11 @@ jobs:
         with:
           submodules: true
           fetch-depth: 0
+      - name: Fetch the pinned try-omarchy release tag
+        # A shallow submodule checkout fetches the pinned commit by SHA, which
+        # brings no tags once upstream main moves past it. Source preparation
+        # proves the vendor is exactly v1.3.0, so fetch that tag explicitly.
+        run: git -C Vendor/try-omarchy fetch --depth=1 --no-tags origin +refs/tags/v1.3.0:refs/tags/v1.3.0
       - name: Reserve the exact tested commit and automatic channel version
         id: plan
         run: make release-plan
