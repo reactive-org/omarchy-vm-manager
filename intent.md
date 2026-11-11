@@ -79,8 +79,14 @@ manager vendors dev-vm `codex/flexible-omarchy-review` until that PR merges.
 **VERIFIED — no-VM checks only:**
 - dev-vm: unit tests, factory-resource checks and 118 Swift provisioning tests.
 - The ad-hoc patched kit rebuild: 566 upstream tests and `kit-check`.
-- The manager's full `make test`: 637 Swift tests, 345 script tests and the
-  provisioning bundle check, including the new manual-factory tests.
+- The manager's full `make test` on the final commit: 638 Swift tests, 345
+  script tests, and the provisioning bundle and screen checks, including the
+  new manual-factory tests.
+- `make test-factories`: 566 upstream tests, and `run-mode` passes with a fake
+  launcher.
+- The manual-factory `VMRuntime` refusal runs before any Keychain read. It is
+  tested through `ManagedOwnerStorage.admit`; the managed launch path itself
+  has no unit test.
 - **VERIFIED — read-only release watch, 12 November 2026:**
   - Stable `omarchy 4.5.0-3` matches `lean-a948d8a` (managed setup).
   - Edge `omarchy-dev 4.0.0.r7817.gdb31a20-1` changes `omarchy-provision-user`
