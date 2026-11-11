@@ -555,4 +555,4 @@ An earlier attempt on the official Try Omarchy image downloaded and verified the
 - A directory `fsync` succeeded.
 - The probe used only a private folder, which it removed.
 
-**TO PROVE:** an end-to-end backup reaching Verified with this change.
+**VERIFIED — end-to-end, Dev build of this branch:** the user's **Back up home…** on the same guest showed Verified. The host folder (mode 0700) holds only `home.tgz` (mode 0600, one link), and `gzip -t` and `tar -tzf` pass on it.

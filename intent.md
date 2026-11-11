@@ -4306,7 +4306,9 @@ Every primitive the fallback uses therefore behaves as designed on this share.
 
 **VERIFIED — no VM:** `make test` passes 631 Swift tests in 83 suites and 345 Python script tests; `make build` and `git diff --check` pass. New fixtures run the production `publish()` against a fake libc on macOS. They cover the fallback for `EINVAL`, `ENOSYS`, `EOPNOTSUPP` and a missing symbol, no replacement of a late `home.tgz`, other errnos and success never linking, the reported step for each failure point, the guest's failure JSON carrying only stage/errno, the host allowlist (unknown stages, bad or out-of-range errno, malformed or oversized reports) and the staged message and status-log line through the SSH runner and manager. No guest was contacted, launched or modified. Logs: `.build/home-backup-publish-test.log`, `.build/home-backup-publish-build.log`.
 
-**TO PROVE:** an end-to-end backup on the native 9p share reaching **Verified** with this change, with a host `home.tgz` that is singly linked. The probe exercises the primitives, not the full supervisor.
+**VERIFIED — end-to-end, user-run, 11 November 2026:** the Dev app was rebuilt from this branch (`make app-dev verify-dev`; the bundled supervisor matches source) while no Dev guest was running. The user then ran **Back up home…** on the same Dev guest, and the Home card showed **Verified**. On the host, the new operation folder has mode 0700 and holds only `home.tgz` (mode 0600, one link, about 15 MB), with no `.partial`. Both `gzip -t` and a full `tar -tzf` pass; the listing was discarded unread. The Stable manager and its running guests were untouched. #36 is closed by this change.
+
+**TO PROVE:** restoration into a fresh guest, and the other items listed for home backup above.
 
 ## Optional persistent home disks — 4 November 2026
 

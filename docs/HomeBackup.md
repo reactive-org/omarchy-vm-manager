@@ -30,4 +30,6 @@ SSH stdin stays open as an operation lease. Cancellation, disconnect or manager 
 
 **PRIVATE COUPLING:** the native mount policy and managed identity executable remain tied to the pinned integration. GNU tar, Python 3, Linux `/proc` and either `renameat2` no-replace rename or `linkat`/`unlinkat` on the share are guest prerequisites. Missing capabilities fail without installing anything.
 
-**TO PROVE:** an end-to-end real Linux/9p publication with the link/unlink fallback (its primitives were probed on the native share, see [#36](https://github.com/reactive-org/omarchy-vm-manager/issues/36)), archive creation, metadata fidelity, sparse-file restoration, free-space exhaustion, live disconnect/process cleanup, UI interaction and restoration into a fresh guest. Portable fixture tests exercise control flow and archive handling, not Linux/9p acceptance.
+**VERIFIED:** a real backup on a Dev guest's native 9p share now publishes through the link/unlink fallback and reaches Verified ([#36](https://github.com/reactive-org/omarchy-vm-manager/issues/36)).
+
+**TO PROVE:** archive creation on other guests or kernels, metadata fidelity, sparse-file restoration, free-space exhaustion, live disconnect/process cleanup, UI interaction and restoration into a fresh guest. Portable fixture tests exercise control flow and archive handling, not Linux/9p acceptance.
