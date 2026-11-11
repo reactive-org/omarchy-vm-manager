@@ -548,4 +548,11 @@ An earlier attempt on the official Try Omarchy image downloaded and verified the
 
 **VERIFIED — no VM:** `python3 -m unittest discover -s Tests/ScriptTests -p test_guest_home_backup.py -v` passes 14 tests. `make test` passes 631 Swift tests in 83 suites and 345 Python script tests; `make build` and `git diff --check` pass. No guest, installed app or Dev app bundle was touched.
 
-**TO PROVE:** the v9fs `EINVAL` cause, and the fallback on a real guest's share, until a real backup shows Verified.
+**VERIFIED — user-run probe, Dev guest native 9p share:**
+- `renameat2(RENAME_NOREPLACE)` returned `EINVAL`, which confirms the cause.
+- `linkat` succeeded, and linking onto an existing name gave `EEXIST`.
+- Unlinking the original while it was open left one link (`st_nlink` 1).
+- A directory `fsync` succeeded.
+- The probe used only a private folder, which it removed.
+
+**TO PROVE:** an end-to-end backup reaching Verified with this change.

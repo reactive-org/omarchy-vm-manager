@@ -4293,13 +4293,20 @@ exact dialog type/timing is not reconstructed. The plan remains consumed.
 
 **REPORTED LIVE:** [#36](https://github.com/reactive-org/omarchy-vm-manager/issues/36). The first home backup on a real Dev guest (built from `next` at `ebb4e76`, native read-write `mac` 9p share) failed about one second in. It left a complete, host-readable `home.tgz.partial` and no `home.tgz`. Host timestamps place the failure after the guest's gzip/tar checks, at publication. The guest reported only `archive`, which the host discarded.
 
-**TO PROVE — cause:** Linux v9fs is believed to reject every rename flag with `EINVAL`, so `renameat2(RENAME_NOREPLACE)` cannot publish on the share. This rests on recall of the kernel source and has not been checked against the pinned guest kernel. The issue's in-guest probe, or a real backup, must still show it. `linkat`, unlinking a file that is still open and fsync of a 9p directory are equally unobserved on this export.
+**VERIFIED — cause, user-run probe on the Dev guest, 11 November 2026:** the user ran a read-write probe as the owner inside a private `/mnt/mac/.rn-probe-<pid>` folder on the same kind of native `mac` 9p share; the probe removed its files afterwards. Results:
+- `renameat2(RENAME_NOREPLACE)` returned `-1 Invalid argument`, which confirms the cause.
+- `linkat` succeeded (`st_nlink` 2).
+- Linking onto an existing name failed with `EEXIST`.
+- Unlinking the original while a read descriptor was open succeeded; the remaining name and the open descriptor both report `st_nlink` 1.
+- `fsync` of the 9p directory succeeded.
+
+Every primitive the fallback uses therefore behaves as designed on this share.
 
 **DESIGN DECISION:** keep `renameat2(RENAME_NOREPLACE)` as the first choice. Only when the symbol is missing or the call fails with `EINVAL`, `ENOSYS` or `EOPNOTSUPP`, hard-link `home.tgz` to the partial file and then unlink the partial name. `linkat` refuses an existing name, so nothing is ever replaced; other errors fail without a fallback. An interruption between link and unlink leaves `st_nlink == 2`, which the host's singly linked check refuses. The supervisor now reports a fixed step (`prerequisites`, `archive`, `verification`, `publish`, `sync`) and, for an `OSError`, its numeric errno. The host accepts only those names and an errno from 1 to 4095, shows the step in the Home card and records `stage=… errno=…` in the status log. No file name, listing or stderr crosses SSH.
 
 **VERIFIED — no VM:** `make test` passes 631 Swift tests in 83 suites and 345 Python script tests; `make build` and `git diff --check` pass. New fixtures run the production `publish()` against a fake libc on macOS. They cover the fallback for `EINVAL`, `ENOSYS`, `EOPNOTSUPP` and a missing symbol, no replacement of a late `home.tgz`, other errnos and success never linking, the reported step for each failure point, the guest's failure JSON carrying only stage/errno, the host allowlist (unknown stages, bad or out-of-range errno, malformed or oversized reports) and the staged message and status-log line through the SSH runner and manager. No guest was contacted, launched or modified. Logs: `.build/home-backup-publish-test.log`, `.build/home-backup-publish-build.log`.
 
-**TO PROVE:** a real backup on the native 9p share reaching **Verified**, with a host `home.tgz` that is singly linked. #36 stays open until then.
+**TO PROVE:** an end-to-end backup on the native 9p share reaching **Verified** with this change, with a host `home.tgz` that is singly linked. The probe exercises the primitives, not the full supervisor.
 
 ## Optional persistent home disks — 4 November 2026
 
