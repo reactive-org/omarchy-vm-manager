@@ -4,7 +4,9 @@
 
 **USER AUTHORIZATION:** on 12 November 2026 the user approved options A, C and D
 of the flexible-review proposal and rejected B, after an Edge factory build
-stopped on a VT colour fix in Omarchy's `progress-icon.sh`. The kit client
+stopped on the reviewed-set gate. The stop was reported as a VT colour fix in
+`progress-icon.sh`. The read-only release check below found that current Edge
+leaves that file unchanged and instead changes `omarchy-provision-user`. The kit client
 change is built and tested with ad-hoc signing only. A signed runtime, a
 notarised release, VM launches and real factory builds each still need
 separate approval.
@@ -20,9 +22,16 @@ optional package absent, the guarded services, firewall rules and UFW
 activation must stay within reviewed sets. Anything else stops with the same
 update message, which the manager still recognises. The upstream digests are
 kept as evidence.
-The reviewed Chromium default-browser guard is byte-identical. A release that
-names another browser instead gets the same guard keyed on that browser's
-desktop file. Edge moved to `google-chrome.desktop` on 12 November 2026.
+
+**DESIGN DECISION — default browser, awaiting user approval:** this adds to the
+approved exact-once anchors. The reviewed Chromium default-browser line keeps
+its exact package guard, so reviewed owner-program digests are unchanged. A
+release whose single `xdg-settings set default-web-browser NAME.desktop` line
+names another browser gets the same guard, keyed on
+`/usr/share/applications/NAME.desktop`. No such line, or more than one, stops
+for review. On 12 November 2026 current Edge was observed naming
+`google-chrome.desktop`. Without this rule that Edge release stops before the
+manual fallback can apply.
 
 **DESIGN DECISION — C, manual owner setup for unreviewed owner programs:**
 - The five owner programs stay whole-file pinned in dev-vm, in the kit client
@@ -58,7 +67,8 @@ review PR. It never edits `inputs.lock.json` or merges anything.
 **DESIGN DECISION — B rejected:** the adapter sources the whole owner program,
 so all of its top-level code and every transitively called function run as
 root. A safe per-function pin would cover nearly the whole file, and would
-still have rejected the `progress-icon.sh` change.
+likely still have rejected a `progress-icon.sh` change, since that file runs on
+the managed path.
 
 **PRIVATE COUPLING:** the kit client patch adds `manual`, `isManual`,
 `isLeanFactory` and `manualContracts`. It admits format-2 manual manifests with

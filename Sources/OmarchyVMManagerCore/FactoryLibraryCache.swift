@@ -44,10 +44,14 @@ public struct FactoryLibraryCache: Sendable {
         details.removeValue(forKey: identity.selector)
         manualOwnerSetup.remove(identity.selector)
     }
-    public mutating func imported(_ identity: FactoryIdentity) {
+    public mutating func markManualOwnerSetup(_ identity: FactoryIdentity) {
+        if factories.contains(where: { $0.selector == identity.selector }) { manualOwnerSetup.insert(identity.selector) }
+    }
+    public mutating func imported(_ identity: FactoryIdentity, manualOwnerSetup manual: Bool = false) {
         revision = UUID()
         refresh = nil
         factories.removeAll { $0.selector == identity.selector }
+        if manual { manualOwnerSetup.insert(identity.selector) } else { manualOwnerSetup.remove(identity.selector) }
         // Keep the catalog's own order (official first, then custom factories
         // by digest) so cards never swap places under the pointer when a
         // later refresh replaces this list.

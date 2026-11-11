@@ -93,10 +93,13 @@ struct ManualOwnerSetupTests {
         let fixture = try RegistryFixture(); defer { fixture.cleanup() }
         var profile = fixture.profile()
         profile.ownerSetup = try OwnerDefaults(enabled: true, configuration: OwnerConfiguration(username: "owner"), credentialReference: UUID()).snapshot(for: profile.id)
+        #expect(throws: VMFailure.self) { try ManagedOwnerStorage.admit(profile, contract: VMOwnerSetupContract.manual) }
+        try ManagedOwnerStorage.admit(profile, contract: VMOwnerSetupContract.leanA948d8a.digest)
         #expect(throws: VMFailure.self) { try fixture.storage.prepare(profile, ownerPassword: Data("synthetic-password".utf8), ownerContract: VMOwnerSetupContract.manual) }
         #expect(!FileManager.default.fileExists(atPath: fixture.storage.root(for: profile).appendingPathComponent(ManagedOwnerStorage.launchName).path))
         // Without a seed a manual factory prepares normally: Omarchy's own setup runs.
         profile.ownerSetup = nil
+        try ManagedOwnerStorage.admit(profile, contract: VMOwnerSetupContract.manual)
         let root = try fixture.storage.prepare(profile, ownerContract: VMOwnerSetupContract.manual)
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent(ManagedOwnerStorage.launchName).path))
     }

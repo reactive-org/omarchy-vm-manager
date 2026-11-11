@@ -109,6 +109,11 @@ final class AppModel: ObservableObject {
     func builtFactoryAvailable(_ identity: FactoryIdentity) {
         guard identity.kind == .custom else { return }
         factoryLibrary.imported(identity)
+        // New VM may select it at once; the editor drops Guest Defaults when
+        // this arrives, and creation refuses a seed regardless.
+        Task { [manager] in
+            if (try? await manager.requiresManualOwnerSetup(identity)) == true { self.factoryLibrary.markManualOwnerSetup(identity) }
+        }
     }
     @Published var setupWorkflows: [ProvisioningWorkflowSnapshot] = []
     @Published var setupJobs: [UUID: ProvisioningJobSnapshot] = [:]
@@ -348,7 +353,8 @@ final class AppModel: ObservableObject {
                 self.factoryImportProgress = progress
             }
         }
-        factoryLibrary.imported(identity)
+        let manual = (try? await manager.requiresManualOwnerSetup(identity)) ?? false
+        factoryLibrary.imported(identity, manualOwnerSetup: manual)
         return identity
     }
 

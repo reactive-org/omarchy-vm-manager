@@ -113,12 +113,11 @@ public struct TryOmarchyRuntime: VMRuntime {
             guard let free = TryOmarchyStorage.freeBytes(at: request.storageRoot), free >= required else {
                 throw VMFailure(code: "not-enough-space", message: "Free at least \(ByteCountFormatter.string(fromByteCount: required, countStyle: .file)) before starting this VM.")
             }
+            // Refuse before reading any saved password from the Keychain.
+            let ownerContract = try catalog.ownerSetupContract(for: request.profile.factory)
+            try ManagedOwnerStorage.admit(request.profile, contract: ownerContract)
             let owner = ManagedOwnerStorage(root: request.storageRoot)
             let password = try owner.passwordForLaunch(request.profile, secrets: ownerSecrets)
-            let ownerContract = try catalog.ownerSetupContract(for: request.profile.factory)
-            guard request.profile.ownerSetup == nil || !VMOwnerSetupContract.isManual(ownerContract) else {
-                throw VMFailure(code: "manual-owner-setup-factory", message: ManagedOwnerStorage.manualFactoryMessage + " This guest was not launched.")
-            }
             _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password, ownerContract: ownerContract)
         } else {
             if let pocAdmission { try GuestTouchIDPolicy.validate(request.profile, lockData: pocAdmission.lockData) }

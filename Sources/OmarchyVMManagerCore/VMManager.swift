@@ -201,6 +201,12 @@ public actor VMManager {
         return try await Task.detached(priority: .utility) { try factoryCatalog.listing() }.value
     }
     public func factories() async throws -> [FactoryIdentity] { try await factoryListing().factories }
+    /// Whether a just-imported factory supports manual owner setup only. Reads
+    /// its verified descriptor; creation and launch enforce this independently.
+    public func requiresManualOwnerSetup(_ identity: FactoryIdentity) async throws -> Bool {
+        guard let factoryCatalog else { return false }
+        return try await Task.detached(priority: .utility) { try factoryCatalog.requiresManualOwnerSetup(identity) }.value
+    }
     public func importFactory(_ source: URL, onProgress: @escaping @Sendable (FactoryImportProgress) -> Void = { _ in }) async throws -> FactoryIdentity {
         try Task.checkCancellation()
         guard !quitting, registry != nil, let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }

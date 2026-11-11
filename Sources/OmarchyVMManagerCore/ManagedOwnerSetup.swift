@@ -18,6 +18,13 @@ struct ManagedOwnerStorage: Sendable {
         let hostname: String
     }
     private struct Identity: Codable, Equatable { let vmID: UUID; let fingerprint: String }
+    /// A manual-owner-setup factory is never seeded, so a profile carrying
+    /// owner setup is refused at launch before any secret is read.
+    static func admit(_ profile: VMProfile, contract: String) throws {
+        guard profile.ownerSetup == nil || !VMOwnerSetupContract.isManual(contract) else {
+            throw VMFailure(code: "manual-owner-setup-factory", message: manualFactoryMessage + " This guest was not launched.")
+        }
+    }
     private struct Seed: Encodable { let password: String }
     func passwordForLaunch(_ profile: VMProfile, secrets: any OwnerSecretStoring) throws -> Data? {
         guard let setup = profile.ownerSetup, try !completed(profile) else { return nil }
