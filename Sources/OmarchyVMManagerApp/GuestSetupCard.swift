@@ -18,7 +18,7 @@ struct SetupCardState: Equatable {
     var progress: Int?
 
     static func make(_ snapshot: VMSnapshot, workflows: [ProvisioningWorkflowSnapshot], jobs: [UUID: ProvisioningJobSnapshot],
-                     autoSetup: AutoSetupState?) -> SetupCardState {
+                     autoSetup: AutoSetupState?, checkOnly: Set<UUID> = []) -> SetupCardState {
         let rows = workflows.filter { $0.vmID == snapshot.id }
         guard !rows.isEmpty else {
             if snapshot.profile.developerSetup == nil { return .init(kind: .none) }
@@ -50,6 +50,9 @@ struct SetupCardState: Equatable {
                          note: autoSetup?.blockedReason ?? "Review what this setup changes and approve it to start.")
         case nil:
             break
+        }
+        if checkOnly.contains(row.id), row.stage.inProgress {
+            return .init(kind: .running, run: "Checking", note: "Checking the configuration the last run applied. It installs nothing.", progress: 2)
         }
         let approvedWhen = autoSetup?.plan?.origin == .change ? "You approved the whole run in Change setup." : "You approved it when you created this VM."
         switch row.stage {
@@ -207,7 +210,7 @@ struct GuestSetupCardHost: View {
     @State private var software: String?
     @State private var desktop: String?
     var body: some View {
-        GuestSetupCard(state: SetupCardState.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id]),
+        GuestSetupCard(state: SetupCardState.make(snapshot, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[snapshot.id], checkOnly: model.checkOnlyRuns),
                        software: software, desktop: desktop, open: open)
             .task(id: snapshot.profile.developerSetup?.reviewID) {
                 software = nil; desktop = nil

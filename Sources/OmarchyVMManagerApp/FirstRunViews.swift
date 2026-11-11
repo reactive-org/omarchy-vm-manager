@@ -44,7 +44,7 @@ struct FirstRunProgress: Equatable {
 
     /// Returns nil for guests without developer setup, and once any setup run has succeeded.
     static func make(_ snapshot: VMSnapshot, workflows: [ProvisioningWorkflowSnapshot], jobs: [UUID: ProvisioningJobSnapshot],
-                     autoSetup: AutoSetupState? = nil) -> FirstRunProgress? {
+                     autoSetup: AutoSetupState? = nil, checkOnly: Set<UUID> = []) -> FirstRunProgress? {
         guard snapshot.profile.developerSetup != nil else { return nil }
         let rows = workflows.filter { $0.vmID == snapshot.id }
         if rows.contains(where: { [.succeeded, .checked].contains($0.stage) }) { return nil }
@@ -52,7 +52,15 @@ struct FirstRunProgress: Equatable {
         if rows.isEmpty { value = guestProgress(snapshot) }
         // UUID order is not chronology: only a live or cleanup-bound run is "current".
         else if let row = SetupAttention.currentRun(snapshot.id, workflows: workflows) {
-            value = workflowProgress(row, job: jobs[row.id])
+            if checkOnly.contains(row.id), row.stage.inProgress {
+                value = .init(step: .restart, tone: .working, note: "Checking the configuration the last run applied. It installs nothing.")
+                if let job = jobs[row.id], job.state != .queued { value.terminal = (row.id, row.id.uuidString + ":" + job.jobID.uuidString, true) }
+            } else {
+                value = workflowProgress(row, job: jobs[row.id])
+            }
+        } else if rows.contains(where: { $0.stage == .interrupted && $0.applyJobID != nil && $0.restartID != nil && !$0.cleanupRequired }) {
+            // Applied and restarted, then stopped before the check (usually a manager quit).
+            return .init(step: .restart, tone: .problem, note: "Your choices were applied and the guest restarted, but the final check didn’t run. The guest is usable; open setup to run the check only or run setup again.", setupAction: "Open setup…")
         } else {
             return .init(step: .installing, tone: .problem, note: "Earlier setup runs did not finish. Review their results before trying again.", setupAction: "Open setup…")
         }

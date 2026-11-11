@@ -139,13 +139,13 @@ Tick **Allow temporary admin access while setup runs**, plus **Allow Docker with
 - **Apply changes** makes a new plan from what you changed. A setup that came from a local folder asks you to choose the folder again.
 - **Start & set up** starts a stopped guest, then runs the plan once the guest is reachable.
 
-That one approval covers the whole run, including its restart and configuration check. If the plan includes custom tasks, the sheet stops at **Approve & run** so you can inspect each task and allow it separately.
+That one approval covers the whole run, including its restart and configuration check. The sheet closes and the guest's **Home** follows the run, as it does after New VM: the setup panel shows the four steps, what's happening now and the live terminal, with **Cancel setup…** if you need it. When the run ends, the setup card returns. If the plan includes custom tasks, the sheet stops at **Approve & run** so you can inspect each task and allow it separately.
 
 ## If setup stops
 
 If a run is waiting for approval, for example because you closed the sheet before approving it, **Change setup…** shows it again. Choose **Approve & run**, or **Discard this run** to cancel it without changing anything in the guest.
 
-If the manager quits while setup is finishing, the run stops. When your choices were already applied and the guest restarted, the setup card says so, and the strip marks the check as **didn't run**. The guest is usable as it is; **Run setup again** finishes with a check. For a run that's still waiting at its restart or check, **Restart & check** or **Run the check** takes a single click.
+If the manager quits while setup is finishing, the run stops. When your choices were already applied and the guest restarted, the setup card says so, and the strip marks the check as **didn't run**. The guest is usable as it is. **Run the check only** finishes that run with just the configuration check: it's read-only, asks for no admin access and installs nothing. **Run setup again** repeats the whole run instead. For a run that's still waiting at its restart or check, **Restart & check** or **Run the check** takes a single click.
 
 If a run stopped before its temporary admin access was confirmed removed and the guest has since stopped, cleanup can no longer be verified and the guest is held: it can't be launched, configured or deleted, and other guests can't start setup. Open **Review cleanup…** on the setup card, click **Release hold…** and confirm. The confirmation says cleanup wasn't verified; the guest may still allow passwordless sudo, which you then remove inside the guest. Setup history records that the hold was released without verification.
 

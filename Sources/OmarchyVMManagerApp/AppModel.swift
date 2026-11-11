@@ -138,6 +138,9 @@ final class AppModel: ObservableObject {
     /// Guests whose setup was observed finishing while this manager ran. Home
     /// shows a dismissible completion line for these; nothing is persisted.
     @Published var setupCompletedThisRun: Set<UUID> = []
+    /// Runs started by Run the check only. They run as ordinary workflows, so Home and
+    /// Change setup use this to say "Checking" rather than "Installing". Memory only.
+    @Published var checkOnlyRuns: Set<UUID> = []
     /// Dock and notifications for setup attention (SetupAttentionSurfaces.swift).
     /// Nil until the app delegate installs them; fixtures inject a fake.
     var attentionSurfaces: (any SetupAttentionSurfaces)?

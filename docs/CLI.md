@@ -327,7 +327,9 @@ An `.error` diagnostic is not exit proof. No check is automatic. `prepare-check`
 requires the recorded replacement session, the original owner/UID/host key and
 fresh dependency admission; `check` uses frozen inputs, excludes custom tasks,
 passes Ansible check mode and grants no interactive authorization input. It is
-not a general standalone check of any guest or a sandbox guarantee.
+not a general standalone check of any guest or a sandbox guarantee. The app's **Run the check only** (9 November 2026) runs the same kind of check as a
+new workflow, for one run interrupted after its restart and from that run's frozen inputs only;
+the CLI doesn't offer it yet.
 
 Recovery is only for a finished/uncertain workflow with unresolved original
 cleanup, not an active apply’s provisional cleanup flag. It must verify and fence

@@ -42,6 +42,8 @@ extension ProvisioningService: ProvisioningReviewing {
         // A plan with a job has been used, so it can't be offered for review again,
         // even from the review cached for its first run.
         if rows[id]?.applyJobID != nil { throw ProvisioningServiceFailure.alreadyRun }
+        // A check-only run is approved by its own click; it never becomes an apply review.
+        if checkRuns.contains(id) { throw ProvisioningReviewFailure.unavailable }
         if let review = applyReviews[id] { return review }
         if drafts[id] == nil { _ = try await preview(id) }
         if let task = applyPreparations[id] { return try await task.value }

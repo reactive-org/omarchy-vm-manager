@@ -328,11 +328,13 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
         enabledModel.setupWorkflows = [lastRun]
         let changeDriver = SetupUIAcceptanceDriver()
-        let changeHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: {}, openOutput: {}), driver: changeDriver, width: 680, height: 820, dark: true)
+        var sheetCloses = 0
+        let changeHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: { sheetCloses += 1 }, openOutput: {}), driver: changeDriver, width: 680, height: 820, dark: true)
         defer { changeHost.close() }
         func change(_ key: String) -> String { changeDriver.state("change", key) }
         tick(); try waitFor("change sheet loads") { change("phase") == "edit" }
-        try check(change("title") == "Finished and checked" && change("primary") == "Run setup again" && change("docker") == "true", "change-finished-offers-run-setup-again")
+        try check(change("title") == "Finished and checked" && change("primary") == "Run setup again" && change("docker") == "true" && change("checkOnly") == "false",
+                  "change-finished-offers-run-setup-again")
         try changeDriver.send("change", .profiles(["python", "web"])); tick()
         try check(change("changed") == "true" && change("primary") == "Apply changes", "apply-changes-label-tracks-diff")
         try changeDriver.send("change", .profiles(["web"])); tick()
@@ -395,6 +397,51 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let interruptedWords = ChangeSetupView.status(.edit, lastRun: interruptedRun, latestPlanExists: true, running: true, job: nil, auto: nil)
         try check(interruptedWords.title == "Applied, but the final check didn’t run" && interruptedWords.steps == [.done, .done, .done, .missed]
                   && FirstRunProgress.failureNote(interruptedRun, job: nil).contains("final check"), "interrupted-after-restart-wording")
+        // Run the check only: offered for a run applied and restarted, then interrupted before its check.
+        let interruptedID = UUID()
+        _ = try run { try await enabled.preview(id: interruptedID, vmID: profile.id, source: .init(profiles: ["web"])) }
+        let interruptedLast = try enabled.row(interruptedID, stage: "interrupted", failure: "processInterrupted", restartID: UUID(), newSessionID: UUID())
+        enabled.latestFixture = .init(planID: interruptedID, workflow: interruptedLast); enabled.checkOnlyFixture = interruptedID
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
+        enabledModel.setupWorkflows = [interruptedLast]; enabledModel.autoSetup = [:]
+        let checkDriver = SetupUIAcceptanceDriver()
+        let checkHost = Host(ChangeSetupView(model: enabledModel, snapshot: enabledModel.snapshots[0], close: { sheetCloses += 1 }, openOutput: {}), driver: checkDriver, width: 680, height: 820, dark: true)
+        defer { checkHost.close() }
+        func checking(_ key: String) -> String { checkDriver.state("change", key) }
+        tick(); try waitFor("interrupted sheet loads") { checking("phase") == "edit" && checking("checkOnly") == "true" }
+        try check(checking("title") == "Applied, but the final check didn’t run" && checking("footNote").contains("Run the check only"), "check-only-offered-after-restart")
+        try capture(checkHost, "setup-check-only-dark.png")
+        let submissionsBeforeCheck = enabled.submissions
+        try checkDriver.send("change", .checkOnly); try waitFor("check only starts") { enabled.checkRuns.count == 1 }
+        let checkRun = enabled.checkRuns[0]
+        // While it prepares, the check's own row is never offered as a pending approval.
+        enabledModel.setupWorkflows = [interruptedLast, try enabled.row(checkRun, stage: "readyForReview", ran: false)]
+        try waitFor("preparing check shows as live") { checking("phase") == "live" }
+        try check(checking("title") == "Checking" && checking("pending").isEmpty, "check-only-never-pending")
+        enabledModel.setupWorkflows = [interruptedLast, try enabled.row(checkRun, stage: "running")]
+        try waitFor("sheet shows the check") { checking("phase") == "live" }
+        let checkCard = SetupCardState.make(enabledModel.snapshots[0], workflows: enabledModel.setupWorkflows, jobs: [:], autoSetup: nil, checkOnly: enabledModel.checkOnlyRuns)
+        try check(checking("title") == "Checking" && enabled.submissions == submissionsBeforeCheck && checkCard.run == "Checking", "check-only-runs-no-apply")
+        try check(sheetCloses == 2, "approval-closes-sheet-to-home")
+        checkHost.close(); enabled.checkOnlyFixture = nil; enabledModel.checkOnlyRuns = []
+        // Home follows a run after the first one, like New VM's first run: the run panel replaces the setup card.
+        let homeRun = UUID()
+        enabledModel.autoSetup = [:]
+        enabledModel.snapshots = [.init(profile: changeProfile, state: .running, sessionID: changeSession, sshReadiness: sshReady)]
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(homeRun, stage: "running")]
+        let homeDriver = SetupUIAcceptanceDriver()
+        let runHomeHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: homeDriver, width: 1200, height: 960, dark: true)
+        tick(); try waitFor("home run panel") { homeDriver.scopes["run-panel"] != nil }
+        try check(homeDriver.state("run-panel", "title") == "Installing" && homeDriver.state("run-panel", "steps") == "done,current,todo,todo"
+                  && homeDriver.state("run-panel", "actions") == "View output|Cancel setup…", "home-shows-live-run-panel")
+        try capture(runHomeHost, "guest-setup-run-dark.png"); runHomeHost.close(); tick()
+        enabledModel.setupWorkflows = [lastRun, try enabled.row(homeRun, stage: "restartRequired")]
+        let restartDriver = SetupUIAcceptanceDriver()
+        let restartHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: restartDriver, width: 1200, height: 960, dark: true)
+        tick(); try waitFor("home restart panel") { restartDriver.scopes["run-panel"] != nil }
+        try check(restartDriver.state("run-panel", "actions").hasSuffix("Restart & check") && restartDriver.state("run-panel", "steps") == "done,done,needsYou,todo",
+                  "home-unfollowed-restart-offers-restart-and-check")
+        restartHost.close(); tick()
         // Don't set up while the approved run is still being prepared: nothing is submitted.
         let holdID = UUID()
         let holdPlan = try run { try await enabled.preview(id: holdID, vmID: profile.id, source: .init(profiles: ["web"])) }
@@ -520,6 +567,15 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
             let pageHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: SetupUIAcceptanceDriver(), width: 1200, height: 960, dark: true)
             tick(); try capture(pageHost, name); pageHost.close(); tick()
         }
+        do {
+            // A guest still in its first run keeps the first-run tracker; the run panel is for later runs.
+            enabledModel.snapshots = [.init(profile: firstRun, state: .running, sessionID: session, sshReadiness: .ready(user: "fixture_owner", command: "synthetic-unused"))]
+            enabledModel.setupWorkflows = [installing]; enabledModel.setupJobs = [installing.id: job]
+            let trackerDriver = SetupUIAcceptanceDriver()
+            let trackerHost = Host(ManagerView(model: enabledModel, acceptanceGuestID: profile.id, acceptancePage: "Home"), driver: trackerDriver, width: 1200, height: 960, dark: true)
+            tick(); tick(0.2)
+            try check(trackerDriver.scopes["run-panel"] == nil, "home-first-run-keeps-tracker"); trackerHost.close(); tick()
+        }
         // A failed run says what failed from recorded categories and keeps its ended terminal entry.
         let failedRun = try enabled.row(installing.id, stage: "failed")
         let failedJob = try JSONDecoder().decode(ProvisioningJobSnapshot.self, from: JSONSerialization.data(withJSONObject: [
@@ -528,6 +584,9 @@ private extension Optional { func unwrap() throws -> Wrapped { guard let self el
         let failedProgress = progress(.running, ssh: .ready(user: "fixture_owner", command: "synthetic-unused"), [failedRun], jobs: [failedRun.id: failedJob])
         try check(failedProgress?.tone == .problem && failedProgress?.note.contains("task failed inside the guest") == true, "first-run-failure-names-recorded-category")
         try check(failedProgress?.terminal?.workflowID == failedRun.id && failedProgress?.terminal?.live == false, "first-run-failed-keeps-ended-terminal")
+        // Change setup names the step that failed and why, not "didn't run".
+        let failedWords = ChangeSetupView.status(.edit, lastRun: failedRun, latestPlanExists: true, running: true, job: failedJob, auto: nil)
+        try check(failedWords.steps == [.done, .failed, .todo, .todo] && failedWords.note.contains("task failed inside the guest"), "failed-run-names-failed-step-and-cause")
         // Installing finished and the run waits for a reviewed restart: say so, don't look stuck.
         let restartRun = try enabled.row(installing.id, stage: "restartRequired")
         let restartJob = try JSONDecoder().decode(ProvisioningJobSnapshot.self, from: JSONSerialization.data(withJSONObject: [

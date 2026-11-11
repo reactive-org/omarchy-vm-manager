@@ -458,7 +458,7 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 
 **DESIGN DECISION — user direction:** Change setup is its own sheet in New VM's shape. It has a four-step strip (Approve · Install · Restart · Check) and one sentence for the current state, `layout` and `customise` started from the last plan's choices, the separate consents, and one button: Run setup again, Apply changes or Start & set up. One approval covers the run's restart and check (see intent.md). A pending run is listed by `latestSetup` and shown again with Approve & run and Discard this run. View output keeps the terminal, cancel and job details.
 
-**VERIFIED — fake/local:** Core tests cover a pending run found again with the same review after the sheet closes, other plans refused while it waits and allowed after Discard, and a creation plan that never ran being retried (`ProvisioningRetryTests`). The offscreen harness (202 checks, 49 images) covers:
+**VERIFIED — fake/local:** Core tests cover a pending run found again with the same review after the sheet closes, other plans refused while it waits and allowed after Discard, and a creation plan that never ran being retried (`ProvisioningRetryTests`). The offscreen harness (202 checks, 49 images, before Run the check only) covers:
 - the button label following the choices;
 - each consent still being separate, with custom tasks stopping at Approve & run;
 - the approval following its own run through the restart;
@@ -468,7 +468,44 @@ Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their c
 - Don't set up stopping a run that is still being prepared;
 - a guest without managed SSH being explained, not silently ignored.
 
-**TO PROVE:** on a real Dev guest, Run setup again and Apply changes running through restart and check unattended, Start & set up from a stopped guest, and closing and reopening the sheet with a run waiting for approval.
+**TO PROVE:** on a real Dev guest, Apply changes running through restart and check unattended, Start & set up from a stopped guest, and closing and reopening the sheet with a run waiting for approval. Run setup again was VERIFIED on `adfadf` on 9 November 2026 (see Run the check only below).
+
+## Run the check only — 9 November 2026
+
+**DESIGN DECISION — user direction:** a run interrupted after its restart, but before its configuration check, can finish with that check alone. The check is a new workflow built from the run's own frozen inputs, in check mode, against the current session, with no custom tasks and no admin grant (see intent.md). Change setup offers **Run the check only** beside **Run setup again** for such a run.
+
+**VERIFIED — fake/local:** `ProvisioningRetryTests` cover:
+- an interrupted-after-restart run finishing as `checked` through one new check-mode job;
+- a repeated request observing the same check;
+- the check becoming the latest plan;
+- a run interrupted before its restart being refused.
+
+The offscreen harness (210 checks, 51 images) covers:
+- the offer;
+- the "Checking" wording on the sheet and the card;
+- no apply being submitted;
+- approving closing the sheet;
+- Home's run panel with its steps and actions, including Restart & check for an unfollowed restart;
+- a guest still in its first run keeping the tracker.
+
+**VERIFIED — real Dev guest, 9 November 2026 (user-authorized, `adfadf`):** the guest's 8 November run was `interrupted` after its restart. Change setup showed "Applied, but the final check didn't run" with the guest's real choices (Developer, Terminal + browser) and offered **Run the check only**. One click closed the sheet, and Home's tracker showed the check in progress. The check-only workflow finished as `checked`, with no cleanup hold and no sudo prompt. Both check-mode plays reported `failed=0`, the saved log ended `[setup checked]`, and Home then showed "Setup complete" with the card's last run **Finished**.
+
+Three issues found and fixed before merge:
+- the check's own preparation row briefly appeared in the sheet as a pending approval;
+- the first-run tracker showed no live terminal for a check-only run;
+- the tracker said "Earlier setup runs did not finish" instead of naming the missed check.
+
+The offscreen check `check-only-never-pending` covers the first; the rebuilt app with all three fixes is not yet re-run on a real guest.
+
+**VERIFIED — real Dev guest, 9 November 2026 (user-run, `adfadf`, build `45f0f09`):** the user chose **Change setup…** then **Run setup again**, and reported that it works well. The new run (`BCD3666F`) went through install, restart and the configuration check unattended on the one approval, and finished `succeeded` with no cleanup hold. Its saved log shows `[setup restartRequired]` then `[setup checked]`.
+
+**VERIFIED — real Dev guest, 9 November 2026 (user-run, `adfadf`, build `45f0f09`):**
+- **Apply changes:** adding Python and Project managed showed **Apply changes**, asked for Docker without sudo, closed the sheet and was followed on Home. The run (`D4BF47BD`) then **failed inside the guest**. dev-vm's `toolchain` feature refused with "Omarchy's native Bash mise activation is missing". That's a guest/dev-vm issue, not the manager, and it's being investigated separately.
+- **A run waiting for approval:** **Don't set up** while a Run setup again run was preparing left it waiting (`433C098D`). The card then offered **Review…**, which opened the sheet's approval view with Approve & run and Discard this run. **Discard this run** cancelled it (`cancelled`, no hold) and returned the sheet to **Run setup again**.
+
+**FIX:** the strip said "Install · didn't run" for that failed run, and the note gave no cause. A failed step now reads "failed", and the note gives the recorded reason, for example "a task failed inside the guest" (offscreen check `failed-run-names-failed-step-and-cause`).
+
+**TO PROVE:** Start & set up from a stopped guest, and an Apply changes run that completes once the toolchain issue is resolved.
 
 ## Official image source shown while it downloads — 7 November 2026
 
