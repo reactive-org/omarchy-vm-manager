@@ -284,7 +284,7 @@ private actor RecordingFactoryQuit { var done = false; func complete() { done = 
         let other = FactoryBuildOutput(); other.append(Data("Dependency resolution failed\n".utf8))
         #expect(!FactoryBuildService.reportsUnreviewedOmarchy(other))
         let job = FactoryBuildJob(id: UUID(), plan: try! FactoryBuildPlan(), stage: .failed, failure: FactoryBuildJob.unreviewedOmarchyFailure)
-        #expect(job.failureExplanation.contains("hasn’t reviewed yet"))
+        #expect(job.failureExplanation.contains("can’t check automatically"))
     }
     @Test func finishedBuildsMoveToTrashAndLeaveHistoryWhileOthersAreKept() async throws {
         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-remove-" + UUID().uuidString)

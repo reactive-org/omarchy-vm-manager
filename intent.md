@@ -1,5 +1,94 @@
 # Omarchy VM Manager — implementation intent
 
+## Flexible Omarchy review: behaviour checks and manual owner setup — 12 November 2026
+
+**USER AUTHORIZATION:** on 12 November 2026 the user approved options A, C and D
+of the flexible-review proposal and rejected B, after an Edge factory build
+stopped on a VT colour fix in Omarchy's `progress-icon.sh`. The kit client
+change is built and tested with ad-hoc signing only. A signed runtime, a
+notarised release, VM launches and real factory builds each still need
+separate approval.
+
+**DESIGN DECISION — A, install scripts by behaviour:** this supersedes the
+8 November "refuse any release whose six patched install scripts … differ"
+rule for install scripts. Those scripts come from the signature-checked
+channel package, and `omarchy-apply-system` already runs Omarchy's other,
+unpinned install scripts as root in the image. Their digests were therefore a
+compatibility check, not a trust boundary. dev-vm now requires each
+lean-profile guard to apply exactly once and the result to parse. With every
+optional package absent, the guarded services, firewall rules and UFW
+activation must stay within reviewed sets. Anything else stops with the same
+update message, which the manager still recognises. The upstream digests are
+kept as evidence.
+The reviewed Chromium default-browser guard is byte-identical. A release that
+names another browser instead gets the same guard keyed on that browser's
+desktop file. Edge moved to `google-chrome.desktop` on 12 November 2026.
+
+**DESIGN DECISION — C, manual owner setup for unreviewed owner programs:**
+- The five owner programs stay whole-file pinned in dev-vm, in the kit client
+  and in the guest adapter, so seeded root setup only ever runs reviewed bytes.
+- A release whose programs match no reviewed entry builds, but with
+  `"owner_setup": "manual"` and no contract. Its manifest names the fixed
+  marker `VMOwnerSetupContract.manual`, the SHA-256 of
+  `omarchy-vm-manager/manual-owner-setup/v1`. This is a positive marker,
+  because an absent seed contract means official.
+- The manual marker is never `isSupported`. The manager's seed preparation,
+  the helper's `ManagedSetupLaunch` and the guest adapter all refuse a seed
+  that names it.
+- `VMRuntime` refuses to launch such a factory with `ownerSetup`. Creation
+  resolves an unspecified Guest Defaults choice to manual, and refuses an
+  explicit request, owner overrides, or a reused home that carries owner setup.
+- New VM shows "manual account setup" and disables Guest Defaults. The CLI
+  lists `manualOwnerSetupFactories`.
+- The user completes Omarchy's own first-run form, and SSH uses the existing
+  manual path.
+- Manual factories pair only with the reviewed native-rendering package
+  (0.1.0-48.1) and follow every lean evidence rule.
+- Manual and managed evidence cannot stand in for each other. The kit client
+  requires the builder's own verdict, so a `progress-icon.sh`-only change, which
+  the four-program evidence omits, cannot pass as a reviewed lean contract.
+- Existing lean and official contracts, receipts and pairings are unchanged.
+  A later review that adds a contract restores managed setup for new builds
+  only. Existing manual factories stay manual.
+
+**DESIGN DECISION — D, review sooner:** a scheduled dev-vm job compares each
+channel's current Omarchy release with the reviewed entry and opens a draft
+review PR. It never edits `inputs.lock.json` or merges anything.
+
+**DESIGN DECISION — B rejected:** the adapter sources the whole owner program,
+so all of its top-level code and every transitively called function run as
+root. A safe per-function pin would cover nearly the whole file, and would
+still have rejected the `progress-icon.sh` change.
+
+**PRIVATE COUPLING:** the kit client patch adds `manual`, `isManual`,
+`isLeanFactory` and `manualContracts`. It admits format-2 manual manifests with
+`owner_setup == "manual"` evidence, and treats manual like lean for the
+native-rendering package install. Owner-contract provenance is unchanged. The
+manager vendors dev-vm `codex/flexible-omarchy-review` until that PR merges.
+
+**VERIFIED — no-VM checks only:**
+- dev-vm: unit tests, factory-resource checks and 118 Swift provisioning tests.
+- The ad-hoc patched kit rebuild: 566 upstream tests and `kit-check`.
+- The manager's full `make test`: 637 Swift tests, 345 script tests and the
+  provisioning bundle check, including the new manual-factory tests.
+- **VERIFIED — read-only release watch, 12 November 2026:**
+  - Stable `omarchy 4.5.0-3` matches `lean-a948d8a` (managed setup).
+  - Edge `omarchy-dev 4.0.0.r7817.gdb31a20-1` changes `omarchy-provision-user`
+    (agent instructions and a Google Chrome default browser) and only comments
+    in `chromium.sh`. With the browser guard it passes every behaviour check
+    and would build for manual owner setup. Without the guard it stopped on
+    the Chromium anchor.
+- No image was built and no VM was started.
+
+**TO PROVE:**
+- A real Stable or Edge build of a release with unreviewed owner programs.
+- Its import, boot and Omarchy first-run form, and SSH through the manual path
+  on such a guest.
+- Developer setup on a manual guest.
+- The release-watch job's first scheduled run, and whether GitHub Actions may
+  open PRs in dev-vm.
+- A signed or notarised runtime that carries this kit change.
+
 ## Setup's passwordless sudo: timed by default, permanent opt-in — 8 November 2026
 
 **DESIGN DECISION — issue #20, user direction:** Omarchy's full-screen prompt for
@@ -225,6 +314,8 @@ patched install scripts or five owner programs differ from a reviewed entry.
 Stable is the default; plans written before channels decode as edge. A release
 that leaves those programs unchanged builds without a manager release; one that
 changes them needs a reviewed contract, guest integration package and kit.
+*(Superseded on 12 November 2026 for install scripts and for releases with
+unreviewed owner programs: see "Flexible Omarchy review" above.)*
 
 **DESIGN DECISION — lean contract set:** lean admission accepts a reviewed set of
 owner contracts instead of one digest: `lean-e4fffc6` (`1347cb16…`, image

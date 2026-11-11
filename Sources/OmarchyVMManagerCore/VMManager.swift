@@ -279,20 +279,28 @@ public actor VMManager {
             guard sshEnabled else { throw SharedFolderPolicy.failure("Native sharing requires managed SSH to verify the mount.") }
             try SharedFolderPolicy.validateHost(sharedFolder)
         }
+        var manualOwnerSetup = false
         if factory == "official" { profile.factory = .official }
         else {
             guard let factoryCatalog else { throw FactoryCatalog.invalid("The verified factory catalog is unavailable.") }
-            profile.factory = try await Task.detached(priority: .utility) {
+            (profile.factory, manualOwnerSetup) = try await Task.detached(priority: .utility) {
                 let identity = try factoryCatalog.identity(for: factory)
                 try factoryCatalog.validateCapacity(identity, diskGiB: systemSize)
-                return identity
+                return (identity, try factoryCatalog.requiresManualOwnerSetup(identity))
             }.value
         }
         try Task.checkCancellation()
         guard !quitting else { throw VMFailure(code: "registry-unavailable", message: "The manager is quitting.") }
         try validateResources(profile)
         var chosenPublicKey = publicKey
-        if let sourceID = reuseHomeFrom {
+        if manualOwnerSetup {
+            // Unreviewed Omarchy owner programs: never seed the account. An
+            // unspecified choice means Omarchy's own setup; anything else is refused.
+            guard useOwnerDefaults != true, ownerOverrides == nil,
+                  reuseHomeFrom.flatMap({ id in profiles.first(where: { $0.id == id })?.ownerSetup }) == nil else {
+                throw OwnerConfiguration.invalid(ManagedOwnerStorage.manualFactoryMessage)
+            }
+        } else if let sourceID = reuseHomeFrom {
             guard ownerOverrides == nil, let source = profiles.first(where: { $0.id == sourceID }) else { throw HomeDisk.failure("Home reuse keeps the original owner setup; owner overrides are unavailable.") }
             if let original = source.ownerSetup {
                 guard useOwnerDefaults != false else { throw HomeDisk.failure("This home disk requires its original saved owner setup.") }

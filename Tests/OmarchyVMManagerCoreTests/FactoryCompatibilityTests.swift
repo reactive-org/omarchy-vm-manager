@@ -35,7 +35,9 @@ struct FactoryCompatibilityTests {
         #expect(catalog.acceptsReceiptContract("9c430c34e68e720d0a0368983a1cd1bd58ccad6877a42c2d19c8777e0072dade"))
         // The unchanged e4fffc6/43.1 pairing keeps its pre-set receipt digest.
         #expect(catalog.integrationContractSHA256s.contains("c3cbd5eb1b061ada97f3951d91b3d21e1afeb508b8a367f6c308c0e87da56a55"))
-        #expect(catalog.integrationContractSHA256s.count == VMGuestIntegrationContract.current.leanContracts.count)
+        // Each reviewed lean pairing, plus manual setup with the reviewed native-rendering package.
+        #expect(catalog.integrationContractSHA256s.count == VMGuestIntegrationContract.current.leanContracts.count + VMGuestIntegrationContract.current.manualContracts.count)
+        #expect(VMGuestIntegrationContract.current.manualContracts.count == 1)
         for digest in catalog.integrationContractSHA256s { #expect(catalog.acceptsReceiptContract(digest)) }
         #expect(!catalog.acceptsReceiptContract(String(repeating: "f", count: 64)))
         var synthetic = try FactoryFixture(); defer { synthetic.cleanup() }

@@ -14,13 +14,21 @@ enum FactoryBuildBundle {
               image.disk.bytes == Int64(sizeGiB) * 1_073_741_824 else { throw failure() }
         let compatibility = try VMFactorySelection.readMetadata(output.appendingPathComponent("compatibility.json"))
         let build = try VMFactorySelection.readMetadata(output.appendingPathComponent("image-build.json"))
-        struct Owner: Decodable { let owner_programs: [String: String]; let packages: [String: String] }
+        struct Owner: Decodable { let owner_programs: [String: String]; let packages: [String: String]; let owner_setup: String? }
         struct Build: Decodable { let try_commit: String; let guest_boot_tested: Bool; let validation: String }
         let owner = try JSONDecoder().decode(Owner.self, from: compatibility), provenance = try JSONDecoder().decode(Build.self, from: build)
-        // The image's evidence selects exactly one reviewed lean owner contract and
-        // its reviewed image package; anything else fails closed.
-        guard let lean = VMOwnerSetupContract.leanContracts.first(where: { $0.programs == owner.owner_programs }),
-              let reviewed = contract.leanContracts.first(where: { $0.ownerSetupContractSHA256 == lean.digest && $0.leanPackageVersion == owner.packages["try-omarchy"] }),
+        // The builder checks all five owner programs. Its managed verdict must
+        // select exactly one reviewed lean contract; its manual verdict (owner
+        // programs nobody has reviewed) selects the manual marker, so the
+        // factory is never seeded. Anything else fails closed.
+        let ownerContract: String?
+        switch owner.owner_setup {
+        case "manual": ownerContract = VMOwnerSetupContract.manual
+        case nil, "managed": ownerContract = VMOwnerSetupContract.leanContracts.first(where: { $0.programs == owner.owner_programs })?.digest
+        default: ownerContract = nil
+        }
+        guard let ownerContract,
+              let reviewed = (contract.leanContracts + contract.manualContracts).first(where: { $0.ownerSetupContractSHA256 == ownerContract && $0.leanPackageVersion == owner.packages["try-omarchy"] }),
               provenance.try_commit.range(of: "^[a-f0-9]{40}$", options: .regularExpression) != nil,
               !provenance.guest_boot_tested, provenance.validation == "sealed-image-static-checks" else { throw failure() }
         let package = "try-omarchy-" + reviewed.leanPackageVersion + "-aarch64.pkg.tar.zst"

@@ -8,6 +8,9 @@ public struct FactoryLibraryCache: Sendable {
     public private(set) var factories: [FactoryIdentity] = [.official]
     public private(set) var issues: [FactoryCatalogIssue] = []
     public private(set) var details: [String: FactoryDetails] = [:]
+    /// Factories whose Omarchy owner programs haven't been reviewed: Omarchy's
+    /// own first-run setup creates the account. Creation and launch enforce it.
+    public private(set) var manualOwnerSetup: Set<String> = []
     public var selectionNotice: String? {
         issues.isEmpty ? nil : "Some imported factory images are incompatible with this app or failed verification. Only verified compatible images are listed."
     }
@@ -27,6 +30,7 @@ public struct FactoryLibraryCache: Sendable {
         factories = listing.factories
         issues = listing.issues
         details = listing.details
+        manualOwnerSetup = listing.manualOwnerSetup
         return true
     }
     /// Drop a factory that was just moved to Trash. Like an import, this
@@ -38,6 +42,7 @@ public struct FactoryLibraryCache: Sendable {
         factories.removeAll { $0.selector == identity.selector }
         issues.removeAll { $0.selector == identity.selector }
         details.removeValue(forKey: identity.selector)
+        manualOwnerSetup.remove(identity.selector)
     }
     public mutating func imported(_ identity: FactoryIdentity) {
         revision = UUID()

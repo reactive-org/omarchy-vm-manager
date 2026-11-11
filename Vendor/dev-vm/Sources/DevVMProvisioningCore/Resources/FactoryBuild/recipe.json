@@ -29,7 +29,7 @@
     },
     "profile/check-provisioning.py": {
       "mode": 420,
-      "sha256": "65061dca9ed1d8f4271fe2886ef0fdf04d236e295d188244a7b094dd44ea12de"
+      "sha256": "041f90a237381e64fe85919652a3cec0cd2d35dc8f59c21119f9fb90a9cd63de"
     },
     "profile/check-user.sh": {
       "mode": 420,
@@ -37,7 +37,7 @@
     },
     "profile/compatibility.py": {
       "mode": 420,
-      "sha256": "8bca0bbd6d2371f75eb63c4928ada294df3e2b37bfcba6e333083b576ad68a59"
+      "sha256": "3e246db52fdad0e0a6f5ef25a14ff74c6555b2706ec42b8fbade122f630f85db"
     },
     "profile/excluded.packages": {
       "mode": 420,
@@ -49,7 +49,7 @@
     },
     "profile/inputs.lock.json": {
       "mode": 420,
-      "sha256": "581bf8d7f382d1f4ab2943fa8e17c46b2dea431306e31e323fbdbb52941adf67"
+      "sha256": "05e71b4565caf03000dc0a6ac7ff31957b44683ccab65e03bf9047252d79a4fd"
     },
     "profile/preferences/PKGBUILD": {
       "mode": 420,
@@ -713,12 +713,12 @@
       "omarchy/image/UPSTREAM-LICENSE": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481",
       "omarchy/image/base.packages": "3a4496b9adcfe7e77ce0afbb9d36e60a9bdab9ef01b0898686cdf41c5fc53125",
       "omarchy/image/build-container.sh": "bc0de1649b2695fd6f060bd1aba57799f2266136f034384c12edd75856a01d10",
-      "omarchy/image/check-provisioning.py": "65061dca9ed1d8f4271fe2886ef0fdf04d236e295d188244a7b094dd44ea12de",
+      "omarchy/image/check-provisioning.py": "041f90a237381e64fe85919652a3cec0cd2d35dc8f59c21119f9fb90a9cd63de",
       "omarchy/image/check-user.sh": "52b2cdad6d2095806438c4b36f61040734d6cd6f7fbcb6b1bec37320d903d4d4",
-      "omarchy/image/compatibility.py": "8bca0bbd6d2371f75eb63c4928ada294df3e2b37bfcba6e333083b576ad68a59",
+      "omarchy/image/compatibility.py": "3e246db52fdad0e0a6f5ef25a14ff74c6555b2706ec42b8fbade122f630f85db",
       "omarchy/image/excluded.packages": "6744af32cfcb539d868d860627a59aaf48a95e63bb64c0f6bba648838fdec0db",
       "omarchy/image/guest-integration-compatibility.json": "dbc6763e0c12453797350ad644e5b1a82a1dd25f3348d0eae621dd6f5a63d40b",
-      "omarchy/image/inputs.lock.json": "581bf8d7f382d1f4ab2943fa8e17c46b2dea431306e31e323fbdbb52941adf67",
+      "omarchy/image/inputs.lock.json": "05e71b4565caf03000dc0a6ac7ff31957b44683ccab65e03bf9047252d79a4fd",
       "omarchy/image/preferences/PKGBUILD": "ac3b33acbc318fbeb3c99d79a028bbcd82635e502c0d5d0a0a5b681fc3ee5598",
       "omarchy/image/preferences/first-login.service": "4194431bf4342f2add082875831877d8a6d25cfbddd73bc7238504a077f125df",
       "omarchy/image/preferences/first-login.sh": "3e8078e0378bd67c7ce8a91101013c264f063baccf9743d1e6d4fc421da930c6",
@@ -887,5 +887,5 @@
     "size_gib": 20,
     "try_commit": "91e95a2b9d6a9399cb2fe51f8be3d3a45c085054"
   },
-  "templateSHA256": "11172109dd8ecb5164f7f384cd2eb97ba0b7e5f8924789c424462adcbee489c1"
+  "templateSHA256": "af1f530187cd24e604af9b5c331c4737abff7f45c5d06ad25588f202e8c96ba5"
 }

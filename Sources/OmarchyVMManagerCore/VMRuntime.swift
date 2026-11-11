@@ -115,7 +115,11 @@ public struct TryOmarchyRuntime: VMRuntime {
             }
             let owner = ManagedOwnerStorage(root: request.storageRoot)
             let password = try owner.passwordForLaunch(request.profile, secrets: ownerSecrets)
-            _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password, ownerContract: try catalog.ownerSetupContract(for: request.profile.factory))
+            let ownerContract = try catalog.ownerSetupContract(for: request.profile.factory)
+            guard request.profile.ownerSetup == nil || !VMOwnerSetupContract.isManual(ownerContract) else {
+                throw VMFailure(code: "manual-owner-setup-factory", message: ManagedOwnerStorage.manualFactoryMessage + " This guest was not launched.")
+            }
+            _ = try storage.prepare(request.profile, sessionID: request.sessionID, ownerPassword: password, ownerContract: ownerContract)
         } else {
             if let pocAdmission { try GuestTouchIDPolicy.validate(request.profile, lockData: pocAdmission.lockData) }
             try pocAdmission?.admit(request)

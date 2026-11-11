@@ -7,6 +7,7 @@ struct ManagedOwnerStorage: Sendable {
     var directory: URL { root.appendingPathComponent(".manager-setup") }
     var bootstrap: URL { directory.appendingPathComponent("bootstrap") }
     static let launchName = ".omarchy-managed-setup.json"
+    static let manualFactoryMessage = "This factory's Omarchy release hasn't been reviewed for automatic account setup. Turn off Guest Defaults and finish Omarchy's own account setup in the VM."
     struct Manifest: Codable, Equatable {
         let schemaVersion: Int
         let vmID: UUID
@@ -33,6 +34,7 @@ struct ManagedOwnerStorage: Sendable {
     }
     func prepare(_ profile: VMProfile, sessionID: UUID, password: Data?, newRoot: Bool, contract: String = VMOwnerSetupContract.official) throws {
         guard let setup = profile.ownerSetup else { return }
+        guard !VMOwnerSetupContract.isManual(contract) else { throw FactoryCatalog.invalid(Self.manualFactoryMessage) }
         guard VMOwnerSetupContract.isSupported(contract) else { throw FactoryCatalog.invalid("Unknown owner setup contract.") }
         try setup.validate(for: profile.id)
         let expected = Identity(vmID: profile.id, fingerprint: try setup.fingerprint())

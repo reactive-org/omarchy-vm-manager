@@ -55,7 +55,7 @@ struct FactoryImagesView: View {
                     ForEach(model.factories.filter { $0.kind == .custom }, id: \.selector) { factory in
                         let users = model.guestsUsing(factory)
                         let deleting = deletingSelector == factory.selector
-                        factoryCard(title: factory.name, subtitle: model.factorySummary(factory).map { "Custom factory · " + $0 } ?? "Custom factory", icon: "externaldrive", description: "Verified for this runtime and available for new virtual machines.",
+                        factoryCard(title: factory.name, subtitle: model.factorySummary(factory).map { "Custom factory · " + $0 } ?? "Custom factory", icon: "externaldrive", description: model.requiresManualOwnerSetup(factory.selector) ? "Verified for this runtime. Its Omarchy release hasn’t been reviewed for automatic account setup, so new virtual machines use Omarchy’s own account setup." : "Verified for this runtime and available for new virtual machines.",
                                     status: users.isEmpty ? "Built or imported · Boot validation is separate" : "Used by " + users.joined(separator: ", "),
                                     action: "Use for new VM", disabled: deleting, identifier: "factory.use." + factory.selector, busy: deleting ? "Checking and moving to Trash…" : nil,
                                     removal: .init(disabled: !users.isEmpty || deletingSelector != nil,

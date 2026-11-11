@@ -21,7 +21,7 @@ public struct FactoryBuildJob: Codable, Sendable, Identifiable {
     /// The recorded failure as a fixed explanation for the job page.
     public var failureExplanation: String {
         if failure == Self.unreviewedOmarchyFailure {
-            return "This Omarchy release changes setup programs that Omarchy VM Manager hasn’t reviewed yet. Update Omarchy VM Manager, or try the other channel. No factory was added."
+            return "This Omarchy release changes setup steps that Omarchy VM Manager can’t check automatically, such as a new service or firewall rule. Update Omarchy VM Manager, or try the other channel. No factory was added."
         }
         return failure.flatMap(FactoryBuildFailure.init(rawValue:))?.explanation ?? "No factory was added. The build output was preserved; inspect the terminal and build details."
     }

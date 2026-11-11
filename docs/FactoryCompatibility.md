@@ -1,5 +1,7 @@
 # Reviewed guest integration compatibility
 
+**DESIGN DECISION — 12 November 2026: manual owner setup.** A lean factory built from Omarchy owner programs that match no reviewed contract names the manual marker `ce4c684e1a576eec068653a400451b6d70bb477275c73e4d7f25452a4d726553`, the SHA-256 of `omarchy-vm-manager/manual-owner-setup/v1`, instead of a contract. It pairs only with the reviewed `0.1.0-48.1` package, and its `compatibility.json` must carry the builder's `"owner_setup": "manual"` verdict. Reviewed lean evidence must not carry that verdict. The marker is never a supported seed contract, so such a guest always uses Omarchy's own first-run setup. Manual receipts hash that pairing in the same way. Existing pairings and receipts are unchanged. See `intent.md`, "Flexible Omarchy review".
+
 **DESIGN DECISION — 8 November 2026: reviewed lean contract set.** The policy is schema 2. Its `leanContracts` list pairs each reviewed lean owner contract with the integration package its factory images carry:
 
 | Contract | Owner contract SHA-256 | Image package |

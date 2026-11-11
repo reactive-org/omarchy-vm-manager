@@ -4718,7 +4718,7 @@ index b6cb53b..608031f 100644
          }
      }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..dbd442b 100644
+index c959f32..9cabea8 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -4784,7 +4784,7 @@ index c959f32..dbd442b 100644
 +                let sshEnvironment = try ManagedSSHLaunch.environment(root: settings.stateRoot, mappings: settings.portForwardMappings, base: settings.environment)
 +                let setupEnvironment = try ManagedSetupLaunch.environment(root: settings.stateRoot, base: sshEnvironment, contract: ownerContract)
 +                var environment = try ManagedHomeDiskLaunch.environment(root: settings.stateRoot, configuration: configuration.homeDisk, base: setupEnvironment)
-+                if VMOwnerSetupContract.isLean(ownerContract) {
++                if VMOwnerSetupContract.isLeanFactory(ownerContract) {
 +                    let package = bundle.bundleURL.appendingPathComponent("Contents/Resources/guest-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst")
 +                    guard try VMFactorySelection.digest(package) == VMGuestIntegrationContract.runtimeLeanPackageSHA256 else { throw HelperError.io("Unreviewed native-rendering integration") }
 +                    environment["OMARCHY_SHELL_INSTALL_PACKAGE"] = package.path
@@ -5179,10 +5179,10 @@ index f199020..961c03a 100644
          exit(0)
 diff --git a/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 new file mode 100644
-index 0000000..9bb1fe0
+index 0000000..5f7fb11
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,193 @@
 +import CryptoKit
 +import Darwin
 +import Foundation
@@ -5267,8 +5267,9 @@ index 0000000..9bb1fe0
 +            }
 +            try reviewedIntegrationContract.verify(evidence, manifest: manifest, root: root, runtimeBundle: runtimeBundle)
 +        }
-+        if let lean = VMOwnerSetupContract.leanContract(manifest.ownerSetupContractSHA256) {
-+            struct Compatibility: Decodable { let owner_programs: [String: String]; let packages: [String: String] }
++        if VMOwnerSetupContract.isLeanFactory(manifest.ownerSetupContractSHA256) {
++            let lean = VMOwnerSetupContract.leanContract(manifest.ownerSetupContractSHA256)
++            struct Compatibility: Decodable { let owner_programs: [String: String]; let packages: [String: String]; let owner_setup: String? }
 +            struct Build: Decodable { let try_commit: String }
 +            let evidence = try Self.readMetadata(root.appendingPathComponent(manifest.ownerSetupEvidence!))
 +            let buildData = try Self.readMetadata(root.appendingPathComponent(manifest.imageBuildEvidence!))
@@ -5279,10 +5280,19 @@ index 0000000..9bb1fe0
 +                  build.try_commit == manifest.imageIntegrationSourceCommit else {
 +                throw VMFactoryCompatibilityError("Image build source provenance does not match its manifest. Prepare a separate bundle with intact image-build evidence.")
 +            }
-+            guard compatibility.owner_programs == lean.programs else {
-+                throw VMFactoryCompatibilityError("Lean owner provisioning program hashes differ from the reviewed contract.")
++            if let lean {
++                // Manual evidence never stands in for a reviewed contract: the
++                // builder's verdict covers all five owner programs.
++                guard compatibility.owner_setup == nil || compatibility.owner_setup == "managed",
++                      compatibility.owner_programs == lean.programs else {
++                    throw VMFactoryCompatibilityError("Lean owner provisioning program hashes differ from the reviewed contract.")
++                }
++            } else {
++                guard compatibility.owner_setup == "manual" else {
++                    throw VMFactoryCompatibilityError("Manual owner setup factories need the builder's manual owner setup evidence.")
++                }
 +            }
-+            guard let reviewed = reviewedIntegrationContract.leanContract(ownerSetupContractSHA256: lean.digest, packageSHA256: manifest.guestIntegration?.packageSHA256),
++            guard let reviewed = reviewedIntegrationContract.leanContract(ownerSetupContractSHA256: manifest.ownerSetupContractSHA256, packageSHA256: manifest.guestIntegration?.packageSHA256),
 +                  compatibility.packages["try-omarchy"] == reviewed.leanPackageVersion else {
 +                throw VMFactoryCompatibilityError("Lean guest integration package version differs from the reviewed contract.")
 +            }
@@ -5329,7 +5339,10 @@ index 0000000..9bb1fe0
 +        !name.isEmpty && name != "." && name != ".." && name.utf8.count <= 255 && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "._-".contains($0)) }
 +    }
 +    public func validate() throws {
-+        let lean = VMOwnerSetupContract.leanContract(ownerSetupContractSHA256)
++        // A manual factory follows every lean evidence rule; only its owner
++        // contract is the manual marker instead of a reviewed program set.
++        let lean = VMOwnerSetupContract.leanContract(ownerSetupContractSHA256).map { $0.integrationVersion }
++            ?? (VMOwnerSetupContract.isManual(ownerSetupContractSHA256) ? VMOwnerSetupContract.manualIntegrationVersion : nil)
 +        guard format != 1 || lean == nil else {
 +            throw VMFactoryCompatibilityError("Legacy lean manifests lack verified guest package evidence. Prepare a separate format-2 bundle including the reviewed package archive, then explicitly import it. Reuse the disk if its original package is supported.")
 +        }
@@ -5342,10 +5355,10 @@ index 0000000..9bb1fe0
 +        guard format != 2 || (lean != nil && guestIntegration != nil) else {
 +            throw VMFactoryCompatibilityError("Missing or unsupported guest integration evidence. Prepare a separate lean bundle with the reviewed package archive.")
 +        }
-+        guard VMOwnerSetupContract.isSupported(ownerSetupContractSHA256) else {
++        guard VMOwnerSetupContract.isSupported(ownerSetupContractSHA256) || VMOwnerSetupContract.isManual(ownerSetupContractSHA256) else {
 +            throw VMFactoryCompatibilityError("Unknown owner provisioning contract. Use a supported reviewed program set.")
 +        }
-+        guard lean == nil || imageIntegrationVersion == lean?.integrationVersion else {
++        guard lean == nil || imageIntegrationVersion == lean else {
 +            throw VMFactoryCompatibilityError("Lean guest integration package version differs from the reviewed contract.")
 +        }
 +        let required: Set<String> = Set(["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy", "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh"] + (format == 1 ? [VMFactorySelection.packagePath] : []))
@@ -5358,8 +5371,8 @@ index 0000000..9bb1fe0
 +              required.isSubset(of: Set(runtimeFiles.keys)), runtimeFiles.count <= 256,
 +              runtimeFiles.keys.allSatisfy({ $0.hasPrefix("Contents/") && $0.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." } }),
 +              runtimeFiles.values.allSatisfy(VMFactorySelection.isDigest),
-+              VMOwnerSetupContract.isSupported(ownerSetupContractSHA256),
-+              lean == nil || (ownerSetupEvidence.map({ Self.safeName($0) && provisioning[$0] != nil }) == true && imageBuildEvidence.map({ Self.safeName($0) && provisioning[$0] != nil }) == true && imageIntegrationVersion == lean?.integrationVersion && imageIntegrationSourceCommit?.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil),
++              VMOwnerSetupContract.isSupported(ownerSetupContractSHA256) || (format == 2 && VMOwnerSetupContract.isManual(ownerSetupContractSHA256)),
++              lean == nil || (ownerSetupEvidence.map({ Self.safeName($0) && provisioning[$0] != nil }) == true && imageBuildEvidence.map({ Self.safeName($0) && provisioning[$0] != nil }) == true && imageIntegrationVersion == lean && imageIntegrationSourceCommit?.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil),
 +              (format == 2 ? runtimeFiles.contains(where: { $0.key.hasPrefix("Contents/Resources/guest-packages/try-omarchy-") && $0.key.hasSuffix("-aarch64.pkg.tar.zst") && $0.value == integrationPackageSHA256 }) : runtimeFiles[VMFactorySelection.packagePath] == integrationPackageSHA256) else { throw VMRunProtocolError.invalidConfiguration }
 +    }
 +}
@@ -5417,10 +5430,10 @@ index 0000000..da7d09d
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
 new file mode 100644
-index 0000000..29ea265
+index 0000000..f1f7ced
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,95 @@
 +import Foundation
 +
 +public struct VMFactoryCompatibilityError: LocalizedError, Sendable {
@@ -5450,7 +5463,14 @@ index 0000000..29ea265
 +    public let leanContracts: [LeanContract]
 +
 +    public func leanContract(ownerSetupContractSHA256: String, packageSHA256: String? = nil) -> LeanContract? {
-+        leanContracts.first { $0.ownerSetupContractSHA256 == ownerSetupContractSHA256 && (packageSHA256 == nil || $0.leanPackageSHA256 == packageSHA256) }
++        (leanContracts + manualContracts).first { $0.ownerSetupContractSHA256 == ownerSetupContractSHA256 && (packageSHA256 == nil || $0.leanPackageSHA256 == packageSHA256) }
++    }
++
++    /// Manual owner setup pairs only with the reviewed native-rendering
++    /// package this contract pins; it adds no program contract.
++    public var manualContracts: [LeanContract] {
++        leanContracts.filter { $0.leanPackageVersion == VMOwnerSetupContract.manualIntegrationVersion }
++            .map { LeanContract(leanPackageVersion: $0.leanPackageVersion, leanPackageSHA256: $0.leanPackageSHA256, ownerSetupContractSHA256: VMOwnerSetupContract.manual) }
 +    }
 +
 +    public static let runtimeLeanPackageSHA256 = "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3"
@@ -5463,7 +5483,7 @@ index 0000000..29ea265
 +        guard evidence.capabilities == capabilities else {
 +            throw VMFactoryCompatibilityError("Unsupported guest integration protocol or capability versions. Use the reviewed guest package and prepare a separate bundle.")
 +        }
-+        guard leanContracts.contains(where: { $0.ownerSetupContractSHA256 == manifest.ownerSetupContractSHA256 }) else {
++        guard (leanContracts + manualContracts).contains(where: { $0.ownerSetupContractSHA256 == manifest.ownerSetupContractSHA256 }) else {
 +            throw VMFactoryCompatibilityError("The guest integration contract does not support this owner provisioning contract.")
 +        }
 +        guard let lean = leanContract(ownerSetupContractSHA256: manifest.ownerSetupContractSHA256, packageSHA256: evidence.packageSHA256) else {
@@ -5511,10 +5531,10 @@ index 0000000..29ea265
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
 new file mode 100644
-index 0000000..e4e7436
+index 0000000..caa541c
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,62 @@
 +import Foundation
 +
 +public enum VMOwnerSetupContract {
@@ -5555,6 +5575,18 @@ index 0000000..e4e7436
 +            "/usr/bin/omarchy-provision-user": "69bacb9c2e9e52806793a59304291beb60ee27be194afb7a0fe02d50b8600b25"
 +        ])
 +    public static let leanContracts = [leanE4fffc6, leanA948d8a]
++    /// Positive marker, not a program contract: a lean factory whose Omarchy
++    /// owner programs match no reviewed contract. The account is created only
++    /// by Omarchy's own first-run setup. SHA-256 of
++    /// "omarchy-vm-manager/manual-owner-setup/v1". It is never supported for
++    /// seeded setup, so neither the helper nor the guest adapter accepts it.
++    public static let manual = "ce4c684e1a576eec068653a400451b6d70bb477275c73e4d7f25452a4d726553"
++    /// Manual factories come only from builders carrying the runtime's
++    /// native-rendering integration package.
++    public static let manualIntegrationVersion = "0.1.0-48.1"
++    public static func isManual(_ digest: String) -> Bool { digest == manual }
++    /// Lean factory evidence rules apply: a reviewed lean contract or manual.
++    public static func isLeanFactory(_ digest: String) -> Bool { isLean(digest) || isManual(digest) }
 +    /// The original lean contract digest, kept for existing callers.
 +    public static let lean = leanE4fffc6.digest
 +    public static func leanContract(_ digest: String) -> Lean? { leanContracts.first { $0.digest == digest } }
@@ -6490,10 +6522,10 @@ index 0000000..08c920d
 +}
 diff --git a/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift b/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift
 new file mode 100644
-index 0000000..15b630e
+index 0000000..12623e1
 --- /dev/null
 +++ b/macos/Tests/OmarchyVMHelperTests/ManagedSetupLaunchTests.swift
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,78 @@
 +import Darwin
 +import Foundation
 +import Testing
@@ -6535,6 +6567,12 @@ index 0000000..15b630e
 +        try write(JSONEncoder().encode(lean), marker)
 +        try write(JSONEncoder().encode(lean), bootstrap.appendingPathComponent("manifest.json"))
 +        #expect(throws: (any Error).self) { try ManagedSetupLaunch.environment(root: root, base: [:], contract: lean.ownerSetupContractSHA256!) }
++        // A manual-owner-setup factory never accepts a seed, even one naming it.
++        lean.ownerSetupContractSHA256 = VMOwnerSetupContract.manual
++        try write(JSONEncoder().encode(lean), marker)
++        try write(JSONEncoder().encode(lean), bootstrap.appendingPathComponent("manifest.json"))
++        #expect(throws: (any Error).self) { try ManagedSetupLaunch.environment(root: root, base: [:], contract: VMOwnerSetupContract.manual) }
++        #expect(!VMOwnerSetupContract.isSupported(VMOwnerSetupContract.manual))
 +        try write(JSONEncoder().encode(manifest), marker)
 +        try write(JSONEncoder().encode(manifest), bootstrap.appendingPathComponent("manifest.json"))
 +        chmod(seed.path, 0o644)
