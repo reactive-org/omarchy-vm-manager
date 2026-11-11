@@ -23,8 +23,8 @@ activation must stay within reviewed sets. Anything else stops with the same
 update message, which the manager still recognises. The upstream digests are
 kept as evidence.
 
-**DESIGN DECISION — default browser, awaiting user approval:** this adds to the
-approved exact-once anchors. The reviewed Chromium default-browser line keeps
+**DESIGN DECISION — default browser, user-approved 12 November 2026:** this
+adds to the approved exact-once anchors, and the user approved it separately. The reviewed Chromium default-browser line keeps
 its exact package guard, so reviewed owner-program digests are unchanged. A
 release whose single `xdg-settings set default-web-browser NAME.desktop` line
 names another browser gets the same guard, keyed on
