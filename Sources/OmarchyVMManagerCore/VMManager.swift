@@ -732,11 +732,17 @@ public actor VMManager {
             homeBackupStates[id] = .completed(operation.destination, bytes)
             record("Home backup verified", vmID: id, sessionID: sessionID)
         } else {
+            // Only the backup's own failure (fixed stage/errno) is shown; any
+            // other error keeps the generic message.
+            var failure = SSHGuestHomeBackup.failure()
+            if case .failure(let error) = result, let reported = error as? VMFailure,
+               reported.code == failure.code { failure = reported }
             let message = operation.task.isCancelled
                 ? "Backup cancelled or interrupted. Partial or unconfirmed output may remain in this backup’s folder; it has not been marked complete."
-                : SSHGuestHomeBackup.failure().message
+                : failure.message
             homeBackupStates[id] = .failed(operation.destination, message)
-            record("Home backup did not complete", vmID: id, sessionID: sessionID)
+            let detail = operation.task.isCancelled || failure.diagnostics.isEmpty ? "" : " (\(failure.diagnostics))"
+            record("Home backup did not complete" + detail, vmID: id, sessionID: sessionID)
         }
     }
 
