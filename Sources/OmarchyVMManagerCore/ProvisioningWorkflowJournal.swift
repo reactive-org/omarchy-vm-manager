@@ -29,6 +29,8 @@ extension ProvisioningWorkflowSnapshot {
     /// The plan was applied and its run reached an outcome. Its plan is used:
     /// only a fresh plan from the same choices can run again (issue #14).
     public var runFinished: Bool { applyJobID != nil && !stage.inProgress }
+    /// Prepared for approval, then discarded or interrupted before anything ran.
+    public var endedBeforeRunning: Bool { applyJobID == nil && [.cancelled, .interrupted].contains(stage) && !cleanupRequired }
 }
 struct ProvisioningWorkflowRecord: Codable, Equatable, Sendable {
     let id: UUID, vmID: UUID, originalSessionID: UUID

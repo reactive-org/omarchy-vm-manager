@@ -142,6 +142,8 @@ struct NewVMSetupSelectionView: View {
     @Binding var draft: NewVMSetupDraft
     @Binding var selection: ProvisioningSetupSource?
     @Binding var blocker: NewVMSetupBlocker?
+    /// What the main button approves; Change setup words it for an existing guest.
+    var approvalNote = "Setup updates Omarchy and system packages, then applies these selections and installs the apps your layout needs. Create, launch & set up approves this exact plan for this VM’s first launch, including temporary admin access while setup runs and the restart and configuration check that finish it, so you end at an updated, configured desktop. If anything changes before setup starts, it pauses and asks again. Create alone saves the plan for a later review."
     @State private var choosingFolder = false
     private var planning: Bool { model.setupService is any ProvisioningCreationPlanning }
     private var selectionBlocker: NewVMSetupBlocker? { draft.blocker(planning: planning) }
@@ -168,7 +170,7 @@ struct NewVMSetupSelectionView: View {
                 if draft.appearance.layoutFailure == nil, let failure = draft.appearance.failure {
                     Label(failure, systemImage: "exclamationmark.circle.fill").font(Theme.note).foregroundStyle(Theme.amber)
                 }
-                SpecNote("Setup updates Omarchy and system packages, then applies these selections and installs the apps your layout needs. Create, launch & set up approves this exact plan for this VM’s first launch, including temporary admin access while setup runs and the restart and configuration check that finish it, so you end at an updated, configured desktop. If anything changes before setup starts, it pauses and asks again. Create alone saves the plan for a later review.")
+                SpecNote(approvalNote)
             }
         }
         .background {

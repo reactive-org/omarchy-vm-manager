@@ -16,7 +16,7 @@ def main():
     output = parent / 'result'
     subprocess.run([str(args.binary), '--accept-setup-screens', str(output)], check=True, timeout=180)
     report = json.loads((output / 'report.json').read_text())
-    assert report['schema'] == 1 and len(report['checks']) == 212
+    assert report['schema'] == 1 and len(report['checks']) == 202
     assert len(set(report['checks'])) == len(report['checks'])
     for appearance in ('dark', 'light'):
         for case in ('bundled-direct-create-ready', 'all-draft-edits-have-no-backend-effects',
@@ -54,14 +54,23 @@ def main():
     assert report['runtimeStarts'] == 0 and report['visibleWindows'] == 0
     assert report['onscreenWindows'] == 0 and report['activation'] is False
     assert report['realExecution'] is False and report['physicalInputTested'] is False
-    for case in ('failed-run-shows-outcome-and-run-again', 'used-plan-not-offered-for-review', 'makes-new-plan-for-normal-review',
-                 'review-names-engine-change', 'starts-second-run-with-live-state', 'submission-not-replayed',
-                 'no-submission-was-attempted', 'offered-after-success', 'not-offered-with-cleanup-hold'):
-        assert f'retry-{case}' in report['checks']
-    # One manual consent submission, one Run setup again submission (issue #14) and
-    # one approve-at-creation automatic submission.
+    for appearance in ('dark', 'light'):
+        for case in ('change-opens-on-saved-plan', 'stopped-guest-offers-start-and-set-up', 'product-surface-gate-disabled',
+                     'disabled-prepare-never-delegates', 'edited-choices-still-gated'):
+            assert f'{appearance}-{case}' in report['checks']
+    # Change setup: one approval for the whole run, and a pending run is never stranded.
+    for case in ('change-finished-offers-run-setup-again', 'apply-changes-label-tracks-diff', 'unchanged-choices-run-setup-again',
+                 'apply-without-grants-refused', 'docker-consent-independent', 'custom-tasks-stop-for-separate-consent',
+                 'uninspected-task-cannot-submit', 'complete-chunked-task-inspection', 'task-trust-independent',
+                 'approval-sends-each-consent', 'approval-follows-its-own-run', 'submission-attempt-not-replayed',
+                 'approval-covers-restart-and-check', 'pending-run-survives-reopen', 'pending-run-discard-unblocks',
+                 'interrupted-after-restart-wording', 'start-and-set-up-binds-first-session',
+                 'dont-set-up-stops-a-preparing-run', 'change-needs-ssh-explained'):
+        assert case in report['checks']
+    # One Change setup approval, one Start & set up approval and one
+    # approve-at-creation automatic submission.
     assert report['gate'] == 'unchanged-disabled' and report['fakeSubmissions'] == 3
-    assert len(report['images']) == 56
+    assert len(report['images']) == 49
     for name in report['images']:
         assert pathlib.Path(name).name == name and name.endswith('.png')
         data = (output / name).read_bytes()
@@ -69,7 +78,7 @@ def main():
         width, height = struct.unpack('>II', data[16:24])
         assert width >= 600 and height >= 760
     assert not (output / 'unused-support').exists()
-    print(f'Setup screen acceptance: {len(report["checks"])} checks, 56 PNGs; no runtime starts or on-display windows.')
+    print(f'Setup screen acceptance: {len(report["checks"])} checks, 49 PNGs; no runtime starts or on-display windows.')
     print(f'Artifacts retained for inspection: {output}')
 
 

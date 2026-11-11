@@ -281,11 +281,15 @@ struct ManagerView: View {
         guestPage(snapshot)
             .sheet(item: $setupSheet) { sheet in
                 let current = model.snapshots.first(where: { $0.id == snapshot.id }) ?? snapshot
+                if sheet == .change {
+                    ChangeSetupView(model: model, snapshot: current, close: { setupSheet = nil }, openOutput: { setupSheet = .output })
+                } else {
                 SetupSheetFrame(title: sheet == .output ? "Setup output" : current.profile.developerSetup == nil && !model.setupWorkflows.contains(where: { $0.vmID == current.id }) ? "Set up " + current.profile.name : "Change setup",
                                 subtitle: current.profile.name + (sheet == .output ? " · closing this leaves setup running" : " · setup runs in the guest and restarts it once to finish"),
                                 status: sheet == .output ? SetupCardState.make(current, workflows: model.setupWorkflows, jobs: model.setupJobs, autoSetup: model.autoSetup[current.id]) : nil,
                                 close: { setupSheet = nil }) {
-                    DeveloperSetupView(model: model, snapshot: current, mode: sheet == .output ? .output : .change)
+                    DeveloperSetupView(model: model, snapshot: current, mode: .output)
+                }
                 }
             }
     }

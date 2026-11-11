@@ -75,7 +75,8 @@ struct FirstRunProgress: Equatable {
         }
         if value.step == .approve {
             // Approval was given in New VM: the review is prepared and submitted automatically.
-            value = .init(step: .installing, tone: .working, note: "Starting setup. You approved it when you created this VM.", approvedAtCreation: true)
+            let when = autoSetup.plan?.origin == .change ? "You approved the whole run in Change setup." : "You approved it when you created this VM."
+            value = .init(step: .installing, tone: .working, note: "Starting setup. " + when, approvedAtCreation: true)
         }
         return value
     }
@@ -163,6 +164,12 @@ struct FirstRunProgress: Equatable {
     private static func recordedNote(_ row: ProvisioningWorkflowSnapshot, job: ProvisioningJobSnapshot?) -> String {
         // Names the step that ran out of time and its limit, from recorded categories.
         if let timeout = SetupTimeoutNote.note(row, job: job) { return timeout }
+        if row.stage == .interrupted {
+            if row.newSessionID != nil || row.restartID != nil {
+                return "Your choices were applied and the guest restarted, but the final check didn’t run because the manager quit. The guest is usable as it is; run setup again to finish with a check."
+            }
+            if row.applyJobID == nil { return "This run was prepared but never approved, so nothing ran." }
+        }
         switch row.failure {
         case .systemUpdateFailed?: return "Setup failed: the Omarchy update failed before your selections were applied."
         case .helperUnavailable?: return "Setup could not start: this build can’t run the setup helper."

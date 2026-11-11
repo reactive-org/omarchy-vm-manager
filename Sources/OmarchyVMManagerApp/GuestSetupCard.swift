@@ -51,17 +51,18 @@ struct SetupCardState: Equatable {
         case nil:
             break
         }
+        let approvedWhen = autoSetup?.plan?.origin == .change ? "You approved the whole run in Change setup." : "You approved it when you created this VM."
         switch row.stage {
         case .waitingForSSH:
             return .init(kind: .running, run: "Preparing", note: "Preparing the setup review in the guest.", progress: 0)
         case .readyForReview:
-            return .init(kind: .running, run: "Starting", note: "Starting setup. You approved it when you created this VM.", progress: 0)
+            return .init(kind: .running, run: "Starting", note: "Starting setup. " + approvedWhen, progress: 0)
         case .running:
             return .init(kind: .running, run: "Installing", note: "You can use the guest while this runs. It restarts once near the end.", progress: 0)
         case .restartRequired, .readyForCheck, .waitingForRebind:
             // No attention here means the New VM approval is finishing setup automatically.
             return .init(kind: .running, run: row.stage == .restartRequired ? "Restarting" : "Checking",
-                         note: "Finishing automatically, as approved when you created this VM.", progress: row.stage == .restartRequired ? 1 : 2)
+                         note: "Finishing automatically. " + approvedWhen, progress: row.stage == .restartRequired ? 1 : 2)
         case .waitingForExit, .restarting:
             return .init(kind: .running, run: "Restarting", note: "Restarting the guest to finish setup.", progress: 1)
         case .checking:
@@ -70,7 +71,7 @@ struct SetupCardState: Equatable {
             return .init(kind: .succeeded, run: "Succeeded",
                          note: row.stage == .checked ? "Updated Omarchy, applied your selections, restarted and checked." : "Updated Omarchy and applied your selections.")
         case .failed, .cancelled, .interrupted, .cleanupRequired:
-            return .init(kind: .failed, run: row.stage == .cancelled ? "Cancelled" : "Failed", note: FirstRunProgress.failureNote(row, job: jobs[row.id]))
+            return .init(kind: .failed, run: row.stage == .cancelled ? "Cancelled" : row.stage == .interrupted ? "Interrupted" : "Failed", note: FirstRunProgress.failureNote(row, job: jobs[row.id]))
         }
     }
 }
@@ -142,16 +143,7 @@ struct GuestSetupCard: View {
             Text(key).font(Theme.mono(14)).foregroundStyle(Theme.lavender).frame(width: 88, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 Text(value).font(Theme.mono(14)).foregroundStyle(tint ?? Theme.text)
-                if let progress {
-                    HStack(spacing: 4) {
-                        ForEach(Array(["Install", "Restart", "Check"].enumerated()), id: \.offset) { index, label in
-                            VStack(alignment: .leading, spacing: 4) {
-                                RoundedRectangle(cornerRadius: 1).fill(index < progress ? Theme.green : index == progress ? Theme.lavender : Theme.quietFrame).frame(height: 3)
-                                Text(label).font(Theme.sans(11)).foregroundStyle(index <= progress ? Theme.text.opacity(0.8) : .secondary)
-                            }
-                        }
-                    }.frame(maxWidth: 360).accessibilityHidden(true)
-                }
+                if let progress { SetupStepStrip(states: SetupSteps.live(progress)).frame(maxWidth: 420) }
                 if let note { Text(note).font(Theme.sans(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -160,7 +152,7 @@ struct GuestSetupCard: View {
     }
 }
 
-/// Chrome for the Change setup and View output sheets around the shared setup view.
+/// Chrome for the View output sheet around the shared setup view.
 struct SetupSheetFrame<Content: View>: View {
     let title: String
     let subtitle: String
@@ -185,15 +177,7 @@ struct SetupSheetFrame<Content: View>: View {
                 }
                 Spacer(minLength: 16)
                 if let status, status.kind == .running || status.kind == .succeeded {
-                    let now = status.kind == .succeeded ? 3 : status.progress ?? 0
-                    HStack(spacing: 4) {
-                        ForEach(Array(["Install", "Restart", "Check"].enumerated()), id: \.offset) { index, label in
-                            VStack(alignment: .leading, spacing: 4) {
-                                RoundedRectangle(cornerRadius: 1).fill(index < now ? Theme.green : index == now ? Theme.lavender : Theme.quietFrame).frame(height: 3)
-                                Text(label).font(Theme.sans(11)).foregroundStyle(index <= now ? Theme.text.opacity(0.8) : .secondary)
-                            }
-                        }
-                    }.frame(width: 300).accessibilityHidden(true)
+                    SetupStepStrip(states: SetupSteps.live(status.kind == .succeeded ? 3 : status.progress ?? 0)).frame(width: 340)
                 }
                 Button("Close", action: close).keyboardShortcut(.cancelAction)
             }.padding(.horizontal, 20).padding(.vertical, 14)
