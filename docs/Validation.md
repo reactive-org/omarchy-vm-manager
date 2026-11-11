@@ -541,3 +541,11 @@ An earlier attempt on the official Try Omarchy image downloaded and verified the
 **VERIFIED — real Dev window and guest:** the New VM flow with a layout example turns on developer setup and offers **Create, launch & set up**. Creation records approval for the setup run. First run progresses through Created, Starting, First boot, Connecting, Installing, Restart and Ready on the lean custom factory. The sidebar shows **Needs you** at Omarchy's sudo prompt. The ready Home page reports Developer, Four terminals and **Succeeded**, and the guest desktop shows four terminals. All 21 screenshots and their sources match `manifest.json`; the combined media is 1,819,641 bytes, below the 2 MB budget. Each image was reviewed for credentials, key fingerprints, hostnames and personal identifiers.
 
 **TO PROVE:** developer setup on the official image remains broken until the Omarchy update step succeeds there. The Factory images library card layout looked broken during capture (the official card collapsed against the left edge); this is noted for a fix and is not shown in the guide.
+
+## Home backup publication fallback — 11 November 2026
+
+[#36](https://github.com/reactive-org/omarchy-vm-manager/issues/36): a real Dev guest's home backup stopped at publication on the native 9p share. The guest now falls back from `renameat2(RENAME_NOREPLACE)` to a no-replace link and unlink when rename flags are refused, and failures name their fixed step and errno. See [Home backup](HomeBackup.md) and `intent.md`.
+
+**VERIFIED — no VM:** `python3 -m unittest discover -s Tests/ScriptTests -p test_guest_home_backup.py -v` passes 14 tests. `make test` passes 631 Swift tests in 83 suites and 345 Python script tests; `make build` and `git diff --check` pass. No guest, installed app or Dev app bundle was touched.
+
+**TO PROVE:** the v9fs `EINVAL` cause, and the fallback on a real guest's share, until a real backup shows Verified.

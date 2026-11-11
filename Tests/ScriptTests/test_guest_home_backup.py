@@ -1,6 +1,10 @@
 """No VM/SSH: exercise the shipped guest program against disposable files."""
+import ctypes
+import errno
 import importlib.util
 import gzip
+import io
+import json
 import os
 from pathlib import Path
 import signal
@@ -18,6 +22,21 @@ SOURCE = Path(__file__).resolve().parents[2] / 'Sources/OmarchyVMManagerCore/Res
 spec = importlib.util.spec_from_file_location('guest_home_backup', SOURCE)
 backup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backup)
+
+
+class FakeLibc:
+    """Stands in for Linux libc on macOS: renameat2 fails with a chosen errno
+    (v9fs rejects any rename flag with EINVAL) or succeeds by plain rename."""
+    def __init__(self, error=errno.EINVAL):
+        self.error, self.calls = error, []
+        def renameat2(old_dir, old, new_dir, new, flags):
+            self.calls.append(flags)
+            if self.error is None:
+                os.rename(old.decode(), new.decode(), src_dir_fd=old_dir, dst_dir_fd=new_dir)
+                return 0
+            ctypes.set_errno(self.error)
+            return -1
+        self.renameat2 = renameat2
 
 
 class HomeBackupTests(unittest.TestCase):
@@ -59,14 +78,113 @@ class HomeBackupTests(unittest.TestCase):
 
     @staticmethod
     def publisher(directory):
-        # Portable no-replace publication for these local fixtures only.
-        os.link('home.tgz.partial', 'home.tgz', src_dir_fd=directory, dst_dir_fd=directory,
-                follow_symlinks=False)
-        os.unlink('home.tgz.partial', dir_fd=directory)
+        # The production publisher on its 9p path: renameat2 refuses flags with
+        # EINVAL, so the no-replace link/unlink fallback publishes.
+        backup.publish(directory, libc=FakeLibc(errno.EINVAL))
 
-    def archive(self, runner=None):
+    def archive(self, runner=None, publisher=None, progress=None):
         return backup.archive(str(self.home), str(self.share), self.folder, 0,
-                              runner=runner or self.runner, publisher=self.publisher)
+                              runner=runner or self.runner, publisher=publisher or self.publisher,
+                              progress=progress or (lambda stage: None))
+
+    def publish_fixture(self, libc):
+        directory = self.share / self.folder
+        directory.mkdir(mode=0o700)
+        (directory / 'home.tgz.partial').write_bytes(b'synthetic archive')
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, fd)
+        return directory, lambda: backup.publish(fd, libc=libc)
+
+    def test_unsupported_rename_flags_fall_back_to_no_replace_link(self):
+        for libc in [FakeLibc(errno.EINVAL), FakeLibc(errno.ENOSYS), FakeLibc(errno.EOPNOTSUPP), object()]:
+            self.folder = 'home-backup-' + str(uuid.uuid4())
+            directory, publish = self.publish_fixture(libc)
+            publish()
+            self.assertFalse((directory / 'home.tgz.partial').exists())
+            self.assertEqual((directory / 'home.tgz').read_bytes(), b'synthetic archive')
+            self.assertEqual((directory / 'home.tgz').stat().st_nlink, 1)
+            if isinstance(libc, FakeLibc):
+                self.assertEqual(libc.calls, [backup.RENAME_NOREPLACE])
+
+    def test_fallback_never_replaces_an_existing_name(self):
+        directory, publish = self.publish_fixture(FakeLibc(errno.EINVAL))
+        (directory / 'home.tgz').write_text('pre-existing data')
+        with self.assertRaises(FileExistsError):
+            publish()
+        self.assertEqual((directory / 'home.tgz').read_text(), 'pre-existing data')
+        self.assertEqual((directory / 'home.tgz.partial').read_bytes(), b'synthetic archive')
+
+    def test_other_rename_errors_and_success_never_link(self):
+        for error in [errno.EIO, errno.EEXIST, None]:
+            self.folder = 'home-backup-' + str(uuid.uuid4())
+            directory, publish = self.publish_fixture(FakeLibc(error))
+            with patch.object(backup.os, 'link', side_effect=AssertionError('link used')) as link:
+                if error is None:
+                    publish()
+                    self.assertEqual((directory / 'home.tgz').read_bytes(), b'synthetic archive')
+                else:
+                    with self.assertRaises(OSError) as raised:
+                        publish()
+                    self.assertEqual(raised.exception.errno, error)
+                    self.assertTrue((directory / 'home.tgz.partial').exists())
+                    self.assertFalse((directory / 'home.tgz').exists())
+                link.assert_not_called()
+
+    def test_progress_names_each_step_and_the_failing_one(self):
+        stages = []
+        self.archive(progress=stages.append)
+        self.assertEqual(stages, ['archive', 'verification', 'publish', 'sync'])
+        def fail_tar(arguments, output, control):
+            raise RuntimeError('synthetic tar failure')
+        def fail_check(arguments, output, control):
+            if '-czpf' not in arguments:
+                raise RuntimeError('synthetic check failure')
+            self.runner(arguments, output, control)
+        def fail_publish(directory):
+            backup.publish(directory, libc=FakeLibc(errno.EIO))
+        for expected, runner, publisher in [('archive', fail_tar, None), ('verification', fail_check, None),
+                                            ('publish', None, fail_publish)]:
+            self.folder = 'home-backup-' + str(uuid.uuid4())
+            stages = []
+            with self.assertRaises((RuntimeError, OSError)):
+                self.archive(runner=runner, publisher=publisher, progress=stages.append)
+            self.assertEqual(stages[-1], expected)
+        self.folder = 'home-backup-' + str(uuid.uuid4())
+        stages = []
+        real_fsync = os.fsync
+        def fsync(fd):
+            if stages[-1] == 'sync':
+                raise OSError(errno.EIO, 'synthetic sync failure')
+            real_fsync(fd)
+        with patch.object(backup.os, 'fsync', side_effect=fsync), self.assertRaises(OSError):
+            self.archive(progress=stages.append)
+        self.assertEqual(stages[-1], 'sync')
+
+    def test_failure_report_carries_only_stage_and_errno(self):
+        vm, session, operation = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        account = type('Account', (), {'pw_name': 'owner', 'pw_dir': str(self.home)})()
+        cases = [(OSError(errno.EINVAL, 'private file name'), {'failure': 'publish', 'errno': errno.EINVAL}),
+                 (RuntimeError('archive-failed /private/name'), {'failure': 'publish'}),
+                 (InterruptedError('cancelled'), {'failure': 'publish'})]
+        for error, expected in cases:
+            def archive(*arguments, progress, **options):
+                progress('verification'); progress('publish')
+                raise error
+            output = io.StringIO()
+            with patch.object(backup.subprocess, 'check_output', return_value=b'{}'), \
+                 patch.object(backup, 'verify'), patch.object(backup, 'archive', side_effect=archive), \
+                 patch.object(backup.pwd, 'getpwuid', return_value=account), \
+                 patch.object(backup.os, 'access', return_value=True), \
+                 patch.object(backup.signal, 'signal'), patch('sys.stdout', output), \
+                 self.assertRaises(SystemExit) as exit:
+                backup.main(vm, session, 'owner', operation)
+            self.assertEqual(exit.exception.code, 1)
+            self.assertEqual(json.loads(output.getvalue()), expected)
+        output = io.StringIO()
+        with patch.object(backup.subprocess, 'check_output', side_effect=OSError(errno.ENOENT, 'missing')), \
+             patch.object(backup.signal, 'signal'), patch('sys.stdout', output), self.assertRaises(SystemExit):
+            backup.main(vm, session, 'owner', operation)
+        self.assertEqual(json.loads(output.getvalue()), {'failure': 'prerequisites', 'errno': errno.ENOENT})
 
     def test_archive_includes_hidden_files_stores_share_link_and_preserves_other_files(self):
         size = self.archive()
