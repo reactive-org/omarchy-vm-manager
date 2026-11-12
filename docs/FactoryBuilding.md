@@ -12,9 +12,14 @@ Choose a name, an **Omarchy channel** and, under **Advanced**, a capacity from
 20–128 GiB. **Stable** (the default) installs the latest Omarchy release;
 **Edge** installs Omarchy's development builds. Either way the build uses the
 channel's current signed packages, so a new Omarchy release needs no new app.
-If a release changes setup programs this app hasn't reviewed, the build stops
-before creating a disk and says so; update Omarchy VM Manager or try the other
-channel. The reviewed
+If a release changes Omarchy's account-setup programs and this app hasn't
+reviewed them yet, the build still finishes, but the factory supports **manual
+account setup** only. New VMs from it skip Guest Defaults, and Omarchy asks for
+the account details on first boot. A later app update that reviews the release
+makes new builds use automatic setup again. If a release changes setup steps the
+app can't check automatically, such as a new service or firewall rule, the build
+stops before creating a disk and says so; update Omarchy VM Manager or try the
+other channel. The reviewed
 recipe supplies the desktop, Mac integration, Git, Python and build tools inside
 the image. Additional profiles, apps, themes and layouts are selected per VM.
 Arbitrary build scripts, package editors and source repositories are outside this

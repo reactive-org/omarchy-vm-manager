@@ -1,6 +1,16 @@
 # Pinned developer provisioning source
 
-**Current pin (11 November 2026):** `dev-vm/` is the unpatched export of merged
+**Current pin (12 November 2026):** `dev-vm/` is the unpatched export of dev-vm
+branch commit `c71078136492f9e6bb90587357d0b65b69e340b9`
+(`codex/flexible-omarchy-review`, vendored before merge; re-pin to the merged
+commit). The factory builder checks Omarchy's six guarded install scripts by
+behaviour rather than by digest, and builds a release whose owner programs
+haven't been reviewed with `"owner_setup": "manual"` instead of stopping. A
+changed default browser is guarded by its desktop file. Only the factory
+template, `recipe.json`, `FactoryRecipePin.swift` and `engine-identity.json`
+change.
+
+**Previous pin (11 November 2026):** `dev-vm/` is the unpatched export of merged
 dev-vm commit `64547746b4b2dce9d00b742495ff07928c9089e5`
 (reactive-org/dev-vm#19). The `toolchain` feature's Bash check now accepts
 mise's prompt hook when Omarchy's Starship prompt chains it through

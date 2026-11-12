@@ -17,6 +17,9 @@ final class AppModel: ObservableObject {
     @Published var factoryImportProgress = FactoryImportProgress.verifying
     @Published private var factoryLibrary = FactoryLibraryCache()
     var factories: [FactoryIdentity] { factoryLibrary.factories }
+    /// True when this factory's Omarchy release hasn't been reviewed for
+    /// automatic account setup. Creation and launch refuse a seeded account.
+    func requiresManualOwnerSetup(_ selector: String) -> Bool { factoryLibrary.manualOwnerSetup.contains(selector) }
     /// Channel, Omarchy version and build time, so factories that share a name
     /// can be told apart. Nil when the image records none of them.
     func factorySummary(_ factory: FactoryIdentity) -> String? {
@@ -26,13 +29,15 @@ final class AppModel: ObservableObject {
         } else {
             details = factoryLibrary.details[factory.selector]
         }
-        guard let details else { return nil }
         var parts: [String] = []
-        if let channel = details.channelLabel { parts.append(channel) }
-        if let version = details.omarchyVersion { parts.append("Omarchy " + version) }
-        if let built = details.built {
-            parts.append("built " + built.formatted(.dateTime.day().month(.abbreviated).year().hour().minute()))
+        if let details {
+            if let channel = details.channelLabel { parts.append(channel) }
+            if let version = details.omarchyVersion { parts.append("Omarchy " + version) }
+            if let built = details.built {
+                parts.append("built " + built.formatted(.dateTime.day().month(.abbreviated).year().hour().minute()))
+            }
         }
+        if requiresManualOwnerSetup(factory.selector) { parts.append("manual account setup") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
     /// Guests created from a factory; a factory in use can't be deleted.
@@ -104,6 +109,11 @@ final class AppModel: ObservableObject {
     func builtFactoryAvailable(_ identity: FactoryIdentity) {
         guard identity.kind == .custom else { return }
         factoryLibrary.imported(identity)
+        // New VM may select it at once; the editor drops Guest Defaults when
+        // this arrives, and creation refuses a seed regardless.
+        Task { [manager] in
+            if (try? await manager.requiresManualOwnerSetup(identity)) == true { self.factoryLibrary.markManualOwnerSetup(identity) }
+        }
     }
     @Published var setupWorkflows: [ProvisioningWorkflowSnapshot] = []
     @Published var setupJobs: [UUID: ProvisioningJobSnapshot] = [:]
@@ -343,7 +353,8 @@ final class AppModel: ObservableObject {
                 self.factoryImportProgress = progress
             }
         }
-        factoryLibrary.imported(identity)
+        let manual = (try? await manager.requiresManualOwnerSetup(identity)) ?? false
+        factoryLibrary.imported(identity, manualOwnerSetup: manual)
         return identity
     }
 

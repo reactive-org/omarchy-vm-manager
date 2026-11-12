@@ -6,6 +6,23 @@ import Testing
 struct FactoryLibraryCacheTests {
     private let image = FactoryIdentity(kind: .custom, name: "Imported fixture", manifestSHA256: String(repeating: "a", count: 64), diskSHA256: String(repeating: "b", count: 64))
 
+    @Test("manual owner setup follows the listing, imports and removal")
+    func manualOwnerSetup() {
+        var cache = FactoryLibraryCache()
+        let request = cache.beginRefresh()
+        _ = cache.apply(FactoryCatalogListing(factories: [.official, image], issues: [], manualOwnerSetup: [image.selector]), for: request)
+        #expect(cache.manualOwnerSetup == [image.selector])
+        cache.imported(image)
+        #expect(cache.manualOwnerSetup.isEmpty)
+        cache.markManualOwnerSetup(image)
+        #expect(cache.manualOwnerSetup == [image.selector])
+        cache.removed(image)
+        cache.markManualOwnerSetup(image)
+        #expect(cache.manualOwnerSetup.isEmpty)
+        cache.imported(image, manualOwnerSetup: true)
+        #expect(cache.manualOwnerSetup == [image.selector])
+    }
+
     @Test("unavailable imports retain a selection notice beside compatible choices until resolved")
     func unavailableNotice() {
         var cache = FactoryLibraryCache()

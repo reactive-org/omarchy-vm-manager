@@ -187,6 +187,9 @@ public struct GuestCommandResponse: Codable, Sendable {
     public var guests: [GuestCommandRecord]?
     public var factories: [FactoryIdentity]?
     public var factoryIssues: [FactoryCatalogIssue]?
+    /// Selectors of listed factories that support manual owner setup only:
+    /// their Omarchy owner programs haven't been reviewed.
+    public var manualOwnerSetupFactories: [String]?
     public var deletedFactory: FactoryIdentity?
     public var error: GuestCommandFailure?
     public var factoryBuild: FactoryBuildReply?
@@ -220,7 +223,9 @@ public actor GuestCommandService {
             let deadline = ContinuousClock.now.advanced(by: .seconds(request.timeoutSeconds))
             if request.command == .factories {
                 let listing = try await manager.factoryListing()
-                return GuestCommandResponse(requestID: request.requestID, ok: true, factories: listing.factories, factoryIssues: listing.issues.isEmpty ? nil : listing.issues)
+                var response = GuestCommandResponse(requestID: request.requestID, ok: true, factories: listing.factories, factoryIssues: listing.issues.isEmpty ? nil : listing.issues)
+                response.manualOwnerSetupFactories = listing.manualOwnerSetup.isEmpty ? nil : listing.manualOwnerSetup.sorted()
+                return response
             }
             if request.command == .importFactory {
                 let url = URL(fileURLWithPath: request.selector!)

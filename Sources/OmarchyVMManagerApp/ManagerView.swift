@@ -713,7 +713,13 @@ struct VMEditor: View {
         if profile == nil { parts.append(useOwnerDefaults ? "automatic account" : "manual account") }
         return parts.joined(separator: " · ")
     }
+    /// The selected factory's Omarchy release hasn't been reviewed for automatic
+    /// account setup, so Guest Defaults can't seed it.
+    private var manualFactory: Bool { profile == nil && model.requiresManualOwnerSetup(factory) }
     private var ownerNote: String {
+        if manualFactory {
+            return "Account setup: Manual. This factory's Omarchy release hasn't been reviewed for automatic account setup, so Omarchy will ask for account details on first boot."
+        }
         if useOwnerDefaults, let config = reuseHomeFrom.flatMap({ id in model.snapshots.first(where: { $0.id == id })?.profile.ownerSetup?.configuration }) ?? model.ownerDefaults?.configuration {
             return "Automatic setup as \(config.username) · \(config.keyboardID). A unique hostname is assigned."
         }
@@ -758,7 +764,7 @@ struct VMEditor: View {
                     SpecRow("home data") {
                         Picker("Home data", selection: $reuseHomeFrom) {
                             Text("New empty home disk").tag(UUID?.none)
-                            ForEach(model.snapshots.filter { $0.sessionID == nil && $0.profile.homeDisk != nil }) { source in
+                            ForEach(model.snapshots.filter { $0.sessionID == nil && $0.profile.homeDisk != nil && (!manualFactory || $0.profile.ownerSetup == nil) }) { source in
                                 Text("Reuse from \(source.profile.name)").tag(Optional(source.id))
                             }
                         }.labelsHidden().frame(maxWidth: 260).onChange(of: reuseHomeFrom) { _, value in
@@ -787,7 +793,7 @@ struct VMEditor: View {
                 SpecNote("Exposes \(sharePath) at /mnt/mac · Read & write. The guest can modify or delete files in this folder. Use a dedicated folder without credentials. Changes apply next start.").textSelection(.enabled).padding(.bottom, 8)
             }
             if profile == nil {
-                if model.ownerDefaults?.isConfigured == true || reuseHomeFrom != nil {
+                if !manualFactory, model.ownerDefaults?.isConfigured == true || reuseHomeFrom != nil {
                     SpecToggleRow("manual account", note: ownerNote, isOn: Binding(get: { !useOwnerDefaults }, set: { useOwnerDefaults = !$0 })).disabled(reuseHomeFrom != nil)
                 } else {
                     SpecRow("account", note: ownerNote)
@@ -854,6 +860,11 @@ struct VMEditor: View {
             guard profile == nil, let examples = try? BundledProvisioning.layoutExamples() else { return }
             layoutTitles = Dictionary(uniqueKeysWithValues: examples.map { ($0.id, $0.title) })
         }
+        .onChange(of: manualFactory, initial: true) { _, manual in
+            guard manual else { return }
+            useOwnerDefaults = false
+            if let source = reuseHomeFrom, model.snapshots.first(where: { $0.id == source })?.profile.ownerSetup != nil { reuseHomeFrom = nil }
+        }
         .onChange(of: useOwnerDefaults) { _, value in
             if value { selectedPublicKey = model.ownerDefaults?.sshPublicKey }
             else if selectedPublicKey == model.ownerDefaults?.sshPublicKey { selectedPublicKey = nil }
@@ -876,7 +887,7 @@ struct VMEditor: View {
                     switch command {
                     case .factory(let value): factory = value
                     case .name(let value): name = value
-                    case .ownerDefaults(let value): if reuseHomeFrom == nil { useOwnerDefaults = value && model.ownerDefaults?.isConfigured == true }
+                    case .ownerDefaults(let value): if reuseHomeFrom == nil { useOwnerDefaults = value && !manualFactory && model.ownerDefaults?.isConfigured == true }
                     case .resources(let ram, let cores, let size): memory = ram; cpus = cores; disk = size
                     case .save: save()
                     case .section(let value): openPane = Pane(rawValue: value)
