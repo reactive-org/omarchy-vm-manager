@@ -1,9 +1,10 @@
 # Pinned developer provisioning source
 
-**Current pin (12 November 2026):** `dev-vm/` is the unpatched export of dev-vm
-branch commit `c71078136492f9e6bb90587357d0b65b69e340b9`
-(`codex/flexible-omarchy-review`, vendored before merge; re-pin to the merged
-commit). The factory builder checks Omarchy's six guarded install scripts by
+**Current pin (12 November 2026):** `dev-vm/` is the unpatched export of merged
+dev-vm commit `69460dd082c3ce51a26f87f44eddd371539af445`
+(reactive-org/dev-vm#20). It was first vendored before merge from branch commit
+`c71078136492f9e6bb90587357d0b65b69e340b9`; the merge adds only a dev-vm test,
+so every vendored file is unchanged. The factory builder checks Omarchy's six guarded install scripts by
 behaviour rather than by digest, and builds a release whose owner programs
 haven't been reviewed with `"owner_setup": "manual"` instead of stopping. A
 changed default browser is guarded by its desktop file. Only the factory
