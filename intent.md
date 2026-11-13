@@ -4835,4 +4835,6 @@ turn-on and Omarchy default keeping setup on. **TO PROVE:** physical interaction
 - no measurable write-performance regression after reclaim;
 - the panel's native appearance.
 
-No VM was launched, contacted or modified. The new kit is not yet published as a `runtime-kit-<sha>` CI dependency.
+No VM was launched, contacted or modified.
+
+**VERIFIED — published 14 November 2026:** the exact kit is the [digest-named CI dependency prerelease](https://github.com/reactive-org/omarchy-vm-manager/releases/tag/runtime-kit-ba2a08cf4745639c406a0ec2a9e01071e35a6a1074113632a5a10bfd4757eaac). Its assets are `TryOmarchyKit.zip`, its checksum, the manifest and `SourceRuntime.lock.json`. The assets were uploaded to a draft, and their server SHA-256 digests matched the local files before publication. The release is not marked Latest; Latest remains `v0.11.2`. Anonymous downloads match all four files. `Scripts/fetch_runtime_kit.py`, run in a scratch copy of the repository, downloaded the archive and verified its inventory, manifest and signatures. It contains no factory image, VM disk or user data.
