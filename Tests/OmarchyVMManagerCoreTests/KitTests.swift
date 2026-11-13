@@ -45,6 +45,16 @@ struct KitTests {
         fixture.lock.launchIntentVersion = 2
         #expect(throws: VMFailure.self) { try fixture.inspect() }
     }
+    @Test("unknown guest TRIM pass-through capability is refused; an absent one is not inferred")
+    func discardCapability() throws {
+        var fixture = try KitFixture(); defer { fixture.cleanup() }
+        #expect(fixture.lock.discardVersion == nil)
+        _ = try fixture.inspect()
+        fixture.lock.discardVersion = 1
+        _ = try fixture.inspect()
+        fixture.lock.discardVersion = 2
+        #expect(throws: VMFailure.self) { try fixture.inspect() }
+    }
     @Test("compiled launch admission applies the build policy before touching storage")
     func compiledLaunchAdmission() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

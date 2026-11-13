@@ -1184,8 +1184,98 @@ index 0000000..efc4f88
 +        self.assertEqual(m.binding_digest(m.report_binding(manifest)),'0ac533376504c0de084483efbf7551061ac7cad0eb857f178e1ecc2f236b7c9a')
 +
 +if __name__=='__main__':unittest.main()
+diff --git a/guest/package/tests/test_package.py b/guest/package/tests/test_package.py
+index a46e7cb..53b9185 100644
+--- a/guest/package/tests/test_package.py
++++ b/guest/package/tests/test_package.py
+@@ -10,6 +10,7 @@ from pathlib import Path
+ import re
+ import stat
+ import subprocess
++import sys
+ import tempfile
+ import unittest
+ from unittest import mock
+@@ -967,6 +968,77 @@ class TimeZoneMenu(unittest.TestCase):
+         self.assertIn('chmod 0440 "$pkgdir/etc/sudoers.d/"*', recipe)
+ 
+ 
++class Reclaim(unittest.TestCase):
++    PROGRAM = FILES / "usr/bin/try-omarchy-reclaim"
++
++    def test_sudo_allows_only_the_argumentless_helper(self):
++        rule = (FILES / "etc/sudoers.d/try-omarchy-reclaim").read_text()
++        commands = [line.split("NOPASSWD: ", 1)[1] for line in rule.splitlines() if "NOPASSWD:" in line]
++        # "" is sudoers' "no arguments at all".
++        self.assertEqual(commands, ['/usr/bin/try-omarchy-reclaim ""'])
++        rules = [line for line in rule.splitlines() if line and not line.startswith("#")]
++        self.assertEqual(rules, ['%wheel ALL=(root) NOPASSWD: /usr/bin/try-omarchy-reclaim ""'])
++        self.assertTrue(self.PROGRAM.stat().st_mode & stat.S_IXUSR)
++        self.assertIn('chmod 0440 "$pkgdir/etc/sudoers.d/"*', (PACKAGE / "PKGBUILD").read_text())
++
++    def helper(self):
++        return load(self.PROGRAM, "try_omarchy_reclaim")
++
++    def test_refuses_arguments_and_unprivileged_callers(self):
++        helper = self.helper()
++        with mock.patch.object(helper.subprocess, "run") as trims:
++            for arguments, uid, stage in ((["--all"], 0, "arguments"), (["/"], 0, "arguments"), ([], 1000, "privilege")):
++                with self.assertRaises(helper.Failure) as raised:
++                    helper.main(arguments, uid)
++                self.assertEqual(raised.exception.stage, stage)
++            trims.assert_not_called()
++
++    def trimmed(self, helper, home_device, home_dev, returncode=0):
++        with tempfile.TemporaryDirectory() as scratch:
++            device = Path(scratch) / "home-device"
++            if home_device:
++                device.touch()
++            real = Path.stat
++
++            def lookup(path, *args, **kwargs):
++                if path == device:
++                    return mock.Mock(st_rdev=42)
++                if path == helper.HOME:
++                    return mock.Mock(st_dev=home_dev)
++                return real(path, *args, **kwargs)
++
++            with mock.patch.object(helper, "HOME_DEVICE", device), \
++                 mock.patch.object(helper.Path, "stat", autospec=True, side_effect=lookup), \
++                 mock.patch.object(helper.subprocess, "run", return_value=mock.Mock(returncode=returncode)) as trims:
++                try:
++                    report = helper.main([], 0)
++                finally:
++                    calls = [call.args[0] for call in trims.call_args_list]
++            return report, calls
++
++    def test_trims_the_root_and_only_a_mounted_home_disk(self):
++        helper = self.helper()
++        report, calls = self.trimmed(helper, home_device=False, home_dev=7)
++        self.assertEqual(report, {"filesystems": ["root"]})
++        self.assertEqual(calls, [["/usr/bin/fstrim", "/"]])
++        # A btrfs @home subvolume has its own st_dev but is not the home disk.
++        report, calls = self.trimmed(helper, home_device=True, home_dev=7)
++        self.assertEqual(report, {"filesystems": ["root"]})
++        report, calls = self.trimmed(helper, home_device=True, home_dev=42)
++        self.assertEqual(report, {"filesystems": ["root", "home"]})
++        self.assertEqual(calls, [["/usr/bin/fstrim", "/"], ["/usr/bin/fstrim", "/home"]])
++
++    def test_a_failed_trim_reports_only_its_stage(self):
++        helper = self.helper()
++        with self.assertRaises(helper.Failure) as raised:
++            self.trimmed(helper, home_device=False, home_dev=7, returncode=1)
++        self.assertEqual(raised.exception.stage, "trim-root")
++        result = subprocess.run([sys.executable, "-I", str(self.PROGRAM), "--extra"], capture_output=True, text=True)
++        self.assertEqual(result.returncode, 1)
++        self.assertEqual(json.loads(result.stdout), {"failure": "arguments"})
++        self.assertEqual(result.stderr, "")
++
++
+ class Ghostty(unittest.TestCase):
+     WRAPPER = FILES / "usr/lib/try-omarchy/bin/ghostty"
+ 
 diff --git a/guest/package/try-omarchy/PKGBUILD b/guest/package/try-omarchy/PKGBUILD
-index 8426f5d..fc7a5bb 100644
+index 8426f5d..24cfedc 100644
 --- a/guest/package/try-omarchy/PKGBUILD
 +++ b/guest/package/try-omarchy/PKGBUILD
 @@ -8,7 +8,7 @@
@@ -1193,10 +1283,107 @@ index 8426f5d..fc7a5bb 100644
  pkgname=try-omarchy
  pkgver=0.1.0
 -pkgrel=36
-+pkgrel=48
++pkgrel=49
  pkgdesc='Mac host integration for Omarchy running in Try Omarchy'
  arch=('aarch64')
  url='https://github.com/omacom/try-omarchy'
+diff --git a/guest/package/try-omarchy/files/etc/sudoers.d/try-omarchy-reclaim b/guest/package/try-omarchy/files/etc/sudoers.d/try-omarchy-reclaim
+new file mode 100644
+index 0000000..4d224ae
+--- /dev/null
++++ b/guest/package/try-omarchy/files/etc/sudoers.d/try-omarchy-reclaim
+@@ -0,0 +1,3 @@
++# The Mac's Reclaim space action trims the guest's own filesystems without a
++# password. Only this fixed helper, and only with no arguments ("" below).
++%wheel ALL=(root) NOPASSWD: /usr/bin/try-omarchy-reclaim ""
+diff --git a/guest/package/try-omarchy/files/usr/bin/try-omarchy-reclaim b/guest/package/try-omarchy/files/usr/bin/try-omarchy-reclaim
+new file mode 100755
+index 0000000..dd20e71
+--- /dev/null
++++ b/guest/package/try-omarchy/files/usr/bin/try-omarchy-reclaim
+@@ -0,0 +1,82 @@
++#!/usr/bin/python3 -I
++"""Trim the guest's own filesystems so freed blocks return to the Mac.
++
++The Mac's manager runs this through one fixed passwordless sudo rule. It takes
++no arguments and trims only fixed targets: the root btrfs, which covers every
++subvolume, and the separate home disk when it is mounted over /home. It prints
++one bounded JSON line and never echoes paths or fstrim's output.
++"""
++
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++
++FSTRIM = "/usr/bin/fstrim"
++ROOT = Path("/")
++HOME = Path("/home")
++HOME_DEVICE = Path("/dev/disk/by-id/virtio-omarchy-home")
++TRIM_TIMEOUT_SECONDS = 20 * 60
++
++
++class Failure(Exception):
++    def __init__(self, stage, errno=None):
++        super().__init__(stage)
++        self.stage = stage
++        self.errno = errno
++
++
++def targets():
++    """The root btrfs, plus /home only when it is the separate home disk."""
++    chosen = [("root", ROOT)]
++    try:
++        device = HOME_DEVICE.stat()
++    except FileNotFoundError:
++        return chosen
++    except OSError as error:
++        raise Failure("targets", error.errno) from None
++    try:
++        # A btrfs subvolume has its own st_dev, so only the device match
++        # (as managed-home checks it) proves /home is the home disk.
++        if HOME.stat().st_dev == device.st_rdev:
++            chosen.append(("home", HOME))
++    except OSError as error:
++        raise Failure("targets", error.errno) from None
++    return chosen
++
++
++def trim(name, path):
++    try:
++        result = subprocess.run([FSTRIM, str(path)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
++                                stderr=subprocess.DEVNULL, timeout=TRIM_TIMEOUT_SECONDS, check=False)
++    except subprocess.TimeoutExpired:
++        raise Failure("trim-" + name) from None
++    except OSError as error:
++        raise Failure("trim-" + name, error.errno) from None
++    if result.returncode != 0:
++        raise Failure("trim-" + name)
++
++
++def main(arguments, uid):
++    if arguments:
++        raise Failure("arguments")
++    if uid != 0:
++        raise Failure("privilege")
++    trimmed = []
++    for name, path in targets():
++        trim(name, path)
++        trimmed.append(name)
++    return {"filesystems": trimmed}
++
++
++if __name__ == "__main__":
++    try:
++        report = main(sys.argv[1:], os.geteuid())
++    except Failure as failure:
++        report = {"failure": failure.stage}
++        if isinstance(failure.errno, int) and 0 < failure.errno < 4096:
++            report["errno"] = failure.errno
++        print(json.dumps(report, sort_keys=True))
++        sys.exit(1)
++    print(json.dumps(report, sort_keys=True))
 diff --git a/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset b/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
 index 55119a0..e5ed117 100644
 --- a/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset
@@ -4718,7 +4905,7 @@ index b6cb53b..608031f 100644
          }
      }
 diff --git a/macos/Sources/OmarchyVMHelper/VMRunMode.swift b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
-index c959f32..9cabea8 100644
+index c959f32..a1d23d7 100644
 --- a/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 +++ b/macos/Sources/OmarchyVMHelper/VMRunMode.swift
 @@ -1,4 +1,5 @@
@@ -4785,7 +4972,7 @@ index c959f32..9cabea8 100644
 +                let setupEnvironment = try ManagedSetupLaunch.environment(root: settings.stateRoot, base: sshEnvironment, contract: ownerContract)
 +                var environment = try ManagedHomeDiskLaunch.environment(root: settings.stateRoot, configuration: configuration.homeDisk, base: setupEnvironment)
 +                if VMOwnerSetupContract.isLeanFactory(ownerContract) {
-+                    let package = bundle.bundleURL.appendingPathComponent("Contents/Resources/guest-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst")
++                    let package = bundle.bundleURL.appendingPathComponent("Contents/Resources/guest-packages/try-omarchy-0.1.0-49.1-aarch64.pkg.tar.zst")
 +                    guard try VMFactorySelection.digest(package) == VMGuestIntegrationContract.runtimeLeanPackageSHA256 else { throw HelperError.io("Unreviewed native-rendering integration") }
 +                    environment["OMARCHY_SHELL_INSTALL_PACKAGE"] = package.path
 +                }
@@ -5179,7 +5366,7 @@ index f199020..961c03a 100644
          exit(0)
 diff --git a/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 new file mode 100644
-index 0000000..5f7fb11
+index 0000000..b9d8067
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMFactorySelection.swift
 @@ -0,0 +1,193 @@
@@ -5189,7 +5376,7 @@ index 0000000..5f7fb11
 +
 +public struct VMFactorySelection: Codable, Equatable, Sendable {
 +    public static let capabilityVersion = 1
-+    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-48-aarch64.pkg.tar.zst"
++    public static let packagePath = "Contents/Resources/guest-packages/try-omarchy-0.1.0-49-aarch64.pkg.tar.zst"
 +    public let bundlePath: String
 +    public let manifestSHA256: String
 +    public init(bundlePath: String, manifestSHA256: String) {
@@ -5430,7 +5617,7 @@ index 0000000..da7d09d
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
 new file mode 100644
-index 0000000..f1f7ced
+index 0000000..b4b1412
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMGuestIntegrationContract.swift
 @@ -0,0 +1,95 @@
@@ -5473,7 +5660,7 @@ index 0000000..f1f7ced
 +            .map { LeanContract(leanPackageVersion: $0.leanPackageVersion, leanPackageSHA256: $0.leanPackageSHA256, ownerSetupContractSHA256: VMOwnerSetupContract.manual) }
 +    }
 +
-+    public static let runtimeLeanPackageSHA256 = "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3"
++    public static let runtimeLeanPackageSHA256 = "5a307d8919f0571dbc1c64a2413f8f0ef85e1e6daf2132447169ab61e9ebbd58"
 +    public static var current: Self { try! JSONDecoder().decode(Self.self, from: Data(reviewedJSON.utf8)) }
 +
 +    public func verify(_ evidence: VMGuestIntegrationEvidence, manifest: VMFactoryManifest, root: URL, runtimeBundle: URL) throws {
@@ -5513,7 +5700,7 @@ index 0000000..f1f7ced
 +    "ownerSetupContracts": 1,
 +    "ownerSetupReport": 1
 +  },
-+  "runtimePackageSHA256": "5c09250244da58caff58fe25af359fa76277c5d441cbdd0331f523dd9b429b65",
++  "runtimePackageSHA256": "7733a29ff3a7b91ff592f8a936f746a2660a5dd562c30141a0c0d92721e7592b",
 +  "leanContracts": [
 +    {
 +      "leanPackageVersion": "0.1.0-43.1",
@@ -5531,10 +5718,10 @@ index 0000000..f1f7ced
 +}
 diff --git a/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
 new file mode 100644
-index 0000000..caa541c
+index 0000000..11f38a5
 --- /dev/null
 +++ b/macos/Sources/TryOmarchyKitClient/VMOwnerSetupContract.swift
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,63 @@
 +import Foundation
 +
 +public enum VMOwnerSetupContract {
@@ -5581,8 +5768,9 @@ index 0000000..caa541c
 +    /// "omarchy-vm-manager/manual-owner-setup/v1". It is never supported for
 +    /// seeded setup, so neither the helper nor the guest adapter accepts it.
 +    public static let manual = "ce4c684e1a576eec068653a400451b6d70bb477275c73e4d7f25452a4d726553"
-+    /// Manual factories come only from builders carrying the runtime's
-+    /// native-rendering integration package.
++    /// Manual factories come only from builders carrying the reviewed
++    /// native-rendering integration package 0.1.0-48.1. The runtime's own
++    /// native-rendering package may be newer and upgrades the guest at launch.
 +    public static let manualIntegrationVersion = "0.1.0-48.1"
 +    public static func isManual(_ digest: String) -> Bool { digest == manual }
 +    /// Lean factory evidence rules apply: a reviewed lean contract or manual.
@@ -7133,7 +7321,7 @@ index ccb3ffa..f67b972 100644
          #expect(VMResetPhase.finishing.title == "Finishing reset")
          #expect(VMProgress(phase: VMLaunchPhase.preparing, percent: 42).caption == "42%")
 diff --git a/macos/Tests/run-mode.test.sh b/macos/Tests/run-mode.test.sh
-index fb2be66..9c1451a 100755
+index fb2be66..a0c3e53 100755
 --- a/macos/Tests/run-mode.test.sh
 +++ b/macos/Tests/run-mode.test.sh
 @@ -102,7 +102,7 @@ def record(entry):
@@ -7210,7 +7398,7 @@ index fb2be66..9c1451a 100755
 +(custom / "factory.json").write_text(json.dumps(factory))
 +(custom / "omarchy.img.zst").write_bytes(image)
 +(custom / "provisioning.json").write_text('{"fixture":"no VM"}')
-+package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-48-aarch64.pkg.tar.zst"
++package_path = "Contents/Resources/guest-packages/try-omarchy-0.1.0-49-aarch64.pkg.tar.zst"
 +required = ["Contents/MacOS/omarchy-vm-helper", "Contents/Resources/runtime/bin/Try Omarchy",
 +            "Contents/Resources/firmware/edk2-aarch64-code.fd", "Contents/Resources/scripts/run-qemu-gpu.sh", package_path]
 +for name in required:
@@ -7255,7 +7443,7 @@ index fb2be66..9c1451a 100755
 +print("run-mode.test: PASS (including reviewed custom factory selection)")
  PY
 diff --git a/macos/Tests/run-qemu-gpu.test.sh b/macos/Tests/run-qemu-gpu.test.sh
-index 6ecaef4..0eaeee3 100755
+index 6ecaef4..a76bcaa 100755
 --- a/macos/Tests/run-qemu-gpu.test.sh
 +++ b/macos/Tests/run-qemu-gpu.test.sh
 @@ -95,6 +95,17 @@ if [[ -n ${FAKE_ZSTD_FAIL:-} ]]; then
@@ -7276,7 +7464,17 @@ index 6ecaef4..0eaeee3 100755
  if [[ -n ${FAKE_ZSTD_HALFWAY:-} ]]; then
    head -c $(($(stat -f %z "$in") / 2)) "$in" >"$out"
    sleep 1
-@@ -448,14 +459,48 @@ assert_contains "$output" "OMARCHY_QEMU_GPU_FACTORY_IMAGE must be an absolute pa
+@@ -199,6 +210,9 @@ launch_env=()
+   fail "QEMU must reset on reboot and power off on shutdown"
+ [[ $(grep -o -- " -qmp " <<<"$output" | wc -l | tr -d ' ') == 1 ]] || fail "QEMU must expose exactly one QMP socket"
+ assert_contains "$output" "-monitor none"
++# Guest TRIM reaches the sparse disk file; zero detection is not a macOS hole punch.
++assert_contains "$output" "id=omarchy-root,file=$state/shell/disk.img,format=raw,media=disk,discard=unmap,cache=writeback"
++assert_not_contains "$output" "detect-zeroes"
+ for forbidden in -no-reboot -no-shutdown ' -gdb ' ' -s '; do
+   assert_not_contains "$output" "$forbidden"
+ done
+@@ -448,14 +462,48 @@ assert_contains "$output" "OMARCHY_QEMU_GPU_FACTORY_IMAGE must be an absolute pa
  launch_env=(OMARCHY_QEMU_GPU_STATE_ROOT="$fresh" OMARCHY_QEMU_GPU_FACTORY_IMAGE="$downloaded" FAKE_ZSTD_FAIL=1)
  output=$(launch) && fail "a failed decompression was accepted"
  assert_contains "$output" "run-qemu-gpu: could not decompress the factory disk"
@@ -7362,7 +7560,7 @@ index b496be7..d93a979 100755
          builder = BUILDER.read_text(encoding="utf-8")
          expected = re.search(r"^identity_patch_sha256=([a-f0-9]{64})$", builder, re.M)
 diff --git a/macos/run-qemu-gpu.sh b/macos/run-qemu-gpu.sh
-index cf3bb8f..ef56a1a 100755
+index cf3bb8f..7983d59 100755
 --- a/macos/run-qemu-gpu.sh
 +++ b/macos/run-qemu-gpu.sh
 @@ -185,11 +185,14 @@ open_storage() {
@@ -7405,7 +7603,7 @@ index cf3bb8f..ef56a1a 100755
  # names another archive; an empty value turns the offer off.
  bundled_package=""
  for candidate in "$resources_dir"/guest-packages/try-omarchy-*.pkg.tar.zst; do
-+  [[ ${candidate##*/} != try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst ]] || continue
++  [[ ${candidate##*/} != try-omarchy-0.1.0-49.1-aarch64.pkg.tar.zst ]] || continue
    [[ -f $candidate ]] && bundled_package=$candidate
  done
  package_to_install=${OMARCHY_SHELL_INSTALL_PACKAGE-$bundled_package}
@@ -7479,6 +7677,15 @@ index cf3bb8f..ef56a1a 100755
    fi
    [[ -f $vars ]] || new_vars "$vars"
    working_disk=$disk
+@@ -721,7 +760,7 @@ qemu_args=(
+   -serial none
+   -monitor none
+   -qmp "unix:$qmp_socket,server=on,wait=off"
+-  -drive "if=none,id=omarchy-root,file=${working_disk//,/,,},format=raw,media=disk,cache=writeback"
++  -drive "if=none,id=omarchy-root,file=${working_disk//,/,,},format=raw,media=disk,discard=unmap,cache=writeback"
+   -device 'virtio-blk-pci,drive=omarchy-root,serial=omarchy-root,bootindex=0'
+   -device 'virtio-gpu-gl-pci,max_outputs=1,xres=1920,yres=1080,romfile='
+   -display "cocoa,gl=on,show-cursor=on,zoom-to-fit=on,full-screen=$full_screen,full-grab=on,immersive=$immersive,swap-opt-cmd=off"
 @@ -758,6 +797,20 @@ if bridge_enabled settings; then
    )
  fi
@@ -7506,7 +7713,7 @@ index cf3bb8f..ef56a1a 100755
  fi
 +if [[ -n $home_disk ]]; then
 +  qemu_args+=(
-+    -drive "if=none,id=omarchy-home,file=${home_disk//,/,,},format=raw,media=disk,cache=writeback"
++    -drive "if=none,id=omarchy-home,file=${home_disk//,/,,},format=raw,media=disk,discard=unmap,cache=writeback"
 +    -device 'virtio-blk-pci,drive=omarchy-home,serial=omarchy-home'
 +    -smbios "type=11,value=$(credential tryomarchy.home "$home_id")"
 +  )
@@ -7568,7 +7775,7 @@ index 69f7b07..8e7ab60 100644
 +
 +When the separate Omarchy VM Manager app creates guests, they reuse a factory download in `~/Downloads/Omarchy VM Manager/Factory Images/`. The current image stays cached; obsolete image downloads are removed after at least seven days without use. You can remove that cache to reclaim space while no guest is being prepared. Existing guests keep their own disks and do not need the download to start.
 diff --git a/tests/kit/check.sh b/tests/kit/check.sh
-index 6deb115..2c32f86 100755
+index 6deb115..dedec30 100755
 --- a/tests/kit/check.sh
 +++ b/tests/kit/check.sh
 @@ -91,8 +91,13 @@ done
@@ -7582,7 +7789,7 @@ index 6deb115..2c32f86 100755
 +  [[ ${package##*/} =~ ^try-omarchy-[0-9][A-Za-z0-9._+-]*-(aarch64|any)\.pkg\.tar\.zst$ ]] || fail "invalid package name"
 +done
 +if ((${#packages[@]} == 2)); then
-+  [[ -f $resources/guest-packages/try-omarchy-0.1.0-48-aarch64.pkg.tar.zst && -f $resources/guest-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst ]] || fail "unrecognized package pair"
++  [[ -f $resources/guest-packages/try-omarchy-0.1.0-49-aarch64.pkg.tar.zst && -f $resources/guest-packages/try-omarchy-0.1.0-49.1-aarch64.pkg.tar.zst ]] || fail "unrecognized package pair"
 +fi
  
  # A kit downloads its image: the manifest names the factory's image, and the

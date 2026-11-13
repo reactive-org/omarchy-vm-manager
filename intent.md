@@ -4803,3 +4803,36 @@ turn-on and Omarchy default keeping setup on. **TO PROVE:** physical interaction
 **VERIFIED — no-VM checks:** `make test` passes 619 Swift tests in 82 suites, 340 script tests, the provisioning bundle check and 212 setup-screen checks (56 PNGs, synthetic services only); `make test-dev` passes the same 619 Swift tests under `DEVELOPMENT_CHANNEL`. Both runs build the app target first. New tests prove each channel's default, that the compiled flags follow the compiled channel, the recovery visibility rule, that a disabled manager makes no capability check, preparation or hibernate request and writes no saved-session record, and that a saved session written with the flag on still restores and releases protection after reopening with it off, with no new capability check. `git diff --check` passes. No app bundle was rebuilt or installed, and no VM, guest, disk, credential or permission was used or changed.
 
 **TO PROVE:** native appearance of the stable and Dev guest Home pages and menus; real-guest behaviour is unchanged from the earlier TO PROVE entries.
+
+## Reclaim space — 14 November 2026
+
+**USER REQUEST / DESIGN DECISION:** issue [#47](https://github.com/reactive-org/omarchy-vm-manager/issues/47). Sparse guest disks grew but never shrank, because QEMU's default `discard=ignore` silently dropped every guest TRIM. No upstream record or issue chose that default. Add an on-demand **Reclaim space** action (Home → space, and `omarchy-vm reclaim ID`). It trims a running guest's own filesystems over managed SSH and reports the guest folder's allocation before and after, using the same clone-aware figure shown as **used**. It is on-demand only; a weekly timer is a possible follow-up. The user chose a `%wheel NOPASSWD` sudoers rule for one fixed, argument-less helper over the issue's polkit rule. That copies the existing `try-omarchy-timezone` rule and keeps the guest package free of polkit rules. The manager never opens, truncates or punches a disk file itself. Reclaim holds the guest like a home backup: provisioning, launch, edits, deletion, suspension and home backup are refused while it runs. Pause, shutdown and exit cancel the host's request. The owner cannot signal root `sudo`, so a trim already running may finish inside the guest; that is harmless, and the host never reports it as complete. Failures never release the session, handle or reservations; those wait for the matching `.exited`. A disconnected CLI caller does not cancel a trim already under way.
+
+**PRIVATE COUPLING:**
+- The regenerated patch (`5f81e77d3a03`, subject "Pass guest TRIM to sparse disks and add the reclaim helper") adds `discard=unmap` to the root and home `-drive` lines. It does not add `detect-zeroes`, which has no macOS hole-punch path in QEMU's `file-posix.c`. The read-only previous disk is unchanged.
+- The guest package is bumped to 0.1.0-49 (native-rendering 49.1). It adds `/usr/bin/try-omarchy-reclaim`, which trims `/` and also `/home` when that is the home disk by device match, and `/etc/sudoers.d/try-omarchy-reclaim` (`/usr/bin/try-omarchy-reclaim ""`). Existing guests receive it at their next launch through `package-install`.
+- The runtime lock records `discardVersion: 1`. `RuntimeProvenance` rejects other values, and the runtime exposes it as `guestTrimVersion`. An older lock decodes as nil, so the action stays unavailable and is never inferred from protocol 1.
+- `GuestIntegrationCompatibility.runtimePackageSHA256`, the patch's `runtimeLeanPackageSHA256`, `ReviewedGuestPackageSource` and the Touch ID runtime package pin move to the 49 archives.
+- Lean contracts and the manual integration version stay at the 48.1 image package that factory builders carry. Manual contracts therefore no longer equal the runtime's lean package; the runtime upgrades such guests at launch.
+
+**VERIFIED — source and host only:**
+- Pinned QEMU `c3d48b7d` (11.1.1) `file-posix.c` implements `discard=unmap` on macOS raw files with `fcntl(F_PUNCHHOLE)`. It aligns discards to `f_bsize`, silently skips rejected unaligned edges and disables discard on `ENODEV`. virtio-blk advertises discard by default.
+- A host-only `F_PUNCHHOLE` probe on this Mac's APFS Data volume returned freed space to the volume. On an APFS clone it reduced only the clone's allocation and left the source's checksum unchanged. Unaligned punches failed with `EINVAL`, and punched ranges read back as zeroes with the logical size unchanged. No QEMU or guest was involved.
+
+**VERIFIED — no-VM checks:**
+- `make patched-kit` with the reviewed 49 packages passes the upstream suite (566 Swift tests in 113 suites), the kit build and `kit-check`. Kit SHA-256 `ba2a08cf4745639c406a0ec2a9e01071e35a6a1074113632a5a10bfd4757eaac` contains both drive options.
+- The guest package suite (`make test-guest` on the patched source) covers the sudoers rule, no-argument and privilege refusal, target selection and fixed failure stages. The launcher dry-run test asserts the root drive.
+- Manager tests cover admission, busy/exclusion with home backup, provisioning holds, shutdown/exit cancellation, late results, the unsupported runtime and guest, report/stage allowlists, the CLI reply and the shipped guest program, including cancellation when root `sudo` cannot be signalled.
+- `make test` passes 647 Swift tests in 85 suites, 351 script tests, the provisioning bundle check and 210 setup-screen checks (synthetic services only). `make test-dev` passes the same 647 Swift tests under `DEVELOPMENT_CHANNEL`. `make app-dev verify-dev` passes (`app-layout: PASS`; NAT-only, no factory image). `make test-upstream` passes on the final pinned commit `5f81e77d3a03`, including `run-mode.test`, `run-qemu-gpu.test` and the guest package suites.
+- In a throwaway, network-less Arch builder container with the 0.1.0-49 archive installed (`pacman -U -dd`), `visudo -c` accepts the rules. A wheel user runs `sudo -n /usr/bin/try-omarchy-reclaim` without a password and receives the helper's own report (`trim-root`, expected because the container's overlayfs has no FITRIM). sudo refuses the helper with an argument, any other command, and a non-wheel user.
+
+**TO PROVE:** on a real disposable Dev guest:
+- an in-guest trim lowers the host allocation of both disk files;
+- whether btrfs already uses `discard=async` with discard now honoured (`/proc/mounts`, `lsblk -D`);
+- the first reclaim recovers the backlog freed while discards were dropped;
+- existing guests install 0.1.0-49 at their next launch;
+- interaction with the factory reset snapshot and cloned home disks;
+- no measurable write-performance regression after reclaim;
+- the panel's native appearance.
+
+No VM was launched, contacted or modified. The new kit is not yet published as a `runtime-kit-<sha>` CI dependency.

@@ -13,9 +13,10 @@ public struct GuestTouchIDRecord: Codable, Sendable {
 }
 
 public enum GuestTouchIDPolicy {
-    /// try-omarchy 0.1.0-48: its UUID-scoped authentication is unchanged from the
-    /// reviewed 0.1.0-47; 48 only adds the Omarchy 4.5 lean owner contract.
-    public static let reviewedRuntimePackageSHA256 = "5c09250244da58caff58fe25af359fa76277c5d441cbdd0331f523dd9b429b65"
+    /// try-omarchy 0.1.0-49: its UUID-scoped authentication is unchanged from the
+    /// reviewed 0.1.0-47; 48 added the Omarchy 4.5 lean owner contract and 49
+    /// only adds the argument-less reclaim helper and its sudoers rule.
+    public static let reviewedRuntimePackageSHA256 = "7733a29ff3a7b91ff592f8a936f746a2660a5dd562c30141a0c0d92721e7592b"
     /// Image packages of the reviewed lean contracts (0.1.0-43.1 and 0.1.0-48.1).
     public static let reviewedLeanPackageSHA256s: Set<String> = [
         "9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211",

@@ -43,6 +43,7 @@ public struct GuestCLIInvocation: Sendable {
       start ID [--wait [ssh|running]]
       pause ID                     Pause and wait for runtime acknowledgement
       resume ID                    Resume and wait for runtime acknowledgement
+      reclaim ID                   Trim a running guest so freed space returns to macOS
       stop ID [--force] [--wait]
       restart ID [--wait [ssh|running]]
       wait ID [--for ssh|running|stopped|paused]

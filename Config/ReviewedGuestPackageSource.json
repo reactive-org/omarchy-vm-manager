@@ -1,10 +1,10 @@
 {
-  "leanPackageSHA256": "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3",
-  "packageSHA256": "5c09250244da58caff58fe25af359fa76277c5d441cbdd0331f523dd9b429b65",
+  "leanPackageSHA256": "5a307d8919f0571dbc1c64a2413f8f0ef85e1e6daf2132447169ab61e9ebbd58",
+  "packageSHA256": "7733a29ff3a7b91ff592f8a936f746a2660a5dd562c30141a0c0d92721e7592b",
   "sourceTrees": {
     "LICENSE": "de5508aa9973ec51219523f3a3728b612e9d33ff",
     "guest/package/build.sh": "56ee9724bc90e031ad96db581de69c85e68e8f24",
     "guest/package/native-rendering.py": "39510e0b744b5237820b9128843b29f9f76eabfb",
-    "guest/package/try-omarchy": "9fd92c73602b27c01e7a98046d479de69c38cebd"
+    "guest/package/try-omarchy": "cd2e301d0971939568484dbe2bf56527b2e07a2f"
   }
 }

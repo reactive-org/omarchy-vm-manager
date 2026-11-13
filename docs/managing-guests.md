@@ -4,13 +4,17 @@
 
 ## A guest's Home page
 
-Select a guest in the sidebar to open its **Home** page. It shows the guest's resources, its developer setup, experimental suspend to disk and its home disk, with **Launch** or **Shut down** at the top. The tabs beside **Home** cover the virtual machine, networking, startup, SSH and Spaces. The suspend panel doesn't establish that a guest can hibernate; see [suspend requirements and limitations](Suspend.md).
+Select a guest in the sidebar to open its **Home** page. It shows the guest's resources, its developer setup, experimental suspend to disk, reclaimable space and its home disk, with **Launch** or **Shut down** at the top. The tabs beside **Home** cover the virtual machine, networking, startup, SSH and Spaces. The suspend panel doesn't establish that a guest can hibernate; see [suspend requirements and limitations](Suspend.md).
 
 ![The stopped guest Home page with Launch, resources, setup, experimental suspend to disk and home disk sections](media/guest-home.webp)
 
 ## Back up a guest home
 
 Select a running guest and choose **Home → Back up home…**. This requires authenticated managed SSH and a mounted read-write host folder. Close guest apps, review the unencrypted export (including hidden files and credentials), then confirm. A unique backup folder receives `home.tgz`; the app reports completion and its host path after checking the archive. Existing backups are preserved. See [backup contents, cancellation and limitations](HomeBackup.md).
+
+## Reclaim space
+
+Deleting files inside a guest doesn't shrink its disk files on the Mac. Select a running guest and choose **Home → space → Reclaim space** to trim the guest's free space and return it to macOS. It needs authenticated managed SSH and runs while you keep using the guest. Guest snapshots, blocks shared with the factory image or a copied home disk, and Time Machine local snapshots can hold space back. See [Reclaim space](ReclaimSpace.md).
 
 ## Change a guest's configuration
 
