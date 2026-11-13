@@ -25,14 +25,14 @@ final class AppModel: ObservableObject {
     func factorySummary(_ factory: FactoryIdentity) -> String? {
         let details: FactoryDetails?
         if factory.kind == .official {
-            details = officialFactorySource.map { FactoryDetails(omarchy: $0.omarchyVersion, channel: $0.channel, built: $0.built) }
+            details = officialFactorySource.map { FactoryDetails(omarchy: $0.omarchyPackage, channel: $0.channel, built: $0.built) }
         } else {
             details = factoryLibrary.details[factory.selector]
         }
         var parts: [String] = []
         if let details {
             if let channel = details.channelLabel { parts.append(channel) }
-            if let version = details.omarchyVersion { parts.append("Omarchy " + version) }
+            if let version = details.omarchyLabel { parts.append(version) }
             if let built = details.built {
                 parts.append("built " + built.formatted(.dateTime.day().month(.abbreviated).year().hour().minute()))
             }

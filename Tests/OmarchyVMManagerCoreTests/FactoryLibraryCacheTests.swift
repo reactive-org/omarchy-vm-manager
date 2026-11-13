@@ -73,6 +73,13 @@ struct FactoryLibraryCacheTests {
         #expect(edge.omarchyVersion == "4.0.0.r7481" && edge.channelLabel == "Edge" && edge.built == nil)
         let bare = try #require(FactoryDetails.decode(Data("{}".utf8)))
         #expect(bare.omarchyVersion == nil && bare.channelLabel == nil)
+        // An edge package's fixed 4.0.0 base must not read as an old release.
+        #expect(stable.omarchyLabel == "Omarchy 4.5.0")
+        #expect(edge.omarchyLabel == "Omarchy development build r7481")
+        #expect(bare.omarchyLabel == nil)
+        #expect(FactoryDetails.omarchyLabel("4.0.0.r7617-1") == "Omarchy development build r7617")
+        #expect(FactoryDetails.omarchyLabel("4.5.1") == "Omarchy 4.5.1")
+        #expect(FactoryDetails.omarchyLabel("-1") == nil)
         var cache = FactoryLibraryCache()
         let request = cache.beginRefresh()
         _ = cache.apply(FactoryCatalogListing(factories: [.official, image], issues: [], details: [image.selector: stable]), for: request)

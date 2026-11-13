@@ -30,6 +30,7 @@ struct OfficialFactorySourceTests {
         #expect(source.releaseURL.absoluteString == "https://github.com/omacom/try-omarchy/releases/tag/v1.3.0")
         #expect(source.parts.map(\.name) == [".001", ".002"] && source.downloadBytes == 300 && source.imageSHA256 == image)
         #expect(source.omarchyVersion == "4.0.0" && source.kernel == "7.2.8" && source.built != nil)
+        #expect(source.omarchyPackage == "4.0.0.r7235.g967bbdd-1" && source.omarchyLabel == "Omarchy development build r7235")
     }
 
     @Test func refusesManifestsThatDoNotMatchTheLock() throws {

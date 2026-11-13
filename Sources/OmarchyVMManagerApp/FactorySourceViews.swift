@@ -40,7 +40,7 @@ struct FactorySourceDetails: View {
             }
             row("contains") {
                 let built = source.built.map { " · built " + $0.formatted(date: .abbreviated, time: .omitted) } ?? ""
-                Text("Omarchy \(source.omarchyVersion) · \(source.channel)" + (compact ? built : " · \(source.platform) · kernel \(source.kernel)" + built))
+                Text("\(source.omarchyLabel) · \(source.channel)" + (compact ? built : " · \(source.platform) · kernel \(source.kernel)" + built))
                     .font(compact ? Theme.sans(13) : Theme.mono(14))
             }
         }
