@@ -2,7 +2,7 @@
 
 Create independent Omarchy guests, configure their resources, and connect from your Mac over SSH. This guide describes the current private macOS build. Its screenshots show the Dev build **0.11.3 (187)**.
 
-![The manager library with five stopped guests and the Import factory and New VM toolbar buttons](media/library.webp)
+![The manager library with five stopped guests and the Home, Import factory and New VM toolbar buttons](media/library.webp)
 
 ## Start here
 

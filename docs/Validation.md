@@ -556,3 +556,27 @@ An earlier attempt on the official Try Omarchy image downloaded and verified the
 - The probe used only a private folder, which it removed.
 
 **VERIFIED — end-to-end, Dev build of this branch:** the user's **Back up home…** on the same guest showed Verified. The host folder (mode 0700) holds only `home.tgz` (mode 0600, one link), and `gzip -t` and `tar -tzf` pass on it.
+
+## User documentation media refresh for 0.11.3 — 14 November 2026
+
+With the user's approval to drive only the Dev manager window (`dev.omarchy.vm-manager.dev`), recaptured 21 of the 23 user-guide screenshots through Computer Use. The build was a local Dev build of `next` at `9991a69` plus the title-bar fix from #45, reporting **0.11.0 (27)**. #44 had changed the title bar and the factory version labels, so every full-window image was retaken from that build. The five existing Dev guests were stopped before and after capture. The Configure form was opened and cancelled. The Build lean factory and Import factory sheets were not retaken, because their contents are unchanged. No saved defaults, permissions or other guests were changed, and the Stable app and its guests were not touched.
+
+With the user's explicit approval, a new **Example VM** was created from the **Lean Omarchy - stable** custom factory (Omarchy 4.5.0), with the Four terminals layout, the Developer profile and the default resources, access and 60-minute sudo settings. It was launched through first run. The user answered Omarchy's sudo prompt and its password request after the **Needs you** capture, and dismissed three of the four welcome notifications before the desktop capture. Example VM was then shut down from the manager: it showed **Stopped** and its guest window process was confirmed exited. At the user's request it was moved to the Mac Trash through the app's confirmed delete.
+
+An earlier attempt on 12 November used the 8 November Lean Omarchy - edge factory and failed. The install play finished with `failed=0` and reported `restartRequired`. The configuration check then started without a guest restart and ended `[setup failed]` with result `childFailed`. That VM was later deleted by the user, and none of its captures are published.
+
+**VERIFIED — real Dev window and guest:**
+- First run on the Stable 4.5.0 lean factory progressed through Created, Starting, First boot, Connecting, Installing, Restart and Ready.
+- The sidebar showed **Needs you** at Omarchy's 60-minute sudo prompt.
+- The guest restarted before its configuration check, and the setup card reports Developer, Four terminals and **Succeeded**.
+- The title bar shows the Home, Import factory and New VM buttons at the trailing edge.
+- Edge factories read "Omarchy development build r7844" and "manual account setup".
+- Every raw capture and converted WebP was reviewed for credentials, key fingerprints, hostnames, personal identifiers, stray windows and the intended screen.
+- The SSH image is cropped above the personal key fingerprint. The configuration image is cropped to its sheet.
+- `manifest.json` dimensions, byte counts, hashes and crops match the files. The 23 screenshots total 1,190,234 bytes, below the 2 MB budget.
+- Guide alt text and wording that no longer matched the UI were updated: factory labels, the sudo password step, the Installing and desktop images, and the toolbar buttons.
+
+**TO PROVE:**
+- Whether the 12 November restart and check failure is specific to the edge factory or to that older build.
+- Setup on a manual-account-setup factory.
+- The edge factory's layout on a real guest.

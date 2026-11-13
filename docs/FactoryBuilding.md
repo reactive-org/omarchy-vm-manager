@@ -27,7 +27,7 @@ first native flow.
 
 ## Removing factories and old builds
 
-![The Factory images library: the official card, a Stable lean factory used by a VM with its trash button unavailable, and an Edge lean factory that can be moved to Trash](media/factory-library.webp)
+![The Factory images library: the official card, a Stable lean factory used by Example VM with its trash button unavailable, and an Edge lean factory on a development build, marked manual account setup, that can be moved to Trash](media/factory-library.webp)
 
 On **Factory images**, each custom factory card has a trash button. **Move to
 Trash** moves the factory and its import record to the macOS Trash together, so

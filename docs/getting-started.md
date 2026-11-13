@@ -33,9 +33,11 @@ For different owner settings on just one VM, the CLI supports [per-VM owner over
 
 A factory is the disk image a new guest starts from. Open **Factory images** in the sidebar to see your library: the official Try Omarchy image, and any lean or custom factories you've built or imported. Each custom card shows its Omarchy channel, version and build time, so factories with the same name are easy to tell apart.
 
-![The Factory images library with the official Try Omarchy card and two lean factories, one Stable with Omarchy 4.5.0 and used by a VM, one Edge](media/factory-library.webp)
+![The Factory images library with the official Try Omarchy card, a Stable lean factory with Omarchy 4.5.0 used by Example VM, and an Edge lean factory on a development build marked manual account setup](media/factory-library.webp)
 
 The trash button on a custom card moves that factory to the Trash, so you can restore it. A factory a VM still uses can't be removed; its card says which VM uses it.
+
+Edge factories show **Omarchy development build** and a number instead of a release version. A card marked **manual account setup** carries an Omarchy release that hasn't been reviewed for automatic account setup: guests from it skip Guest defaults and use Omarchy's own first-run account form.
 
 Developer setup updates Omarchy before installing your selections, and that update currently fails on the official image. For a guest with developer setup, use a lean factory: build one with **Build factory…** (see [Build a lean factory in Dev](FactoryBuilding.md)) or import a prepared one with **Import factory…** (see [Prepare a factory image](preparing-factory-images.md)). When a factory is ready, **Use for new VM** opens the New VM form with that factory selected.
 
@@ -43,7 +45,7 @@ Developer setup updates Omarchy before installing your selections, and that upda
 
 Click **+** in the toolbar, press **Command+N**, or use **Use for new VM** on a factory. Type **Example VM** as the name and check the **factory** row. Its menu lists each factory with its channel, Omarchy version and build time. **Import…** and **Build…** beside it add a factory without leaving the form.
 
-![The New virtual machine form named Example VM, with the Lean Omarchy factory selected and its four sections closed](media/example-vm-01-new-vm.webp)
+![The New virtual machine form named Example VM, with the Lean Omarchy - stable factory selected and its four sections closed](media/example-vm-01-new-vm.webp)
 
 The rest of the form is grouped into four sections. Click one to open it; only one is open at a time, and each closed section shows a one-line summary.
 
@@ -59,7 +61,7 @@ Other examples include **Terminal + browser**, **VS Code + browser** and layouts
 
 **customise** holds developer setup. **Source** is **None**, **Bundled configuration** or **Local setup folder**. With bundled configuration, combine profiles to build your workstation: **Developer** (command-line, Git and editor tools) is the base, and **Web**, **Python** and **Project managed** each add to it. Shared features are installed once. For Example VM, keep **Developer** on its own.
 
-![The customise section open, with Bundled configuration and the Developer profile selected](media/example-vm-03-customise.webp)
+![The customise section open, with the Developer profile selected and Ask for sudo once off](media/example-vm-03-customise.webp)
 
 ### resources
 
@@ -99,11 +101,11 @@ With the official image, the first launch also downloads and verifies the factor
 
 ### When setup needs you
 
-During **Installing**, Omarchy asks whether to enable passwordless sudo, which setup needs. The guest shows **Needs you** in the sidebar, and the **Live terminal** on its Home page shows the prompt. Answer it there: choose **Yes** or **No**, then press Return.
+During **Installing**, Omarchy asks whether to enable passwordless sudo, which setup needs. The guest shows **Needs you** in the sidebar, and the **Live terminal** on its Home page shows the prompt. Answer it there: choose **Yes** or **No** and press Return. After **Yes**, sudo asks for the guest account's password.
 
 Omarchy's prompt warns about the risk in its own words. By default setup asks for 60 minutes, renews it while it runs, and turns it off when it finishes. With **Ask for sudo once** (in the setup options, and in **Guest defaults**), Omarchy asks once and calls it permanent; setup still turns it off when it finishes.
 
-![Example VM waiting at Installing, with Omarchy's passwordless sudo prompt in the live terminal and Needs you in the sidebar](media/example-vm-07-needs-you.webp)
+![Example VM waiting at Installing, with Omarchy's 60-minute passwordless sudo warning and password prompt in the live terminal and Needs you in the sidebar](media/example-vm-07-needs-you.webp)
 
 While a run is blocked, the Dock icon bounces once if the manager isn't in front, and macOS shows one notification naming the guest and what it's waiting for. The Dock icon may also show **!** if macOS allows badges for the app. The manager asks for notification permission when it opens; the badge and Dock still work if you decline. If a step runs out of time, the failure names it, for example "Omarchy's passwordless sudo prompt wasn't answered within an hour".
 
@@ -111,7 +113,7 @@ While a run is blocked, the Dock icon bounces once if the manager isn't in front
 
 Setup then updates Omarchy and installs your selections. **Follow output** keeps the live terminal scrolled to the latest line, and **View output** opens the full log. Setup restarts the guest once, then checks the configuration.
 
-![Example VM at Installing, with package downloads in the live terminal](media/example-vm-08-installing.webp)
+![Example VM at Installing, with the setup playbook's tasks and recap in the live terminal](media/example-vm-08-installing.webp)
 
 ### Ready
 
@@ -121,7 +123,7 @@ When the tracker finishes, the Home page shows **Setup complete**. The **setup**
 
 The guest window shows the four-terminal layout. Omarchy's welcome notifications appear at the top right until you dismiss them.
 
-![Example VM's guest desktop with four terminals and two Omarchy welcome notifications](media/example-vm-10-desktop.webp)
+![Example VM's guest desktop with four terminals and one Omarchy welcome notification](media/example-vm-10-desktop.webp)
 
 ## Connect from your Mac
 
