@@ -133,11 +133,18 @@ struct ManagerView: View {
             }.id(detailPresentation).environment(\.guestsRunning, model.snapshots.contains { $0.sessionID != nil }).font(Theme.body).background(Theme.ground).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle())
         }
         .navigationTitle(AppChannel.current.displayName)
+        .toolbar(removing: .title)
         .toolbar {
-            // The app icon sits before the window title and returns to the overview.
+            // The app icon and name stand in for the window title; clicking
+            // either returns to the overview.
             ToolbarItem(placement: .navigation) {
-                Button { destination = .library } label: { ManagerArtwork(size: 22) }
-                    .buttonStyle(.plain).help("Show all virtual machines").accessibilityLabel("All virtual machines")
+                Button { destination = .library } label: {
+                    HStack(spacing: 8) {
+                        ManagerArtwork(size: 22)
+                        Text(AppChannel.current.displayName).font(.title3.weight(.semibold)).lineLimit(1)
+                    }.contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).help("Show all virtual machines").accessibilityLabel("All virtual machines")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button { importingFactory = true } label: { Label("Import factory", systemImage: "square.and.arrow.down") }

@@ -53,6 +53,20 @@ public struct FactoryDetails: Equatable, Sendable {
         if let range = value.range(of: #"\.g[0-9a-f]+$"#, options: .regularExpression) { value.removeSubrange(range) }
         return value
     }
+    /// "Omarchy 4.5.0" for a release. An edge package keeps a fixed 4.0.0 base
+    /// before its commit count (4.0.0.r7617.g…), which reads as an old release,
+    /// so it becomes "Omarchy development build r7617".
+    public var omarchyLabel: String? { omarchy.flatMap(Self.omarchyLabel) }
+    public static func omarchyLabel(_ package: String) -> String? {
+        var value = package
+        if let dash = value.firstIndex(of: "-") { value = String(value[..<dash]) }
+        guard !value.isEmpty else { return nil }
+        if let match = value.firstMatch(of: #/^[0-9][0-9.]*\.r([0-9]+)(\.g[0-9a-f]+)?$/#) {
+            return "Omarchy development build r" + String(match.1)
+        }
+        if let range = value.range(of: #"\.g[0-9a-f]+$"#, options: .regularExpression) { value.removeSubrange(range) }
+        return "Omarchy " + value
+    }
     public var channelLabel: String? {
         switch channel { case "stable": "Stable"; case "edge": "Edge"; case "rc": "RC"; default: nil }
     }

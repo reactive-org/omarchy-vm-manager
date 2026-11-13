@@ -21,6 +21,9 @@ public struct OfficialFactorySource: Equatable, Sendable {
     public let downloadBytes: Int64
     public let imageSHA256: String
     public let omarchyVersion: String
+    /// The image's full Omarchy package version, e.g. 4.0.0.r7235.g967bbdd-1.
+    public let omarchyPackage: String
+    public var omarchyLabel: String { FactoryDetails.omarchyLabel(omarchyPackage) ?? "Omarchy " + omarchyVersion }
     public let channel: String
     public let platform: String
     public let kernel: String
@@ -70,6 +73,7 @@ public struct OfficialFactorySource: Equatable, Sendable {
         return OfficialFactorySource(repository: "github.com/omacom/try-omarchy", releaseTag: tag, releaseURL: release, fileName: image.compressed.path,
                                      parts: parts, downloadBytes: total, imageSHA256: manifest.image.sha256,
                                      omarchyVersion: image.omarchy.split(separator: ".r").first.map(String.init) ?? image.omarchy,
+                                     omarchyPackage: image.omarchy,
                                      channel: image.channel, platform: image.platform,
                                      kernel: image.kernel.split(separator: "-").first.map(String.init) ?? image.kernel,
                                      built: ISO8601DateFormatter().date(from: image.built))
