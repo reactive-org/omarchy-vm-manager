@@ -3,7 +3,11 @@ import Foundation
 
 public struct ManagerCommandEndpoint: Sendable {
     public let directory: URL
-    public var socket: URL { directory.appendingPathComponent("control.sock") }
+    private var socketName = "control.sock"
+    public var socket: URL { directory.appendingPathComponent(socketName) }
+    public var provisioning: ManagerCommandEndpoint {
+        var value = self; value.socketName = "setup-v1.sock"; return value
+    }
     public init(applicationSupport: URL, channel: AppChannel = .current) {
         let identity = KitVerifier.sha256(Data(channel.commandIdentity(in: applicationSupport).utf8)).prefix(16)
         directory = URL(fileURLWithPath: "/private/tmp/omarchy-manager-\(getuid())-\(identity)")
@@ -20,7 +24,7 @@ public struct ManagerCommandEndpoint: Sendable {
     }
 }
 
-private enum CommandSocketIO {
+enum CommandSocketIO {
     static let requestLimit = 32768
     static let responseLimit = 1_048_576
     static func address(_ path: String) throws -> sockaddr_un {

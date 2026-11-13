@@ -2,69 +2,157 @@
 
 [User guide](README.md) · [Next: manage your guests](managing-guests.md)
 
+This guide takes you from opening the manager to a ready Omarchy guest. As the example, you'll create **Example VM**, a guest with the **Four terminals** desktop layout and the **Developer** setup profile, and follow it through its first run. Allow 15–20 minutes; most of that is the guest downloading and installing software while you do something else.
+
+You need an Apple Silicon Mac running macOS 15 or later.
+
 ## Open the manager
 
-Use an Apple Silicon Mac running macOS 15 or later. Open **Omarchy VM Manager.app** from this project's `dist` folder. If you are building it yourself, follow the [repository build instructions](../README.md#build-and-check).
+Open **Omarchy VM Manager.app** from this project's `dist` folder. If you're building it yourself, follow the [repository build instructions](../README.md#build-and-check).
 
-**Virtual Machines** is your library. Select a guest in the sidebar to inspect it. Opening the app restores the list without starting guests. Scroll the library to see additional entries.
+The library lists your virtual machines in the sidebar and on the main page, with each guest's state, cores, memory and disks. Opening the app restores the list without starting any guest.
 
-![The current manager library, showing two stopped guests](media/library.webp)
+![The manager library, showing five stopped guests](media/library.webp)
 
-## Set up defaults once
+## Save your account defaults once
 
-Choose **Guest Defaults** in the sidebar to reuse your preferred owner setup for future guests:
+New guests can set up their owner account automatically. Choose **Guest defaults** in the sidebar:
 
-1. Turn on **Set up new guests automatically**.
-2. Enter a username and password. Add a full name and Git email if wanted.
-3. Choose a hostname prefix, time zone and keyboard.
-4. Optionally choose an existing SSH **public** key using **Choose .pub…**.
-5. Click **Save Defaults**.
+1. Enter a username and password. Add a full name and Git email if you want them.
+2. Choose a hostname prefix, time zone and keyboard.
+3. Optionally choose an existing SSH **public** key with **Choose .pub…**.
+4. Click **Save defaults**.
 
-The password stays in the manager's scoped macOS Keychain storage. Development builds can use saved login-Keychain credentials; provisioned builds use protected credentials and may need an explicit upgrade of older passwords. See [Touch ID setup and build requirements](TouchID.md). New guests receive a snapshot of these settings and a unique hostname suffix; changing defaults leaves existing guests unchanged. You can choose manual setup separately for each new guest.
+The same page has **Save disk defaults** for new guests' disk sizes and **Save desktop defaults** for their desktop.
 
-For different owner settings on just one VM, the updated CLI supports [per-VM owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm). It inherits the saved password and any omitted settings without saving changes to Guest Defaults. These flags require a matching manager and CLI build, included in the local 0.9.4 (17) update; the pictured New VM form does not expose individual owner overrides.
+Saved defaults apply to every new VM; there is no separate on switch. The password stays in the manager's own macOS Keychain storage. Development builds can use saved login-Keychain credentials; provisioned builds use protected credentials and may need an explicit upgrade of older passwords (see [Touch ID setup and build requirements](TouchID.md)). Each new guest receives a snapshot of these settings and a unique hostname suffix, so changing defaults later leaves existing guests unchanged. To skip automatic setup for one guest, turn on **manual account** in the **access** section of its New VM form.
 
-## Create a guest
+For different owner settings on just one VM, the CLI supports [per-VM owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm). They inherit the saved password and any settings you leave out, without changing Guest defaults.
 
-Click **+** in the toolbar, or press **Command+N**.
+## Choose a factory
 
-![The actual New Virtual Machine form with an unsaved Development example, four cores, 4 GiB RAM and SSH enabled](media/new-vm.webp)
+A factory is the disk image a new guest starts from. Open **Factory images** in the sidebar to see your library: the official Try Omarchy image, and any lean or custom factories you've built or imported. Each custom card shows its Omarchy channel, version and build time, so factories with the same name are easy to tell apart.
 
-Give the guest a distinct name, such as **Development**, then choose its options:
+![The Factory images library with the official Try Omarchy card, a Stable lean factory with Omarchy 4.5.0 used by Example VM, and an Edge lean factory on a development build marked manual account setup](media/factory-library.webp)
 
-| Option | What it does |
-| --- | --- |
-| Factory image | Choose the official image or a verified compatible custom factory |
-| Disk capacity | Choose the guest’s sparse disk capacity; new guests default to 64 GiB |
-| Memory and processor cores | Start with 4 GiB and four cores; allocate more when needed and within your Mac's available budget |
-| Clipboard integration | Share text with the Mac while this guest is focused |
-| Immersive Mode | Open full screen with the Mac menu bar and Dock hidden |
-| Use saved owner setup defaults | Apply your saved setup automatically; turn it off for the normal first-boot wizard |
-| Enable SSH from this Mac | Provision separate guest keys and a unique localhost connection port; enabled by default |
-| Personal public key | Optionally enroll your existing `.pub` key alongside the manager's key |
+The trash button on a custom card moves that factory to the Trash, so you can restore it. A factory a VM still uses can't be removed; its card says which VM uses it.
 
-Click **Create VM**. This saves the profile; the guest disk is created on its first launch. SSH enrollment and owner setup are chosen at creation and cannot be changed through the current configuration form.
+Edge factories show **Omarchy development build** and a number instead of a release version. A card marked **manual account setup** carries an Omarchy release that hasn't been reviewed for automatic account setup: guests from it skip Guest defaults and use Omarchy's own first-run account form.
 
-## Launch and connect
+Developer setup updates Omarchy before installing your selections, and that update currently fails on the official image. For a guest with developer setup, use a lean factory: build one with **Build factory…** (see [Build a lean factory in Dev](FactoryBuilding.md)) or import a prepared one with **Import factory…** (see [Prepare a factory image](preparing-factory-images.md)). When a factory is ready, **Use for new VM** opens the New VM form with that factory selected.
 
-Select the guest and click **Launch**. The manager selects its Home card and scrolls to the top so preparation and download progress are visible. Launching through the CLI selects the same card when the manager observes the new session. You can switch to another guest or page while startup continues.
+## Create Example VM
 
-![The stopped guest Home page with Launch, experimental suspend readiness and Quick Settings](media/guest-home.webp)
+Click **+** in the toolbar, press **Command+N**, or use **Use for new VM** on a factory. Type **Example VM** as the name and check the **factory** row. Its menu lists each factory with its channel, Omarchy version and build time. **Import…** and **Build…** beside it add a factory without leaving the form.
 
-On first launch, the manager downloads the official factory image if it is not already cached, verifies it, and prepares the guest disk. Progress appears beside the guest's icon. The shared image is kept in `~/Downloads/Omarchy VM Manager/Factory Images/` for reuse by later guests. See [cache behavior](FactoryCache.md) for retention and disk-space details.
+![The New virtual machine form named Example VM, with the Lean Omarchy - stable factory selected and its four sections closed](media/example-vm-01-new-vm.webp)
 
-With saved owner defaults, setup continues automatically. Otherwise, complete the normal setup wizard in the guest window. **Running** means the VM has reached its runtime-ready boundary; account setup and SSH can still be finishing.
+The rest of the form is grouped into four sections. Click one to open it; only one is open at a time, and each closed section shows a one-line summary.
 
-![The current Virtual Machine tab showing CPU, memory, disk capacity and recorded factory](media/resources.webp)
+### layout
 
-Both guests remained stopped during capture. The example’s 20 GiB allocation illustrates an existing configuration, not the suggested starting size. The Home page’s experimental suspend panel does not establish that this guest can hibernate; see [suspend requirements and limitations](Suspend.md).
+Open **layout** and choose **Four terminals**. It's applied at the guest's next desktop login. Choosing a layout turns on developer setup, so **customise** now reads **Developer** and the main button becomes **Create, launch & set up**.
 
-For terminal access, open the guest's **SSH** tab. Once its connection is verified, choose **Copy SSH Command** and paste the command into Terminal on your Mac. See [SSH and networking](managing-guests.md#connect-over-ssh).
+![The layout section open, with the Four terminals desktop layout selected](media/example-vm-02-layout.webp)
 
-For Omarchy keyboard shortcuts, enable the manager's Accessibility access as described in [Super shortcuts](troubleshooting.md#commandspace-opens-mac-spotlight).
+Other examples include **Terminal + browser**, **VS Code + browser** and layouts spread across several workspaces. You can also start from a layout file. Leave the layout as **Omarchy default** to keep Omarchy's standard desktop.
+
+### customise
+
+**customise** holds developer setup. **Source** is **None**, **Bundled configuration** or **Local setup folder**. With bundled configuration, combine profiles to build your workstation: **Developer** (command-line, Git and editor tools) is the base, and **Web**, **Python** and **Project managed** each add to it. Shared features are installed once. For Example VM, keep **Developer** on its own.
+
+![The customise section open, with the Developer profile selected and Ask for sudo once off](media/example-vm-03-customise.webp)
+
+### resources
+
+**resources** sets **memory**, **cores**, the **system disk**, and an optional **separate home** disk with its size and starting **home data**. New guests start with 4 GiB of memory, four cores and 64 GiB system and home disks; these defaults suit Example VM. Allocate more within what your Mac can spare. Disks only grow, never shrink.
+
+![The resources section open, showing 4 GiB memory, four cores, a 64 GiB system disk and a separate 64 GiB home disk](media/example-vm-04-resources.webp)
+
+### access
+
+**access** covers how the guest connects to your Mac:
+
+- **clipboard**: share copied text while the guest is focused.
+- **immersive mode**: open full screen with the Mac menu bar and Dock hidden.
+- **touch id**: enable the guest Touch ID bridge (see [Guest Touch ID](GuestTouchID.md)).
+- **host folder**: share a dedicated Mac folder at `/mnt/mac` (see [Native host folders](SharedFolders.md)).
+- **manual account**: skip your saved account defaults for this guest.
+- **ssh**: on by default, with a unique localhost port and per-guest keys.
+- **public key**: optionally add your own `.pub` key alongside the manager's key.
+
+![The access section open, with clipboard and SSH on, automatic account setup as omarchy, and the optional public key](media/example-vm-05-access.webp)
+
+SSH enrollment and the owner account are fixed when the guest is created.
+
+### Create it
+
+Click **Create, launch & set up**. The manager validates your selections, saves a copy of the setup inputs with the profile and starts the guest. Creating it approves the setup run, including temporary admin access and the restart that finishes setup; nothing else needs confirming up front.
+
+The other buttons are **Create**, which saves the guest without starting it, and **Create and launch** (shown when developer setup is off). If launching isn't available, the form offers **Create VM** instead and you launch the guest later from its page. If the buttons are disabled, the message above them explains what's missing, such as a name, folder or profile, and the relevant section opens.
+
+## Watch the first run
+
+The manager opens the new guest's **Home** page. A **first run** tracker shows each stage: **Created**, **Starting**, **First boot**, **Connecting**, **Installing**, **Restart** and **Ready**. You can switch to other guests or pages at any time; setup carries on.
+
+![Example VM's Home page with the first run tracker at Starting](media/example-vm-06-starting.webp)
+
+With the official image, the first launch also downloads and verifies the factory image. The download is kept for reuse by later guests; see [cache behaviour](FactoryCache.md). The guest window opens once its display is ready.
+
+### When setup needs you
+
+During **Installing**, Omarchy asks whether to enable passwordless sudo, which setup needs. The guest shows **Needs you** in the sidebar, and the **Live terminal** on its Home page shows the prompt. Answer it there: choose **Yes** or **No** and press Return. After **Yes**, sudo asks for the guest account's password.
+
+Omarchy's prompt warns about the risk in its own words. By default setup asks for 60 minutes, renews it while it runs, and turns it off when it finishes. With **Ask for sudo once** (in the setup options, and in **Guest defaults**), Omarchy asks once and calls it permanent; setup still turns it off when it finishes.
+
+![Example VM waiting at Installing, with Omarchy's 60-minute passwordless sudo warning and password prompt in the live terminal and Needs you in the sidebar](media/example-vm-07-needs-you.webp)
+
+While a run is blocked, the Dock icon bounces once if the manager isn't in front, and macOS shows one notification naming the guest and what it's waiting for. The Dock icon may also show **!** if macOS allows badges for the app. The manager asks for notification permission when it opens; the badge and Dock still work if you decline. If a step runs out of time, the failure names it, for example "Omarchy's passwordless sudo prompt wasn't answered within an hour".
+
+### Installing and restart
+
+Setup then updates Omarchy and installs your selections. **Follow output** keeps the live terminal scrolled to the latest line, and **View output** opens the full log. Setup restarts the guest once, then checks the configuration.
+
+![Example VM at Installing, with the setup playbook's tasks and recap in the live terminal](media/example-vm-08-installing.webp)
+
+### Ready
+
+When the tracker finishes, the Home page shows **Setup complete**. The **setup** card lists the installed software (**Developer**), the desktop (**Four terminals**) and the last run (**Succeeded**). **View output** shows the run again, and **Change setup…** adjusts it later.
+
+![Example VM running, with Setup complete and the setup card showing Developer, Four terminals and Succeeded](media/example-vm-09-ready.webp)
+
+The guest window shows the four-terminal layout. Omarchy's welcome notifications appear at the top right until you dismiss them.
+
+![Example VM's guest desktop with four terminals and one Omarchy welcome notification](media/example-vm-10-desktop.webp)
+
+## Connect from your Mac
+
+For a terminal from your Mac, open the guest's **SSH** tab. Once the connection is verified, choose **Copy SSH command** and paste the command into Terminal. See [SSH and networking](managing-guests.md#connect-over-ssh).
+
+To use Omarchy's keyboard shortcuts, such as Super+Space, give the manager Accessibility access as described in [Super shortcuts](troubleshooting.md#commandspace-opens-mac-spotlight).
+
+## Change setup later
+
+**Change setup…** on the setup card opens a sheet laid out like New VM. A strip at the top shows the last run's four steps (**Approve**, **Install**, **Restart**, **Check**) and says in one sentence how it ended. Below it, **layout** and **customise** start from the guest's current choices.
+
+Tick **Allow temporary admin access while setup runs**, plus **Allow Docker without sudo** if the plan needs it, then click the green button. Its label says what happens:
+
+- **Run setup again** repeats the last run's exact choices with the current setup engine.
+- **Apply changes** makes a new plan from what you changed. A setup that came from a local folder asks you to choose the folder again.
+- **Start & set up** starts a stopped guest, then runs the plan once the guest is reachable.
+
+That one approval covers the whole run, including its restart and configuration check. The sheet closes and the guest's **Home** follows the run, as it does after New VM: the setup panel shows the four steps, what's happening now and the live terminal, with **Cancel setup…** if you need it. When the run ends, the setup card returns. If the plan includes custom tasks, the sheet stops at **Approve & run** so you can inspect each task and allow it separately.
+
+## If setup stops
+
+If a run is waiting for approval, for example because you closed the sheet before approving it, **Change setup…** shows it again. Choose **Approve & run**, or **Discard this run** to cancel it without changing anything in the guest.
+
+If the manager quits while setup is finishing, the run stops. When your choices were already applied and the guest restarted, the setup card says so, and the strip marks the check as **didn't run**. The guest is usable as it is. **Run the check only** finishes that run with just the configuration check: it's read-only, asks for no admin access and installs nothing. **Run setup again** repeats the whole run instead. For a run that's still waiting at its restart or check, **Restart & check** or **Run the check** takes a single click.
+
+If a run stopped before its temporary admin access was confirmed removed and the guest has since stopped, cleanup can no longer be verified and the guest is held: it can't be launched, configured or deleted, and other guests can't start setup. Open **Review cleanup…** on the setup card, click **Release hold…** and confirm. The confirmation says cleanup wasn't verified; the guest may still allow passwordless sudo, which you then remove inside the guest. Setup history records that the hold was released without verification.
 
 ## Finish a session
 
-Save your work in the guest, then click **Shut Down** in the manager. Wait for **Stopped** before configuring or deleting it. Use **Force Stop…** from the ellipsis menu only when you need to power it off immediately; unsaved work can be lost.
+Save your work in the guest, then click **Shut down** on its page. Wait for **Stopped** before configuring or deleting it. Use **Force stop…** from the **More** menu (the ellipsis beside **Shut down**) only when you need to power the guest off immediately; unsaved work can be lost.
 
 [Next: manage your guests](managing-guests.md)

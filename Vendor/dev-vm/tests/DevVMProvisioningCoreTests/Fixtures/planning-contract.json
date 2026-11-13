@@ -1,0 +1,1248 @@
+[
+  {
+    "name": "default",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture"
+    },
+    "files": {}
+  },
+  {
+    "name": "profile-developer",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "developer"
+        ]
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "profile-web",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web"
+        ]
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "profile-python",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "python"
+        ]
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "profile-project-managed",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "project-managed"
+        ]
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-workstation",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "workstation"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-browsers",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "browsers"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-docker",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "docker"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-languages",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "languages"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-toolchain",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "toolchain"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-agents",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "agents"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-credentials",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "credentials"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-keyring",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "keyring"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-cli",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "cli"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-vcs",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "vcs"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-editors",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "editors"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-build",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "build"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-databases",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "databases"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-api",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "api"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "feature-quality",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "quality"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "empty-selection",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "disable": [
+            "workstation"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "sibling-lists-merge",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web",
+          "python"
+        ]
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "python-project-managed",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "python",
+          "project-managed"
+        ]
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "sibling-scalar-conflict",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "web",
+          "team.native-docker"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"native-docker\": {\"features\": [\"docker\"], \"options\": {\"docker\": {\"access\": \"native\"}}}, \"node24\": {\"features\": [\"languages\"], \"options\": {\"languages\": {\"tools\": {\"node\": \"24\"}}}}}}"
+    }
+  },
+  {
+    "name": "sibling-tool-selector-conflict",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "web",
+          "team.node24"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"native-docker\": {\"features\": [\"docker\"], \"options\": {\"docker\": {\"access\": \"native\"}}}, \"node24\": {\"features\": [\"languages\"], \"options\": {\"languages\": {\"tools\": {\"node\": \"24\"}}}}}}"
+    }
+  },
+  {
+    "name": "sibling-repaired",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web",
+          "python"
+        ],
+        "options": {
+          "databases": {
+            "clients": [
+              "sqlite"
+            ]
+          },
+          "languages": {
+            "tools": {
+              "node": "24"
+            }
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "disabled-conflict",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "python",
+          "web"
+        ],
+        "features": {
+          "disable": [
+            "databases"
+          ]
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "clear-maps-and-lists",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web"
+        ],
+        "features": {
+          "disable": [
+            "editors"
+          ]
+        },
+        "options": {
+          "languages": {
+            "tools": {}
+          },
+          "browsers": {
+            "browsers": []
+          },
+          "agents": {
+            "tools": {
+              "codex": ""
+            }
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "clear-feature-options",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web"
+        ],
+        "options": {
+          "languages": {}
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "null-tool-tombstone",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web"
+        ],
+        "options": {
+          "languages": {
+            "tools": {
+              "pnpm": null,
+              "node": "24"
+            }
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "keyring-seahorse",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "keyring"
+          ]
+        },
+        "options": {
+          "keyring": {
+            "seahorse": true
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "toolchain-ruby-python",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "features": {
+          "enable": [
+            "toolchain"
+          ]
+        },
+        "options": {
+          "toolchain": {
+            "prerequisites": [
+              "ruby",
+              "python"
+            ]
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "bash-with-disabled-prompt",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "developer"
+        ],
+        "options": {
+          "workstation": {
+            "shell": "bash",
+            "starship_config": "bad = ["
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "empty-prompt-override",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web"
+        ],
+        "options": {
+          "workstation": {
+            "starship_config": ""
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "valid-prompt",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "add_newline = false\n[character]\nsuccess_symbol = '[x](green)'\n"
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "invalid-prompt",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "bad = ["
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "duplicate-toml",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "x = 1\nx = 2"
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "invalid-theme",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "theme": "http://invalid.example/theme"
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "layout-remove-conflict",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "layout": "layout.lua",
+            "remove_layout": true
+          }
+        }
+      }
+    },
+    "files": {
+      "layout.lua": "-- layout\n"
+    }
+  },
+  {
+    "name": "extension-order",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "features": {
+          "enable": [
+            "team.z",
+            "team.a"
+          ]
+        }
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {\"z\": {\"description\": \"Z\", \"packages\": [\"jq\"]}, \"a\": {\"description\": \"A\", \"mise\": {\"uv\": \"\"}}}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "extension-prerequisite",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "features": {
+          "enable": [
+            "team.extra"
+          ]
+        }
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {\"extra\": {\"description\": \"Extra\", \"requires\": [\"cli\"], \"packages\": [\"jq\"], \"mise\": {\"uv\": \"\"}}}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "disabled-prerequisite",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "features": {
+          "enable": [
+            "team.extra"
+          ],
+          "disable": [
+            "cli"
+          ]
+        }
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {\"extra\": {\"description\": \"Extra\", \"requires\": [\"cli\"]}}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "profile-inheritance",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "team.combined"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"combined\": {\"extends\": [\"web\", \"python\"], \"options\": {\"databases\": {\"clients\": []}}}}}"
+    }
+  },
+  {
+    "name": "unselected-invalid-prompt",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "features": {
+          "enable": [
+            "cli"
+          ]
+        }
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"unused\": {\"features\": [\"workstation\"], \"options\": {\"workstation\": {\"starship_config\": \"bad = [\"}}}}}"
+    }
+  },
+  {
+    "name": "selected-invalid-prompt",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "team.bad"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"bad\": {\"features\": [\"workstation\"], \"options\": {\"workstation\": {\"starship_config\": \"bad = [\"}}}}}"
+    }
+  },
+  {
+    "name": "repaired-profile-prompt",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "team.bad"
+        ],
+        "options": {
+          "workstation": {
+            "starship_config": ""
+          }
+        }
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"bad\": {\"features\": [\"workstation\"], \"options\": {\"workstation\": {\"starship_config\": \"bad = [\"}}}}}"
+    }
+  },
+  {
+    "name": "feature-cycle",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {\"a\": {\"description\": \"A\", \"requires\": [\"team.b\"]}, \"b\": {\"description\": \"B\", \"requires\": [\"team.a\"]}}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "profile-cycle",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {\"a\": {\"extends\": [\"team.b\"]}, \"b\": {\"extends\": [\"team.a\"]}}}"
+    }
+  },
+  {
+    "name": "unknown-prerequisite",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {\"a\": {\"description\": \"A\", \"requires\": [\"missing\"]}}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "tool-selector-conflict",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "web"
+        ],
+        "features": {
+          "enable": [
+            "team.extra"
+          ]
+        }
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {\"extra\": {\"description\": \"Extra\", \"mise\": {\"node\": \"22\"}}}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "package-provider-conflict",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ],
+        "profiles": [
+          "web"
+        ],
+        "features": {
+          "enable": [
+            "team.extra"
+          ]
+        }
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {\"extra\": {\"description\": \"Extra\", \"packages\": [\"nodejs\"]}}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "unknown-executable-field",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "catalogue.json"
+        ]
+      }
+    },
+    "files": {
+      "catalogue.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {\"extra\": {\"description\": \"Extra\", \"command\": \"id\"}}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "duplicate-namespace",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "catalogues": [
+          "one.json",
+          "two.json"
+        ]
+      }
+    },
+    "files": {
+      "one.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {}}",
+      "two.json": "{\"schema_version\": 1, \"namespace\": \"team\", \"features\": {}, \"profiles\": {}}"
+    }
+  },
+  {
+    "name": "layout-and-opaque-tasks",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "tasks": [
+        {
+          "name": "custom",
+          "file": "tasks/setup.yml"
+        }
+      ],
+      "setup": {
+        "profiles": [
+          "project-managed"
+        ],
+        "options": {
+          "workstation": {
+            "layout": "layouts/coding.lua"
+          }
+        }
+      }
+    },
+    "files": {
+      "layouts/coding.lua": "-- layout\n",
+      "tasks/setup.yml": "not even valid YAML: [ {{ synthetic }}",
+      "private-unselected": "synthetic-canary-never-output"
+    }
+  },
+  {
+    "name": "dotfile-tree",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "assets": [
+        "assets"
+      ],
+      "dotfiles": [
+        {
+          "source": "dotfiles/editor",
+          "target": "~/.config/editor",
+          "mode": "0600"
+        }
+      ],
+      "vars": {
+        "synthetic": "synthetic-canary-never-output"
+      }
+    },
+    "files": {
+      "dotfiles/editor/init.lua": "-- personal\n",
+      "dotfiles/editor/lua/personal.lua": "return {}\n",
+      "assets/data": "synthetic-canary-never-output",
+      "unselected": "ignored"
+    }
+  },
+  {
+    "name": "dotfile-overlap",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "dotfiles": [
+        {
+          "source": "dotfiles/editor",
+          "target": ".config/editor"
+        },
+        {
+          "source": "dotfiles/editor/init.lua",
+          "target": ".config/editor/init.lua"
+        }
+      ]
+    },
+    "files": {
+      "dotfiles/editor/init.lua": "-- config\n"
+    }
+  },
+  {
+    "name": "missing-source",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "assets": [
+        "missing"
+      ]
+    },
+    "files": {}
+  },
+  {
+    "name": "unsafe-source",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "assets": [
+        "../outside"
+      ]
+    },
+    "files": {}
+  },
+  {
+    "name": "factory-official",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "vm": {
+        "factory": "official",
+        "cpus": 4,
+        "memory_gib": 8,
+        "disk_gib": 128
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "builtin-alias",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "builtin.web"
+        ],
+        "features": {
+          "enable": [
+            "builtin.agents"
+          ]
+        },
+        "options": {
+          "builtin.languages": {
+            "tools": {
+              "node": "24"
+            }
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "duplicate-alias",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web",
+          "builtin.web"
+        ]
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "unknown-option",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "cli": {
+            "unknown": true
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "invalid-null-tool",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "profiles": [
+          "web"
+        ],
+        "options": {
+          "languages": {
+            "tools": {
+              "--help": null
+            }
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "toml-escape-x",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "x = \"\\x65\""
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "toml-escape-e",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "x = \"\\e\""
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "toml-short-time",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "x = 12:30"
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "toml-inline-newline",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "x = {a = 1,\nb = 2}"
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "toml-inline-trailing-comma",
+    "valid": false,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "x = {a = 1,}"
+          }
+        }
+      }
+    },
+    "files": {}
+  },
+  {
+    "name": "toml-inline-array-newline",
+    "valid": true,
+    "manifest": {
+      "schema_version": 1,
+      "id": "fixture",
+      "setup": {
+        "options": {
+          "workstation": {
+            "starship_config": "x = {a = [\n1,\n2,\n]}"
+          }
+        }
+      }
+    },
+    "files": {}
+  }
+]

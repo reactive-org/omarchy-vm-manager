@@ -1,5 +1,868 @@
 # Omarchy VM Manager — implementation intent
 
+## Flexible Omarchy review: behaviour checks and manual owner setup — 12 November 2026
+
+**USER AUTHORIZATION:** on 12 November 2026 the user approved options A, C and D
+of the flexible-review proposal and rejected B, after an Edge factory build
+stopped on the reviewed-set gate. The stop was reported as a VT colour fix in
+`progress-icon.sh`. The read-only release check below found that current Edge
+leaves that file unchanged and instead changes `omarchy-provision-user`. The kit client
+change is built and tested with ad-hoc signing only. A signed runtime, a
+notarised release, VM launches and real factory builds each still need
+separate approval.
+
+**DESIGN DECISION — A, install scripts by behaviour:** this supersedes the
+8 November "refuse any release whose six patched install scripts … differ"
+rule for install scripts. Those scripts come from the signature-checked
+channel package, and `omarchy-apply-system` already runs Omarchy's other,
+unpinned install scripts as root in the image. Their digests were therefore a
+compatibility check, not a trust boundary. dev-vm now requires each
+lean-profile guard to apply exactly once and the result to parse. With every
+optional package absent, the guarded services, firewall rules and UFW
+activation must stay within reviewed sets. Anything else stops with the same
+update message, which the manager still recognises. The upstream digests are
+kept as evidence.
+
+**DESIGN DECISION — default browser, user-approved 12 November 2026:** this
+adds to the approved exact-once anchors, and the user approved it separately. The reviewed Chromium default-browser line keeps
+its exact package guard, so reviewed owner-program digests are unchanged. A
+release whose single `xdg-settings set default-web-browser NAME.desktop` line
+names another browser gets the same guard, keyed on
+`/usr/share/applications/NAME.desktop`. No such line, or more than one, stops
+for review. On 12 November 2026 current Edge was observed naming
+`google-chrome.desktop`. Without this rule that Edge release stops before the
+manual fallback can apply.
+
+**DESIGN DECISION — C, manual owner setup for unreviewed owner programs:**
+- The five owner programs stay whole-file pinned in dev-vm, in the kit client
+  and in the guest adapter, so seeded root setup only ever runs reviewed bytes.
+- A release whose programs match no reviewed entry builds, but with
+  `"owner_setup": "manual"` and no contract. Its manifest names the fixed
+  marker `VMOwnerSetupContract.manual`, the SHA-256 of
+  `omarchy-vm-manager/manual-owner-setup/v1`. This is a positive marker,
+  because an absent seed contract means official.
+- The manual marker is never `isSupported`. The manager's seed preparation,
+  the helper's `ManagedSetupLaunch` and the guest adapter all refuse a seed
+  that names it.
+- `VMRuntime` refuses to launch such a factory with `ownerSetup`. Creation
+  resolves an unspecified Guest Defaults choice to manual, and refuses an
+  explicit request, owner overrides, or a reused home that carries owner setup.
+- New VM shows "manual account setup" and disables Guest Defaults. The CLI
+  lists `manualOwnerSetupFactories`.
+- The user completes Omarchy's own first-run form, and SSH uses the existing
+  manual path.
+- Manual factories pair only with the reviewed native-rendering package
+  (0.1.0-48.1) and follow every lean evidence rule.
+- Manual and managed evidence cannot stand in for each other. The kit client
+  requires the builder's own verdict, so a `progress-icon.sh`-only change, which
+  the four-program evidence omits, cannot pass as a reviewed lean contract.
+- Existing lean and official contracts, receipts and pairings are unchanged.
+  A later review that adds a contract restores managed setup for new builds
+  only. Existing manual factories stay manual.
+
+**DESIGN DECISION — D, review sooner:** a scheduled dev-vm job compares each
+channel's current Omarchy release with the reviewed entry and opens a draft
+review PR. It never edits `inputs.lock.json` or merges anything.
+
+**DESIGN DECISION — B rejected:** the adapter sources the whole owner program,
+so all of its top-level code and every transitively called function run as
+root. A safe per-function pin would cover nearly the whole file, and would
+likely still have rejected a `progress-icon.sh` change, since that file runs on
+the managed path.
+
+**PRIVATE COUPLING:** the kit client patch adds `manual`, `isManual`,
+`isLeanFactory` and `manualContracts`. It admits format-2 manual manifests with
+`owner_setup == "manual"` evidence, and treats manual like lean for the
+native-rendering package install. Owner-contract provenance is unchanged. The
+manager vendors dev-vm `codex/flexible-omarchy-review` until that PR merges.
+
+**VERIFIED — no-VM checks only:**
+- dev-vm: unit tests, factory-resource checks and 118 Swift provisioning tests.
+- The ad-hoc patched kit rebuild: 566 upstream tests and `kit-check`.
+- The manager's full `make test` on the final commit: 638 Swift tests, 345
+  script tests, and the provisioning bundle and screen checks, including the
+  new manual-factory tests.
+- `make test-factories`: 566 upstream tests, and `run-mode` passes with a fake
+  launcher.
+- The manual-factory `VMRuntime` refusal runs before any Keychain read. It is
+  tested through `ManagedOwnerStorage.admit`; the managed launch path itself
+  has no unit test.
+- **VERIFIED — read-only release watch, 12 November 2026:**
+  - Stable `omarchy 4.5.0-3` matches `lean-a948d8a` (managed setup).
+  - Edge `omarchy-dev 4.0.0.r7817.gdb31a20-1` changes `omarchy-provision-user`
+    (agent instructions and a Google Chrome default browser) and only comments
+    in `chromium.sh`. With the browser guard it passes every behaviour check
+    and would build for manual owner setup. Without the guard it stopped on
+    the Chromium anchor.
+- No image was built and no VM was started.
+
+**TO PROVE:**
+- A real Stable or Edge build of a release with unreviewed owner programs.
+- Its import, boot and Omarchy first-run form, and SSH through the manual path
+  on such a guest.
+- Developer setup on a manual guest.
+- The release-watch job's first scheduled run, and whether GitHub Actions may
+  open PRs in dev-vm.
+- A signed or notarised runtime that carries this kit change.
+
+## Setup's passwordless sudo: timed by default, permanent opt-in — 8 November 2026
+
+**DESIGN DECISION — issue #20, user direction:** Omarchy's full-screen prompt for
+`omarchy sudo passwordless permanent` says the grant lasts forever and survives
+reboots. That reads far worse than it is, because setup turns the grant off and
+verifies it at cleanup. The prompt belongs to Omarchy and can't be changed. Setup
+therefore asks for Omarchy's timed grant by default (`omarchy sudo passwordless 60`,
+renewed before each later step that needs root). **Ask for sudo once** (Guest
+defaults, New VM and Change setup; CLI `--sudo-grant permanent|timed`) restores
+the single permanent grant. The choice is part of the reviewed plan
+(`vm.sudo_grant`, dev-vm#17), so the review digest binds it. Cleanup, consent and
+`--ack-sudo` are unchanged. The manager's notes say "Setup turns it off when it
+finishes" while the prompt is up, and the review step names the grant that will
+be requested. This supersedes the plan's earlier "do not describe it as a
+60-minute grant", which still holds for the permanent option.
+
+**PRIVATE COUPLING — Omarchy `bin/omarchy-sudo-passwordless`, identical at e4fffc6,
+a948d8a (4.5.0) and edge 9044b7e:** a timed grant is a `NOTAFTER` sudoers rule plus
+an expiry timer, and a boot-time tmpfiles rule removes it. A renewal while it is
+active needs no confirmation or password. An `omarchy-settings` upgrade revokes
+timed grants (but not permanent ones) before its transaction, so an update can
+make the rest of `omarchy update -y` ask for the guest password and the renewal
+show Omarchy's prompt again. A timed grant refuses to enable without Omarchy's boot
+cleanup, so older images fail before setup changes anything.
+
+**VERIFIED — no-VM checks only:** dev-vm and manager unit and acceptance tests
+(see the PR). The manager shows **Needs you** only for the initial grant request,
+not for renewals, which normally finish at once.
+
+**TO PROVE:** on a real disposable Dev guest, for each option: how many prompts
+appear, Omarchy's wording, silent renewals, revocation and the inactive check at
+cleanup, the timed rule's removal at restart, and the settings-upgrade re-prompt
+(which the manager doesn't flag as **Needs you**).
+The `example-vm-07-needs-you` user-guide screenshot still shows the permanent
+prompt and needs recapturing after such a run.
+
+## CI toolchain moves to Xcode 27 — 7 November 2026
+
+**USER DIRECTION / DESIGN DECISION:** CI's macOS test and branch-release jobs move
+from Xcode 26.0.1 on `macos-15` to Xcode 27.0 (27A266a) on GitHub's `xcode-27`
+image, matching the local development toolchain. Branch releases are therefore
+built with the toolchain the tests ran with. Xcode 26.0.1 had rejected a SwiftUI
+body that Xcode 27 accepted (PR #23), so CI and local builds now agree. The
+`xcode-27` image is a GitHub **preview** on macOS 27 (macOS 27.0.1); the deployment
+target stays macOS 15. The notarization status check keeps its own runner.
+
+**TO PROVE:** a green hosted run and a branch release on the preview image.
+
+## Releasing a stopped guest's cleanup hold — 7 November 2026
+
+**DESIGN DECISION — issue #24, user direction (same PR as #16):** this supersedes
+"Journal cleanup holds cannot be cleared from a stopped observation alone" for one
+explicit case. A guest whose setup stopped with temporary admin-access cleanup
+unconfirmed, and which then stopped, was permanently held: launch, configure,
+delete and backup were refused, and Recover needs the original live session. The
+hold also blocked setup preparation on every other guest. The owner can now
+release it through a reviewed **Release cleanup hold** workflow action, in the
+same spirit as the failed-restore attestation: an acknowledgement the app neither
+performs nor claims to verify. It is offered only for a stopped guest (Recover is
+offered only while the guest runs) and is refused while the guest has a session,
+lease, preparation, restart, home backup or storage change, while provisioning
+storage is unknown, or if a journal write fails. The confirmation says plainly
+that cleanup was not verified and that the owner removes any leftover passwordless
+sudo inside the guest. Every cleanup-bound job and workflow row for that VM is
+marked released without verification (`cleanupRelease: unverified`) and saved
+before the in-memory holds clear; other VMs' holds are untouched. History keeps
+saying the hold was released unverified; nothing is erased or shown as cleaned.
+
+**DESIGN DECISION — user direction, 7 November 2026:** workflow actions in the
+app are one click. Restart, check and recover each prepare a review bound to the
+guest's current state and submit exactly that review; the click is the owner's
+consent, replacing the separate review, "I approve this exact … action" checkbox
+and second button. Release alone adds a confirmation dialog that says cleanup
+wasn't verified. A failed preparation submits nothing, and a failed submission
+is never retried; the next click starts a fresh review. The CLI keeps its
+two-step prepare/submit with explicit `--ack`.
+
+**PRIVATE COUPLING:** the job journal writes schema 8 when a record carries
+`timedOutOperation` or `cleanupRelease`, and the workflow journal writes schema 2
+only when a row carries `cleanupRelease`; journals with neither stay readable by
+earlier builds. The CLI gains `setup prepare-release` and `setup release`.
+
+**VERIFIED — user-observed on a real Mac, 7 November 2026:** releasing a real
+stopped Dev guest's hold (the stuck guest from #24) worked; the guest could then
+be deleted, and setup could again be prepared and run on another guest.
+
+## Setup attention: badges, notifications and named timeouts — 7 November 2026
+
+**DESIGN DECISION — issue #16, user-approved plan:** one per-guest attention state
+in Core (`SetupAttention`) is the only source of "needs you" for the Home card,
+first-run tracker, sidebar, Dock and notifications. Reasons are the sudo prompt,
+a saved setup's review, restart review, check review and cleanup; all but the
+saved-setup review block a run. It is derived only from recorded workflow stage,
+job state and the in-memory New VM approval, never terminal output. The card and
+tracker select the current run with one Core rule. The sidebar shows **Needs you**
+on each waiting guest (its click opens the output at the prompt or the review).
+User correction during planning: no counts. The Dock shows a "!" marker while any
+guest is blocked and bounces once (`.informationalRequest`) when one becomes
+blocked while the manager isn't frontmost; neither needs permission. Notification
+permission is requested at launch. A pure Core tracker sends one notification per
+entry into a blocking state, only if the manager isn't frontmost or that guest
+isn't on screen, never repeats it, removes it once the state ends, and treats the
+first observation after launch as a baseline (badges only). Notifications carry
+the guest name, fixed wording and its UUID only. Clicks route from the current
+state at click time; activation alone never changes page.
+
+**VERIFIED — source finding:** the authenticated helper path, which real setup
+uses, never recorded `.awaitingAuthorization`; only the in-process path did. The
+coordinator now records it from the helper's reported `requestPersistentGrant`
+operation (never a cleanup step) and returns to `.running` on the next step. The
+helper wire format is unchanged.
+
+**PRIVATE COUPLING:** timeouts name the step from a new job field,
+`timedOutOperation`, set from the last body step the coordinator saw (in-process
+`before`, or helper session-authority command requests with `cleanup == false`),
+so cleanup steps cannot overwrite it. Legacy helpers without session authority
+keep the generic message. Journal schema 8 is written only when a record carries
+the field, so earlier builds keep reading journals without a timeout. Limits
+mirror the pinned dev-vm `bodyTimeoutSeconds` (10 s, 30 s, otherwise one hour,
+including dev-vm `6b5e2e6`'s one-hour sudo prompt); a test pins them to the
+vendored source. Workflow SSH and restart waits use the manager's 3-minute default.
+
+**VERIFIED — fake/local checks:** Core unit tests cover attention for every
+workflow stage × job state × approval, current-run selection, the tracker's
+notify/clear/bounce/marker rules, every timeout note, schema 8 round trip and
+refusal, the in-process sudo state and timed-out step through cleanup and reopen,
+and the authenticated helper path (local sockets, fake process runner) reporting
+the sudo prompt and naming its timeout. The offscreen setup acceptance (199
+checks, 54 PNGs) checks that card, tracker and Core agree, the sidebar badge and
+its routing, notification-click routing, and Dock/notification effects through a
+recording fake. `make test` passes: 596 Swift tests in 79 suites, 340 script
+tests, the provisioning bundle checks and 199 offscreen checks with 54 PNGs; the
+screen acceptance and `git diff --check` pass again on the final code. No VM, guest,
+Dock, notification or permission was touched, and `make app-dev` was not run. The
+tracker starts only once setup coordination is installed, so its launch baseline
+includes saved workflows; that ordering is reasoned from `AppModel.observe()`, not
+exercised.
+
+**VERIFIED — user-observed on a real Mac, Dev build `8dd129b`, 7 November 2026:**
+with a real Dev guest's Omarchy passwordless-sudo prompt, the Dock bounced once
+while the manager was not frontmost, one notification arrived, clicking it opened
+that guest's setup output at the prompt, and answering cleared the notification.
+The Dock "!" marker did **not** appear. The user confirmed the likely cause:
+macOS hides an app's Dock badge unless its notification settings allow badges,
+and the manager requests alert and sound authorisation only. Whether to request
+badge authorisation or draw the marker on a custom Dock tile is a follow-up.
+
+**TO PROVE:** the Dock "!" marker; foreground banners when another guest is on
+screen.
+
+## Update-before-setup CI fixture correction — 7 November 2026
+
+**VERIFIED — hosted failure:** manager run `42295151880` on `288c82c` passes all
+559 Swift and 340 script tests, then fails relocated helper dispatch because its
+excluded debug fixture still expects `applied`. The helper returns the correct
+`appliedRestartRequired` with confirmed cleanup and no primary failure. Companion
+PR #10 run `42295108340` is green on `1c08131`.
+
+**FIX / DESIGN DECISION:** require the exact restart-required outcome for successful
+fixture dispatch; keep cancellation, terminal completion, cleanup, reconciliation,
+matching exit and existing time bounds unchanged. No product code, shared export,
+resource, runtime or frozen candidate pin changes. The local checks use fake
+runtimes/adapters and fresh scratch storage without explicit signing commands.
+Seven local fake helper-engine tests pass and the corrected excluded fixture
+compiles. Relocated bundle fixtures ad-hoc sign their disposable containers, so
+their full rerun is reserved for hosted CI. The user explicitly allows normal
+hosted workflows after merge, including runner-only Ansible installation and the
+normal next Dev signing/notarization release; this Mac remains untouched. Hosted
+success on the correction remains TO PROVE; the failed run above remains a failure.
+
+## Update before Developer setup — 7 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** restore the original dev-vm bootstrap
+sequence in the shared Swift engine. Every reviewed apply updates Omarchy and
+all system packages through `omarchy update -y` after verified admin access and
+before manifest packages, optional-app trimming, features, dotfiles or tasks.
+This is disclosed in New VM, the proposal and apply review; the existing apply
+confirmation authorizes the displayed update without another checkbox. Preview,
+check and cleanup recovery never update. Existing guests receive the same explicit
+apply review. Never substitute a database-only refresh or direct pacman upgrade.
+
+**PRIVATE COUPLING:** sequencing review version 2 binds update semantics; the
+authenticated helper admits only the new apply-only update operation and its
+matching process purpose. Use the existing owned guest scope, input lease,
+3600-second process deadline, live terminal and independent cleanup. A successful
+apply requests the existing separately reviewed restart/check, including when
+Docker is unselected. Update failure stops feature installation and retains a
+fixed typed reason through helper IPC and journal; cleanup does not roll back
+package changes. Old reviews/saved engine receipts cannot authorize this engine.
+Only the active public package export advances via a fourth checksummed patch;
+its base, factory recipe, runtime pins and all private frozen candidates remain.
+
+**VERIFIED — fake/local checks:** 104 shared Swift tests, 559 full manager tests
+in 72 suites, 283 Dev provisioning tests, 340 manager script tests, 239 legacy
+dev-vm tests (one existing Lua skip), 66 complete planning-oracle cases, 162 factory
+resource inputs and 141 offscreen Setup/New VM checks/27 PNGs pass. The Dev review
+render was visually inspected. Initial sandboxed PTY/socket refusals pass with
+local fixture process access. No real SSH or Ansible guest run was used.
+Eight source-export tests and twenty final Dev package/helper/review tests pass
+after the vendored test export is aligned. Generated pin and reverse-patch
+reconstruction checks pass. All 86,034 prior
+private artifact entries, eight frozen/runtime pins, imported factory/receipt,
+387 candidate payload files and thirteen Main metadata files remain unchanged.
+Frozen configuration inputs do not freeze guest repository package versions;
+the explicit native update uses the guest's configured repositories.
+
+**TO PROVE:** real fresh-official/lean guest update, mirror recovery, native
+prompts, interrupted upgrades and post-update compatibility. Validation here uses
+fake runtimes/runners and disposable local fixtures; no real guest, host install,
+credential, Apple request, app installation or VM launch is authorized.
+
+## Factory channels and Omarchy 4.5 — 8 November 2026
+
+**USER AUTHORIZATION:** implement issues #29 (Stable/Edge factory channel) and #27
+(factory library layout) end to end, with Stable tracking the latest Omarchy
+release without a manager release where possible, failing closed otherwise.
+
+**DESIGN DECISION — live channel, reviewed set, fail closed:** custom factory
+builds no longer compile Omarchy from one pinned commit. They install the
+selected channel's current signed pair (Stable `omarchy`/`omarchy-settings`,
+Edge `omarchy-dev`/`omarchy-settings-dev`) and refuse any release whose six
+patched install scripts or five owner programs differ from a reviewed entry.
+Stable is the default; plans written before channels decode as edge. A release
+that leaves those programs unchanged builds without a manager release; one that
+changes them needs a reviewed contract, guest integration package and kit.
+*(Superseded on 12 November 2026 for install scripts and for releases with
+unreviewed owner programs: see "Flexible Omarchy review" above.)*
+
+**DESIGN DECISION — lean contract set:** lean admission accepts a reviewed set of
+owner contracts instead of one digest: `lean-e4fffc6` (`1347cb16…`, image
+package 0.1.0-43.1) and `lean-a948d8a` (`fb73e12e…`, Omarchy 4.5.0 and edge from
+`9044b7e`, image package 0.1.0-48.1). Each factory names one by digest; its
+evidence must match that contract's programs and package. The compatibility
+policy is schema 2 with a `leanContracts` list. Receipt digests are computed
+per pairing over the schema-1 field set, so existing e4fffc6 receipts keep
+`c3cbd5eb…`. Unknown contracts and crossed pairings are refused.
+
+**VERIFIED — source review:** 4.5.0 changes `omarchy-provision-owner` (tip
+rendering without subshells), `progress-icon.sh` (VT colour and cell-size fixes),
+`setup-form.sh` (French, French (Switzerland) and German console keymaps move to
+latin1 maps; keyboard IDs unchanged) and `install/user/mise.sh` (offline
+reshim). The functions the guest adapter drives are byte-identical, so the
+existing lean fixture covers both adapters. Guest package 0.1.0-48/48.1 differs
+from 47/47.1 only in the adapter, the new contract file and its version.
+
+**PRIVATE COUPLING:** the six guarded install scripts are edited after
+installation, so `pacman -Qkk` reports them modified until Omarchy updates them.
+
+**REPORTED LIVE — user, 8 November 2026:** the user built a Stable factory
+(Omarchy 4.5.0-3) in the branch's Dev app and booted a VM from it successfully.
+The first attempt failed at dependency resolution because Stable's packages need
+Omarchy's frozen Arch Linux ARM snapshot (`arm-stable-mirror.omarchy.org`); the
+builder now pairs each channel with its own mirror and forces the index refresh.
+Container-only checks pass for both channels.
+
+**TO PROVE:** owner setup, managed SSH and hardware rendering on the 4.5 guest
+were not separately reported, and Edge builds and real two-VM, focus and
+sleep/wake behaviour remain unobserved.
+
+## Factory merge-readiness repairs — 6 November 2026
+
+**USER AUTHORIZATION:** review both factory PRs and fix remaining issues with
+fake/local checks only. Preserve private artifacts, frozen pins, Main and existing
+VMs; no signing, installs, factory/runtime downloads or VM launches.
+
+**FIX / DESIGN DECISION:** refresh factory records under the matching build lock
+before admission/recovery; keep already observed missing records fail-closed.
+Fence factory admission throughout quit, join existing recovery, and require a
+fresh preview after a cancelled quit. Use byte-based bounded output pages so the
+CLI snapshot retains small fragmented writes. The active public shared export
+gets a third checksummed patch over its unchanged base; historical candidates,
+recipe/archive bytes, runtime pins and private pins remain unchanged.
+
+**VERIFIED / TO PROVE:** deterministic regressions reproduce the old failures.
+The corrected focused manager tests (17), shared suite (99), script suite (340), source-export tests
+(8), resource tests (3) and 162-input parity pass. [Review evidence and merge
+order](docs/FactoryBuilding.md#merge-readiness-review--6-november-2026) retain fresh
+hosted checks and real cancellation/recovery as separate proof obligations.
+No review result authorizes a merge/release or extends a prior candidate's real
+boot acceptance to this new source revision.
+
+**VERIFIED — hosted budget:** all checks on `4122a31` passed their steps, including
+556 Swift tests per channel, but run `42202384549` is cancelled for exceeding the
+40-minute job limit. Raise only the bounded Mac job budget to 50 minutes; retain
+all individual deadlines, coverage and real-execution exclusions. Fresh hosted
+success remains TO PROVE.
+
+## Factory PR integration refresh — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** publish the factory acceptance docs and
+complete test-only CI, preserving private artifacts, frozen pins, Main and
+existing VMs. The updated PR conflicts with `next`; integrate `a2ff8da` on the
+factory feature branch and retain both documentation histories. Its inert-helper
+shutdown and nested saved-selection corrections join the factory changes; no
+package, runtime or candidate pin changes are needed.
+
+**TO PROVE:** fresh hosted checks on the merged source. This integration does not
+authorize signing, installs, factory/runtime downloads or VM launches, and does
+not extend the preceding real-guest acceptance to this new source revision.
+
+## Disposable lean factory boot acceptance — 6 November 2026
+
+**USER AUTHORIZATION:** boot one new disposable Dev VM from the imported lean
+factory and verify account setup and graphics. Preserve Main, existing VMs,
+artifacts and frozen pins; no signing, host installs or downloads.
+
+**VERIFIED:** one fresh manager-owned UUID booted with saved account defaults,
+4 CPUs, 8 GiB RAM and a 64 GiB system disk. After the user completed secure
+guest-password authorization, inspection joined the original pending launch
+without creating or starting another guest. Thirteen account checks, desktop
+keyboard matching, native completion and seed removal passed. Native Wayland EGL
+and the active compositor reported hardware-backed VirGL; scoped Mac-window
+observations showed a healthy desktop at 2688×1512, scale 2, about 120 Hz.
+Graceful shutdown produced the matching `Exited (0)`, released the listener/lock
+and left no new runtime processes. The stopped disk is retained. No factory
+manifest or frozen pin is rewritten by this later observation. [Checks and
+limits](docs/FactoryBuilding.md#disposable-dev-boot-account-and-graphics-acceptance--6-november-2026)
+distinguish this factory acceptance from developer provisioning.
+
+**TO PROVE:** repeatability of the known intermittent graphics-startup issue,
+password login, application/shortcut/resize/sleep/crash acceptance and real
+builder cancellation/recovery. GLX and an optional Foot-dispatch fixture were
+unavailable; native Wayland EGL, compositor and visible desktop checks passed.
+
+## Real Dev factory build and import — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** execute the reviewed lean factory
+recipe in Dev, allowing downloads and one owned privileged Docker container,
+then independently verify/import its output. No credentials, host installs,
+VM launches or Main operations are authorized. Existing artifacts and frozen
+candidate pins remain preserved; a necessary integration repair advances only
+the active public package export with a separate checksum-pinned source patch.
+
+**VERIFIED:** the first attempt failed before privileged-container creation on
+Docker's unavailable configured credential helper. A private anonymous build
+config and local-image-only container creation repair that integration without
+using a credential store. One subsequent mirror timeout failed closed; the next
+job built/imported **Lean Omarchy Dev acceptance** (20 GiB disk;
+1,716,254,279-byte compressed image). Format-2 admission, schema-2 receipt, catalog
+readback, scoped mounts, unchanged engine identity and zero remaining owned
+containers/volumes for all three jobs are observed. See [factory acceptance and
+limits](docs/FactoryBuilding.md#first-authorized-real-build-and-anonymous-registry-configuration).
+Local fake validation passes 97 shared, 542 Dev and 340 script tests plus final
+export/helper checks. One prior unfrozen local test log was reused accidentally;
+app payloads and frozen candidate pins remain unchanged, and further logs are
+isolated. **TO PROVE:** hosted CI for the repair, real cancellation/recovery and
+guest boot/account/graphics acceptance. No VM was created or launched here.
+
+## Native lean factory builder — approved prototype, 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** implement the approved native Factory
+images library, build sheet, progress terminal and New VM handoff in Dev. Reuse
+upstream Linux image/package logic through the shared Swift package; do not
+reimplement the guest/hypervisor. Readiness uses existing local Docker only.
+The Build action authorizes downloads and one owned privileged build container;
+readiness, navigation and field edits never imply execution. Stable remains gated.
+
+**PRIVATE COUPLING:** consume a compiled checksum-pinned export of dev-vm's
+maintained staging recipe; preserve the original reviewed guest integration
+archive and independently import through the existing format-2 catalog. The
+active public package pin advances on follow-on local feature branches. Preserved
+private candidate artifacts and frozen pins retain their original identities.
+
+**VERIFIED / TO PROVE:** [Factory builder evidence and limits](docs/FactoryBuilding.md)
+records passing offline staging parity, 92 shared Swift tests, full manager
+regressions, 27 final focused Dev tests, relocated bundles, 140 Setup/New VM and
+32 factory UI checks, plus all three optimized policy modes. The preservation
+audit matches all 86,034 old private artifact entries and five unchanged other
+pins. Real Docker/download, privileged-container and disposable-guest acceptance
+remain **TO PROVE**. This pass authorizes no
+real build, download, signing, install, VM launch or Main operation.
+
+## Factory CI portability and terminal input release — 6 November 2026
+
+**VERIFIED — failures:** both factory PRs fail resource lookup under hosted
+SwiftPM's resource layout. Manager CI also observes stale UI input ownership
+when an already-dispatched poll finishes while release waits for idle.
+
+**DESIGN DECISION:** use Foundation named bundle resources with unchanged
+recipe/archive checksums; advance only the active public shared package pin.
+After waiting for an in-flight read, input release clears local input state
+again before the serialized release command. A deterministic local read barrier
+reproduces the old failure and verifies the correction; no authority, command
+replay, deadlines or lease limits change. **TO PROVE:** fresh hosted CI results
+until recorded in [factory build validation](docs/FactoryBuilding.md).
+Private artifacts and frozen candidate pins remain preserved. Main and its VMs
+are untouched; real Docker, downloads, signing credentials, installs and guest
+launches remain outside this repair.
+
+## Docker executable admission repair — 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** repair the factory host executable
+limit, test with fake adapters/local fixtures, prepare a separate ad-hoc Dev
+candidate and inspect readiness without building or launching anything. Factory
+host tools use a 128 MiB cap with 1 MiB hashing chunks; SSH/Ansible retain 32 MiB.
+Symlink, owner, permission, file-stamp and hash checks stay mandatory. The active
+package records a checksum-pinned integration patch over the unchanged upstream
+base; existing private artifacts, frozen candidate pins and runtime pins remain
+preserved. Main and its VMs are untouched.
+
+**VERIFIED / TO PROVE:** 97 shared Swift tests, 542 Dev manager tests and 340
+script tests pass. Read-only local ARM64 Linux engine inspection and identity
+revalidation pass. Fresh candidate verification and preservation evidence are
+recorded in [factory building](docs/FactoryBuilding.md). No Docker build,
+download, signing credential, install or VM launch is authorized here. Engine
+scratch capacity, real factory build/import and guest acceptance remain TO PROVE.
+## Authorized PR #10 merge gate and terminal backport — 6 November 2026
+
+**USER AUTHORIZATION:** merge PR #10 into `next` once its reviewed source and all
+applicable hosted checks are ready. This permits the existing Dev release
+workflow after merge, not a merge into `main`, local signing, installation,
+permission changes, factory downloads or real-VM operations.
+
+**VERIFIED — CI blocker:** the PR-event run `42179249963` on `98caa99` passes its
+Stable checks but fails Dev's `nativeViewerClaimsRendersReleasesAndDetachesWithoutCancelling`
+at the immediate ownership-release assertion. Both managed-SSH checks pass;
+the separate push run is still completing its optimized policy checks. Neither
+an old green result nor a missing required-check setting authorizes merging.
+
+**FIX / PRIVATE COUPLING:** PR #11 already contains the terminal correction in
+`91ec718`. Backport only its exact terminal screen and surface-test changes.
+An already-dispatched read may republish owned-input state while release waits
+for idle; clear input state again after that read finishes and before suspending
+on the release RPC. Keep the authenticated attachment, command sequencing and
+single-writer lease unchanged. Its internal read seam lets a synthetic test
+hold that ownership page across explicit release, without changing the wire.
+No factory-builder implementation, package/resource pin or other PR #11 change
+is included.
+
+**VERIFIED — fake/local:** the deterministic `inputReleaseFencesAnAlreadyReadOwnershipPage`
+regression fails with only the four-line ownership correction withheld and passes
+with the exact PR #11 implementation. `make test-provisioning-ui-cli
+test-provisioning-terminal test-provisioning-screens` passes 15 surface/planning
+tests, three terminal-vendor script tests, 16 terminal/UI tests and 140 offscreen
+Setup/New VM checks/27 PNGs. A Dev build of the combined surface/terminal filter
+passes 30 tests. Diff checks pass. Evidence is retained privately in
+`.build/pr10-terminal-before.log` and `.build/pr10-terminal-validation.log`.
+Fresh hosted CI on the backported source remains pending until observed; the
+failed run above remains a failure.
+
+**TO PROVE:** native input/focus and actual guest behavior retain their prior
+boundaries. This pass opens no on-display window, runs no VM, accesses no real
+credential, and changes no installed application, runtime or factory artifact.
+
+## PR #10 merge-review corrections — 6 November 2026
+
+**USER AUTHORIZATION:** inspect PR #11 before fixing both PR #10 review findings,
+add regression coverage and push to PR #10 only after local checks pass. This is
+source/test work, not a merge, release, installation or real-guest approval.
+
+**VERIFIED — source comparison:** PR #11 at `62f2e22` retains PR #10's unchanged
+coordinator, service, frozen-input tree and saved-selection implementation and
+associated workflow/selection tests; it has not addressed either finding.
+
+**FIX / DESIGN DECISION:** an authenticated never-activated helper may be retired
+locally when shutdown revokes registration admission, including the interval
+between registration and activation. Verify the original worker's exact scope,
+permanent fence and matching owned exit before clearing its risk and releasing a
+pending shutdown. Lost registration/fencing/exit proof, any accepted activation
+or failed journal persistence keeps protection. Do not repeat an uncertain inert
+retirement. No guest command or new execution authority is needed for this path.
+
+**FIX / DESIGN DECISION:** restore saved nested manifests by their full relative
+paths through a bounded descriptor-relative walk of the retained source tree.
+Reject linked/special entries and retain all plan/input/engine receipt checks;
+restoration supplies no session, helper, task or sudo authority. Existing frozen
+source formats, private candidates, dependency/runtime pins and Stable/Dev gates
+are unchanged.
+
+**VERIFIED — fake/local checks:** `make test test-dev test-build-policies`
+passes 538 Swift tests in 70 suites per channel, 337 script tests, 140 offscreen
+UI checks/27 PNGs and three policy tests in each of the three optimized modes.
+After the final retained-tree discovery adjustment, `make test-provisioning-tools
+test-provisioning-bundle-dev` passes all 279 provisioning tests in 28 suites and
+the relocated/read-only Dev helper checks. Stable's relocated helper checks also
+pass. Six added test functions cover both original reproductions, the
+registration/activation interval, missing registration/fencing/exit proof,
+journal failure/no reconciliation replay, and nested manifest restoration plus
+changed bytes/modes/links. Whitespace checks pass. Logs are retained privately as
+`.build/pr10-review-fixes-validation.log` and
+`.build/pr10-review-fixes-final.log`. Hosted CI on the new commit remains pending
+until observed; earlier CI success applies only to its recorded source commit.
+
+**TO PROVE:** fresh signed normal-Dev, native helper/guest cancellation and
+recovery, and prior focus/sleep/wake/crash cases retain their existing evidence
+boundaries. Fake/local checks do not establish these behaviors. No real VM,
+factory download, installed manager, macOS permission or signing credential is
+used or changed in this correction pass.
+
+## Normal Dev provisioning — user authorization, 6 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** merge latest next and enable normal Dev
+provisioning eligibility for verified manager-owned Dev UUID roots. Stable stays
+disabled. This replaces the private single-VM overlay requirement for ordinary
+Dev builds; it does not change the scope of any preserved private candidate.
+Explicit frozen review/permissions, authenticated session/transport, same-team
+helper, owned cleanup and no replay remain mandatory. Root metadata alone grants
+no authority. No environment or wire switch selects the policy.
+
+**DESIGN DECISION — user direction, 7 November 2026:** same-team helper signing
+stays mandatory for stable and for signed Dev prereleases. Local Dev builds
+(compiled with `DEVELOPMENT_CHANNEL` and without `SIGNED_PRERELEASE`) also admit
+a matching ad-hoc app/helper pair, so setup can be tested without a signing
+identity. A team-signed app still needs its same-team helper; mixed or
+cross-team pairs are refused. The choice is compiled, not switched at runtime.
+Ad-hoc mode keeps the pinned helper hash, private single-link executable checks,
+running-child cdHash match, authenticated inherited channel, root admission,
+explicit consent and owned cleanup; it gives up only the external team anchor,
+which an ad-hoc build cannot have. See [Validation](docs/Validation.md#local-ad-hoc-dev-setup--7-november-2026).
+
+**DESIGN DECISION — user direction, 7 November 2026 (approve at creation):** for a
+new guest created with setup, **Create, Launch & Set Up** in New VM is the explicit
+permission for one automatic first apply. The sheet states that it approves the exact
+frozen plan for this VM's first launch, including temporary admin access. The frozen
+review still runs: once the guest is SSH-ready, the manager prepares the normal apply
+review and submits it only if it matches the creation receipt's plan and input digests,
+this VM and the first session seen after launch, and needs no permission beyond
+temporary admin access. Docker root access, custom-task trust, a changed session or any
+mismatch stop with a reason and fall back to the Setup-tab review. The approval lives
+only in the running manager's memory, is used at most once and is never persisted or
+replayed. Existing guests and later runs keep the manual review (superseded for Change
+setup on 9 November 2026; see "one approval per run" below).
+
+**DESIGN DECISION — user direction, 7 November 2026 (approve at creation finishes
+setup):** the same creation-time approval also covers the restart and configuration
+check that finish that one workflow, so the user lands on an updated, configured
+desktop without stopping for a restart approval. After its apply, the manager follows
+only the workflow it submitted: when restart is required it prepares the normal
+restart review and, when the replacement session is ready for check, the normal check
+review; each is submitted once, and only if it names this VM and workflow and matches
+the creation receipt's plan and input digests. Recovery of cleanup is never automatic;
+a failure, cancellation, interruption, cleanup requirement or mismatch ends the
+automatic path and leaves the reviewed Setup-tab actions. The sheet discloses the
+restart and check before creation. The approval stays in memory only; a manager
+restart mid-way leaves the remaining actions to manual review.
+
+**DESIGN DECISION — user direction, 7 November 2026 (saved setup output):** to aid
+diagnostics, the manager saves the output of the most recent setup run for each VM to
+one private file, `<VM root>/.manager-setup/last-run.log` (0700 folder, 0600 file). A
+view-only recorder owned by the coordinator attaches before the helper starts, never
+claims input, and paces its reads so UI and CLI viewers keep working. An apply job
+replaces the file; a check job in the same run appends to it. The file is bounded: the
+head is written directly and the rest is kept as a rolling tail, with an explicit marker
+for any omitted bytes or output gap. Output that arrives while the job accepts
+interactive input is not saved; an "interactive section omitted" marker is written
+instead. It is written only into an existing VM root, never journaled, and moves to
+Trash with the VM. It is not redacted and may contain anything setup printed. The Setup
+tab shows it read-only when no run is live. Raw input is still never recorded, and
+terminal bytes stay out of journals, app logs and crash reports.
+
+**DESIGN DECISION — user direction, 7 November 2026 (desktop layout and defaults):**
+the desktop layout is chosen before the theme, from cards in horizontally scrolling
+rows: the bundled dev-vm examples, Omarchy default, a local folder's own layout (local
+sources only) and a custom file. The cards map onto the existing appearance selection
+without new provisioning inputs: Omarchy default keeps the source's layout for bundled
+setup (which names none) and removes a managed layout for a local folder. Guest
+defaults stores a desktop default in a private manager preference
+(`desktop-defaults.json`, per channel); New VM starts from it and existing guests are
+never changed. The vendored dev-vm catalogue currently describes one workspace per
+example; multi-workspace examples need a dev-vm update before they can appear.
+Page titles, sidebar items, tabs and buttons use sentence case; proper names, the
+Setup tab's name and macOS menu commands keep their capitals.
+
+**DESIGN DECISION — user direction, 7 November 2026 (setup on Home):** the guest's
+Setup tab is replaced by a setup card on Home with Change setup and View output sheets.
+Consent stays exactly as reviewed before: separate acknowledgements for temporary admin
+access, Docker root access and inspected task trust, each shown only when the review
+requires it, and reviewed restart, check and recovery actions.
+
+**DESIGN DECISION — issue #14, 8 November 2026 (a plan runs once; Run setup again):**
+a setup plan's preview ID is also its workflow ID, so a plan can run only once.
+`approve` returns a run that is still in progress, so a double-click stays harmless.
+For a finished run (succeeded, checked, failed, cancelled, interrupted or cleanup
+required) it throws `alreadyRun` instead of returning the old run as if it had just
+started. `prepareApply` refuses any plan whose workflow has a job, and `apply` never
+replays a finished submission. Change setup opens on the guest's latest plan and shows
+how its run ended in place of Review this run…. **Run setup again** is offered after any
+finished run, success included, but not while a cleanup hold remains (recover or
+release first). It makes a fresh plan with a new ID from the same choices, re-planned
+with the current pinned engine from the private input tree frozen for the last run. It
+never rereads the live source folder. The review says when dev-vm has changed since the
+last run and which features were added or removed, and the normal consent checkboxes
+still apply. After Run setup the sheet shows the new run's live state, or names why it
+didn't start.
+
+**VERIFIED — source review, 8 November 2026:** the frozen tree holds the choices, not
+the original `ProvisioningSetupSource`. `freezeSelection` bakes profiles, features,
+trim and appearance into `.omarchy-manager-selection.json` (plus the layout file), so
+re-planning the tree reproduces the selection. The tree's input digest covers files and
+folders only, not the engine, so it stays the same across engine updates. A different
+plan digest then shows the engine changed. What was missing was the link from a guest
+to its latest plan and from a plan to its tree.
+
+**DESIGN DECISION / PRIVATE COUPLING — plan history:** when a run is accepted, the
+manager records its plan ID, VM, tree name (`inputs-<UUID>`, not a path), manifest, plan,
+input and engine digests, and resolved feature names. The record goes in a private
+`plans/plans.json` beside the job and workflow journals, bounded at 128 entries, keeping
+each guest's latest. The workflow journal's schema is unchanged, so earlier builds can
+still read it. A damaged history file is preserved and refuses new records, so no run
+starts without the record its retry needs. Creation plans that ran before this record
+existed are found through the creation receipt by their input digest. The creation
+receipt in the VM profile is never rewritten.
+
+**TO PROVE:** Run setup again on a real guest, including after a dev-vm pin update, has
+been checked only with fake runtimes and local fixtures. It needs a run by hand on a
+real Mac.
+
+**DESIGN DECISION — user direction, 9 November 2026 (Change setup like New VM):**
+Change setup is its own sheet in New VM's shape, replacing the Source picker, preview
+lookup, Details and separate prepare and approve steps. It shows a four-step strip
+(Approve · Install · Restart · Check) with one sentence for the current state. Below that
+come `layout` and `customise`, started from the last recorded plan's choices, then the
+separate consents, then one button whose label says what happens. **Run setup again**
+uses `prepareRetry` for the exact frozen choices. **Apply changes** makes a new preview
+from the edited draft; a setup from a local folder needs its folder chosen again. **Start
+& set up** starts a stopped guest first. View output keeps the terminal, cancel and job
+details. The old in-sheet review panel is removed.
+
+**DESIGN DECISION — user direction, 9 November 2026 (one approval per run):** the
+approve-at-creation rules above now also cover Change setup. Its main button, or
+Approve & run, is the explicit permission for that one run's apply, restart and
+configuration check. The approval:
+- lives only in the manager's memory and is used at most once;
+- binds to the guest's current session, or for Start & set up the first session seen
+  after launch;
+- follows only the workflow it submitted;
+- prepares and submits each finishing step once, bound to the approved plan and input
+  digests;
+- never recovers cleanup automatically.
+
+A mismatch, interruption or manager restart ends the automatic path and leaves the
+reviewed actions. Restart & check in the sheet covers both steps for a run nobody is
+following.
+
+Earlier finished runs no longer stop an approval from applying. Another run in
+progress, or a cleanup hold, still does.
+
+**DESIGN DECISION — deliberate widening, 9 November 2026:** a Change setup approval may
+carry an explicit **Allow Docker without sudo** acknowledgement through the automatic
+path, because the sheet asks for it separately before the run. Creation still stops for
+Docker. Custom-task trust always stops at Approve & run, after each task is inspected.
+
+**FIX / DESIGN DECISION — pending runs, 9 November 2026:** a run prepared for approval
+(a workflow row at `waitingForSSH` or `readyForReview`) had no plan record and was lost
+when the sheet closed. It kept the service busy for every other plan, and Run setup
+again stayed disabled. `latestSetup` now reports it as `pending`. Change setup shows it
+again with Approve & run, using the same cached review from `prepareApply`, and Discard
+this run, which cancels it with no hold and frees the service. A relaunch still turns it
+into `interrupted`; reviews are never persisted.
+
+**DESIGN DECISION — retrying a plan that never ran, 9 November 2026:** `prepareRetry`
+also accepts a run that ended before it ran (discarded or interrupted, no apply job, no
+hold) when its frozen inputs can be found. In practice that is a creation plan found
+through its receipt. Other never-run plans have no plan record, so Change setup ignores
+them and starts from the last recorded plan.
+
+**DESIGN DECISION — user direction, 9 November 2026 (follow a run on Home):** as with New
+VM, approving in Change setup (Run setup again, Apply changes, Start & set up, Approve & run
+or Run the check only) closes the sheet. The guest's Home then follows the run. For a guest
+past its first run, a setup panel replaces the setup card while a run is under way. It shows
+the four-step strip, one sentence, Cancel setup…, Restart & check for an unfollowed restart,
+and the same inline live terminal as the first-run tracker. A guest still in its first run
+keeps the first-run tracker. A cleanup hold stays on the setup card. Change setup keeps a live
+view only as a fallback when it is opened during a run.
+
+**DESIGN DECISION — user direction, 9 November 2026 (Run the check only):** a run that
+applied and restarted, then stopped before its configuration check, can finish with that
+check alone. The run must be `interrupted` with `processInterrupted`, have an apply job and
+a restart, and have no cleanup hold. A restart is only ever approved from a clean
+restart-required apply.
+
+How the check runs:
+- `runCheckOnly` builds a new workflow from that run's own frozen inputs.
+- It refuses if the current engine would make a different plan; a full run is needed then.
+- It prepares an Ansible check-mode job against the current session, with no custom
+  tasks, and runs it at once. The click is the owner's consent, as for the reviewed
+  restart.
+- Check mode needs no admin grant. The helper channel refuses every grant and apply
+  operation in check mode, so no sudo prompt appears and no new sudo model is introduced.
+- It uses the existing workflow and job journals, with no schema change.
+- On success the new workflow is `checked`. It becomes the guest's latest plan, so Run
+  setup again repeats the same choices. The interrupted run is left as it was.
+- If preparation fails, the check is cancelled rather than left waiting.
+
+It is still not a general check of an arbitrary guest. Home and Change setup say
+"Checking" for it from an in-memory list of check-only runs.
+
+**VERIFIED — fake/local, 9 November 2026:** `ProvisioningRetryTests` and the offscreen
+harness (210 checks, 51 images); see [Validation](docs/Validation.md#change-setup-rebuilt-like-new-vm--9-november-2026).
+**VERIFIED — real Dev guest, 9 November 2026 (`adfadf`):** Run the check only, and Run setup
+again followed on Home through install, restart and check on one approval (see Validation).
+A pending run reopened and discarded on `adfadf` was also VERIFIED. Apply changes was followed
+correctly, but its run failed in dev-vm's toolchain step (see Validation).
+**TO PROVE:** Start & set up, and a completed Apply changes run, on a real guest.
+
+The current pass permits source integration and fake/local/CI validation only.
+No VM launch, real signing, host installation, Main app or Main VM operation is
+authorized. **TO PROVE:** fresh signed normal-Dev and real-guest acceptance after
+this change. Existing frozen artifacts/pins are preserved, not refreshed.
+
+**VERIFIED — local integration:** 531 Swift tests per channel, 337 script tests,
+140 UI checks, three optimized policy modes, fresh ad-hoc bundle/channel checks,
+566 pinned-upstream Swift tests plus its no-VM contracts/shell/guest-package
+checks, and isolated SSH-container tests pass. The upstream authentication-lease
+assertion failed once under concurrent jobs and passed unchanged on TEST_JOBS=1;
+its exact cause is unproven, and CI uses the verified serialized job setting.
+All 86,034 prior private artifact entries and six pin hashes match baseline.
+No Main operation, product VM launch or real signing occurs. Following an initial
+automatic publication-review rejection, the user explicitly authorized both feature
+branches and draft PRs: manager #10 to next and companion #8 to main. Test-only
+hosted CI is in progress; branch release jobs remain skipped. CI exposed the
+preinstalled Swift 6.1 / bundled SwiftTerm 6.2 minimum mismatch, then a Swift 6.2
+helper C-string inference issue; the toolchain selection and explicit conversions
+are corrected. Companion process fixtures run serially without changing deadlines.
+Hosted results are tracked separately from the completed local checks. The
+companion hosted pass is green. The next manager pass exposes terminal attach
+contention and a CLI fixture delivery race; bounded pre-dispatch-busy waiting and
+observed-output synchronization address them, with fifteen focused local tests
+passing. The full hosted rerun is pending; process/lease limits stay unchanged.
+
+## Dev draft publication recovery — user authorization, 5 November 2026
+
+**USER AUTHORIZATION:** fix draft lookup in a PR targeting `next`, then recover and publish the exact retained Dev release without rebuilding it. Leave installed apps and all running work VMs untouched. No local signing identity, credential import, notarization submission, permission grant, installation or guest operation is needed.
+
+**VERIFIED — failure:** run `41997334573`, source `3b7fbdd1c070a026cade3f3fb959757a9571c3c7`, passed both test jobs and signing/notarization/package verification for `v0.11.3-dev.1` (118). The publisher created draft `434969897`, but its immediate tag/list lookup returned no match; it stopped before uploading assets. A later authenticated read found the empty draft. Retained artifact `13401208496` has SHA-256 `987cb4fbb2fdb3bbaf9901ec15f78a1afcad874257ef93ef8c4ef783efa59023`. Delayed API visibility remains a hypothesis, not a proven root cause.
+
+**DESIGN DECISION:** consume the release-creation response and retain its numeric ID for uploads, verification and publication. Verify ID/tag/channel and complete asset digests before finalization; preserve immutable reservations, existing bytes and Dev's non-Latest status. Explicit manual recovery validates the original retained artifact and signed package before publishing by ID; ordinary CI-only admission remains unchanged. **TO PROVE:** fixed CI publication and exact retained-release recovery until their results are recorded.
+
+**VERIFIED — recovery and no-VM checks:** `v0.11.3-dev.1` (118) was published from that same draft at `2026-11-05T09:11:18Z`; all nine server asset hashes/sizes match the retained candidate. App ZIP SHA-256 is `e8cb3e17682bc5f5c400ee819ab30d7de068dae7e6ceeedf3dbeeaafb80d9d96`. Original Apple acceptance binds to the submitted archive; only the outer staple ticket was added afterward. Source/reservation/version/build/profile/runtime inventory, signatures, notarization, stapling and Gatekeeper pass. The unchanged layout validator uses identical previously authenticated CI artwork; cross-host Dev icon byte equality remains a cosmetic limitation. Stable `v0.11.2` stays Latest and its assets are unchanged. `make test` passes 256 Swift and 106 script cases, including 20 branch-release cases. No rebuild, local signing, resubmission, installed-app or VM operation occurred. [Recovery receipts and limitations](docs/BranchReleases.md#failures-and-retained-artifacts) distinguish manual success from **TO PROVE** future CI creation/publication and native behavior; the original run remains failed.
+
+## Saved account defaults apply automatically — user correction, 5 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** saved Guest Defaults are the account
+values to apply to new VMs. Remove the redundant global enable checkbox. A valid
+saved configuration/password reference applies by default, including legacy saved
+metadata with the old enable flag off. Retain an explicit per-VM manual choice.
+Keep existing profiles/disks, reused-home account identity, Stable/Dev isolation,
+credential authorization and provisioning execution permissions unchanged. Never
+rewrite a saved defaults file merely to load it.
+
+**VERIFIED — fake/local:** 75 focused core tests and 130 offscreen UI checks pass
+with synthetic services/credentials, including legacy metadata, default/manual
+creation, credential-policy mocks and channel isolation. No live credential,
+manager/guest operation or host install occurs. **TO PROVE:** real first boot with
+these revised defaults semantics. See [account defaults](docs/UnattendedDefaults.md#saved-values-apply-automatically--5-november-2026).
+
+## First Dev publication — user authorization, 5 November 2026
+
+**USER AUTHORIZATION:** create `next` from `main`, validate the supplied separate Dev provisioning profile, configure its CI secret and publish the first Dev release. Leave installed apps, all running work VMs and their data untouched. Use the existing signing/notarization credentials only in CI; no local private signing identity, permission, installation or real guest action is needed.
+
+**VERIFIED — profile and configuration:** the supplied profile has SHA-256 `72f28fde740d74483648ce7027d45d70d325627629c7e4141f4282a40abaa83c`, exact Dev App ID/team/macOS Developer ID distribution scope, expiry `2044-10-31T04:26:29Z`, and authorizes the existing CI signing certificate (`d4964c47ed12f244ab4302d324d1e7903451c15239243d0749794f661965e1b3`). Its CMS signature verifies, its Apple profile signer exactly matches stable's, and local basic certificate trust passes. This is not an independent fresh revocation check. Pin only its digest for `dev.omarchy.vm-manager.dev`; its exact bytes were supplied through stdin to `MACOS_DEV_KEYCHAIN_PROFILE_BASE64` without printing or committing them. Stable's profile pin and CI secret are unchanged. `next` was created from main `671b50238bf497ee64b58331c75582e9567004f3`; its initial profile-less run was cancelled before signing.
+
+**VERIFIED — prior stable baseline:** stable `v0.11.1` (112) was published as Latest by CI run `41959356022` from that exact main commit. All ten downloaded asset hashes, complete source/runtime provenance, profile/certificate/entitlement checks, signatures, notarization, stapling and Gatekeeper pass independently, with host preflight and VM launch disabled. Apple acceptance logs bind to the exact retained original runtime/app archives; only the independently validated outer staple tickets differ from publication. Public app ZIP SHA-256 is `1ebbc5be68c87adce6d49e774e6b48cae6a3d8201c7b82a3b2d4db3432679ae9`; reusable signed runtime is `ea2ec7241af45c4e31d452fb398ab31234dedf0d7e1349f2e576f3e6ba542a23`. Exact successful Actions artifact `13384963226` and evidence remain under ignored `VendorArtifacts/signed-candidates/v0.11.1/`. No installed app or running VM was changed.
+
+**VERIFIED — no-VM configuration checks:** `make test test-dev` passes 256 Swift tests in each channel and 102 script tests. The new pin validates the exact supplied Dev bytes; stable's original profile pin remains unchanged. Diff checks pass. Only the digest and scoped documentation are committed; the raw profile is not stored in Git.
+
+**TO PROVE:** first Dev CI publication, provisioned Dev download verification and native behavior of the distributed Dev app. The new profile and no-VM checks do not prove authentication UI, guest behavior or focus/sleep/wake/crash cases. Reuse the exact verified signed runtime; do not rebuild/re-pin or alter stable's Latest release.
+
 ## Stable branch publication — user authorization, 5 November 2026
 
 **USER AUTHORIZATION:** upload the exact pinned source kit and publish the stable release through the existing CI-only signing/notarization path. Leave installed apps and all running work VMs untouched. Dev provisioning remains deferred. No local real signing identity, permission, installation, guest launch or existing-VM operation is authorized or needed.
@@ -80,7 +943,7 @@ This document uses four labels so implementation does not accidentally turn a hy
 
 - General-purpose support for arbitrary operating systems.
 - Snapshots, cloning, migration, import/export or moving VM storage.
-- Embedded guest display, VNC, SPICE, terminal, interactive SSH client UI or file browser. Provisioning guest SSH access and exposing connection details for host tools are in scope.
+- Embedded guest display, VNC, SPICE, general-purpose terminal, interactive SSH client UI or file browser. A future terminal scoped to approved developer-provisioning jobs is the exception described under the 2 November 2026 provisioning decision below; milestone 1 adds dependency checks only. Provisioning guest SSH access and exposing connection details for host tools are in scope.
 - Background clipboard broadcast or a one-VM-only clipboard compromise. A focus-aware runtime fix is a required prerequisite, not a deferred feature.
 - More than one bridged-network session.
 - Bridged networking at all in the proof of concept or first private MVP.
@@ -1628,6 +2491,1897 @@ All nine published asset sizes/digests and both ZIP checksums match. Downloaded 
 **VERIFIED — integrated signed release published, 3 November 2026:** user-requested `v0.11.0-dev.3`, 0.11.0 (27), source `a0dc1814e1ebee71a20215510451f944467ffdb2`, was published by run 41598411099. All no-VM gates, app signing/notarization and independent downloaded ZIP/profile/signature/Gatekeeper/original-archive checks pass. The exact signed runtime and its active/versioned pins are reused from dev.2, without runtime re-signing/submission. Full receipts and accepted originals are retained; exact hashes and Apple IDs are in [the release evidence](docs/Prereleases.md#published-integrated-sudo-release--3-november-2026). Application/runtime logic is unchanged from the user-validated build 26, and remaining native cases retain their **TO PROVE** status. No installation, local signing identity/credential, native UI/permission or VM/storage operation occurred.
 
 
+## Developer provisioning dependency checks — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** implement milestone 1 of [the dev-vm plan](docs/DevVMProvisioningPlan.md) in its worktree: Homebrew dependency checks and feature gates, with no host tool installations or VM launches. Bundle the dev-vm engine in a later milestone and use compatible existing host dependencies initially; private bundled Python/Ansible runtimes remain a future packaging option. Keep VM implementation in Try Omarchy and lifecycle ownership in VMManager. A future live terminal is scoped to approved provisioning jobs, rather than a general SSH client; milestone 1 adds no terminal or guest execution.
+
+The host-controller/runtime packaging choice in this initial decision is superseded by the shared Swift design below. The original milestone 1 implementation and its verification remain unchanged.
+
+**DESIGN DECISION:** expose a native Provisioning tools page and local `omarchy-vm setup tools` report without opening the manager from the CLI. Reports distinguish tool prerequisites from implemented features; all execution gates remain disabled. Probe explicit executables with bounded output/time and a private temporary environment. Do not run install/upgrade commands, read credentials, check GitHub authentication, contact guests, query Docker or invoke Apple's potentially interactive Python launcher. See [dependency policy and checks](docs/ProvisioningTools.md).
+
+**PRIVATE COUPLING:** host Ansible launcher resolution recognizes direct Python shebangs and the exact `/usr/bin/env python3` form. Preserve virtualenv entry paths, verify the selected interpreter's imports and matching CLI/package versions, and reject other wrappers. This adapter is separate from existing runtime/settings couplings and grants no upstream kit capability.
+
+**VERIFIED — milestone 1 no-VM validation:** `make test build` passes 224 Swift tests/37 suites and 43 script tests, including 18 focused provisioning tests. Direct CLI checks preserve JSON/help/version behavior, reject an installation flag and leave execution disabled. Minimal-PATH read-only discovery admits the existing Homebrew 7.0.11/Python 3.14.9/PyYAML 6.0.3/Ansible Core 2.21.5 toolchain; GitHub authentication remains unverified. Probe locale is explicitly UTF-8. No host software was installed/upgraded, credential accessed, app installed/opened or guest contacted. Exact checks and limitations are in [ProvisioningTools.md](docs/ProvisioningTools.md).
+
+**TO PROVE:** other supported Homebrew environments, native UI interaction and packaged behavior; engine integration, PTY authorization/echo, persistent sudo-grant cleanup, interrupted remote work, real guest compatibility, focus, sleep/wake, crashes and concurrent provisioning. Synthetic tool probes do not establish those behaviors or change prior real-VM evidence.
+
+## Shared Swift provisioning design — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION — documentation only:** revise the plan to use one shared Swift provisioning package maintained with dev-vm and consumed by both the manager/helper and standalone dev-vm CLI. Port the host controller, strict manifest/feature resolution, planning, source snapshots and application coordination to the package. Bundle compiled Swift code and versioned playbooks/roles/catalogues/guest helpers. Invoke Homebrew's Ansible launchers; their Python dependencies stay Homebrew-managed. The manager will have no independently selected Python/PyYAML runtime requirement. Guest Python helpers and existing Python-based development/image-build tooling are separate and may remain. Do not start the port or change milestone 1 code in this documentation task.
+
+**DESIGN DECISION — planned milestone 1A:** retain the dependency provider, GUI-safe discovery, bounded isolated probes, UTF-8 environment, change detection and native/CLI reports. Replace independent Python/PyYAML requirements, imports, Python overrides and shebang matching with coherent Homebrew Ansible CLI version/usability checks using fixed local fixtures without guest execution. Plan dependency-report schema 2 with explicit migration from schema 1; preserve existing guest-command protocol 1. JSON/YAML planning will use compiled Swift parsers without an external Python or Ansible requirement once that package is integrated. Keep unimplemented execution disabled and preserve all original milestone 1 validation evidence. Details are in [the revised plan](docs/DevVMProvisioningPlan.md#changes-to-milestone-1).
+
+**PRIVATE COUPLING / TO PROVE:** the current Python-shebang adapter remains implemented until an authorized milestone 1A change retires it. Its replacement will isolate Homebrew installation identity and Ansible CLI interpretation behind contract-tested adapters. Swift package/API/resource layout, strict YAML/JSON/TOML and Python-controller parity, standalone compatibility, revised CLI probes, native terminal behavior and real guest/crash/sleep behavior remain unverified. Saving this revision changes no source code, installed app, dependency or guest.
+
+## Homebrew Ansible CLI dependency contract — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** implement milestone 1A only in this worktree, with no host tool installations, VM launches or shared Swift package port. Dependency reports now use schema 2: remove standalone Python/PyYAML rows, imports, interpreter selection and shebang parsing; reject retired overrides with migration guidance; retain existing guest-command protocol 1. Local JSON/YAML planning has no external tool blockers, but the package/parsers and every execution capability remain unimplemented and disabled. System transports, Homebrew discovery, isolated bounded probes, optional-tool deferral and ordinary VM lifecycle ownership retain their prior boundaries.
+
+**PRIVATE COUPLING — implemented:** validate the active installation returned by `brew --prefix --installed ansible`, its directory identity and expected command targets, identical stable Core 2.21.x versions, a fixed static INI inventory listing and a fixed playbook syntax check. Do not run tasks, gather facts, evaluate user manifests, connect to a guest or select Ansible's internal Python. Support installation-provided wrappers and reject foreign/mismatched targets. Replacing Homebrew, either command or its active directory invalidates pair readiness. stdout/stderr have separate streams with a combined 32 KiB limit, five-second timeout and private process-group cleanup. Parse OpenSSH's stderr version explicitly; never log raw diagnostics. The inventory contract accepts only the fixed synthetic host and its optional empty `ansible_local` namespace.
+
+**VERIFIED — no-VM acceptance:** `make test build` passes 224 Swift tests/37 suites and 43 script tests, including 18 focused provisioning tests. A minimal-PATH existing-host report admits Homebrew 7.0.11 and both Core 2.21.5 commands after fixed local self-checks, emits schema 2 without Python/PyYAML/interpreter rows, preserves help/version and guest-command protocol 1, rejects retired overrides and an installation flag, and leaves execution disabled. GitHub authentication is unverified. No tool installation/upgrade, real signing identity, credential access, app installation/opening, guest contact or VM operation occurred. See [exact checks and limits](docs/ProvisioningTools.md).
+
+**TO PROVE:** other Homebrew installations/Core versions, native UI interaction and signed packaged admission; the shared Swift package, parsers and controller port; actual setup, PTY authentication, authorization cleanup and real guest/focus/crash/sleep behavior. Earlier milestone 1 and shared-design sections preserve historical decisions and evidence; this section supersedes only their pending dependency-contract implementation status.
+
+**USER AUTHORIZATION / CONFIRMED — isolated UI review:** the user requested the UI, accepted its appearance and asked to stop the preview and proceed. A temporary ad-hoc native app used the unchanged provisioning view and current core, with live dependency checks and no manager/registry/runtime initialization or VM controls. It was closed on request. The installed manager and guests were untouched. This establishes the isolated visual review only; full manager interaction and packaged behavior remain TO PROVE. The shared Swift package port remains deferred under the earlier explicit instruction.
+
+## Shared Swift provisioning foundation — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** start milestone 2 with shared Swift package structure and strict manifest parsing, with no host tool installation or VM launch. This supersedes the earlier instruction to defer the port for this scope only. Keep the package in dev-vm on its isolated `codex/swift-provisioning-package` branch; the manager's dependency pin and helper integration remain pending. No manager execution gate changes.
+
+**DESIGN DECISION:** expose `DevVMProvisioningCore` and a validation-only `dev-vm` executable, targeting Swift 6/macOS 15+. Swift validates bounded plain data and typed setup declarations. Compile the pinned CYaml/LibYAML parser subset from Yams 6.2.2 through an event bridge, rejecting aliases/anchors/tags/version-tag directives before composition. JSON uses a bounded separate grammar and Foundation string decoding. Bundle schema/catalogue and license notices with exact revision/hash inventory checks. There is no new host Python or YAML-library runtime dependency. Keep custom task YAML opaque; source references and factory selectors are declarations only. Exact scalar differences, source revisions and the committed dev-vm foundation (`e86550e`) handoff are recorded in [the implementation plan](docs/DevVMProvisioningPlan.md#milestone-2-foundation-handoff--2-november-2026).
+
+**VERIFIED — local no-VM foundation:** make-based package build, 12 Swift test functions (including 94 parameterized cases), 18 unchanged-Python-loader oracle fixtures, and Swift tests/CLI with Python and Ansible absent from PATH pass. The existing dev-vm suite passes 235 tests with one Lua fixture skipped because Lua is absent, using the installed Homebrew Python and local socket access; both unchanged playbooks pass syntax checking. System Python 3.9/TOML and sandboxed Ansible local RPC failures were environmental and are recorded, not hidden. No host tool installation/upgrade, image download, credential access, app opening/install or existing-VM operation occurred.
+
+**TO PROVE:** complete feature/profile/catalogue resolution, TOML/effective option semantics, source freezing, plan parity, full guest resources, immutable manager packaging/integration, operational CLI compatibility, read-only relocation, transport/authorization, jobs and live terminal. All manager setup features remain unimplemented/disabled. Foundation parser fixtures establish no VM or real-guest acceptance and change no existing runtime provenance or lifecycle policy.
+
+
+## Shared Swift offline planning — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 2 with feature/profile resolution, source snapshots and offline proposals against the Python oracle, without host tool installations or VM launches. Extend the existing dev-vm companion worktree; manager production dependencies and execution gates stay unchanged. The dev-vm continuation is committed at `56dba82368d13287b01e28a459a69b42da8620a1`.
+
+**DESIGN DECISION / IMPLEMENTED:** port inheritance/conflict/override/tombstone behavior, dependency ordering, native package/mise requirements and predicted effects to the shared library. Preserve catalogue declaration order in JSON/YAML. Pin Swift-native TOMLDecoder with bounded TOML 1.0 compatibility checks. Freeze only selected inputs through no-follow descriptor-relative reads into an immutable in-memory snapshot, bound files/bytes/directories/depth, expand dotfiles and capture custom task YAML as opaque bytes. Bind proposals to source/resource/dependency inventories and input/plan digests; revalidation detects selected edits, additions/removals, permissions and root replacement. Existing Python controllers remain operational; Swift adds an offline `plan` command. Variable values and file/task contents are excluded from serialized proposals. Factory selectors remain declarations requiring manager admission; no new VM implementation or lifecycle owner is introduced.
+
+**VERIFIED — no-VM checks:** build, 20 Swift test functions, 18 plain-data fixtures and 66 complete proposal/error cases (41 accepted/25 rejected) pass against the unchanged Python oracle. Oracle Python planning forbids subprocesses/manager access/interpreter fallback; native children use an empty tool PATH. All 20 Swift tests also pass with an empty tool PATH. An isolated CLI copy rejects a damaged bundled catalogue with a fixed error. Existing dev-vm regression tests pass 235 tests with the missing-Lua fixture skipped, and both unchanged playbooks pass syntax checking. Development-only Python is already installed; none is invoked by the compiled Swift planner. No host install/upgrade, credential access, app opening/install, guest contact or VM operation occurred. Exact pins, snapshot limits, compatibility changes and remaining evidence boundaries are in [the continuation handoff](docs/DevVMProvisioningPlan.md#milestone-2-offline-planning-continuation--2-november-2026).
+
+**TO PROVE:** full parser/TOML parity beyond the fixture matrix, adversarial-writer filesystem transactions (not claimed), job snapshot materialization, full resource packaging, immutable manager integration, signed provenance/relocation, operational CLI cutover, transport/authorization, jobs/live terminal and real-guest behavior. In-memory snapshots and offline proposals grant no execution authorization. Earlier runtime provenance, guest/lifecycle rules and all disabled feature gates are preserved.
+
+
+## Shared Swift transport and authorization contracts — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 2 using fake guest adapters only, with no host tool installs or VM launches. Implement shared typed adapter contracts, native guest command descriptions and authorization/cleanup sequencing in dev-vm; no real transport or production manager execution path is added. This dev-vm continuation is committed at `f807104850dfd06527bcbee4ba5f0aca5a1404f4`.
+
+**DESIGN DECISION / IMPLEMENTED:** bind explicit review to frozen source/engine, job, VM/runtime session, non-root owner/UID, host key, dependencies, mode/tasks/check policy, conflict policy and input lease. Require separate task/persistent-grant/Docker acknowledgements. A single-use actor validates every operation and correlated reply, arms cleanup before staging/grants, and separates primary failures from cleanup uncertainty. Cancellation interrupts only the matching command and retains the outstanding adapter call; cleanup survives caller cancellation. Require remote-work quiescence and compound native grant/cache revocation proof before reporting cleanup or restart readiness. Return restart-required metadata only; VMManager retains lifecycle ownership. Check mode never changes grants/cache, installs manifest packages or opts into Docker; custom tasks require explicit check selection and trust.
+
+**PRIVATE COUPLING:** native guest command contract version 1 follows the inspected Python controller at `56dba82`, including stale-grant reset, interactive native persistent grant, cache invalidation, inactive-policy verification and native Docker consent/owner verification after revoke. The shared code describes fixed guest argv only and executes none. Reports/events carry fixed codes and job/command/VM/session IDs, exclude credentials/bindings/terminal bytes/raw errors, and use redacted descriptions for sensitive request/transport/recovery objects. Cleanup tickets are in-memory and pinned to the original target/dependencies/payload; recovery grants nothing and performs no setup or lifecycle work. Persistent recovery and explicit post-restart rebinding remain deferred. Attempt completion is not a VM `.exited` event and releases no runtime ownership/reservations.
+
+**VERIFIED — fake-only tests:** build and 38 Swift test functions pass (18 new sequencing/native-contract functions), including partial grants, uncertain staging/cleanup, cancellation and reentrant-driver rejection, check/trust/input rules, 10 reply/pin mismatch cases, source invalidation, post-revoke checks, recovery without original sources and sanitized results. All 38 pass with an empty tool PATH. The 18 parser and 66 planning oracle cases remain passing; seven targeted existing Python tests run with mocked guest, Ansible and lifecycle calls. No actual SSH/Ansible command, host install/probe, credential access, UI action or VM operation occurred. The earlier full legacy suite was not rerun because this slice uses fake guest adapters only; prior evidence remains historical.
+
+**TO PROVE:** actual identity/receipt authenticity, native commands and password echo/quoting, adapter deadlines and local/remote process cancellation/quiescence, concrete transports/payload staging, private persistent recovery/session rebinding, CLI/helper/UI integration, signed/pinned packaging, live terminal and real guests. Deadlines are an adapter contract, not proven wall-clock termination. Existing VM policy and manager execution gates remain unchanged. See [the transport/auth handoff](docs/DevVMProvisioningPlan.md#milestone-2-transportauthorization-slice--2-november-2026).
+
+
+## Shared Swift concrete transport adapters — 2 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** implement the next milestone-2 slice
+in the dev-vm companion worktree: concrete SSH/Ansible adapters, fake process
+runners only, no host installations or VM launches. Manager changes are docs only;
+all execution gates, lifecycle ownership, pinned-kit and personal-VM rules remain.
+The dev-vm adapter slice is committed as
+`9ebaf178de48e6480e248f8b20eae1f35c0d16b6` on
+`codex/swift-provisioning-package` (3 November 2026).
+
+**DESIGN DECISION / IMPLEMENTED:** pinned loopback SSH and Ansible command
+construction, private immutable job materialization and bundled maintained guest
+resources sit behind an injected runner and manager-owned session authority.
+Revalidate dependencies/credential metadata/session before each process; never
+read key contents. Preserve Ansible launcher entry paths while hashing resolved
+targets. Interactive native authorization/Docker/package commands request an input
+lease and terminal stream; Ansible requests live output with closed stdin. Track
+cancellation between processes and require exact local exit before cleanup.
+No live process runner, PTY, UI terminal or operational Swift command is shipped.
+
+**PRIVATE COUPLING:** a guest-only Python helper binds one exclusive UUID payload
+lease to recorded systemd user scopes and an Ansible shell wrapper. Preparation
+requires Linux/aarch64/non-root Python 3, cgroup v2, a user manager/bus and scoped
+execution with `--expand-environment=no`, before sudo grant. Quiescence seals new
+body work and requires known scopes inactive/empty; uncertain registration blocks
+proof/removal. Only the verified guest job temp root may be removed. This is not
+a sandbox for trusted task code or independent services. Uncertain startup can
+require manual recovery. The helper adds no host Python runtime or VM lifecycle
+implementation; Homebrew continues to supply Ansible's dependencies.
+
+**VERIFIED — fake-process checks:** make build and 50 Swift test functions,
+including 12 new transport functions, pass; all 50 pass with an empty tool PATH.
+The 18 parser/66 planning oracle fixtures and seven mocked Python sequencing tests
+pass. New Python files compile and 21 bundled YAML files parse statically. No
+real SSH/SCP/SFTP/Ansible executable, credential contents, host install, app/UI or
+VM operation is used. Full legacy/Ansible syntax execution was not repeated for
+this fake-process-only slice. Prior real-VM evidence remains unchanged.
+
+**TO PROVE:** real authentication/SSH quoting, Ansible/native package parity,
+guest systemd/cgroup registration and privileged descendants, hard deadlines,
+local/remote cancellation/quiescence, PTY/password echo/live output, persistent
+recovery/session rebinding, operational CLI and manager/helper integration, signed
+packaging and real-guest acceptance. See [the concrete adapter handoff](docs/DevVMProvisioningPlan.md#milestone-2-concrete-command-adapters--2-november-2026).
+
+
+## Shared Swift local process runner and PTY — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 2 with a local
+process runner and PTYs, tested solely using disposable local fixtures. No real
+SSH/Ansible, host installs or VM launches. Manager changes are docs only; no
+production dependency, setup feature gate or lifecycle policy changes.
+The dev-vm continuation is committed as `bb3fae22be45b38035fac52aefa0eb270a9d0fea` on
+`codex/swift-provisioning-package` (3 November 2026).
+
+**DESIGN DECISION / IMPLEMENTED:** exact argv/environment/cwd, bounded separate
+capture or raw terminal streams, closed/bounded stdin, new local sessions and
+matching-ID cancellation/deadlines. Retain a waitable leader until the owned
+group is inactive and output EOF, then reap; uncertain cleanup retains ownership
+and blocks new runners for that VM/session. Explicit reconciliation and a retained
+local reaper never relaunch or signal a reused PID. This is in-memory ownership,
+not persistent recovery or a sandbox for deliberately detached code.
+
+A small Darwin C syscall bridge and pinned `dev-vm-process-host` exec launcher
+supply controlling PTY semantics without fork in the Swift runtime. Future helper
+packaging must admit/distribute that binary. No new Homebrew/Python runtime is
+required. Terminal bytes remain bounded, sequenced, memory-only and separate from
+structured events; slow readers get explicit gaps. One reviewed input lease
+controls bounded input/resize; local PTYs are raw/no-echo, and revocation drops
+pending input without cancelling the job. No renderer, IPC attach or automatic
+secret redaction is supplied.
+
+**VERIFIED — local fixtures:** make build and 64 Swift test functions pass (14
+new local-runner functions), including controlling/foreground terminal, sizing,
+synthetic input without echo, overflow, cancellation/TERM-resistant children,
+exact capture, descriptor isolation, stale admission and uncertain-pipe cleanup.
+All 64 also pass with an empty tool PATH; 18 parser and 66 planning oracle cases
+remain passing. PTY `/dev/tty` access required execution outside the workspace
+filesystem sandbox; restricted failures are recorded in the handoff. Tests use
+private UUID roots with copied compiled binaries and confirm no live fixture
+children; launchd reaps orphan zombies. No real SSH/SCP/SFTP/Ansible command,
+credential, host installation, UI or VM operation occurs.
+
+**TO PROVE:** actual remote SSH/Ansible/guest authorization and echo/quiescence,
+deliberately detached code and kernel stalls, foreign reapers, cross-process/crash
+recovery, launcher signature/relocation/admission, terminal renderer/escape policy,
+IPC/viewer resynchronization and operational CLI/manager integration. Local process
+exit is not guest quiescence or VM exit and releases no runtime resources. See
+[the local runner handoff](docs/DevVMProvisioningPlan.md#milestone-2-local-runner-and-pty--3-november-2026).
+
+
+## Pinned provisioning manager/helper integration — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** integrate the pinned shared package and
+resources into manager/helper builds, tested with local fixtures only. No real
+SSH/Ansible, installs or VM launches. Add offline admission/planning only; no setup
+execution gate, job coordinator, lifecycle policy or installed app changes.
+
+**IMPLEMENTED:** an unchanged 79-file source export at dev-vm `bb3fae22be45b38035fac52aefa0eb270a9d0fea`
+is bound by a source/resource lock and generated compiled pin. Root SwiftPM links
+the library into core/helper and exactly resolves TOMLDecoder. Builds verify
+source drift and refuse optional parser plugins. The pinned C launcher is built
+unchanged through a separate generated SwiftPM package. App assembly/signature/
+layout checks now include the provisioning resources/licenses, offline helper,
+launcher, source lock and final signed-child hash manifest. Bundle diagnostics
+include source revision and disabled execution. No runtime-kit source is changed.
+
+**PRIVATE COUPLING:** bounded embedded package admission supports the two known
+SwiftPM layouts, refuses overrides/links/special files/extra or damaged resources
+and changed child binaries, and repeats verification after offline work. The
+helper accepts verify-package/validate-manifest/plan only, returns fixed errors
+for execution, and never initializes registry/credentials/socket/tool probes or a
+runner. Plans stay nonexecutable. Integrity manifests do not establish signing
+authority; the app signature pipeline supplies that distinct check.
+
+**VERIFIED — local checks:** build, 227 Swift tests/38 suites, 48 script tests
+and actual offline helper relocation fixtures pass. A private ad-hoc sealed
+fixture app, with no runtime kit, validates/plans read-only with empty tool PATH
+and private empty HOME/TMPDIR; it rejects execution, resource overrides and
+resource/launcher damage, and does not serialize synthetic variable values.
+Strict deep signature checks pass before resource damage and reject it afterward.
+The fixture manager executable is sealed but never opened/executed. No real SSH/
+SCP/SFTP/Ansible, Keychain item, permission prompt, host install, UI action, image
+download, installed-app change or guest operation occurs. Sandbox socket/context
+failures and the initial unavailable-network update are recorded in the handoff;
+full fixture regression passes outside that restriction using existing exact
+source objects and private caches. The separate dev-vm code remains unchanged.
+
+**TO PROVE:** complete runtime-kit app assembly/release signature/notarization,
+other-Mac relocation, coordinator/journal/session adapters and helper IPC, terminal
+UI/attach, operational CLI, persistent recovery and real guest/SSH/Ansible/echo/
+quiescence behavior. Package fixture success changes no VM `.exited` ownership,
+kit provenance or earlier real-guest evidence. See [the integration handoff](docs/DevVMProvisioningPlan.md#milestone-2-pinned-managerhelper-integration--3-november-2026).
+
+
+## Provisioning coordinator and job journal foundation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** start milestone 3 with coordinator and
+private job-journal implementation, tested using fake runtimes/adapters and local
+fixtures only. No real SSH/Ansible, installs or VM launches. Constructor/backend
+injection stays internal, with no app/helper/CLI execution entry point, production
+journal creation or enabled setup gate. Shared engine/resource pin remains
+`bb3fae2`; the pinned sequencer still owns native guest authorization/cleanup.
+
+**IMPLEMENTED:** one detached provisioning worker per coordinator/VMManager,
+accepted-job/review deduplication, stale source/engine/session/dependency admission,
+explicit cancellation and independent viewer lifetime. Journal state and command
+correlation precede adapter calls. The explicit private 0700/0600 schema-1 store
+uses exclusive file-description locking, atomic fsynced writes, directory/lock
+identity and revision checks, bounded strict decoding and fixed result codes.
+It stores digests/manager-owned IDs/status only, excluding credentials, source
+paths/data, terminal bytes and helper PIDs. Bad/changed journals are preserved and
+new work fails closed; write failures still permit original-target revocation.
+
+**DESIGN DECISION / IMPLEMENTED:** VMManager leases protect active/unresolved jobs
+from pause/suspend/edit/delete/start and defer ordinary shutdown for cleanup.
+Confirmed force stop and unexpected session/execution/SSH changes retain cleanup
+risk. Quit uses bounded cleanup attempts before normal shutdown, never releases a
+VM handle before matching `.exited`, and preserves uncertain work on disk. Final
+clean proof is sealed against later lifecycle races; diagnostic `.error` is not a
+boundary. Restart-required is metadata only, without automatic lifecycle actions.
+
+**PRIVATE COUPLING / LIMIT:** explicit same-process recovery uses the engine's
+opaque live ticket and exact original pins, independent of sources/input. Reopen
+never resumes apply or reconstructs ownership from a PID. The pinned package has
+no persistent ticket API; durable frozen-input capsules, authenticated helper
+recovery and explicit restart rebinding remain pending. Journal cleanup holds
+cannot be cleared from a stopped observation alone. No source/credential copies
+are persisted by this foundation.
+
+**VERIFIED — local checks:** make build/test passes 248 Swift tests/40 suites
+(21 new coordinator/journal functions), 48 script tests and existing relocated
+package fixtures. Tests cover write-ahead/private storage, corrupt/replaced
+journals, duplicate/stale admission, missing input, viewer detach, shutdown/force
+stop, sleep/exit/SSH loss, cleanup deadline/late worker ownership, disk failure
+with attempted revoke, live cleanup recovery without sources and conservative
+reopen. New provisioning paths use no subprocess; existing socket/synthetic
+LAContext fixtures run outside the workspace sandbox without Keychain calls or
+authentication UI. No real SSH/SCP/SFTP/Ansible, host install, UI, image download,
+installed app or VM operation occurs.
+
+**TO PROVE:** real coordinator/helper IPC and ownership, durable inputs and
+post-crash authenticated recovery, SSH-ready waiting/restart rebinding, UI/CLI and
+terminal jobs, retention/migration, kernel/helper failures and actual hard cleanup
+deadlines, and real guest/auth/echo/quiescence behavior. This is the milestone-3
+foundation only. Existing VM lifecycle/provenance and real-guest evidence retain
+their prior labels. See [the coordinator/journal handoff](docs/DevVMProvisioningPlan.md#milestone-3-coordinatorjournal-foundation--3-november-2026).
+
+
+## Durable provisioning inputs and cleanup checkpoints — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes
+and local fixtures only. No real SSH/Ansible execution, host installs or VM launches.
+Execution gates and offline-only helper entry points remain disabled.
+
+**IMPLEMENTED:** new jobs preallocate a payload UUID and worker token, then fsync
+private frozen inputs and a separate cleanup checkpoint before journaling the
+running risk marker and delegating work. Schema-2 journal rows bind both artifact
+hashes; schema-1 risk is preserved without inventing missing authority. Journal
+size is 256 KiB to match the strict parser (superseding the earlier 1 MiB claim).
+The 0700 artifact directory/0600 immutable files have exact hashes, link/mode/root
+checks and a 256 MiB/512-file quota counting orphans. No automatic import, replay,
+pruning or deletion occurs. Selected user configuration may be sensitive and is
+kept out of reports/terminal/journal; private storage is not encryption.
+
+The versioned bounded binary input archive retains selected bytes/modes/directory
+membership and restores inert data only. It cannot reconstruct an executable plan,
+resume apply or extract files into user paths. A cleanup checkpoint restores only
+conservative original-scope cleanup risk. The engine retains its payload/control
+helper while grant/cache inactivity is unproved.
+
+Explicit persistent cleanup requires the exact original live VM/session/guest,
+approved review, payload/worker, engine/dependency/binding/checkpoint pins, plus a
+fresh challenge response proving the prior worker is stopped AND fenced from
+launch. This authority is injected and fake-only in this slice; PID/disk metadata
+is never sufficient. Session/dependency authority is rechecked after awaits and
+before commands. Missing/corrupt input archives cannot suppress cleanup. Damaged
+checkpoints without a genuine live ticket preserve uncertainty. Idle close/reopen
+drops all tickets and releases the journal lock; active close is refused and VM
+holds survive handoff. No body command, grant, prompt, restart or rebinding can be
+issued by recovery; matching `.exited` still owns VM handle/resource release.
+
+**PRIVATE COUPLING:** the manager consumes base `bb3fae2` plus the exact hashed
+`Patches/dev-vm-durable-state.patch`, with base/result inventories and a resulting
+source-snapshot digest. This supersedes the earlier unchanged-engine statement.
+Source preparation verifies patch lineage locally and uses no mutable checkout;
+license/parser/guest-resource and C launcher bytes remain unchanged.
+
+**VERIFIED — fakes/local fixtures:** full `make test` passes 260 manager Swift
+functions/40 suites, 49 script tests and relocated/read-only offline-helper checks.
+Shared build/tests plus static oracles pass 68 Swift functions, 18 parser and 66
+planning/error fixtures. Coverage includes fresh fenced worker proof, interrupted
+markers, source/input removal, corrupted/cross-job/unsafe checkpoints, quota/orphan
+preservation, legacy migration and no replay. A graceful-shutdown completion race
+now cancels body work without misclassifying the still-valid guest or suppressing
+cleanup. Existing socket/mock-context and local PTY fixtures need the sandbox
+exception; no actual credentials/auth UI or real transport/VM operations occur.
+
+**TO PROVE:** production helper IPC/fencing and coordinator construction, recovery
+after full manager/VM restart, reviewed session rebinding, real helper absence/
+crash and power-loss durability, retention/removal, SSH waits, live terminal/job
+UI and CLI, and all real guest/transport/authentication behavior. These local
+foundations do not promote any existing real-guest evidence labels. See the
+[durable continuation](docs/DevVMProvisioningPlan.md#milestone-3-durable-inputs-and-cleanup-recovery--3-november-2026).
+
+
+## Authenticated provisioning helper control and ownership — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 with authenticated
+helper IPC/ownership reconciliation, using fake runtimes and local fixtures only.
+No real SSH/Ansible, host installs or VM launches. The supplied Setup-tab screenshot
+is the future stage-strip/live-terminal reference, not guest-validation evidence;
+no UI takeover, permission grant or terminal rendering is performed.
+
+**IMPLEMENTED:** an inherited same-user AF_UNIX control connection uses a private
+per-launch capability delivered only through an anonymous bootstrap pipe. HMAC
+frames bind direction, instance/binary/package pins, channel, sequence and exact
+payload. Strict bounded messages reject unknown/duplicate fields, replay,
+reflection, wrong keys/pins and uncorrelated request/challenge replies. Capability
+bytes never enter argv/environment/disk/journal/status/logs. One request is allowed
+in flight; timeouts/malformed replies poison the channel without automatic retry.
+No listener/path discovery or stored-PID ownership inference is introduced.
+
+The helper registry accepts worker bindings from its trusted local owner only;
+wire requests cannot register or start anything. Missing/new helper state returns
+unknown. A process-runner wrapper permanently fences the original worker before
+waiting, owns each delegated task/ID and retains uncertain/mismatched process
+receipts. Only matching local exit/not-started or exact retained local cleanup
+can prove the local worker stopped and fenced. A stopped task/EOF/diagnostic never
+proves guest quiescence, grant revocation or success. Disconnect fences local
+workers and stops new registration. The coordinator can consume this authenticated
+proof for its existing explicit cleanup-only recovery after reopen, with fresh
+original-session/dependency checks. VM ownership still ends only at `.exited`.
+
+**PRIVATE COUPLING:** helper control API 1 has only reconciliation, no shell,
+apply, terminal/input, PID, arbitrary path or registration command. The packaged
+helper's internal inherited-channel mode admits its distribution and bootstrap
+pins, then serves an empty ownership registry without a runner/tool probe/journal/
+Keychain/VM. It reports unknown; production job launch and worker registration are
+not enabled. The shared package source/resource pin is unchanged. Authentication
+is possession of a privately handed-off capability, not signing/notarization or
+protection from a malicious same-user memory writer. Automatic production launch
+must independently admit the child and preserve exclusive backend ownership.
+
+**VERIFIED — fake/local checks:** full `make test` passes 275 Swift functions/41
+suites (15 new IPC/coordinator functions), 49 script tests and expanded relocated
+read-only package checks. Swift worker backends are all fake. The actual ad-hoc
+sealed helper authenticates an inherited socket/pipe with empty PATH/private
+HOME/TMPDIR; it reports unknown for missing ownership, rejects replay/wrong MAC/
+bootstrap pins and leaks no secrets or host state. Existing strict signature/
+tamper tests still pass. Full regression uses the existing local socket/mock-auth
+sandbox exception, without real auth UI, tools/guests or host installs. Shared
+package sources/pins remain unchanged and were not retested in this docs-only
+companion handoff.
+
+**TO PROVE:** production admitted launch/registration/executor wiring, operational
+job IPC, full manager-process restart and reviewed session adoption, signing/
+audit policy where needed, real helper/guest crash and remote cleanup, hard kernel
+stall deadlines, live terminal streams/input leases and UI/CLI. This slice can
+reconcile a surviving helper after coordinator reopen; an empty replacement helper
+cannot prove lost ownership. Existing real-guest evidence labels remain unchanged.
+See the [helper-control handoff](docs/DevVMProvisioningPlan.md#milestone-3-authenticated-helper-ipc-and-ownership--3-november-2026).
+
+
+## Admitted provisioning helper launch and inert registration — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes
+and local fixtures only. No real SSH/Ansible, host installs, VM launches or UI
+operations. Admit and register an inert helper worker only; engine/job dispatch,
+transport activation and product setup entry points remain disabled.
+
+**IMPLEMENTED:** an internal launcher verifies package/resource/binary pins,
+strict outer/nested signatures, and the retained executable's identity. Default
+admission requires non-ad-hoc matching app/helper Team IDs; only explicit internal
+fixtures may choose ad-hoc/no-team admission. Before capability handoff, verify
+the owned spawned child's dynamic code against the admitted cdhash requirement.
+The PID is a transient lookup from this waitable child, never stored or used for
+adoption/signaling/ownership proof. Spawn passes explicit cwd/private HOME/TMPDIR,
+empty tool PATH, anonymous bootstrap stdin, null stdout/stderr and one inherited
+control fd, with CLOEXEC-default exclusion of unrelated descriptors. Capabilities
+remain volatile and never enter arguments/environment/disk/diagnostics.
+
+Private bootstrap 2 reserves one metadata-only original worker and receives an
+authenticated exact-digest receipt. Bootstrap 1 stays empty/unknown. Reserved
+workers have no activation or engine API; fencing retires them permanently.
+Unknown/partial registrations, receipts, owner substitution and duplicate launch
+tickets fail closed. A helper instance is freshly minted per new job; a saved
+owner cannot create a replacement helper claiming earlier work.
+
+The coordinator freezes inputs and publishes schema-3 helper instance/executable/
+package pins, registration digest and pending marker before spawn. It revalidates
+review/package/source/session/dependencies before and after registration, then
+marks the receipt accepted while keeping the job queued/no engine worker and a
+conservative cleanup hold. Duplicate submissions cannot dispatch body work.
+Schema 1/2 records preserve risk without invented helper authority; partial/unknown
+owner fields and owner fields in legacy schemas are rejected. Existing private
+file/lock/hash/size/quota/orphan rules remain. After owner publication, failures
+retain its exact identity and cleanup-required status rather than quietly retrying.
+
+Explicit cleanup after coordinator reopen requires the same retained authenticated
+launch service, fresh original-owner proof and original guest/session checks.
+Confirmed remote cleanup closes the exact helper channel; child handles/capabilities
+remain owned until matching helper exit, independently of VM ownership. A lost
+child wait retains uncertainty; there is no arbitrary PID kill or automatic
+replacement. Control metadata roots are explicit/private, not VM storage. The
+shared engine/resource pin and VM `.exited` lifecycle policy are unchanged.
+
+**PRIVATE COUPLING:** schema 3, private bootstrap 2 and metadata-only receipt extend
+the earlier authenticated control contract. A debug-only Swift fixture target
+exercises the real factory against an ad-hoc sealed disposable app and is excluded
+from app staging; its release entry point is disabled. No signing credentials or
+real identity are used. The screenshot remains the terminal design reference.
+
+**VERIFIED — fake/local checks:** `make test` passes 284 Swift functions/42 suites
+(9 new registration/coordinator/journal functions), 49 script tests and expanded
+read-only signed package fixtures. Fakes cover journal-before-spawn, changed
+admission/session, failed/mismatched receipts, final-write failure, duplicate
+submissions, persisted owner pins and original-service recovery after reopen.
+The debug-only fixture runs the real factory with an explicit ad-hoc policy:
+production policy rejects ad-hoc code; resource tamper and executable inode
+replacement fail before admission; normal bootstrap/registration/reconciliation
+passes and the matching child is reaped with no control-directory output.
+Existing protocol/signature/tamper checks pass. Fixture lookup was corrected to
+use either admitted SwiftPM resource layout. No real signing credentials,
+authentication UI, host installs, guest transport or VM operation is used. Existing
+local socket/mock-auth sandbox exceptions apply; shared code/pins are unchanged.
+
+**TO PROVE:** product wiring and operational engine/backend dispatch, actual
+release signer/Team policy, full manager restart/reconnect and reviewed VM/session
+adoption, real helper/guest failures and grant cleanup, hard kernel stalls,
+retention/removal, SSH waits and terminal/input/UI/CLI. Earlier real-guest evidence
+keeps its labels. See [the admitted-launch handoff](docs/DevVMProvisioningPlan.md#milestone-3-admitted-helper-launch-and-worker-registration--3-november-2026).
+
+
+## Helper-side shared-engine dispatch and activation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 with helper-side
+engine dispatch and worker activation, using fake runtimes and local fixtures only.
+No real SSH/Ansible, installs or VM launches. Production backend/context factories,
+app/CLI execution gates and terminal UI remain disabled.
+
+**IMPLEMENTED:** a prepared worker consumes one immutable activation bound to its
+original registration/owner/plan/input/review/engine/dependency/session scope.
+Authenticated typed activate/status/cancel requests preserve MAC/request/sequence
+correlation and contain no plan bytes, arbitrary paths, executable/credential or
+terminal data. Activation's acknowledgements are ANDed with helper-local approval;
+missing task/grant/Docker consent cannot be invented. Duplicate identical activation
+returns status without another task; a changed activation or a prior fence cannot
+reopen the worker. Preparation must run no guest/process operations.
+
+The helper validates a local prepared context then invokes the pinned shared
+sequencer with the original payload ID. Its owned task survives viewer/RPC detach.
+Command bindings, package/body admission, session/dependency authority and a known
+closed-channel body gate are checked around work. Cancellation/fencing stops body
+work while permitting known-target sequencer cleanup. Completion retires/fences
+its owned runner; local uncertainty overrides apparent guest success. Contexts,
+owned local tasks and handles remain retained, and helper EOF is not an exit or
+remote-cleanup proof. Status/results are bounded fixed types, not terminal/raw
+errors or source values. No authorization/Ansible logic is duplicated.
+
+Schema 4 journals activation UUID/digest and risk before the activation RPC. Manager
+polling is detached from viewers and checks exact activation/correlation and
+monotonic status. Lost replies, invalid status, disk failure and runtime/session/
+dependency invalidation preserve cleanup-required without automatic replay. Old
+schemas preserve risk without invented activation. Coordinator reopen records
+interruption, not a restarted apply. Existing lifecycle interlocks, cancellation
+grace and final proof sealing remain; matching VM `.exited` still releases guest
+resources independently of helper-child exit.
+
+**PRIVATE COUPLING:** control payloads extend frame 1/bootstrap 2 with activation
+and sanitized results. The normal helper provides no engine context factory and
+rejects execution. A separate ad-hoc-signed temporary fixture app uses the excluded
+debug fixture binary as its helper, with a fixed synthetic manifest/fake backend;
+no production argument/environment/RPC enables it. This preserves the admitted
+image/capability/owner chain while testing actual helper-process dispatch. Shared
+package sources/resources/pins are unchanged. There is no frozen-archive extraction
+or arbitrary executable/source transfer added to the control channel.
+
+**VERIFIED — fake/local checks:** `make test` passes 297 Swift functions/43 suites
+(13 new engine/coordinator/journal functions), 49 script tests and expanded signed
+package fixtures. Coverage includes one-shot apply/check, consent/context/source
+refusal, fence/cancel/disconnect ordering, physical uncertainty, journal-before-RPC,
+viewer detach, shutdown, lost/malformed replies, failed writes, no replay after
+reopen, schema preservation and runtime/SSH/dependency invalidation. Diagnostics
+alone are not lifecycle exit. The normal helper refuses activation without a
+factory. A separately sealed/ad-hoc-signed temporary fixture helper runs the
+actual sequencer with only synthetic adapters, reports clean completion and
+cancellation/cleanup, and is reaped through the owned launcher. Existing protocol/
+signature/tamper checks still pass. No real signing credentials, auth UI, host
+installs, SSH/Ansible or VM operations occur; existing local socket/mock-auth
+sandbox exceptions apply. Shared sources/pins are unchanged and not retested.
+
+**TO PROVE:** production frozen-context/consent transfer, exclusive real backend
+and manager-aware session authority, product wiring, full restart/reconnect and
+reviewed rebinding, release signer acceptance, real guest/auth/echo/quiescence/
+crash/kernel behavior, terminal/PTY/input/UI/CLI. The screenshot remains a reference;
+no user UI or installed app is changed. Earlier real-guest evidence labels remain.
+See the [helper dispatch handoff](docs/DevVMProvisioningPlan.md#milestone-3-helper-side-engine-dispatch-and-activation--3-november-2026).
+
+## Frozen-input delivery and helper context validation — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes
+and disposable local fixtures only; no real SSH/Ansible, installs or VM launches.
+This supersedes the pending frozen-context handoff in the preceding record.
+
+**DESIGN DECISION / IMPLEMENTED:** persist a private immutable `DVMCNTX1` delivery
+blob containing the existing selected archive and strict reviewed-request metadata.
+Bind exact total/metadata/archive hashes and byte count into the authenticated
+registration and schema-5 journal, before spawn. A retained read-only descriptor
+checks private ownership, mode, single link, file/path identity and digest. Spawn
+inherits an empty separate socket at fd 4; only after verifying package and owned
+live-child code send bootstrap 3 and bounded chunks. No source path or content
+enters arguments, environment, control/status/terminal frames or diagnostics.
+Capabilities still exist only in memory/private pipes, never in these artifacts.
+
+**DESIGN DECISION / IMPLEMENTED:** validate hashes, strict fields and original
+job/guest/session/dependency/review bindings before materializing only into a fresh
+private helper-owned UUID tree. Descriptor-relative no-follow/exclusive traversal,
+file/directory/depth/byte bounds and fsync preserve selected binary bytes, modes
+and empty directories. Independently replan inside that tree using the original
+relative manifest; compare plan/input/engine and reconstructed review identities
+before acknowledging registration. The archive remains inert data, never an
+imported executable plan, cleanup proof or automatic apply/resume authority.
+An injected backend receives the validated context; delivered, backend and explicit
+activation consent combine by AND. Retain/recheck its private storage through work;
+cleanup still uses the independently bound original checkpoint without source or
+input availability. Product helper backend construction and execution gates stay
+disabled. Only the excluded Debug fixture uses synthetic guest adapters.
+
+**DESIGN DECISION:** original source verification remains required before job
+publication/handoff. After a frozen registration is accepted, the selected private
+copy defines the reviewed job; mutable checkout changes/removal cannot replace or
+invalidate that copy. Manager activation checks persisted delivery/inputs and the
+helper checks its rebuilt private context. Legacy non-delivery registrations keep
+source preflight. No replay, guest rebinding, input grant or restart adoption is
+added. Schemas 1–4 preserve risk and ownership without invented delivery receipts.
+No artifact is automatically imported or removed; partial private trees are retained.
+
+**PRIVATE COUPLING:** shared `SetupPlan.manifestPath` is now public read-only.
+Update its engine inventory and manager's exact base-plus-integration-patch lock
+and compiled pin together (82 resulting files). The base remains `bb3fae2`; the
+patched result has a new engine/source identity. Guest resources, parser dependencies
+and C launcher are unchanged. No mutable external checkout dependency is used.
+
+**VERIFIED — fake/local checks:** `make test` passes 308 manager Swift functions/
+44 suites, 49 script tests and expanded relocated/read-only signed-helper fixtures.
+Coverage includes independent replan, custom manifest/catalogue/tasks, binary/mode/
+empty-directory preservation, changed metadata/identities/framing/hashes, private
+file/root/link substitution, implicit-directory bounds, strict receipt/bootstrap/
+journal migration, consent constraints and frozen activation after source removal.
+Actual admitted product helper validates delivery but denies activation. The
+separately sealed/ad-hoc-signed Debug helper validates a multi-frame payload and
+uses only fake adapters for completion/cancellation after parent source deletion.
+Changed delivery is refused; matching child exits are reaped. No fake backend is
+installed into the product app. Shared build/tests and development oracle checks
+pass 68 Swift functions, 18 parser fixtures and 66 complete planning/error fixtures.
+Only disposable local socket/mock-auth/PTY sandbox exceptions and ad-hoc fixture
+signing are used; no real signing credentials, auth UI, transport, installs or
+VM operation occurs. Existing real-guest evidence labels remain unchanged.
+
+**TO PROVE:** trusted manager-aware session/dependency authority and exclusive real
+backend construction, product coordinator wiring, full restart/reconnect/rebinding,
+real release-signature acceptance, power-loss durability/retention UX, live terminal/
+PTY/input/UI/CLI integration and real guest/auth/echo/quiescence/crash/kernel behavior.
+The supplied screenshot remains a visual reference; no UI or installed app changes.
+See the [frozen-input handoff](docs/DevVMProvisioningPlan.md#milestone-3-frozen-input-delivery-and-helper-context-validation--3-november-2026).
+
+## Helper backend construction and manager session authority — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 using fake runtimes
+and disposable local fixtures only. No real SSH/Ansible, installs or VM launches.
+This supersedes the pending construction/authority foundation above; execution
+surfaces remain disabled and no UI or installed app changes.
+
+**DESIGN DECISION / IMPLEMENTED:** a single-use helper backend constructs the
+existing shared SSH/Ansible adapter and original-worker fenced runner from an
+explicit trusted helper-local transport-resource provider. Require the validated
+frozen request, original bindings/digests, package admission and fresh manager
+permission before resource access and runner construction. Verify connection/tool
+pins around awaits without probes or reading identity-file bytes. The exact same
+manager authority guards the context, adapter and runner; authority-bound workers
+cannot fall back to local-only validation. Product entry points provide no resource
+provider or operational runner; all tested factories return fake process runners.
+Production managed-SSH/Homebrew resource admission and handoff remain product work.
+
+**DESIGN DECISION / IMPLEMENTED:** bootstrap 4 binds the authority version and an
+independent inherited fd-5 session channel. Frozen data/control remain separate.
+Session HMAC keys have a distinct derivation domain and counters; control packets
+cannot act as authority. One-shot registration/activation binding follows durable
+activation/lease publication. A separate reverse-RPC loop awaits the coordinator
+without blocking the launcher's control lock, keeping status/cancel serviceable.
+Fresh challenge-bound checks cover preparation, commands, process invocations and
+completion. Strict bounded metadata includes original opaque scope and typed
+operation/purpose, never owner names, credentials, paths/argv or terminal bytes.
+No successful decision is cached; bad/lost/replayed replies poison the channel.
+
+The coordinator compares the live generation/journaled activation and original
+scope, revalidates the actual VMManager lease plus dependency/binding authority,
+and repeats its state checks after awaits. Current running session, SSH owner,
+shutdown/power/execution/storage state remain manager-owned. Process ownership is
+recorded before permission; fencing/cancellation is checked again before backend
+launch. Body revocation returns not-started locally and typed cancellation to the
+sequencer. Valid original-target cleanup can continue after cancellation or package/
+source loss; failed journal writes stop body work while permitting cleanup against
+the retained lease and preserving risk. Missing/expired/invalid authority cannot
+invent remote cleanup proof. Physical uncertainty retains the exact local runner.
+
+**DESIGN DECISION / IMPLEMENTED:** schema 6 persists the optional original session
+version, requiring genuine delivery and helper owner. Unknown/null/legacy markers
+fail closed; schemas 1–5 retain risk/pins without invented authority or replay.
+Lost channels fence local work. A new helper, saved PID or disk row cannot adopt
+manager/VM ownership. Matching VM/helper exit boundaries remain separately retained.
+
+**PRIVATE COUPLING:** shared connection verification is public stat-only metadata
+revalidation, tool verification is public, and fixed process purposes gain Codable.
+The engine inventory and exact 82-file base-plus-patch export/compiled pin change
+together. Base `bb3fae2`, guest resources, parser dependencies and C launcher remain
+unchanged; the patched engine identity is new.
+
+**VERIFIED — fake/local checks:** `make test` passes 319 manager Swift functions/
+45 suites, 49 script tests and expanded relocated/read-only signed-helper fixtures.
+Coverage includes concrete adapter apply/check with fake runners, construction
+resource checks, fresh per-invocation permission, cancellation/shutdown/exit/SSH/
+dependency/package/channel races, cancellation during dependency validation,
+failed-journal cleanup, strict MAC/challenge/schema/one-shot binding, local-authority
+bypass refusal and physical-uncertainty recovery without backend reconstruction.
+The actual product helper refuses activation without a provider. A separate
+ad-hoc-signed Debug helper constructs the adapter with inert files/fake runner and
+uses the actual inherited authority channel for completion and deterministic
+cancellation/cleanup; matching owned child exit is reaped. Shared checks pass 68
+Swift functions, 18 parser oracle fixtures and 66 complete planning/error fixtures.
+Only local socket/mock-auth/PTY sandbox exceptions and ad-hoc fixture signing are
+used. No real credentials/auth UI, transport, installs or VM operation occurs.
+
+**TO PROVE:** product transport-resource admission/handoff and construction, real
+runner/terminal/input leases, UI/CLI, full restart/reconnect/rebinding, release
+signatures, power-loss/retention UX and real guest/auth/echo/transport/quiescence/
+cleanup/crash/kernel behavior. Fresh RPC checks are not atomic remote execution
+or proof of guest liveness after a reply. Earlier real-guest evidence labels stay
+unchanged; the supplied terminal screenshot remains a visual target.
+See the [backend/session-authority handoff](docs/DevVMProvisioningPlan.md#milestone-3-helper-backend-and-manager-session-authority--3-november-2026).
+
+## Transport-resource admission and private handoff — 3 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** continue milestone 3 with fake runtimes
+and local fixtures only; no real SSH/Ansible, host installs or VM launches. This
+implements the admission/handoff foundation previously pending. Product execution
+gates stay disabled; no UI, installed app or operational runner is enabled.
+
+**DESIGN DECISION / IMPLEMENTED:** admit transport resources from the current
+VMManager session/profile and explicit owned root. Require running/ready original
+owner/session and no conflicting lifecycle/storage operation. Validate public
+managed SSH manifests, exact port and known-host identity plus root identity;
+derive the private identity-file reference without reading its bytes. Never call
+credential generation, key-reading storage validation or a guest probe. Admission
+consumes an already verified schema-2 tool report, checks fixed system entries,
+coherent Homebrew Ansible version/installation/targets and current fingerprints,
+and captures original executable hashes/stamps and a stat-only single-link key
+reference. It does not rerun tool probes or claim new signing/runtime provenance.
+
+Compute the dependency digest from the canonical original resource selection and
+require it in the reviewed request. Bind the ephemeral private handoff to the
+original job/VM/session/payload/worker/review/checkpoint/source/engine/mode. Recheck
+against the actual manager root/port at publication, handoff, acceptance, activation
+and command/invocation authority boundaries. Replaced resources need new review;
+changed credentials/tools never become cleanup replacements by inference.
+
+**DESIGN DECISION / IMPLEMENTED:** bootstrap 5 binds a resource receipt and separate
+inherited fd-6 stream, handed over only after package/owned-child code admission.
+Strict bounded parsing, SHA/size/EOF and original proof comparison precede helper
+acknowledgement. Paths, public metadata and stat/hash proofs stay in memory/private
+stream; no descriptor is saved and no paths/bytes enter argv/environment/control/
+status/terminal/journal. Private-key contents are neither read nor transferred.
+The helper's host policy is independent of the descriptor; only explicit test code
+injects fixture policy. A resource-bound backend must use the validated handoff.
+Product helper has no process-runner factory and still refuses activation.
+
+**DESIGN DECISION / IMPLEMENTED:** schema 7 stores only the original resource
+receipt, requiring matching dependency, frozen inputs and manager authority.
+Schemas 1–6 preserve risk and old pins without invented resources or replay.
+Live admission/service state is retained separately; reopening never reconstructs
+credentials or replays a queued job from journal metadata. Existing explicit
+cleanup/ownership protocols remain separate; no new restart adoption or automatic
+resource import/removal is introduced.
+
+**PRIVATE COUPLING:** shared `ProvisioningTransportReference` privately exports/
+imports original executable and identity proofs, with exact expected binding/paths,
+strict nested schemas and link-count checks. It never authorizes execution or
+recaptures changed files. Base-plus-patch export now contains 83 files with updated
+source/engine/compiled pins; base remains `bb3fae2`. Guest resources, parsers and C
+launcher retain their bytes.
+
+**VERIFIED — fake/local checks:** `make test` passes 328 manager Swift functions/
+46 suites, 49 script tests and expanded signed-helper fixtures. Cases cover managed
+endpoint/report/private round trip, original key/tool/alias/installation/metadata/
+root changes, cross-job/mode/dependency/format damage, host policy, acknowledgement
+refusal, schema preservation, fresh activation/invocation checks and no replay.
+Concrete apply/check use only fake process runners. The separately sealed/ad-hoc
+Debug helper imports the actual private stream, constructs the shared adapter from
+original proofs, completes/cancels with fake replies and reaps its owned child.
+The product helper rejects fixture paths under host policy; no fixture policy or
+runner is installed into it. Shared checks pass 70 Swift functions, 18 parser oracle
+fixtures and 66 complete planning/error fixtures, including stat-only round trip
+with an unreadable synthetic identity. Only existing local IPC/mock-auth/PTY sandbox
+exceptions and ad-hoc signing are used. No real credential/auth UI, host install,
+guest transport, VM launch or installed-app change occurs.
+
+**TO PROVE:** product resource acquisition/coordinator wiring and report provenance/
+lifetime, genuine managed-SSH/Homebrew admission across supported installations,
+operational runner/terminal/input/UI/CLI, full restart/reconnect/rebinding, release
+signatures, power-loss/retention UX and real guest identity/auth/echo/transport/
+remote cleanup/quiescence/crash/kernel behavior. Hash/stat/RPC checks are not atomic
+remote execution or proof of guest liveness after a reply. Prior real-guest labels
+remain unchanged; the terminal screenshot remains a later visual target.
+See the [transport admission/handoff record](docs/DevVMProvisioningPlan.md#milestone-3-transport-resource-admission-and-private-handoff--3-november-2026).
+
+
+## dev-vm milestone 3 completion — 3 November 2026
+
+**DESIGN DECISION:** milestone 3 is complete within fake/local acceptance. One
+manager-owned service coordinates strict workflow/child journals, SSH wait/review,
+admitted helper activation, original exit observation, matching-exit restart and
+fresh explicit rebind/check review. Duplicate/concurrent acceptance cannot replay.
+Corruption or uncertain ownership preserves risk and blocks normal VM lifecycle.
+App composition installs the service with execution disabled and performs no host
+tool probes, helper launch or VM operation. The packaged helper still has no
+operational runner factory; terminal/input transport is milestone 4 and UI/CLI is 5.
+
+**DESIGN DECISION:** a full manager process restart loses its private helper and VM
+ownership capabilities. Journal rows, saved PIDs, locks or diagnostic markers cannot
+recreate them. Interrupted jobs retain cleanup-required holds; no automatic worker
+adoption, execution replay, source import or restart occurs. Explicit cleanup after
+service/coordinator reopen requires original authenticated stopped-and-fenced proof,
+current manager-owned session authority and re-supplied original resource proofs.
+Private/orphan recovery files are retained; bounded quotas refuse new work rather
+than deleting them. Manual recovery/retention UX remains a later acceptance concern.
+
+**VERIFIED:** `make test` passes 347 Swift test functions in 48 suites, 49 script tests, and relocated/read-only ad-hoc-signed helper fixtures. The final `make test-provisioning-tools` run passes 141 functions in 13 suites after the last cancellation/recovery guard changes. Package/export validation and companion/vendor source/engine matching pass. See the
+[completion record](docs/DevVMProvisioningPlan.md#milestone-3-completion--3-november-2026)
+for exact checks and limits. Separate processes exercise owner loss during fake work
+and a fresh manager's refusal to invent ownership; surviving-capability recovery,
+local runner construction/output, lifecycle, durable failure and retention use
+fake runtimes/local fixtures. No real transports, authentication UI, host installs,
+VMs, permission grants or installed-app changes are exercised.
+
+**PRIVATE COUPLING:** original manager session/root/managed-SSH ownership and pinned
+helper/resource inventories remain required. This is orchestration above the shared
+package, not a duplicate VM implementation.
+
+**TO PROVE:** live terminal/input/rendering, operational UI/CLI, genuine guest
+identity/authentication/echo, restart/check and remote cleanup after failure,
+positive recovery after full process loss, host sleep/wake/crash/power-loss/kernel
+behavior and release signatures. Real guest evidence and all prior TO PROVE labels
+remain unchanged. The Setup screenshot remains a later visual target.
+
+
+## dev-vm milestone 4 completion — 3 November 2026
+
+**DESIGN DECISION:** one dedicated anonymous inherited terminal socket, separately
+MACed from control and manager authority, carries bounded byte frames and viewer
+operations for the original admitted helper/job. Viewers start read-only; one
+explicit input owner controls the reviewed scope and PTY size. Tokens bind viewer,
+invocation and sequence. Detach, expiry, stream loss, completion/cancellation/fence
+and observed output gaps revoke input; pending keystrokes are discarded. No raw
+terminal/input is journaled or logged. Slow viewers never block process draining or
+control cleanup. Missing output requires a visible reset/jump to the live tail and
+fresh deliberate input claim, never invented screen reconstruction or disk replay.
+
+**VERIFIED:** `make test` passes 362 Swift functions in 49 suites, 49 script tests
+and the signed local helper fixtures. The final shared package checks pass 72 Swift
+functions, 18 parser oracle fixtures and 66 planning/error oracle fixtures; package
+export verification, companion/vendor matching and both diff checks pass.
+See the [milestone 4 completion record](docs/DevVMProvisioningPlan.md#milestone-4-completion--3-november-2026).
+Tests use synthetic inputs, fake runtimes/transports, disposable local PTYs/processes
+and excluded ad-hoc-signed debug helpers. Scoped local TTY restoration covers normal,
+error and cooperative-cancellation exits, allowing Darwin's transient PENDIN bit.
+No real transports, installs, downloads, VM or user UI operations are performed.
+
+**PRIVATE COUPLING:** bootstrap 6 / terminal protocol 1 / inherited fd 7 are private
+manager/helper interfaces pinned to the existing admitted registration and original
+session/resource authority. Shared scope reservation grants no typing permission;
+an explicit live attachment is required. Public product execution stays disabled.
+
+**TO PROVE:** native emulator/rendering/host-action escape policy, Setup UI and
+external CLI attachment are milestone 5. Actual nested SSH, guest password prompts,
+resize, remote cleanup/restart/check, sleep/wake/crash and real signatures retain
+their separate acceptance gates. No positive recovery after full process loss or
+TTY restoration after hard process termination is claimed. The Setup screenshot
+remains the visual target for milestone 5.
+
+### 3 November 2026 — provisioning milestone 5 terminal/observation slice
+
+- **DESIGN DECISION:** Setup and the separate setup CLI share one manager-owned
+  observation/cancellation/attachment service. Offline preset/folder previews use
+  the pinned planner. Attachments start view-only; deliberate input ownership,
+  typed invocation metadata, bounded transient input and gap/reset handling apply.
+  Existing VM command JSON contracts and production execution gates remain intact.
+- **PRIVATE COUPLING:** library-only SwiftTerm 1.99.0 at
+  `2dad6a1e516f755bed77cf9bbd09455062f54758` requires Swift 6.2+ (tested with 6.4),
+  with one reviewed grapheme-length guard, two integration files and inventory.
+  The scoped display filter blocks host-action escapes before native/CLI rendering;
+  protocol-1 `setup-v1.sock` uses private same-user Unix-socket admission and never
+  exports helper capabilities. Terminal content/input is never journaled/logged.
+- **VERIFIED:** `make test` passed 376 manager Swift test functions in 50 suites, 52 script tests, and the relocated/read-only/ad-hoc-signed helper fixtures (including original owner-loss/reopen and terminal streaming). The focused UI/CLI coverage contains 13 functions plus the four-case bundled-preset test: split Unicode/ANSI, cursor/colour/CR rendering, blocked host actions, oversized/malformed streams, storage bounds across cursor/style changes, native viewer ownership/search/reset, strict correlated protocol refusal, cross-view input ownership, EOF/gap/reclaim, distinct cancellation and disposable PTY termios/signal/open-file-flag restoration on detach, connection loss and task cancellation. Vendor inventory, the reviewed two-line source patch, exact upstream export comparison, unchanged shared-package export checks and `git diff --check` passed. No user window was opened or real transport executed.
+- **TO PROVE:** full milestone-5 creation/selection, frozen preview/apply and explicit
+  hash-bound task trust, restart/check/recovery execution actions, complete visual
+  acceptance, nested guest/SSH authentication and cleanup, hard-kill TTY recovery,
+  and distribution. This is an uninstalled worktree build. No real transports,
+  host installs, factory downloads, VM operations or user UI takeover occurred.
+
+### 3 November 2026 — milestone 5 frozen review and explicit task trust
+
+- **DESIGN DECISION:** manager-owned Preview freezes selected inputs into a fresh
+  private UUID tree, replans and verifies hashes, then binds an explicit target
+  review/consent to that snapshot. Later source edits do not alter it. UI and CLI
+  share capture/lookup, explicit task-source inspection, prepare/apply and status.
+  Task trust has its own digest over the exact review, all frozen inputs and
+  selected tasks; general Apply, sudo and Docker consent do not imply it.
+  Submission repeats package, original resource/session and fresh dependency
+  checks before existing helper admission, with one owned operation per UUID and
+  no automatic mutation retry. Source bytes are returned only on a deliberate
+  task-source read; no terminal/input/archive/credential enters normal status.
+- **PRIVATE COUPLING:** additive review operations on setup protocol 1, bounded
+  previews/task chunks and memory-only review/consent handles. Existing strict
+  workflow/helper journals govern prepared jobs; retained private source trees
+  are not executable authority after reopen. Product composition has neither an
+  enabled execution gate nor an operational owner/UID/key resolver. Tests inject
+  synthetic evidence; the manager never guesses a real guest UID.
+- **VERIFIED:** `make test` passed 390 manager Swift test functions in 52 suites, 52 script tests and the relocated/read-only/ad-hoc-signed helper fixture suite (including original-owner loss/reopen and terminal streaming). `make test-provisioning-review` passed 28 functions in three suites: frozen previews, original-source edits, explicit task-source chunking, preview quotas, no authority after reopen, separate task/sudo/Docker consent, exact duplicate submission, changed source/tool/session admission, cancellation during a gated final recheck, stale task trust, strict nested protocol cases and CLI/native service interoperability. Tests call the native service API and actual private CLI socket, without opening the form or claiming visual acceptance. Package/export and both diff checks pass; shared package sources/resources/pins are unchanged.
+- **TO PROVE:** native feature editing/New VM coupling, reviewed restart/check/
+  recovery surfaces, operational guest identity/runner admission, visual and
+  signed distribution acceptance, all real guest/SSH/echo/cleanup/crash/sleep/wake
+  behavior. No actual transport, host install, factory download, VM or user UI
+  operation occurred. The shared package source/resources/pin are unchanged.
+
+### 3 November 2026 — milestone 5 reviewed workflow actions
+
+- **DESIGN DECISION:** Setup and CLI share preparation/consent for existing workflow
+  restart, post-restart check and cleanup recovery. Action UUID/digest binds exact
+  workflow/VM/session/job, sequence and input/dependency scope. No acknowledgement
+  is inferred from Apply/task trust. Duplicates share one owned operation; failed
+  operations require a deliberate fresh review, and action authority is not restored
+  from disk. Restart waits for matching `.exited`, check requires the admitted new
+  session and excludes custom tasks, and recovery is restricted to original cleanup.
+- **PRIVATE COUPLING:** additive strict setup-socket action schemas delegate to the
+  existing M3 restart/rebind/recovery paths. Recovery’s lazy adapter constructor
+  cannot run before original authenticated worker/checkpoint admission. A new
+  process, journal or PID cannot manufacture ownership. Active provisional cleanup
+  risk is not a recovery action. Product execution/resolver/recovery factory remain
+  disabled; no operational runner is installed.
+- **VERIFIED:** `make test` passed 403 manager Swift test functions in 54 suites, 52 script tests and the relocated/read-only/ad-hoc-signed helper fixtures, including original-owner loss/reopen and terminal streaming. `make test-provisioning-actions` passed 13 functions in two suites (including ten malformed-wire variants and three final-check admission/cancellation variants). Fake fixtures cover explicit consent, shared CLI/native action lookup, duplicate restart/check, diagnostic-vs-exit boundaries, fresh-session frozen checks with custom tasks excluded and no authorization input, active-risk recovery refusal, lazy factory ordering, missing original capability after reopen, source-free cleanup, failed revocation/retained holds, stale sibling recovery reviews, failed-operation non-replay and lost in-memory consent. Product endpoint tests prove disabled refusal before probes/factories. UI controls compile; complete interactive/visual acceptance was not performed. Package/export checks and both diff checks pass. Shared package sources/resources/pins are unchanged.
+- **TO PROVE:** native feature editing/New VM handoff, operational identity/factories,
+  complete visual interaction, actual guest/SSH/echo/revocation/restart/check,
+  crash/sleep/wake and signed distribution. This slice uses only fake runtimes,
+  fake adapters and disposable private UUID fixtures. No real transport, host
+  install, factory download, VM or user UI operation occurred. Shared sources,
+  resources and pins are unchanged.
+
+
+## Native feature choices and New VM setup selection — 3 November 2026
+
+- **DESIGN DECISION:** Setup and New VM expose typed Use source/Enable/Disable
+  choices for common built-ins; advanced settings remain source-owned and shared
+  planning resolves dependencies/conflicts. Native edits derive a private generated
+  manifest from frozen bytes, preserve the original manifest/mode and bind all
+  selected bytes into new hashes. No selected source file is overwritten.
+- **DESIGN DECISION:** New VM saves a separately acknowledged frozen selection,
+  while resource/factory/SSH/owner/sharing fields come from manager creation
+  arguments. Saving is metadata only and grants no Apply, task trust or sudo
+  authority. Duplicate consent plus identical creation arguments returns the
+  original UUID without mutation/launch; uncertain saves retain their reservation.
+- **PRIVATE COUPLING:** strict setup-socket creation prepare/lookup and guest
+  creation consent share the native service. Registry schema 6 stores a validated,
+  immutable non-secret receipt. Preview binding requires its matching saved VM;
+  reopening retains metadata lookup only and cannot recreate execution consent.
+  Older registry versions still load; older builds reject schema 6.
+- **VERIFIED:** `make test` passed 419 manager Swift functions in 55 suites, 52
+  script tests and relocated/read-only/ad-hoc-signed helper fixtures. Focused
+  local selection tests pass 16 functions in one suite,
+  including frozen bytes/modes, typed protocol refusal, shared dependency resolution,
+  resource/factory precedence, duplicate and uncertain saves, port admission and
+  inert reopen. Full-suite evidence is recorded in the
+  [milestone-5 handoff record](docs/DevVMProvisioningPlan.md#milestone-5-native-features-and-new-vm-handoff--3-november-2026).
+- **TO PROVE:** full native visual/interaction acceptance, operational guest
+  owner/UID/key evidence and runner factories, real guest/SSH/echo/cleanup/restart/
+  check/crash/sleep/wake and signed distribution. Execution/resolver/recovery
+  construction remain disabled. No host install, real transport, factory download,
+  VM or user UI operation occurred. Shared sources/resources/pins are unchanged.
+
+## Authenticated provisioning identity and dormant runtime composition — 3 November 2026
+
+- **DESIGN DECISION:** retain the UID/owner from the existing authenticated managed
+  SSH probe, bound to its exact VM/session, UUID-root inode/device, port, host key,
+  public metadata hashes and stat-pinned client identity. A strict bounded parser
+  refuses malformed replies. Readiness-only state, guest status, manifests and
+  saved receipts cannot supply provisioning identity. Evidence is memory-only,
+  redacted and fresh for at most 45 monotonic seconds.
+- **PRIVATE COUPLING:** the pinned guest `managed-ssh-identity` command supplies
+  exactly VM/session/user/UID, as confirmed by source inspection. Successful
+  30-second refreshes preserve readiness; failures and identity changes invalidate
+  authority. Retry/pause/shutdown/exit clear evidence and fence late callbacks.
+  Host transport admission/revalidation require current authenticated evidence.
+- **DESIGN DECISION:** product composition now supplies inert identity/recovery
+  constructors. A single fixed-false build-time gate keeps manager execution and
+  helper runner selection disabled. Dormant worker construction reuses package/
+  engine/resource/launcher admission and original session/invocation fencing.
+  Recovery construction remains behind original-helper proof and cleanup-only
+  scope; it rechecks transport and manager authority. A new runner proves no prior
+  worker exit and grants no task, sudo or user-input authority.
+- **VERIFIED:** `make test` passes 428 manager Swift functions in 56 suites, 52
+  script tests and relocated/read-only/ad-hoc-signed helper fixtures. Focused
+  fake/local identity/backend validation passes 43 functions
+  across nine suites, including the normal monitor with fake SSH execution and
+  fixture sleeps. Source inspection confirms the four-field guest identity format.
+  The [implementation/evidence record](docs/DevVMProvisioningPlan.md#milestone-6-preparation-authenticated-identity-and-dormant-backends--3-november-2026)
+  records final full-suite and offscreen component checks. Actual controls and
+  correctly oriented Unicode/ANSI terminal rendering were inspected in a labelled
+  synthetic PNG, without AppModel/registry access or a visible window. This does
+  not establish whole-screen interaction or real prompt/echo acceptance.
+- **TO PROVE:** real owner/UID/key authenticity, guest/nested SSH/TTY behavior,
+  remote cleanup, end-to-end setup/reapplication/restart/check, crash/sleep/wake,
+  whole-screen interactive acceptance and signed distribution. No product execution
+  was enabled, real transport/VM operation performed, host tools installed,
+  factory downloaded, personal credential accessed or user desktop taken over.
+  Shared package sources/resources/export and engine pins remain unchanged.
+
+## Full Setup/New VM fake acceptance and disposable-guest runbook — 3 November 2026
+
+- **VERIFIED:** 56 isolated checks exercise actual New VM/selection/manager Setup
+  views and shared actions: review/acknowledgment, edits/races/refusal, explicit
+  resource/factory precedence, frozen handoff/duplicate creation, complete task
+  inspection, independent apply consent, terminal search/expand and cancellation.
+  Eight full-screen light/dark/scrolled PNGs were inspected. The DEBUG harness
+  runs before normal model/registry construction with in-memory fake services and
+  a never-started FakeRuntime. Nonactivating backing windows lie outside every
+  display; no OS input or desktop capture is used. The temporary support root
+  remains absent. [Evidence and limits](docs/DevVMUIAcceptance.md) are recorded.
+- **VERIFIED:** `make test` passes 428 Swift functions in 56 suites, 52 script tests,
+  relocated/read-only/ad-hoc-signed helper fixtures and the 56 screen checks.
+  The final screen target and package/export verification pass. Release compilation
+  passes without signing credentials; fixture entry point/markers are absent from
+  the release binary. This is compile evidence, not signed-distribution acceptance.
+- **DESIGN DECISION:** button/action guards are shared, including required-task
+  inspection. Loaded frozen input is explained independently of the source picker.
+  Fixture state is injected locally in DEBUG, never selected through a real
+  execution override. Product execution and shared package/resource/export/engine
+  pins remain unchanged.
+- **TO PROVE:** physical input, focus/VoiceOver, native file/task/confirmation
+  dialogs and real guest/SSH/Ansible/TTY/cleanup/restart/check/crash/sleep/wake.
+  The [milestone-6 runbook](docs/DevVMMilestone6Runbook.md) is prepared, not run.
+  It requires a scoped, separately reviewed operational candidate and explicit
+  disposable-guest consent before execution. No real transport, host installation,
+  VM launch/change, factory download, personal credential or desktop takeover
+  occurred. Milestone 6 real acceptance and milestone 7 distribution remain open.
+
+## Milestone 6 disposable admission — 3 November 2026
+
+- **DESIGN DECISION:** ordinary product approval is `nil` and execution stays false.
+  A future private candidate may embed only the original explicitly reviewed
+  disposable UUID/root/device/inode/ownership-marker pins in both manager/helper.
+  There is no separate Boolean bypass or approval loader from CLI, environment,
+  manifest, registry, journal, readiness or IPC. Internal fixture injection remains
+  trusted test composition. An ownership marker does not itself mean disposable.
+- **DESIGN DECISION:** hold root descriptors; recheck private ownership/mode,
+  canonical namespace, device/inode and strict markers. Reject retained POC IDs,
+  replaced roots, arbitrary symlinks and unlisted UUIDs. The manager also checks
+  its profile/session root at preparation, transport, leases, cleanup and both
+  sides of restart. A compiled candidate's initial start and coordinator-close
+  paths retain scope. The helper independently checks before runner construction
+  and before/after reverse RPC for every command/invocation. Input claim/send/resize
+  failure releases ownership; output remains viewable. Recovery never bypasses
+  approval or original-worker quiescence/session/provenance/cleanup requirements.
+- **VERIFIED:** 12 fake/local admission test functions cover admitted work,
+  unlisted/foreign/same-UUID roots, invalid/stale pins, marker/mode/symlink changes,
+  independent manager/helper refusals, RPC races, restart/replacement, recovery
+  construction/commands and terminal ownership. See the
+  [implementation record](docs/DevVMProvisioningPlan.md#milestone-6-disposable-admission-foundation--3-november-2026)
+  and updated [runbook](docs/DevVMMilestone6Runbook.md). Full `make test` passes
+  440 Swift functions in 57 suites, 52 script tests, signed local helper fixtures
+  and 56 isolated screen checks. The final focused admission target, release
+  compilation without signing credentials, package/export and diff checks pass.
+- **TO PROVE:** approval of concrete newly prepared disposable roots and a real
+  signed operational candidate, then guest/SSH/Ansible/TTY/apply/cleanup/restart/
+  check/crash/sleep/wake and milestone-7 distribution. No actual approval values,
+  host installs, VM launches/changes, factory downloads, real transport, personal
+  credentials or desktop takeover occur in this slice. Shared package/resources/
+  export/engine pins remain unchanged.
+
+## Separate setup Source and multiple profile cards — 3 November 2026
+
+- **DESIGN DECISION:** native Source selects bundled configuration or a local
+  `vm.yml` folder; profile cards select one or more bundled profiles. Local declared
+  profiles/settings/tasks stay included and cards add profiles. Individual feature
+  overrides are hidden in the native UI. Colored native badges and summaries come
+  from the shared resolver's expected inclusions, not observed guest contents.
+- **PRIVATE COUPLING:** optional bundled/profile source fields use the same strict
+  local protocol and generated frozen-manifest projection. Legacy CLI presets stay
+  compatible. Bounded unique builtin additions preserve source bytes and deduplicate
+  aliases; shared merge/dependency/conflict rules remain authoritative. Conflicts
+  are refused until explicitly resolved; review acknowledgment is invalidated on
+  profile edits. No package/engine/runtime source is duplicated or ported here.
+- **VERIFIED:** 24 focused selection functions (eight new profile tests), 448 Swift
+  functions in 58 suites, 52 script tests, local signed helper fixtures and 62
+  isolated UI checks pass. Eight light/dark/scrolled PNGs were inspected. Release
+  compilation without real signing credentials, package/export and diff checks
+  pass. [UI evidence](docs/DevVMUIAcceptance.md#separate-source-and-multiple-profiles--3-november-2026)
+  records current captures and limits.
+- **TO PROVE:** physical UI/focus/VoiceOver/native dialogs and real candidate/guest/
+  SSH/Ansible/TTY/cleanup/restart/check/crash/sleep/wake/distribution. Product approval
+  stays nil and execution disabled; no host install, factory download, real VM or
+  transport operation occurred. Shared package/resources/export/engine pins are
+  unchanged. Local custom profiles stay manifest-defined, outside the bundled card
+  catalogue; their task trust and all execution consent remain independent.
+
+## Conditional optional-app trimming — 3 November 2026
+
+- **DESIGN DECISION:** expose Trim optional apps only for the official Try Omarchy
+  factory, initially off. The tooltip describes its broad bundled apps and a more
+  sensible base. Guest setup changes the VM, not reusable factory bytes. Trim and
+  factory edits invalidate review; unsupported provenance resets/hides the choice.
+  Native on/off explicitly overrides local manifest trimming; legacy absent
+  overrides preserve the existing `vm.lean_developer` setting.
+- **PRIVATE COUPLING:** freeze the Boolean in the private selection manifest and
+  enforce actual official identity at creation reservation/workflow preparation.
+  The shared planner lists candidate removals, excluding selected software. Reuse
+  the upstream guest helper/allowlist through the supervised, streamed apply path;
+  check never trims. The optional-app-trim integration patch updates the pinned
+  source/resources/tests and compiled admission identity. No host Python is added.
+- **TO PROVE:** real guest trim/dependency closures/reapply and live terminal under
+  an explicitly approved disposable candidate. Product approval remains nil and
+  execution disabled. No host installation, image change/download or VM launch.
+- **VERIFIED:** 28 focused manager selection functions, 452 manager Swift functions
+  in 59 suites, 52 script tests, final seven package functions/six package scripts
+  and signed local helper fixtures pass. Final shared tests pass 77 functions;
+  twelve upstream helper tests use mocked subprocess replies. Final screen checks
+  pass 74 checks with twelve synthetic PNGs; four new scrolled trim images were
+  inspected. Release compilation, immutable patch verification and diff checks pass.
+- **VERIFICATION EXCEPTION:** the companion broad test target invoked installed
+  Ansible against temporary local inventories and fake helper files before its
+  full scope was inspected. This exceeded the no-real-Ansible instruction; it
+  contacted no guest and installed no host tools. The run failed (10 failures,
+  44 errors, one skip/235 tests), so it is not acceptance evidence. Subsequent trim
+  tests use fake runners/mocked helpers. Exact checks, limits and this exception
+  are recorded in the [implementation plan](docs/DevVMProvisioningPlan.md#optional-app-trim-selection--3-november-2026).
+
+## Theme and layout selection — 3 November 2026
+
+- **DESIGN DECISION:** native New VM/Setup use an initially collapsed Theme & layout
+  section for a GitHub repository URL, random/most-starred and keep/select/remove
+  for a Lua layout. Blank preserves source/current choices. Random uses ten stars
+  by default; zero skips ranking. Star-based choices require existing authenticated
+  gh; no install/sign-in flow is initiated. Theme/layout edits invalidate review.
+- **PRIVATE COUPLING:** shared Swift selector/resolver with injected HTTP/star
+  providers owns strict roots, catalogue figures, thresholds/ranking and final GET
+  acceptance. The manager uses bounded credential-free ephemeral GETs and the
+  existing bounded read-only gh runner. It resolves once during review and freezes
+  the concrete URL. GET accessibility establishes neither theme validity nor a Git
+  content pin. Selected regular UTF-8 layout bytes (at most 256 KiB) are captured
+  without following symlinks or executing Lua, copied into private reviewed inputs
+  and hashed. Original files/settings remain unchanged. Existing snapshot/Ansible/
+  native Omarchy paths own apply; workstation disable is refused. CLI/socket review
+  APIs share strict appearance selections. No new lifecycle owner or host Python.
+- **PRIVATE COUPLING:** the theme-selection export patch and lock/engine/snapshot
+  pins include the shared implementation and fake tests. Product approval stays nil
+  and execution disabled; creation/review never authorizes setup or custom tasks.
+- **VERIFIED:** full manager make test passes 463 Swift functions in 61 suites,
+  52 script tests, local signed helper fixtures and 82 offscreen checks. Eleven
+  focused appearance functions, 84 shared Swift functions, eighteen selected
+  upstream mocked/controller or disposable stub-shell fixtures, syntax checks,
+  release compilation, reverse export and diff checks pass. Four new light/dark
+  captures were inspected; [evidence and limits](docs/DevVMProvisioningPlan.md#theme-and-layout-selection--3-november-2026)
+  are recorded. No real HTTP/gh/SSH/Ansible, host install, factory operation or VM
+  launch occurs in this slice. The broad companion Ansible target is skipped to
+  honor the user's explicit fake/local constraint.
+- **TO PROVE:** live catalogue/authentication/rate limits and theme contents,
+  native dialogs/hover/focus/physical input, actual guest apply/reapply/check/layout
+  login behavior, cleanup and distribution under explicit disposable approval.
+
+## Bundled dev-vm layout example cards — 3 November 2026
+
+- **DESIGN DECISION:** Desktop layout → Examples offers the four upstream example
+  layouts as single-select wireframe cards, with split proportions/browser overlap,
+  descriptions and prerequisite apps. The gallery uses full width and adapts to
+  four or two columns in the tested forms. Keep/Custom file/Remove remain. Choosing
+  a card freezes its original Lua; it does not implicitly add app installs or
+  authorize execution. Wireframes illustrate intended floating placement, not
+  observed guest state. Applications must be available separately at guest login.
+- **PRIVATE COUPLING:** shared catalogue/API binds four fixed IDs, metadata and
+  source hashes to bundled copies of the unchanged original Lua. A strict optional
+  appearance field is mutually exclusive with custom-file/removal choices. Native,
+  CLI and socket paths share it; the existing frozen-input/private-manifest/shared
+  planner/transport path owns application. Preview naming uses the actual frozen
+  source hash. A new integration patch updates engine/resource/snapshot/lock pins;
+  product approval remains nil and execution disabled.
+- **VERIFIED:** full manager tests pass 468 Swift functions in 62 suites, 52 scripts,
+  signed local helper fixtures and 100 isolated screen checks. Shared tests pass 86
+  functions. Original and bundled sources/catalogue match byte-for-byte; resource
+  sync syntax parsing and reverse export/diff checks pass. Four new light/dark
+  captures were inspected; [checks and limits](docs/DevVMProvisioningPlan.md#bundled-dev-vm-layout-example-cards--3-november-2026)
+  are recorded. No actual Lua/HTTP/gh/SSH/Ansible, host install, factory operation or
+  VM launch occurs in these checks. The broad Ansible target remains skipped.
+- **TO PROVE:** physical card interaction/VoiceOver and actual guest app availability,
+  startup, placement, manual resizing, reapplication and next-login behavior under
+  explicit disposable approval. Historical dev-vm captures are separate evidence.
+
+## Offline provisioning candidate preflight — 3 November 2026
+
+- **DESIGN DECISION:** an offline build evidence report cannot enable execution or
+  approve a disposable scope. The existing product approval remains nil. Build
+  hashes and source status are observations, not signed/loaded-code admission or
+  proof that binaries were built from HEAD. New stopped disposable root preparation
+  and an actual guest run still require their concrete explicit approvals.
+- **PRIVATE COUPLING:** `make provisioning-preflight` reuses the pinned export,
+  generated source pin and resource inventory, records existing binary hashes and
+  optionally checks an assembled provisioning seal/runtime-lock copy. Read-only
+  export validation creates only its temporary reverse-patch copy, never build
+  inputs. The tool reads no user guest/registry/factory-image or credentials and
+  invokes no candidate or signing/dependency/transport tools. It is repository
+  development tooling, not a product Python runtime.
+- **VERIFIED — offline/local:** ten static checks and all 61 script tests pass,
+  including nine new tamper/replacement/read-only regression fixtures. The previous
+  Swift/shared/UI results remain scoped to their recorded source. See the
+  [runbook](docs/DevVMMilestone6Runbook.md#offline-candidate-preflight).
+- **TO PROVE:** approved original root identities and operational candidate,
+  signatures/loaded code, fresh real factory/tool admission and all guest rows.
+
+## Private scoped provisioning candidate — 3 November 2026
+
+- **DESIGN DECISION:** the approved stopped disposable profile/root and its original
+  pins can identify a private candidate without authorizing launch or provisioning.
+  Main source remains nil/disabled. Private source overlay and actual identifiers
+  stay outside version control; constants cannot be supplied by a file, environment,
+  CLI, manifest or IPC. Invalid original scope fails closed rather than falling
+  back to ordinary composition. Production helper-signing policy is unchanged.
+- **PRIVATE COUPLING:** a private six-file overlay over commit `1cb2bdd` installs the
+  original scope in both manager/helper and a read-only inspection path before
+  AppModel/registry/worker dispatch. Existing make/SwiftPM, exact kit resources and
+  packaging are retained. No virtualization implementation or shared source changes.
+- **VERIFIED — offline/local:** thirteen artifact checks, actual packaged component
+  reports before/after relocation, fake-runtime refusal probes with zero starts,
+  and twelve ordinary admission tests pass. Kit archive/inventory and signatures
+  match; local app signatures verify. Only ad-hoc signing is used. Root, metadata
+  and full registry are unchanged. Production same-team signing correctly refuses
+  the candidate; no fixture policy replaces it. See the
+  [runbook](docs/DevVMMilestone6Runbook.md#private-scoped-candidate-preparation).
+- **TO PROVE:** authorized signing/loaded-child admission, separately approved SSH/
+  owner configuration, existing factory/tool readiness, exact inputs/consents and
+  all real guest acceptance. No launch, real SSH/Ansible, install, credential use,
+  normal UI or worker body occurred. Real acceptance remains NOT_RUN.
+
+## Offline candidate signing/readiness audit — 3 November 2026
+
+- **VERIFIED — static/local:** nineteen checks confirm unchanged candidate/evidence,
+  exact inventories/signatures, source archive/overlay and original root/registry.
+  Static Ansible metadata is Core 2.21.5 in the expected family, with no CLI execution
+  or readiness claim. Factory metadata is present but bytes are access-denied and
+  checksum NOT_VERIFIED. No permission grant, image/disk creation, credential, host
+  install, normal UI, workflow, signing, network or real transport/guest operation.
+- **PRIVATE COUPLING / SOURCE INFERENCE:** supported promotion rebuilds signed
+  runtime/profile/pin composition while retaining original scope. Existing tag CI
+  checks out ordinary source and publishes archives; it is unsuitable unchanged for
+  this ignored private candidate. A private nonpublishing handoff and final original-
+  Mac scope validation must precede later authorized signing. No such route is run
+  or implemented here; detailed artifacts and pins remain outside Git.
+- **TO PROVE:** seven signing/readiness gates, including fresh CLI checks, approved
+  SSH/owner/input configuration, verified factory bytes and actual loaded-child/
+  guest behavior. Product approval remains nil and guest rows remain NOT_RUN. See
+  the [audit record](docs/DevVMMilestone6Runbook.md#offline-signing-and-readiness-audit).
+
+## Private signing/packaging handoff — fake/local, 3 November 2026
+
+- **DESIGN DECISION:** private build-input bindings and a frozen signing request
+  confer no guest/signing consent. CLI preparation never reads the target VM root,
+  recaptures original pins, runs a signer or accesses credentials. Ordinary product
+  approval stays nil. Real requests cannot enter the synthetic signing runner;
+  production signature requirements and public release automation are unchanged.
+- **PRIVATE COUPLING:** existing runtime-origin/payload, profile-entitlement and
+  provisioning seal validators enforce fake profile/rebuild/child-sign/seal/outer-
+  sign/verify/archive ordering. Both component receipts/code bodies retain the same
+  scope. Private fresh outputs, immutable input digests, tag/release/VM namespace
+  guards, archive checks and private failure retention prevent overwrite/replay or
+  publishing. Build tooling remains separate from the shipped Swift controller.
+- **VERIFIED — local fixtures:** eighteen new functions/22 rejection variants and
+  all 79 script tests pass. The actual candidate yields a private 101-file request;
+  synthetic ZIP roundtrip evidence records no process, network or credential call.
+  Real request simulation is refused. Original candidate/root/registry are unchanged;
+  detailed artifacts and pins stay ignored. See the
+  [handoff](docs/DevVMMilestone6Runbook.md#private-signing-and-packaging-handoff--fakelocal-path).
+- **TO PROVE:** authorized real signer/compilation, cryptographic/profile/loaded-child
+  validation and original-Mac scope evidence; prior factory/tool/account and all
+  guest gates remain pending. No real signing, installs, SSH/Ansible, workflow,
+  credential, UI or VM operation occurs. Guest acceptance remains NOT_RUN.
+
+## Private signer adapter — fake processes, 4 November 2026
+
+- **DESIGN DECISION:** a developer-only adapter connects the frozen private request
+  to existing signed-prerelease build/SDK commands. The system runner refuses by
+  default before material IO; trusted in-memory authorization binds request, scope,
+  material and allowed effects. No signing CLI, credential import/unlock/search,
+  runtime download, notary submission or publication path is added. Secure
+  timestamps require signing approval. Product approval remains nil.
+- **PRIVATE COUPLING:** reconstruct the exact archive/overlay, preserve original
+  scope/operational composition, project signed pins and inspector branch, use
+  clean pinned local dependencies, and retain child-sign/seal/outer-sign order.
+  Existing origin/payload/profile/seal policies plus SDK team/authority/hardened/
+  timestamp/certificate checks and read-only archive roundtrip gate success.
+- **VERIFIED — fake/local:** twelve new test functions, 33 command/signature failure
+  cases and four runtime variants; all 91 script tests pass. Injected fake processes
+  and mocked system dispatch exercise command/timeout contracts without a real
+  child, tool, credential, Apple request, install, UI, disk or guest operation.
+  Fixture results explicitly establish no production cryptography or launch
+  readiness. Actual handoff/candidate/pins remain private and unchanged. See the
+  [runbook](docs/DevVMMilestone6Runbook.md#private-signer-adapter--fake-process-runners-4-november-2026).
+- **TO PROVE:** authorized local runtime/materials and actual compiler/SwiftPM,
+  SDK/profile/signature behavior, notarization, final original-Mac scope and loaded
+  child admission. Factory/tool/SSH/owner and all guest rows remain pending/NOT_RUN.
+
+## Real signed-candidate gate preparation — 4 November 2026
+
+- **DESIGN DECISION:** a private review-only packet binds the retained candidate,
+  request/original scope/source and committed adapter, exact runtime/profile
+  requirements and unresolved material selectors. Every approval is NOT_GRANTED;
+  no file/env input becomes execution authority. Named material inspection,
+  optional upstream runtime preparation, app build/key use/secure timestamps,
+  original-Mac/loaded-child checks, notarization and guest acceptance are distinct.
+- **VERIFIED — read-only local:** candidate inventory/reviewed digest and frozen
+  request match; canonical client/parser checkouts are clean at the archived pins.
+  Local Git uses no fetch/hooks/fsmonitor or optional index writes. No root/registry
+  observation, pin recapture, SDK/signing command, credential access, Apple/network,
+  SSH/Ansible, install, UI, disk or guest operation. Adapter/shared/product source
+  and its 91-test evidence remain unchanged; actual pins and packet stay private.
+- **PRIVATE COUPLING:** runtime consumption needs the signed variant of the exact
+  frozen development kit, sharing the selected app team and immutable origin/
+  payload. A missing runtime needs separate upstream preparation; its signer lacks
+  an explicit keychain selector. The ordinary release wrapper couples credentials,
+  notarization and publication and must not be used unchanged for this gate.
+- **TO PROVE:** no real runtime/team/identity/keychain/profile path is selected or
+  inspected. Real material binding/trusted caller, compiler/SDK/profile/signature,
+  notarization/original-Mac/loaded-child and all guest rows remain unproven. See the
+  [gate](docs/DevVMMilestone6Runbook.md#real-signed-candidate-gate-preparation--4-november-2026).
+
+## Matching local signed-runtime discovery — 4 November 2026
+
+- **VERIFIED — local data:** existing published `v0.9.4-dev.1` runtime in the primary
+  checkout matches the frozen origin/payload, ZIP digest/inventory and three
+  extracted bundle inventories. Newer candidate origins differ. Matching nonsecret
+  bundle/ZIP/lock files are copied privately into the adapter layout and checked
+  again; original artifacts/gate/request/scope and product source stay unchanged.
+- **PRIVATE COUPLING:** identity/team derive from an existing helper's public CMS
+  certificate, locally parsed without Keychain/signing/trust access. Profile paths
+  are observed by metadata only; matching public source pins do not validate their
+  unopened bytes. Exact selectors, paths and hashes remain in an ignored addendum.
+- **DESIGN DECISION / TO PROVE:** no keychain is selected or queried, no key
+  availability established, and all approvals remain NOT_GRANTED. Named material
+  validation/private profile staging need separate approval; real app signing/
+  timestamps and later gates remain separate. No credentials, SDK/signing tools,
+  Apple/network, SSH/Ansible, installs, UI, image or VM operation. Product approval
+  remains nil and guest rows NOT_RUN. See the
+  [discovery](docs/DevVMMilestone6Runbook.md#local-signed-runtime-discovery--4-november-2026).
+
+## Latest main merged into provisioning — 4 November 2026
+
+- **USER AUTHORIZATION / DESIGN DECISION:** merge latest main into the provisioning
+  branch and resolve integration conflicts with offline/fake validation only.
+  Credential-free HTTPS confirms main `741be20`; no SSH transport or credential
+  helper is used. Preserve both validation histories and their VERIFIED/DESIGN
+  DECISION/PRIVATE COUPLING/TO PROVE distinctions.
+- **IMPLEMENTED:** retain Setup and default-off guest Touch ID in CLI parsing,
+  creation and profile coding; carry Touch ID through the reviewed New VM save
+  path; retain loading/cancellation behavior and isolated fake initialization.
+  Packaging preserves release metadata while staging/sealing provisioning helpers.
+  Ordinary runtime/configuration pins follow main; private frozen inputs do not.
+- **VERIFIED — offline/fake:** debug build passes, 300 selected Swift tests are
+  covered, including the combined Touch ID/Setup creation and profile roundtrip
+  regression. Eleven socket functions initially hit sandbox restrictions and pass
+  when rerun with disposable local channels outside that sandbox. Python discovery
+  runs 114 tests: 109 pass, five software-signing/PKCS12 cases are deliberately
+  skipped. A process audit records no forbidden tool invocation. Offscreen Setup/
+  New VM acceptance passes 100 checks with zero runtime starts or visible windows.
+  Native SSH, ad-hoc signed-bundle and real signing/credential suites are excluded.
+  Release and `SIGNED_PRERELEASE` compile-policy checks also pass (two tests per
+  mode); sandbox-blocked SDK dSYM generation is retried outside the tool sandbox.
+  These compile modes invoke no signing tool or identity.
+- **PRIVATE COUPLING / VERIFIED:** all 930 private artifact entries retain their
+  exact bytes, modes and symlink targets. The original candidate, source archive/
+  overlay, request/gate, scope pins and staged runtime remain unchanged/ignored;
+  no target VM root or registry is accessed. Provisioning product approval stays nil.
+- **TO PROVE:** the retained candidate represents pre-merge source. Any candidate
+  for this integrated tree needs a separately frozen/reviewed source and runtime
+  origin; never relabel the old request or recapture scope pins implicitly. No
+  signing, credentials, Apple requests, SSH/Ansible, installs, normal UI, image or
+  VM operation is authorized or performed by this integration. Real provisioning
+  and signing/loaded-child acceptance remain unproven.
+
+## Integrated candidate input preparation — 4 November 2026
+
+- **USER AUTHORIZATION / DESIGN DECISION:** prepare private source/runtime inputs
+  and a signing review gate for `7e46241` using offline/fake checks. Freeze the new
+  source independently while preserving original scope JSON, historical source
+  commit, UUID/root/device/inode/marker pins, receipt and scope-definition source
+  verbatim. No old artifact or request is rewritten and no root is recaptured.
+- **VERIFIED — local data:** dev.3's retained signed runtime declares dev.2 and
+  matches the integrated development origin/capabilities/immutable payload. Both
+  archives and extracted/staged bundle inventories match. The six-file overlay
+  reconstructs exactly against a second source archive. Twenty-two input/refusal
+  checks and all twelve fake signer tests pass without external process/network
+  calls in the input checks. Exact paths/pins and all new artifacts remain private.
+- **PRIVATE COUPLING:** the older app-based handoff requires source commit equality
+  with the historical scope commit. This source-only record binds those separately
+  and is refused by that signer before authorization/material IO. It supplies no
+  fabricated app inventory, legacy request or executable authority. A reviewed
+  versioned source-only admission/caller update is still required.
+- **TO PROVE:** actual app compilation, named profile/keychain validation, genuine
+  signatures/notarization/loaded-child and all guest rows. No app, profile bytes,
+  credentials, signing, Apple/network, SSH/Ansible, installs, image, UI or guest
+  operation; product approval remains nil and all later approvals NOT_GRANTED.
+  See the [input gate](docs/DevVMMilestone6Runbook.md#integrated-candidate-inputs-for-7e46241--4-november-2026).
+
+## Versioned source-only admission/caller — 4 November 2026
+
+- **DESIGN DECISION:** explicit version-2 admission consumes unchanged source-only
+  packets. Typed in-memory review binds new source/archive/overlay independently
+  of original scope bytes/semantic hash/definition and prior request, plus packet,
+  team and fixture mode. Its request digest cannot alias legacy/packet digests.
+  Gate files/env/sidecars confer no authority. Legacy admission is separate.
+- **PRIVATE COUPLING:** immutable source/runtime/lineage and resource/archive
+  checks, exact reconstructed source/definition, callback re-admission and selected
+  runtime/team binding feed the existing adapter. The typed caller is atomically
+  one-shot and default-denied before material IO/output; no signing CLI, automatic
+  retry, credential import or publication path is added.
+- **VERIFIED — fake/local:** eighteen new tests, including full fake adapter/ZIP
+  roundtrip and concurrent replay refusal; 127 allowed Python passes/five signing
+  skips (132 discovered), without a forbidden process attempt. Actual frozen
+  `7e46241` inputs admit as data only with external process/network hooks blocked.
+  All 1,161 retained private entries are unchanged. Evidence is separate/private;
+  no real runner authorization is created for that packet.
+- **TO PROVE:** named material selection/validation and authorized compiler/SDK/
+  signing/profile/loaded-child/original-Mac and guest behavior. No credentials or
+  profile bytes, signing, Apple requests, SSH/Ansible, installs, app/UI, image or VM
+  operation. Shared/product source and pins are unchanged, provisioning approval
+  stays nil and real guest rows NOT_RUN. See the
+  [caller](docs/DevVMMilestone6Runbook.md#version-2-source-only-admission-and-caller--4-november-2026).
+
+## Named material inspection and staging — 4 November 2026
+
+- **DESIGN DECISION:** an explicit typed one-shot caller has its own inspection
+  request digest, binding source review, named material selectors, public-leaf and
+  trusted runtime-inspector hashes, and private staging path. Default denial and
+  inspect-only native authorization precede material IO/output. Gate/env/file
+  claims and signing authorization do not authorize this step; fixtures cannot
+  execute native inspectors. There is no CLI or automatic signing continuation.
+- **PRIVATE COUPLING:** profile/certificate staging, profile scope/expiry and
+  public-leaf membership/name/dates, dependency revisions/cleanliness and admitted
+  runtime inspection are checked with callback revalidation. Named keychain
+  metadata is checked in memory; contents, identity searches, key availability and
+  locked state are never queried. Public-certificate parsing does not prove trust.
+  Returned staged material changes its binding and still needs separate signing
+  authorization. Receipts grant neither signing nor guest authority.
+- **VERIFIED — fake/local:** 19 new tests; 146 allowed Python passes/five deliberate
+  signing/PKCS12 skips (151 discovered). Audit records only local Git/Python, with
+  no forbidden-tool attempt. All 1,161 retained private entries and pins remain
+  unchanged. New evidence stays separate/private; shared/product source and pins
+  are unchanged and ordinary provisioning approval stays nil.
+- **TO PROVE:** actual material selection and separately approved bounded real
+  inspection, private-key availability, compiler/signatures/profile trust/loaded
+  child, original-Mac scope and guests. No real profile/certificate parser, SDK/CMS,
+  keychain, signing, credentials, Apple requests, SSH/Ansible, installs, UI, image or
+  VM operation occurs. See the
+  [inspection gate](docs/DevVMMilestone6Runbook.md#named-material-inspection-and-private-staging--4-november-2026).
+
+## Bounded native inspection — source review, 4 November 2026
+
+- **VERIFIED — source only:** the verifier's signature-only option still invokes
+  the daemon with exact `check`. `locate`/payload hashes/static client requirement
+  return before privileged listener/session/subprocess operations. The client's
+  XPC check is different. No daemon or native validator is executed by this review.
+- **PRIVATE COUPLING:** generated relative paths, signed-payload hashes and client
+  CDHash bind the daemon to its bundle. Source origin/inventories do not prove
+  observed signed-binary behavior. Default validation flags do not explicitly opt
+  into network access, but source review is not a network-silence guarantee.
+- **DESIGN DECISION — proposed:** a distinct offline inspection adapter/request
+  must set `kSecCSNoNetworkAccess`, decode CMS content without signer trust
+  evaluation and keep the keychain locked and runtime code unexecuted. Bound all
+  inputs/output and the future implementation; require 300-second job/120-second
+  stage deadlines, live 2 MiB stream caps, bounded inventories and kill/reap on
+  failure. Current output checks occur after capture and are not a live disk cap.
+  Preserve frozen daemon/runtime bytes; do not silently reuse existing authority.
+- **TO PROVE:** offline adapter/fake API and runner checks, then separately approved
+  real native inspection. No native verifier, profile/signature/trust API, build, signing,
+  Apple request, SSH/Ansible, install, UI or guest operation occurs in this source
+  review. Exact source/SDK evidence and proposed contract remain private; product
+  approval and frozen pins stay unchanged. See the
+  [prepared contract](docs/DevVMMilestone6Runbook.md#bounded-native-inspection-preparation--source-review-4-november-2026).
+
+## Offline inspection adapter — fake APIs/workers, 4 November 2026
+
+- **DESIGN DECISION / IMPLEMENTED:** a distinct typed one-shot review/authorization
+  binds source/scope/selection, public certificate, implementation, entitlement
+  sources and output, requiring only `offline-native-inspect`. Default denial
+  precedes IO; file/env/legacy approvals cannot grant authority. No native binding,
+  real process factory, loader or activation CLI is supplied.
+- **PRIVATE COUPLING:** strict signedData/plist guards precede CMS APIs; API worker
+  disables interaction, requires locked status and releases references. Every
+  Mach-O/bundle uses explicit no-network static validation with exact signing
+  policy; no daemon/runtime executes. The injected supervisor monitors a shared
+  300-second budget, 120-second stage and live 2 MiB stream caps; group cleanup,
+  callback binding checks and one-shot refusal retain private fixed failures.
+  Parent filesystem reads are budget-checked at callback boundaries. Concrete
+  factories must provide prompt atomic handoff/nonblocking reads/bounded waits.
+- **VERIFIED — fake/local:** 32 new tests, 178 allowed Python passes/five signing
+  skips (183 discovered), with only Git/Python processes and no forbidden-tool
+  attempt. Native calls/processes/network are blocked in the new fixtures. All
+  1,161 retained private artifact entries and frozen pins stay unchanged; shared
+  package/product code and ordinary approval remain unchanged.
+- **TO PROVE:** concrete API/factory composition with fake FFI and process tests,
+  then separately approved native validation, OS cleanup/IO and key/signature/
+  guest evidence. No real material/keychain inspection, signing, Apple request,
+  SSH/Ansible, install, UI, image or VM operation occurs; fake receipts grant no
+  signing/guest authority. See the
+  [adapter](docs/DevVMMilestone6Runbook.md#offline-inspection-adapter--fake-apisworkers-4-november-2026).
+
+## Concrete macOS inspection bindings — 4 November 2026
+
+- **DESIGN DECISION / IMPLEMENTED:** concrete lazy offline API and process factory
+  remain explicitly composed, default-denied and bound to typed authority/current
+  implementation. Closed symbols omit SecTrust/CMS signer-status, identity/key and signing APIs.
+  Anonymous capability/task pipes bind parent, task, code and fake/native mode;
+  no file/env approval loader or automatic native activation is added.
+- **PRIVATE COUPLING:** SDK ctypes prototypes, CF ownership/type checks, explicit
+  no-network validity, certified timestamp metadata, isolated worker environment,
+  nonblocking IO and unreaped root/group ownership are enforced. Darwin waitid
+  supports system Python without that wrapper; bounded proc_listpids queries
+  require the held root. Unconfirmed cleanup retains handles and blocks launches.
+  Filter-free Git metadata plus raw index/worktree checks avoid clean-filter
+  execution. New code joins the implementation digest; old reviews stay stale.
+- **VERIFIED — fake FFI/process only:** 33 new tests and 211 allowed Python passes /
+  five signing skips (216 discovered), only Git/Python programs and no forbidden
+  tool/inspection-library attempt. A synthetic roundtrip uses concrete wrappers
+  and launcher with fake primitives. All 1,161 retained private entries and prior
+  reviews stay unchanged; no actual material/keychain/native inspection occurs.
+- **TO PROVE:** fresh exact-implementation review and native approval; real API/ABI,
+  root/group visibility, scheduling, cleanup/crash and validation results. Source
+  coupling is not observed OS behavior or signer/key/notarization/guest proof.
+  No signing, Apple request, SSH/Ansible, install, UI, image or VM operation occurs;
+  shared/product source and ordinary approval stay unchanged. See the
+  [binding contract](docs/DevVMMilestone6Runbook.md#macos-bindings-and-bounded-launcher--fake-ffiprocesses-4-november-2026).
+
+## Fresh ddf5451 inspection review — 4 November 2026
+
+- **DESIGN DECISION / PREPARED:** a fresh ignored 0700/0600 review binds committed
+  tooling, 14-file implementation, existing source/scope/selection/runtime, public
+  leaf/entitlement hashes and an uncreated output. Historical pins/records stay
+  unchanged. Typed data supplies no authority; all approvals are false and no
+  authorization/caller/runner/factory/capability/native API is constructed.
+- **VERIFIED — stored evidence only:** source bytes match the commit and retained
+  fake-test evidence; pure source admission, dependency HEADs and entitlement
+  hashes match. External material/keychain state and whole source cleanliness are
+  not refreshed. Original 1,161 entries stay in place; noncredential hashes and
+  prior review checksums match. A credential-named artifact remains unopened,
+  with stored digest/stable metadata rather than a fresh content claim.
+- **PRIVATE COUPLING:** exact selectors, hashes, original scope lineage and prior
+  lock/material observations remain in the private packet. VM-root identity is
+  not recaptured and old gates are not promoted. Product approval remains nil.
+- **TO PROVE:** separate exact-review native approval, fresh execution-time input /
+  locked-state checks and all native/signing/key/guest evidence. No tests, native
+  inspection, signing, Apple request, SSH/Ansible, install, UI or VM operation
+  occurs in preparation. See the
+  [private review](docs/DevVMMilestone6Runbook.md#fresh-private-inspection-review-for-ddf5451--4-november-2026).
+
+## Approved inspection pre-native stop — 5 November 2026
+
+- **USER AUTHORIZATION:** bounded read-only native inspection of the exact
+  `ddf5451` review; signing, private-key access, Apple requests, SSH/Ansible,
+  installs and VM launches remain excluded.
+- **VERIFIED — source/data only:** the one-off extra audit guard incorrectly
+  rejects Python's `/dev/null` `O_RDWR` open for disabled Git stdin. The attempt
+  stops before any subprocess, worker, typed native authorization/caller, API or
+  external signing-material access. Output is absent; cleanup has no pending
+  handles. Review checksums match and all 1,161 old artifact entries remain
+  present; noncredential bytes/modes/links match. Credential-named retained
+  content remains unopened and is not freshly validated.
+- **DESIGN DECISION / PRIVATE COUPLING:** consume the attempt without automatic
+  retry. Private evidence retains the failed composition and source reproduction;
+  ten fake audit-event cases cover an unused, narrowly scoped `/dev/null` guard
+  correction. Frozen pins, source implementation and product approval stay
+  unchanged. No prohibited operation occurs.
+- **TO PROVE:** corrected fresh review and separate approval, then actual native
+  material/signature and OS worker behavior. No real inspection result is claimed.
+  See the [attempt record](docs/DevVMMilestone6Runbook.md#approved-inspection-attempt-stopped-before-native-work--5-november-2026).
+
+## Corrected fresh inspection review — 5 November 2026
+
+- **DESIGN DECISION / PREPARED:** a new private 0700/0600 packet binds a fresh
+  request/output and corrected guard to unchanged `ddf5451` implementation and
+  source/scope/material/runtime inputs. Only a literal `/dev/null` `O_RDWR` open
+  with optional `O_CLOEXEC` is newly allowed. The guard defines functions only;
+  exact guard/review hashes are bound separately. No prior approval is reused.
+- **VERIFIED — data/fake only:** 22 audit/helper cases pass without real file or
+  process effects in those cases. Fourteen source files match the commit; pure
+  admission, dependency HEADs and entitlement hashes match pins. All 1,170
+  preexisting private artifact entries, original review, failed attempt and old
+  consumed marker are preserved. Credential-named content remains unopened;
+  metadata stability is not a fresh byte claim. External material/keychain state
+  and whole dependency cleanliness are not refreshed.
+- **PRIVATE COUPLING / TO PROVE:** fresh exact-review/guard approval is required
+  before typed authority and bounded native work. All new approvals are false,
+  both outputs absent and no guard, authorization, caller, runner, factory or API
+  activated. Frozen pins and product approval stay unchanged. No real inspection,
+  signing, private-key access, Apple request, SSH/Ansible, install, UI or VM
+  operation occurs. See the
+  [corrected review](docs/DevVMMilestone6Runbook.md#corrected-fresh-private-inspection-review--5-november-2026).
+
+## Corrected native inspection partial result — 5 November 2026
+
+- **USER AUTHORIZATION:** execute the corrected review, analyze results, check
+  cleanup and document both worktrees; exclude signing, private-key access, Apple
+  requests, SSH/Ansible, installs and VM launches. No retry is authorized.
+- **VERIFIED — native partial:** exact guard/review/composition and 14-file source
+  bindings match. Both dependency checks, locked keychain status, profile content,
+  policy/expiry and public-leaf membership pass. Five workers run; certificate
+  parsing fails with a generic worker error after about 12 seconds. Its actual
+  native cause is unknown. Runtime signatures and final checks are not reached.
+- **VERIFIED — cleanup limits:** runner cleanup remains false, factory unresolved
+  handles zero. A bounded exact-parent/worker snapshot finds no survivors, with
+  its own process reaped and raw host arguments discarded. The sandbox initially
+  blocks that cleanup-only command; it completes outside the sandbox. This does
+  not retry inspection or repair the failed cleanup receipt.
+- **PRIVATE COUPLING / VERIFIED:** all 1,182 old artifact entries and pins remain
+  unchanged; retained credential content is unopened with stable metadata. Only
+  planned private output/staged public files/failure evidence are added. Five
+  fake cases reproduce possible certificate-type and cleanup-error shapes; SDK
+  source offers typed macOS 15 certificate date getters. No actual failure cause
+  is inferred from those fixtures. Source implementation/product approval stay
+  unchanged and the consumed request is not reused.
+- **TO PROVE / NEXT:** combine fixed worker diagnostics, per-handle cleanup
+  evidence and typed dates into one fake-only change with validation/fresh review;
+  separately approve any later native run. No successful certificate/runtime
+  inspection, signer trust, key possession, signing or guest proof is claimed.
+  No prohibited operation occurs. See the
+  [result record](docs/DevVMMilestone6Runbook.md#corrected-native-inspection-result--5-november-2026).
+
+## Inspection diagnostics, cleanup evidence and typed dates — 5 November 2026
+
+- **USER AUTHORIZATION / IMPLEMENTED:** after committing the partial-result docs,
+  implement closed mode-proven worker failure diagnostics, per-worker cleanup and
+  handle evidence, and macOS 15 typed certificate dates with fake tests and fresh
+  review. No native inspection is authorized for this change.
+- **DESIGN DECISION:** diagnostics serialize only fixed allowlisted code/phase,
+  never raw exception/stderr/subject/path data. Keep cleanup errors latched false
+  while recording final reap/quiet/descriptor facts separately. Skip signalling
+  only after observing held-root exit and quiet group; retain wait/group recheck
+  before reap and kill/reap for live/unproven groups. Bound workers/evidence at
+  4,112. Typed retained CFDate getters replace generic certificate-property values;
+  enforce null/type/finite/order checks and release all partial references.
+- **VERIFIED — fake/local:** twelve new tests; full suite 223 allowed passes and
+  five signing/PKCS12 skips (228 discovered), only Git/Python processes and no
+  forbidden process/native-library attempt. Malformed/mode-mismatched diagnostics,
+  date failures, cleanup timeout/permission/fallback/retention and bounds are covered.
+  All 1,191 private entries, frozen pins and historical failures remain unchanged;
+  credential content stays unopened with stable metadata.
+- **PRIVATE COUPLING / PREPARED:** ignored 0700/0600 review binds the new 14-file
+  implementation, 17-file source/test snapshot and base patch, corrected guard,
+  unchanged candidate/scope/material/runtime and new request/output. Code is
+  explicitly uncommitted; all new approvals are false and output absent. No real
+  selected authority/caller/factory or API is activated; external material/lock
+  observations remain historical and product approval remains nil.
+- **TO PROVE:** previous native failure causes and actual new API/worker/cleanup
+  behavior remain unknown. Separate exact-review approval precedes another native
+  attempt. No signing, private-key access, Apple requests, SSH/Ansible, installs,
+  UI, VM-root observation or VM operation occurs. See the
+  [hardening record](docs/DevVMMilestone6Runbook.md#diagnostic-and-date-hardening--fake-validation-and-fresh-review-5-november-2026).
+
+## Native offline inspection passed — 5 November 2026
+
+- **USER AUTHORIZATION / VERIFIED:** commit diagnostics/date/cleanup changes
+  (`df8b75e`, companion docs `a8a8ba4`), execute the exact fresh review and update
+  result docs. Seventeen source/test files match the commit/current snapshot;
+  original review/guard/implementation/frozen input bindings are preserved.
+- **VERIFIED — bounded native:** the one-shot attempt completes in 64.18 seconds,
+  with before/after dependency and locked-keychain checks, profile content/policy/
+  public-leaf membership, certificate name/dates and 23 static code checks passed.
+  Explicit no-network policy is used; no runtime code or daemon check executes.
+  Receipt status is OFFLINE_STATIC_INSPECTION_ONLY.
+- **VERIFIED — cleanup/preservation:** all 31 workers exit/reap after group quiet,
+  descriptors close, no diagnostics/errors or unresolved handles remain. A bounded
+  snapshot of the recorded PIDs finds no survivors and is itself reaped. All 1,204
+  old artifact entries, pins, prior reviews and failed receipts remain unchanged.
+  Retained credential content stays unopened with stable metadata. Only approved
+  private output/evidence are added; no root pin is recaptured and product approval
+  remains nil.
+- **PRIVATE COUPLING / TO PROVE:** the old uncommitted-review label remains a
+  historical preparation record; execution evidence separately binds the committed
+  bytes. Private-key availability, CMS signer authenticity, standalone certificate
+  trust, online revocation/notarization, loaded-child and guest evidence are not
+  established. Prior failure causes remain unknown. Milestone 6 remains incomplete.
+  No signing, private-key access, Apple request, SSH/Ansible, install, UI or VM
+  operation occurs. Separate signing/guest authority is still required. See the
+  [native result](docs/DevVMMilestone6Runbook.md#native-offline-inspection-passed--5-november-2026).
+
+## Signed-candidate review preparation — 5 November 2026
+
+- **USER AUTHORIZATION / PREPARED:** commit native-result docs (`740fd81`,
+  companion `7d8d907`), then prepare a private signed-candidate review without
+  signing, private-key access, Apple requests, SSH/Ansible, installs or VM launches.
+  Bind the passed receipt/audit, matching staged public files/material, frozen
+  source/scope/runtime, current tooling and absent private app/ZIP output.
+- **VERIFIED — local data/source:** pure admission and receipt/material/source
+  bindings match; all 14 implementation files match committed bytes. All 1,239
+  previous private entries, successful/failed evidence and pins remain unchanged.
+  Retained credential content stays unopened with stable metadata; original
+  signing materials/keychain are not reopened or stat-checked. Earlier lock/
+  certificate observations remain historical and no scope root is recaptured.
+- **DESIGN DECISION / READINESS GAPS:** review-domain data grants no authority.
+  Before execution, bind receipt/implementation/output in signing admission,
+  provide live caps/shared deadline/owned cleanup, and replace or separately
+  review the legacy profile/daemon-verifier dispatch. Proposed limits are not
+  current signer capabilities. Keep all new approvals NOT_GRANTED and output
+  absent; no runner/caller/signer/authorization is constructed.
+- **PRIVATE COUPLING / TO PROVE:** the selected keychain was locked; actual key
+  availability remains unqueried. Key use/necessary secure UI and Apple timestamp
+  consent remain separate. Prefer Touch ID only where existing ACLs support it;
+  infer no unlock/permission/search-list changes. Notarization, original-Mac/
+  loaded-child and guest acceptance remain outside scope. Next combine admission,
+  runner/inspection hardening, fake tests and fresh review. No native inspection,
+  compiler, signing or prohibited operation occurs; product approval remains nil.
+  See the [review](docs/DevVMMilestone6Runbook.md#signed-candidate-review-after-offline-inspection--5-november-2026).
+
+## Receipt-bound signing implementation — 5 November 2026
+
+- **USER AUTHORIZATION / IMPLEMENTED:** commit review docs (`e8c6c1c`, companion
+  `0bc6f31`), then implement receipt-bound admission, bounded supervision and
+  legacy-verifier replacement using fake tests and fresh review only.
+- **DESIGN DECISION:** typed one-shot authority binds exact historical inspection
+  receipt/implementation, source/scope, staged public material, current code,
+  output and fixture/native mode. Default denial precedes material/output IO;
+  all five build/inspect/key-use/secure-key-UI/Apple-timestamp effects are required.
+  Historical proof is not rewritten when tooling changes. Old real entry points
+  are disabled. New verification uses guarded profile data and capability workers
+  with explicit no-network flags/closed identities and public leaf/CDHash checks;
+  no legacy daemon, app execution or default-network verifier is used.
+- **DESIGN DECISION / PRIVATE COUPLING:** share a 2,400-second job deadline,
+  1,200-second build / 120-second other stages, live 2 MiB streams and held-group
+  kill/reap/descriptor evidence. Retain unresolved handles and latched cleanup
+  errors. Exact command/environment policy rejects original checkout mutation,
+  extra build flags, credentials and arbitrary programs. Parent IO remains
+  budget-checked at callbacks. Operator keychain preparation/relock stays explicit;
+  no unlock/import/ACL/search-list workflow is added.
+- **VERIFIED — fake/local:** twenty new tests; full 243 allowed Python passes and
+  five signing skips (248 discovered), only Git/Python and no forbidden process/
+  native-library attempt. Concrete command/FFI/capability roundtrip, malformed and
+  stale bindings, mode/domain/replay, mutation, resource limits and cleanup/error
+  paths pass. All 1,251 original private entries/pins and historical evidence
+  remain unchanged; interim preparation artifacts are retained. Credential content
+  stays unopened and external original materials/keychain are not refreshed.
+- **PREPARED / TO PROVE:** fresh ignored review binds sixteen implementation files
+  and a 24-file source/test/Makefile archive/patch; code is explicitly uncommitted.
+  All execution approvals are ungranted and output absent. No real selected
+  authority/native API/signer is activated. Real compiler/signing/OS/chain behavior,
+  prior failure causes, notarization/original-Mac/loaded-child and guest acceptance
+  remain unproven. No real inspection, signing, private-key access, Apple request,
+  SSH/Ansible, install, UI, VM-root observation/recapture or VM operation occurs;
+  product approval stays nil. See the
+  [implemented path](docs/DevVMMilestone6Runbook.md#receipt-bound-signing-path--fake-tests-and-fresh-review-5-november-2026).
+
+## First private candidate attempt — 5 November 2026
+
+- **USER AUTHORIZATION:** execute the exact reviewed build/sign/verify flow after
+  commits `27c672f` / companion `92593c9`, including selected-key use, existing
+  secure key UI and Apple timestamps. No notarization, SSH/Ansible, installs or
+  VM launch is authorized. Snapshot/current code and frozen bindings match.
+- **VERIFIED — partial:** source/receipt/material admission, public certificate,
+  overlay check/apply and pinned dependency copies/checkouts pass. At 125.283
+  seconds, the frozen provisioning-source helper exits 1, before Swift compilation,
+  runtime static validation, app assembly or signing. No selected key, secure UI
+  or timestamp request is used. There is no app/archive or success receipt.
+- **VERIFIED — cleanup/preservation:** nine command roots and three validation
+  workers are reaped after group quietness with closed descriptors and no pending
+  handles. A bounded snapshot finds none of those PIDs remaining. All 1,279 old
+  private artifact entries, pins, reviews and receipts remain unchanged; retained
+  credential content stays unopened with stable metadata. Only approved partial
+  output/private failure evidence is added. Keychain state is not refreshed or
+  changed, no VM-root pin is recaptured and product approval stays nil.
+- **PRIVATE COUPLING / DIAGNOSIS LIMIT:** fixed evidence retains exit 1 and
+  0 stdout / 278 stderr bytes, not raw error text; actual cause remains unknown.
+  Read-only package/source/patch/mode/syntax checks pass without replay. The old
+  command double skips the actual provisioning preparation behavior.
+- **TO PROVE / NEXT:** request consumed, no retry or approval transfer. Consolidate
+  frozen-helper fake/local-fixture regression, bounded fixed command diagnostics
+  and fresh review. No actual compiler/signing/key/UI/timestamp or later candidate/
+  notarization/loaded-child/guest proof is established. No prohibited operation
+  occurs. See the [attempt](docs/DevVMMilestone6Runbook.md#first-reviewed-candidate-attempt--preparation-stop-5-november-2026).
+
+## Frozen-helper fixtures and diagnostics — 5 November 2026
+
+- **USER AUTHORIZATION / IMPLEMENTED:** commit failure-result docs in both
+  worktrees (`d3d70ab`, companion `09b396b`), then add frozen-helper coverage,
+  safe diagnostics and fresh review. No real execution is authorized here.
+- **VERIFIED — local fixtures:** the byte-exact helper with unchanged public pins
+  reproduces nested ignored-checkout patch-base mismatch. An exact private-output
+  Git discovery ceiling fixes that case while preserving cloned repositories.
+  Mutation/plugin/extra-input refusals and idempotence pass. Thirteen new cases;
+  full audited Python suite: 256 passes, five signing skips, only Git/Python child
+  programs and no native-library attempt. Swift/shared implementation is unchanged.
+- **DESIGN DECISION / PRIVATE COUPLING:** hold failed quiet roots and drain under
+  existing live caps/deadlines to EOF. Record only fixed phase/code/complete facts;
+  exact final allowlisted helper lines cannot leak arbitrary output. Partial/capped
+  output remains incomplete. Keep original group/cleanup retention guarantees.
+  Bind the diagnostic module in the current implementation digest.
+- **PREPARED / TO PROVE:** new unexecuted review binds seventeen code files and an
+  exact 28-file uncommitted snapshot; historical inspection is independently bound,
+  all execution effects ungranted and new output absent. Preserve all 3,987 old
+  artifact entries, failed output and frozen pins; credential content unopened,
+  external materials/keychain unqueried, no scope-root observation/recapture and
+  product approval nil. Historical exact failure cause stays unknown. No real
+  inspection, build, signing, key access, Apple request, SSH/Ansible, install, UI or
+  VM operation occurs. Real compiler/native/signing/candidate/guest behavior remains
+  unproven. See the [fresh review](docs/DevVMMilestone6Runbook.md#frozen-helper-and-safe-failure-diagnostics--5-november-2026).
+
+## Maintained private signing operator — 5 November 2026
+
+- **USER AUTHORIZATION / DESIGN DECISION:** add a maintained developer CLI in this
+  worktree for prepare/check/run. Plan files are nonauthorizing data; execution
+  requires fresh exact-plan confirmation from a controlling terminal. No saved
+  grant, environment/yes flag, automatic unlock/import or retry is supported.
+- **PRIVATE COUPLING:** reuse the existing typed receipt-bound engine and its
+  disposable source/scope, runtime, command, native-worker and cleanup restrictions.
+  Bind this wrapper independently without changing the engine implementation-file
+  list or invalidating an already-running reviewed attempt. Existing reviews,
+  artifacts and pins are not rewritten or recaptured. A durable exclusive consumed
+  marker precedes backend construction; uncertainty retains original handles.
+- **VERIFIED — fake/local / TO PROVE — native:** use disposable public-input fixtures
+  and injected command/FFI doubles, including a full fake roundtrip. No existing
+  real selection, keychain, native API, signer or VM is operated for this task.
+  Real terminal/key/UI/timestamp and later candidate/guest behavior remain unproven
+  for this new entry point. See [operator usage](docs/PrivateLocalSigning.md).
+
+## Fresh private candidate — resource assembly refusal, 5 November 2026
+
+- **USER AUTHORIZATION:** execute the fresh reviewed private run after manager
+  `31f0bd7` / companion `3a7285b`, including selected key, secure UI and timestamps;
+  no notarization, SSH/Ansible, installs or VM launches. The 28 reviewed files and
+  seventeen-file implementation match at preflight; no prior approval is reused.
+- **VERIFIED — partial:** frozen-helper preparation, 23 runtime static checks,
+  public certificate/dependency checks, release compilation and binary/scope-marker
+  checks pass. Twelve commands and thirty native workers succeed. Assembly stops
+  at 447.472 seconds with `input-inventory-changed`: compiled provisioning payload
+  matches but lacks the four signature records in the frozen resource reference.
+  Core resources copy exactly; no signature or frozen inventory is altered.
+- **VERIFIED — cleanup/preservation:** all 42 roots/workers reap after group
+  quietness with closed descriptors/no pending handles; a bounded recorded-PID
+  snapshot finds none remaining. All 4,002 old artifact entries/pins are unchanged.
+  Credential content stays unopened, external keychain admission is metadata-only,
+  lock state is not re-queried and no scope root/pin is observed/recaptured.
+  Partial output is preserved; concurrent unrelated CLI edits are left intact.
+- **DESIGN DECISION / TO PROVE:** parent inventory refusal consumes the request;
+  no retry or approval transfer. No signing/key/UI/timestamp stage, success receipt
+  or signed archive is reached; product approval stays nil. No notarization,
+  SSH/Ansible, install, app/runtime execution or VM operation occurs. Next add
+  compiled-vs-frozen resource/signature fixtures, narrow assembly/final-seal
+  admission and fresh review, preserving generic inventory checks and frozen pins.
+  Real signing/candidate/guest evidence remains unproven. See the
+  [result](docs/DevVMMilestone6Runbook.md#fresh-candidate-attempt--compiled-resource-assembly-stop-5-november-2026).
+
+## Resource payload and inherited signature policy — 5 November 2026
+
+- **USER AUTHORIZATION / IMPLEMENTED:** commit result docs in both worktrees
+  (`12247e2`, companion `ff2c82d`), add resource/signature fixtures, fix assembly
+  admission and prepare a fresh review. No real inspection or signing authorized.
+- **DESIGN DECISION:** full frozen reference remains pinned. Derive a payload only
+  by excluding its complete four known inherited detached signature records (or
+  accept an unsigned reference); reject partial/unknown/nested blocks. Resource
+  bytes independently match the package lock, remaining wrapper/resource inventory
+  matches build output exactly, and built/output signatures are never filtered.
+  Generic inventory/copy rules remain unchanged; revalidate around copying.
+- **DESIGN DECISION:** recheck admitted payload before outer signing and during
+  staged/roundtrip verification, retaining child digest seal, outer seal/static
+  checks and archive equality. Inherited signature bytes are not current proof.
+- **VERIFIED — fake/local:** fourteen new tests; 291 full Python passes, five
+  signing/PKCS12 skips, only local Git/Python and no native-library attempt. Receipt/
+  operator flows use signed references and unsigned fake resources. The retained
+  build's 45 payload files compare exactly to the unchanged 49-file frozen bundle.
+- **PREPARED / TO PROVE:** fresh private review binds seventeen engine files plus
+  separate operator code and a 32-file exact uncommitted snapshot. Maintained
+  prepare/check yields a new public-input-only plan; no authority/backend, candidate
+  output or consumed marker, all five effects ungranted. All 8,691 old entries/pins,
+  failed outputs/audits/markers are preserved; credential content unopened, original
+  materials/keychain not opened/stat-checked, no VM-root observation or scope-pin
+  recapture and product approval nil. No real inspection/signing/key/Apple/SSH/
+  Ansible/install/UI/app/runtime/VM action occurs. Commit before a separately
+  approved new run; real final signature/resource-chain/candidate/guest behavior
+  remains unproven. See the [fresh review](docs/DevVMMilestone6Runbook.md#resource-payload-admission--fake-fixtures-and-fresh-review-5-november-2026).
+
+## Maintained operator signing attempt — 5 November 2026
+
+**LATEST USER CLARIFICATION:** the operator says “I missed the prompt.” This
+supports a missed secure-UI response as the explanation for the signing timeout;
+it does not independently prove key use or timestamp success/failure. Keep the
+earlier completed-dialog report and automated evidence as historical records;
+exact dialog type/timing is not reconstructed. The plan remains consumed.
+
+- **USER-REPORTED FOLLOW-UP:** the operator reports completing a macOS secure-key/
+  keychain dialog. Dialog type and timing relative to the timeout remain unknown;
+  actual key use, timestamps and wait cause stay TO PROVE. The separate private
+  observation supplements, rather than rewrites, automated evidence. No retry,
+  native/key operation or new approval follows from this report.
+
+- **USER AUTHORIZATION:** fresh operator-plan build/sign/verify after manager
+  `b3171b0` / companion `9d3b4b6`, including selected key, secure UI and timestamps;
+  no notarization, SSH/Ansible, installs or VM launch. The exact 32-file snapshot,
+  engine/operator and plan bindings pass. Maintained CLI exact-plan confirmation
+  uses a real terminal; durable consumption precedes the default backend.
+- **VERIFIED — partial:** frozen preparation, 23 runtime static checks, public
+  certificate/dependency checks, release compilation and scope/binary checks pass.
+  Assembly now admits the exact 45-file payload, retaining the 49-file reference.
+  First child signing hits its 120-second limit; root/group is killed and reaped
+  (-9). Audited elapsed 715.494 seconds; CLI exit 1 and plan consumed/no retry.
+- **VERIFIED — cleanup/preservation:** all 43 roots/workers reap after group
+  quietness, descriptors closed, no pending handles and no recorded-PID survivors.
+  All 8,713 previous private entries/pins/reviews/audits are unchanged. Failed
+  output and consumed/attempt evidence remain private. Retained credential content
+  is unopened; selected keychain admission is metadata-only and lock state unqueried.
+  No orchestrator unlock/relock/import/export/enumeration/ACL/search-list changes,
+  scope-root observation/recapture or product approval change occurs.
+- **PRIVATE COUPLING / TO PROVE:** observed stderr 274 bytes is incomplete, raw
+  output unretained. Storage-helper bytes match compiled input, but actual key use,
+  secure UI display/response and timestamp outcome cannot be established. Do not
+  infer secure-UI versus Apple waiting. Other signing, final validation/seal/archive
+  and success receipt are not reached. No notarization/SSH/Ansible/install/app/
+  runtime/VM action occurs. Next collect operator observations/review key readiness
+  and timestamp connectivity before a new plan and fresh explicit approval. No
+  post-failure native/key operation or retry is performed. See the
+  [result](docs/DevVMMilestone6Runbook.md#first-maintained-operator-run--signing-timeout-5-november-2026).
+
+## Read-only keychain/public readiness — 5 November 2026
+
+- **USER AUTHORIZATION / REPORT:** commit result/observation docs (`f67c5e4`,
+  companion `b260d8f`), then bounded read-only checks; the operator missed the
+  prompt. No signing/private-key/Apple/SSH/Ansible/install/VM action is authorized.
+- **SOURCE-BASED INFERENCE:** the signing deadline is 120 elapsed seconds and
+  includes secure-UI waiting. A missed prompt is a supported, likely explanation
+  for the prior timeout, not evidence of timestamp-service failure. Exact prior
+  timing and actual key/timestamp outcome remain unobserved.
+- **VERIFIED — bounded current state:** one network/file-write-denied worker,
+  optional UI disabled, named keychain Open/GetStatus only plus staged public
+  certificate metadata: status 7/unlocked before/after, selector/digest/dates and
+  reviewed-profile membership/policy match. Sixteen allowed native symbols exclude
+  identity/item/private-key, trust/signature and timestamp calls. It completes in
+  0.218 seconds under a 15-second/4-KiB-stream bound with all references released,
+  owned group quiet/reaped/descriptors closed and no recorded-PID survivor.
+- **VERIFIED — preservation:** all 13,565 old artifact entries/pins/failed and
+  consumed evidence remain unchanged. Keychain metadata and unlocked state stay
+  as found; no unlock/relock/import/export/ACL/search-list change. No raw credential
+  content, scope-root observation/recapture, production approval or source change.
+- **TO PROVE:** container/public readiness does not establish private-key presence,
+  association/ACL/Touch ID, signing or timestamps. No new signing/private-key/Apple/
+  SSH/Ansible/install/UI/app/runtime/VM action or retry occurs. A fresh plan and
+  explicit attended-run approval remain necessary. See the
+  [diagnosis](docs/DevVMMilestone6Runbook.md#read-only-signing-readiness-diagnosis--5-november-2026).
+
+## Attended private candidate signing passed — 5 November 2026
+
+- **USER AUTHORIZATION:** fresh attended plan after `b72eadf` / companion `90e2459`,
+  including selected key, existing secure UI and Apple timestamps. Maintained CLI
+  real-terminal exact-plan confirmation and durable consumption precede its default
+  backend; the 32 committed files and all frozen bindings match.
+- **VERIFIED — signed/offline only:** seventeen commands and 46 native workers pass
+  in 926.436 seconds. Four child/outer signatures and staged/roundtrip checks prove
+  selected public leaf, timestamps, expected IDs/team/entitlements, hardened flags
+  and six code identities. The private 172,869,773-byte ZIP matches its receipt,
+  exact extracted tree/identities, child digest seal and 45-file admitted resource
+  payload; the 49-file frozen reference is intact. UI type/count is not captured.
+- **VERIFIED — preservation:** all 63 roots/workers group-quiet/reaped/closed, no
+  pending handles and no recorded-PID survivors. All 13,570 old artifact entries/pins,
+  failed output/consumed plans/audits remain unchanged. Retained credential-file
+  content stays unopened; only approved selected-key signing occurs. No export/import/enumeration,
+  orchestrator unlock/relock/ACL/search-list change, scope-root/pin recapture or
+  product approval change. No automatic retry; the new plan stays consumed.
+- **TO PROVE:** no notarization, app/daemon/runtime execution, loaded-child check,
+  install, publishing, SSH/Ansible or VM launch. Original-Mac scope is pending,
+  guest acceptance remains unperformed and private artifacts are not distributed.
+  Further real acceptance needs separate reviewed scope and consent. See the
+  [signed result](docs/DevVMMilestone6Runbook.md#attended-private-signing-passed--5-november-2026).
+
 ## Guest home backup — 4 November 2026
 
 **USER REQUEST / DESIGN DECISION:** add an explicit Home-page backup action for the running guest owner's home to its available host share. This narrowly extends the earlier file-operation non-goal; full VM backup, snapshots, restore and account migration remain outside this feature. Require authenticated managed SSH, verified native read-write sharing and confirmation of the unencrypted export, including dotfiles and credentials. Use a unique operation directory, preserve prior files, reject unreadable/changing-file tar failures, verify gzip/tar and host output before reporting completion, and retain partial/unconfirmed output on failure. No automatic guest start, share enablement, sudo, credential retrieval, privilege installation, runtime rebuild or provenance migration. See [home backup behavior and limitations](docs/HomeBackup.md).
@@ -1641,6 +4395,27 @@ All nine published asset sizes/digests and both ZIP checksums match. Downloaded 
 **TO PROVE:** real Linux/9p archive creation, ACL/xattr/sparse restoration, disk-full handling, live SSH-disconnect/process cleanup, native UI interaction and successful restoration into a fresh guest. No existing VM was contacted, launched or modified; no personal data was backed up. Installed/running apps, registry, factories, receipts, guest disks, real Keychain items, credentials and permissions were untouched. The candidate is staged separately for review, not installed or published. Real two-VM/focus/sleep/wake/crash evidence retains its previous boundaries.
 
 **VERIFIED — separate bundle:** `.build/home-backup-review/Omarchy VM Manager.app` passes ad-hoc deep/strict signature verification, all 22 kit Mach-O signature checks, macOS 15 compatibility for 25 Mach-O images, exact pinned inventory/NAT/no-factory-image layout and bundle-only diagnostics (`hostPreflightPerformed: false`, `vmLaunchEnabled: false`). Its shipped backup program matches current source SHA-256 `0f8e94292b243fcef062cc2c4c0d432730564521f1ecfcee9fc067004509037b`. This debug candidate has no protected Touch ID Keychain entitlement; it is not a signed release or replacement for the user's running build. Evidence: `.build/home-backup-bundle.log` and `.build/home-backup-bundle-verification.log`.
+
+## Home backup publication on 9p — 11 November 2026
+
+**REPORTED LIVE:** [#36](https://github.com/reactive-org/omarchy-vm-manager/issues/36). The first home backup on a real Dev guest (built from `next` at `ebb4e76`, native read-write `mac` 9p share) failed about one second in. It left a complete, host-readable `home.tgz.partial` and no `home.tgz`. Host timestamps place the failure after the guest's gzip/tar checks, at publication. The guest reported only `archive`, which the host discarded.
+
+**VERIFIED — cause, user-run probe on the Dev guest, 11 November 2026:** the user ran a read-write probe as the owner inside a private `/mnt/mac/.rn-probe-<pid>` folder on the same kind of native `mac` 9p share; the probe removed its files afterwards. Results:
+- `renameat2(RENAME_NOREPLACE)` returned `-1 Invalid argument`, which confirms the cause.
+- `linkat` succeeded (`st_nlink` 2).
+- Linking onto an existing name failed with `EEXIST`.
+- Unlinking the original while a read descriptor was open succeeded; the remaining name and the open descriptor both report `st_nlink` 1.
+- `fsync` of the 9p directory succeeded.
+
+Every primitive the fallback uses therefore behaves as designed on this share.
+
+**DESIGN DECISION:** keep `renameat2(RENAME_NOREPLACE)` as the first choice. Only when the symbol is missing or the call fails with `EINVAL`, `ENOSYS` or `EOPNOTSUPP`, hard-link `home.tgz` to the partial file and then unlink the partial name. `linkat` refuses an existing name, so nothing is ever replaced; other errors fail without a fallback. An interruption between link and unlink leaves `st_nlink == 2`, which the host's singly linked check refuses. The supervisor now reports a fixed step (`prerequisites`, `archive`, `verification`, `publish`, `sync`) and, for an `OSError`, its numeric errno. The host accepts only those names and an errno from 1 to 4095, shows the step in the Home card and records `stage=… errno=…` in the status log. No file name, listing or stderr crosses SSH.
+
+**VERIFIED — no VM:** `make test` passes 631 Swift tests in 83 suites and 345 Python script tests; `make build` and `git diff --check` pass. New fixtures run the production `publish()` against a fake libc on macOS. They cover the fallback for `EINVAL`, `ENOSYS`, `EOPNOTSUPP` and a missing symbol, no replacement of a late `home.tgz`, other errnos and success never linking, the reported step for each failure point, the guest's failure JSON carrying only stage/errno, the host allowlist (unknown stages, bad or out-of-range errno, malformed or oversized reports) and the staged message and status-log line through the SSH runner and manager. No guest was contacted, launched or modified. Logs: `.build/home-backup-publish-test.log`, `.build/home-backup-publish-build.log`.
+
+**VERIFIED — end-to-end, user-run, 11 November 2026:** the Dev app was rebuilt from this branch (`make app-dev verify-dev`; the bundled supervisor matches source) while no Dev guest was running. The user then ran **Back up home…** on the same Dev guest, and the Home card showed **Verified**. On the host, the new operation folder has mode 0700 and holds only `home.tgz` (mode 0600, one link, about 15 MB), with no `.partial`. Both `gzip -t` and a full `tar -tzf` pass; the listing was discarded unread. The Stable manager and its running guests were untouched. #36 is closed by this change.
+
+**TO PROVE:** restoration into a fresh guest, and the other items listed for home backup above.
 
 ## Optional persistent home disks — 4 November 2026
 
@@ -1705,3 +4480,326 @@ All nine published asset sizes/digests and both ZIP checksums match. Downloaded 
 **VERIFIED — PR compiler compatibility fix:** PR #4's initial macOS CI runs fail while type-checking the combined `ManagerView` navigation/sheet/alert expression; SSH CI passes. Split that expression into four opaque view properties, preserving modifier order, bindings and actions. `make build` and `git diff --check` pass locally after the split. The macOS runner must pass before the user-authorized merge; the earlier local results did not establish that runner's compiler compatibility. No runtime or guest logic changes, and no VM operation occurs.
 
 **VERIFIED — host-independent fixtures:** the next CI run compiles successfully and exposes three home-disk test failures because their managers inherit the runner's smaller CPU budget. Give every manager in that fixture suite explicit synthetic 32 GiB/8-CPU host limits, matching the existing resource-injection seam; production admission is unchanged. This corrects test portability rather than weakening resource policy. The subsequent local `make test` passes all 248 Swift and 82 script cases; CI must still pass before merge.
+
+## Provisioning branch integration with next — 5 November 2026
+
+**DESIGN DECISION:** `next` is the integration target. Merge fetched `origin/next`
+`1258851` into the provisioning branch, retaining both histories and the home-disk,
+backup, channel and release changes alongside Setup. No companion package merge
+is needed. Product provisioning/guest launch admission remains disabled by default.
+
+**PRIVATE COUPLING:** Setup journals/control sockets and disposable root namespace
+follow the compiled app channel; inherited helper ownership validates its enclosing
+app. The shared C launcher has no channel identity. New VM consent retry binds home
+settings and guest Touch ID. Home backup and Setup exclude one another for a guest.
+Both branches previously assigned registry schema 6; this reader accepts both old
+payloads and writes Setup records as schema 7, preserving home metadata and making
+older readers refuse the newer record. Home-only records retain schema 6.
+
+**TO PROVE:** merged-source signing, original-Mac/loaded-child admission, real guest
+Setup/home/terminal behavior and multi-app lifecycle behavior remain unobserved.
+The old successful signed candidate remains bound to its historical frozen inputs,
+not this merged source/runtime. No frozen approval or private artifact is replaced;
+a future candidate requires a fresh exact review and separate execution approval.
+
+**VERIFIED — offline/fake merge checks:** Stable and Dev each pass all 521 Swift
+tests in 69 suites. The audited script suite passes 327 tests, explicitly skipping
+five key/signature/PKCS12-generation cases. Temporary bundles pass channel
+diagnostics and opposite-channel CLI/storage/provisioning-helper refusal without
+manager execution. The 18,625-entry private artifact inventory is unchanged,
+including all historical pins and the successful signed archive. Credential
+content is unopened; no signing, key access, Apple request, install, SSH/Ansible,
+manager/runtime or VM launch occurs. Signed bundle/app acceptance is not repeated.
+
+**VERIFIED — optimized policy checks:** `make test-build-policies` passes both launch/credential policy cases in ordinary release, Stable `SIGNED_PRERELEASE` and Dev `SIGNED_PRERELEASE` modes. These are compilation/test variants; no signing identity, credential or signing operation is used. The initial sandboxed dSYM step is refused; the same tests pass outside that sandbox. Diff whitespace and changed script syntax checks pass.
+
+## Fresh private review after next integration — 5 November 2026
+
+**DESIGN DECISION:** prepare committed `4a0f30a` with its updated runtime and the
+matching existing local signed runtime. Keep the original Stable disposable scope
+definition, JSON, receipt and historical pins verbatim; next is the merge target,
+not a channel/scope migration. Only ignored private overlay copies enable that
+recorded scope; the ordinary product approval remains nil. No VM root is observed.
+
+**VERIFIED — file-data/fake only:** source-only admission and independent patch
+reconstruction pass. The review binds 32 committed tooling files, seventeen engine
+files, operator, corrected guard, public-material copies and new source/runtime/
+selection hashes. All 25 packet/refusal checks and 170 relevant fake API/process
+tests pass. Old or relabeled native receipts cannot transfer. Existing private
+artifacts, successful/failed candidates, consumed plans and pins are preserved.
+Manager and companion edits are documentation only; package/product pins unchanged.
+
+**TO PROVE:** fresh native inspection, trust, current keychain state/private-key
+availability, merged-source build/signing and all later original-Mac/loaded-child/
+guest acceptance. A bounded exact-request inspection is prepared, not executed;
+its new successful receipt must precede a signing operator plan. No native output,
+authority, operator plan or candidate build exists. All execution effects remain
+NOT_GRANTED. No signing, key access, Apple request, SSH/Ansible, installs, normal
+app/UI/runtime action or VM launch occurs. See the fresh 4a0f30a review runbook.
+
+## Fresh merged-source native inspection result — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** after manager `e04f20a` / companion `f51fc47`
+commit the preparation docs, the user approves the exact fresh `4a0f30a` bounded
+read-only inspection. The unchanged review/composition/guard, 173 sealed files,
+32 committed tooling files and seventeen-file engine digest match. Only the exact
+typed in-memory offline-inspection effect is granted; the request is consumed once.
+
+**VERIFIED — native offline static only:** all 31 workers pass in 77.816 seconds.
+Pinned source dependencies are clean before/after; interaction-disabled named
+keychain status is locked before/after with metadata revalidated unchanged. Public
+profile policy, leaf membership, certificate identity/typed dates and all 22 runtime
+Mach-O plus enclosing-bundle no-network static checks pass. Every root is group-quiet/
+reaped/closed, with zero unresolved handles and absent in a bounded recorded-PID
+snapshot. All 18,881 prior private entries, review/pins and candidate/failed/consumed
+artifacts remain unchanged. Source admission and all 173 sealed files revalidate.
+Ordinary product approval remains nil; no scope root is observed or pin recaptured.
+
+**TO PROVE:** CMS signer authenticity, certificate trust, online revocation/fresh
+notarization/Gatekeeper, key availability, merged-source candidate build/signing,
+loaded-child/original-Mac/guest acceptance. The new receipt permits preparation of
+a fresh attended signing plan, not execution authority. No plan/candidate build,
+signing, private-key access, Apple request, SSH/Ansible, install, UI/app/runtime or
+VM action occurs; no automatic retry. See the fresh inspection result runbook.
+
+## Fresh attended signing plan after native inspection — 5 November 2026
+
+**DESIGN DECISION:** prepare a distinct private attended plan for `4a0f30a`, its
+updated runtime and original Stable disposable scope using the new successful
+inspection receipt. Preserve all prior candidates, reviews, consumed attempts and
+frozen pins; no scope observation/recapture or ordinary product approval change.
+
+**VERIFIED — data/fake only:** maintained `prepare` / `check` returns
+CHECKED_PUBLIC_INPUTS_ONLY with execution unauthorized and current key availability/
+native readiness unqueried. New receipt/source/runtime/material/seventeen-file
+engine/operator bindings, 32 committed tooling files and 173 sealed review files
+match. Fourteen plan/refusal checks and 44 fake API/process tests pass. All 18,916
+prior private entries remain unchanged. No real-input authority, backend, candidate
+output, consumed marker or attempt is created. The private attendance instructions
+include exact terminal confirmation, quoted CLI, existing secure UI, 120-second
+signing limits including UI wait, bounded cleanup and no automatic retry.
+
+**TO PROVE / NOT GRANTED:** all five proposed execution effects remain NOT_GRANTED.
+Current key state/availability/ACL/UI, compilation/signatures/Apple timestamps and
+final candidate checks are not established. No original material/keychain metadata
+or credential content is accessed; no native API, signing, private-key access,
+Apple request, SSH/Ansible, install, app/runtime or VM launch occurs. Private data/
+pins remain out of Git; both worktrees have documentation-only pending updates.
+
+## Attended merged-source signing attempt — 5 November 2026
+
+**USER AUTHORIZATION / ATTEMPTED:** preparation docs commit as manager `5a902cd` /
+companion `292da85`. The user approves the fresh attended `4a0f30a` plan including
+selected-key use, existing secure-key UI and Apple timestamps. Exact review/plan/
+receipt/code bindings match; maintained CLI real-terminal confirmation and durable
+consumption precede the bounded default backend. No approval-file loader is used.
+
+**VERIFIED — build, partial signing attempt:** twelve preparation/build/location
+commands and thirty pre-sign native workers pass. The 45-file resource payload
+matches. The first storage-helper signing command reaches its 120-second deadline
+and is killed/reaped/closed; elapsed is 752.079 seconds, CLI exit 1. Its 248-byte
+incomplete stderr has only a fixed sign/incomplete-output diagnostic; staged bytes
+remain equal to compiled input. No later signing/final archive or success receipt
+is produced. All 43 owned roots are quiet/reaped/closed and absent in a bounded
+PID-only snapshot, with zero unresolved handles. All 18,928 prior private entries
+and frozen pins are preserved. Only approved new output/attempt/consumption is added.
+
+**TO PROVE / NEXT:** actual key use, secure UI observation/response, timestamp
+outcome and timeout cause are unestablished; ask for the operator's prompt
+observation before any bounded diagnosis or fresh plan. The plan is consumed,
+without retry or orchestrator keychain state query/change. No scope pin is observed/recaptured;
+ordinary approval/shared code/pins stay unchanged. No notarization, SSH/Ansible,
+install, publication, normal app/UI/runtime or VM action occurs. Signing completion
+and original-Mac/loaded-child/guest acceptance remain TO PROVE.
+
+**USER-REPORTED FOLLOW-UP — 4a0f30a attempt:** the operator answers “Completed the
+dialog.” Record UI displayed/completed as user-reported; exact dialog type and
+completion time relative to the 120-second signing limit remain unrecorded. This
+does not establish selected-key use, keychain/ACL or timestamp outcome, or the
+timeout cause. Automated failure evidence stays unchanged; the plan stays consumed
+without retry, state change or additional native/key/network operation.
+
+## Manager dev-vm source pin follows main merge — 5 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** refresh only the ordinary manager's
+provisioning package to merged dev-vm `5770d0fde0355be6dade6b306d03661a5b8e616a`.
+Preserve all historical private artifacts, reviews and frozen candidate pins;
+this is not a new native inspection, signing plan or guest approval.
+
+**VERIFIED — source/offline/fake:** all 95 export files match that exact commit,
+which incorporates the four former integration patches. The effective code,
+engine and resources are unchanged; only the exported README differs. The active
+patch list is empty, the base equals the export, and generated admission pins
+match the new lock. Historical patch files/frozen helper bytes remain unchanged.
+Stable and Dev each pass 518 selected Swift tests in 67 suites. The guarded Python
+suite passes 328 tests, skipping five signing/key-generation cases. Real SSH/home-
+disk suites, `ssh -G` and signed bundle fixtures are excluded. Source preparation,
+Python syntax and whitespace checks pass. All 23,951 captured private entries and
+the runtime lock/generated pin remain unchanged, including historical candidate
+source/package bindings. See the [package update record](docs/DevVMProvisioningPlan.md#manager-pin-follows-merged-dev-vm--5-november-2026).
+
+**TO PROVE / NOT GRANTED:** any fresh candidate review, signed distribution and
+native/guest acceptance from the updated manager source. No signing, key access,
+native inspection, Apple request, real SSH/Ansible, install, normal app/runtime
+action or VM launch occurs. No historical receipt or consumed plan is rebound.
+
+## Fresh private review of 007bc66 — 5 November 2026
+
+**USER AUTHORIZATION / DESIGN DECISION:** prepare a new exact-source private review
+for committed `007bc66`, with merged package `5770d0f` and the existing matching
+runtime. Preserve all old artifacts/pins and the original Stable disposable scope;
+do not execute native inspection or create signing/guest authority.
+
+**VERIFIED — file data/fake:** source-only admission, independent six-file private
+overlay reconstruction and verbatim scope JSON/receipt/definition comparisons
+pass. A new 173-file sealed review binds 32 committed tooling files, seventeen
+engine files, operator, corrected guard and retained public-material copies.
+All 25 actual-packet positive/refusal checks and 170 fake tests pass; old or
+relabeled receipts cannot transfer. All 23,951 prior private entries and four
+current pin files remain unchanged. No VM root or original signing-material/
+keychain metadata is queried; the keychain selector is only a path string.
+
+**TO PROVE / NOT GRANTED:** fresh exact-review native observations, trust, key
+availability, attended signing and original-Mac/loaded-child/guest acceptance.
+All effects remain NOT_GRANTED; no inspection output, authority, signing plan or
+candidate output exists. No real inspection, signing, key access, Apple request,
+real SSH/Ansible, install, normal app/runtime action or VM launch occurs. See the
+[fresh review and limits](docs/DevVMMilestone6Runbook.md#fresh-private-candidate-review-for-007bc66--5-november-2026).
+
+## Fresh 007bc66 native inspection result — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** preparation docs commit as manager `467f979` /
+companion `8cf7f8d`, then the user approves the new exact review's bounded read-only
+inspection. The 173 sealed files, corrected guard/composition, 32 committed tooling
+files and seventeen-file engine match. Only the digest-bound in-memory offline-
+inspection effect is granted; its request is consumed once without retry.
+
+**VERIFIED — native offline static only:** all 31 workers pass in 76.504 seconds:
+clean pinned dependencies before/after, interaction-disabled named-keychain locked
+status before/after with unchanged metadata, public profile/certificate policy and
+23 no-network runtime static checks. All groups are quiet before reaping, roots
+are reaped and descriptors closed, with zero unresolved handles. The 31 recorded
+PIDs are absent in a separate bounded snapshot. All 24,204 pre-run private entries,
+173 sealed review hashes and four current pin files remain unchanged; source
+admission and frozen overlay reconstruction pass again. The disposable scope/root
+is not observed or recaptured and ordinary product approval remains nil.
+
+**TO PROVE / NOT GRANTED:** CMS signer authenticity, certificate trust, online
+revocation/fresh notarization/Gatekeeper, private-key availability and original-
+Mac/loaded-child/guest acceptance. The new exact receipt permits preparation of an
+attended signing plan, not execution authority. No plan/candidate build, signing,
+private-key access, Apple request, real SSH/Ansible, install, normal app/runtime
+action or VM launch occurs. Only the planned inspection output and separate private
+execution/analysis evidence are added; historical artifacts and pins stay frozen.
+
+## Signed private test build for 007bc66 — 5 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** the user requests a testable build and explicitly
+approves selected-key use, secure-key UI and Apple timestamps for a fresh attended
+plan. Inspection-result docs commit as manager `96319b0` / companion `79399ae`.
+Fourteen plan checks and 44 fake tests pass; real-terminal confirmation and durable
+consumption precede the bounded build/sign/verify run. All 17 commands and 46
+native workers pass in 903.341 seconds, including five timestamp signatures and
+complete staged/ZIP-roundtrip checks. Six signed code identities and post-sign
+package seals match. All 63 roots are quiet/reaped/closed and absent in a bounded
+PID-only snapshot. Historical artifacts, review/plan hashes and four current pins
+remain unchanged; the original disposable scope is neither observed nor recaptured.
+
+**TO PROVE:** normal app/UI, daemon/loaded-child/original-Mac and real-guest
+acceptance, notarization/fresh online checks and CMS signer trust. The signed app
+and ZIP are private user-test artifacts, not installed or published. No SSH/Ansible,
+host install, normal app/runtime or VM launch, key export/import/enumeration,
+orchestrator unlock/ACL change or automatic signing retry occurs.
+
+
+## Disposable Dev saved-setup acceptance — 6 November 2026
+
+**USER AUTHORIZATION / VERIFIED:** attended signing and saved Developer setup
+execution were explicitly approved for one private disposable Dev UUID/root.
+The corrected candidate completes the real apply, verifies inactive admin grant
+and removed payload, and demonstrates the selected four-terminal layout after
+normal restart. The test guest is then stopped with no runtime children or open
+disk handles; Main's persistent processes/configuration hashes match baseline.
+
+**DESIGN DECISION / PRIVATE COUPLING:** ordinary execution stays disabled and
+same-team helper authentication is preserved. Only the private candidate embeds
+the approved root. Ansible multiplexing is disabled in both config and overriding
+connection variables; a changed engine receives a fresh explicit review of the
+same saved input bytes. Historical receipts and private frozen pins stay intact.
+
+**VERIFIED — fake/local:** 86 shared Swift tests, 239 Python tests (one skip),
+74 focused manager tests and 130 UI checks pass. **TO PROVE:** unrestricted/fresh
+creation and factory-matrix acceptance, other options and prior native lifecycle
+limits. See the [bounded acceptance record](docs/DevVMMilestone6Runbook.md#disposable-dev-saved-setup-acceptance--6-november-2026).
+
+**VERIFIED — final UI:** setup history no longer implies chronological order
+from UUIDs; active cleanup retains priority and completed jobs use finished-state
+copy. Pipe-LF and split-CRLF rendering pass regression checks. The final 136-check
+UI suite passes; the signed UI-only Dev replacement shows the persisted successful
+result without another guest launch. Private scope, engine and frozen inputs
+remain unchanged.
+
+
+## Direct live terminal interaction — 6 November 2026
+
+**USER REQUEST / DESIGN DECISION:** use a 120 × 30 starting grid, smaller 11-point
+responsive type, click-to-type and Follow output on by default; remove expansion.
+Clicking claims the existing single-writer lease; it does not bypass guest
+confirmation or credentials. Layout/output callbacks preserve Follow intent.
+
+**VERIFIED — fake/local:** 86 shared Swift, 239 Python/local (one skip), fifteen
+manager terminal tests and 140 offscreen UI checks pass, including synthetic
+click-to-PTY input and ownership refusal. **TO PROVE:** actual future live guest
+prompt interaction after these changes. Existing private target restriction,
+ordinary disabled gate, Main isolation and frozen artifact/pin policy remain.
+
+
+## Layouts install the apps they arrange — 7 November 2026
+
+**USER REQUEST / DESIGN DECISION (issue #18):** choosing a bundled layout example
+now installs the apps that layout puts on screen. This supersedes the 3 November
+decision that choosing a card “does not implicitly add app installs”. Owners still
+choose profiles, not packages; the manager adds no package picker. dev-vm owns the
+merge: each catalogue example lists its needs as builtin features and list items,
+and the shared `SetupPlanner` recognises the frozen layout bytes by SHA-256 (no new
+provisioning input, keeping the 7 November card mapping) and adds what the selected
+profiles lack. Lists from combined profiles now add up instead of conflicting
+(Web + Python, Python + Project-managed); single settings that disagree still fail.
+A feature the setup disables stays disabled. Claude Desktop has no setup feature
+yet, so Claude layouts report it as not installed. The manager only displays the
+plan's `layout` report: the setup review and guest card say “Layout adds …” and
+name any app setup doesn't install. All seven bundled examples appear as cards,
+grouped by workspace count; multi-workspace cards draw workspace 1 and say how many
+workspaces they use.
+
+**PRIVATE COUPLING:** the active package pin moves to the merged dev-vm commit
+recorded in `Config/DevVMProvisioning.lock.json`, with an empty integration-patch
+list (all four former patches are in that commit). Historical patch files, frozen
+candidate pins, receipts and consumed plans are unchanged and keep their own
+bindings. Every plan digest and the engine identity change, so setups saved under
+the previous pin need a fresh review.
+
+**TO PROVE:** real installation of the added apps on a lean guest through manager
+setup, window placement at the next login (including multi-workspace on this
+path), the official factory treating the additions as already installed, and how
+the review reads natively. No VM, factory, signing or guest operation was used.
+
+**DESIGN DECISION — New VM order (issue #18):** New VM shows a **layout** pane
+holding only the layout cards, then a **customise** pane (renamed from software)
+with the source, profiles, trim and the optional theme. Both edit one shared draft.
+Choosing a layout example or custom file while setup is off turns setup on with
+the Developer profile, since a layout only applies when setup runs; choosing
+Omarchy default never turns it off. A saved desktop default doesn't turn setup on;
+it applies when setup is turned on (a chosen layout keeps priority, the default
+theme still applies). With setup unavailable, the layout pane explains that instead
+of offering cards. Guest Defaults and Change setup keep the combined layout and theme
+view. **VERIFIED — offscreen/fake:** 187 screen checks including pane order, layout
+turn-on and Omarchy default keeping setup on. **TO PROVE:** physical interaction.
+
+## Suspend-to-disk Dev-only feature flag — 8 November 2026
+
+**DESIGN DECISION:** the user asked for a UI feature flag that hides experimental suspend-to-disk in stable and keeps it in Dev, and also for the guest capability check to be skipped when the flag is off. `FeatureFlags` is compiled from `AppChannel`, never a preference, environment override or wire field: stable off, Dev on. The app reads it from the SwiftUI environment; `VMManager.open` passes the compiled value. Stable hides the Home-page panel and the ellipsis-menu item, sends no capability check over SSH (the shared-folder check starts without waiting for it), and refuses `experimentalSuspend` with `experimental-suspend-disabled` before any guest command or saved-session record. Recovery is never hidden: a saved session or damaged saved-session metadata keeps the panel with Restore / Recover, Recheck recovery or Accept cold boot, and the main Restore action. Disk protection, restore proof, cold-boot acknowledgement, runtime handle/reservation ownership through matching `.exited`, and CLI refusals are unchanged in both channels. The stable-built layout preview turns the flag on to keep showing every synthetic state.
+
+**VERIFIED — no-VM checks:** `make test` passes 619 Swift tests in 82 suites, 340 script tests, the provisioning bundle check and 212 setup-screen checks (56 PNGs, synthetic services only); `make test-dev` passes the same 619 Swift tests under `DEVELOPMENT_CHANNEL`. Both runs build the app target first. New tests prove each channel's default, that the compiled flags follow the compiled channel, the recovery visibility rule, that a disabled manager makes no capability check, preparation or hibernate request and writes no saved-session record, and that a saved session written with the flag on still restores and releases protection after reopening with it off, with no new capability check. `git diff --check` passes. No app bundle was rebuilt or installed, and no VM, guest, disk, credential or permission was used or changed.
+
+**TO PROVE:** native appearance of the stable and Dev guest Home pages and menus; real-guest behaviour is unchanged from the earlier TO PROVE entries.

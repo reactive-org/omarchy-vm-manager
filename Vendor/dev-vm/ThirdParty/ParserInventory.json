@@ -1,0 +1,30 @@
+{
+  "source": "https://github.com/jpsim/Yams",
+  "tag": "6.2.2",
+  "revision": "a27b21e0c81c5bf42049b897a62aaf387e80f279",
+  "dev_vm_baseline": "ed36bbec92943c10f9a0b1b2d4887a4f4a190bff",
+  "sha256": {
+    "Sources/CDevVMYAML/vendor/api.c": "332a0fdeeb6c2d5bacc6fc93d19f80db59eedf51ec87f0851742bcf441b69421",
+    "Sources/CDevVMYAML/vendor/reader.c": "c428a44b177391557bdf49177c1dc0216edf2a2bbe0e24ca2ef2725ef7f01e9d",
+    "Sources/CDevVMYAML/vendor/scanner.c": "338ee97fc97aa97c08a74cd3349462bea4e1f7ce836e4c7b04334fa1c74031c0",
+    "Sources/CDevVMYAML/vendor/parser.c": "00990d692199723a087b8e123d5b49e3d422cf10a806e852c43f1cc12b257c28",
+    "Sources/CDevVMYAML/vendor/yaml_private.h": "2e2f7887f27da6bff518db117d358f708c1af30ebabdeeea612e628b9ed18841",
+    "Sources/CDevVMYAML/include/yaml.h": "e64f1da89c04ab728f828965a510dadd99d39778f4c48617d95cfbb9da069af8",
+    "Sources/DevVMProvisioningCore/Resources/selection.schema.json": "351a0754a2b9091a806e1e1237485cfd251e82e018610f0e1831ba3a049d17c9",
+    "Sources/DevVMProvisioningCore/Resources/catalogue.json": "cf1741b95d73f30390ad4a9ae4b843babb65db4c16aecbed15c48308b1c4bff0",
+    "Sources/DevVMProvisioningCore/Resources/Yams-LICENSE.txt": "0354b0ea403d2e78059c5ae0510a2cfae9f8eb306fcef094ac9fff5b47e20bed",
+    "Sources/DevVMProvisioningCore/Resources/LibYAML-LICENSE.txt": "c40112449f254b9753045925248313e9270efa36d226b22d82d4cc6c43c57f29",
+    "Sources/DevVMProvisioningCore/Resources/TOMLDecoder-LICENSE.txt": "ee59f20a0a5550b0b071a0d9edb31c29629ce4bad2d8f5d0467ee7d574b541cf",
+    "Sources/DevVMProvisioningCore/Resources/catalogue.schema.json": "234128f6847d0b5b428d5b063261d4aa6f50129c13846d41d10812783b787ea6"
+  },
+  "license_sources": {
+    "Yams-LICENSE.txt": "https://github.com/jpsim/Yams/blob/a27b21e0c81c5bf42049b897a62aaf387e80f279/LICENSE",
+    "LibYAML-LICENSE.txt": "https://github.com/yaml/libyaml/blob/0.2.5/License",
+    "TOMLDecoder-LICENSE.txt": "https://github.com/dduan/TOMLDecoder/blob/a2bbd2796fe3064e107de18cb56031052c4fa899/LICENSE.md"
+  },
+  "toml": {
+    "source": "https://github.com/dduan/TOMLDecoder",
+    "tag": "0.4.5",
+    "revision": "a2bbd2796fe3064e107de18cb56031052c4fa899"
+  }
+}

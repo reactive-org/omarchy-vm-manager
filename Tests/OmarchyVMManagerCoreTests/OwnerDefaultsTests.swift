@@ -14,22 +14,35 @@ final class MemoryOwnerVault: OwnerSecretStoring, @unchecked Sendable {
 
 @Suite("Unattended guest defaults")
 struct OwnerDefaultsTests {
-    @Test("unconfigured defaults are off and do not read credentials or create VM storage")
+    @Test("unconfigured defaults require manual setup without credentials or VM storage")
     func disabled() throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let vault = MemoryOwnerVault(), id = UUID()
         let store = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
-        #expect(try !store.load().enabled)
+        #expect(try !store.load().isConfigured)
         #expect(try store.snapshot(for: id) == nil)
         #expect(vault.count == 0)
         #expect(!FileManager.default.fileExists(atPath: f.storage.vms.path))
     }
+    @Test("saving account defaults requires a password and makes them applicable without a global opt-in")
+    func savedInputsApply() throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let vault = MemoryOwnerVault(), store = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
+        #expect(throws: VMFailure.self) { _ = try store.save(configuration: .init(), password: nil) }
+        #expect(vault.count == 0)
+        #expect(!PrivateFiles.exists(f.storage.directory.appendingPathComponent("guest-defaults.json")))
+        let saved = try store.save(configuration: .init(username: "saved"), password: Data("synthetic-password".utf8))
+        #expect(saved.isConfigured)
+        #expect(try store.snapshot(for: UUID())?.configuration.username == "saved")
+        #expect(!PrivateFiles.exists(f.storage.vms))
+    }
+
     @Test("passwords stay in the credential store; defaults and per-guest snapshots are non-secret")
     func protectedCredentials() throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let vault = MemoryOwnerVault(), store = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
         let secret = Data("synthetic-password-no-real-access".utf8)
-        let value = try store.save(enabled: true, configuration: OwnerConfiguration(username: "owner", fullName: "Test Owner", email: "owner@example.invalid"), password: secret)
+        let value = try store.save(configuration: OwnerConfiguration(username: "owner", fullName: "Test Owner", email: "owner@example.invalid"), password: secret)
         let reference = try #require(value.credentialReference)
         #expect(try vault.read(reference: reference) == secret)
         let data = try PrivateFiles.read(f.storage.directory.appendingPathComponent("guest-defaults.json"))
@@ -43,9 +56,9 @@ struct OwnerDefaultsTests {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let vault = MemoryOwnerVault(), store = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
         let firstSecret = Data("first-synthetic-password".utf8), nextSecret = Data("second-synthetic-password".utf8)
-        _ = try store.save(enabled: true, configuration: OwnerConfiguration(username: "first", hostnamePrefix: "work"), password: firstSecret)
+        _ = try store.save(configuration: OwnerConfiguration(username: "first", hostnamePrefix: "work"), password: firstSecret)
         let id = UUID(), first = try #require(try store.snapshot(for: id))
-        _ = try store.save(enabled: true, configuration: OwnerConfiguration(username: "second", hostnamePrefix: "next"), password: nextSecret)
+        _ = try store.save(configuration: OwnerConfiguration(username: "second", hostnamePrefix: "next"), password: nextSecret)
         let next = try #require(try store.snapshot(for: UUID()))
         #expect(first.configuration.username == "first")
         #expect(first.hostname == "work-" + id.uuidString.prefix(8).lowercased())
@@ -60,8 +73,8 @@ struct OwnerDefaultsTests {
     func retainPassword() throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let vault = MemoryOwnerVault(), store = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
-        let first = try store.save(enabled: true, configuration: OwnerConfiguration(), password: Data("synthetic-password".utf8))
-        let second = try store.save(enabled: true, configuration: OwnerConfiguration(timezone: "UTC", keyboardID: "English (UK)"), password: nil)
+        let first = try store.save(configuration: OwnerConfiguration(), password: Data("synthetic-password".utf8))
+        let second = try store.save(configuration: OwnerConfiguration(timezone: "UTC", keyboardID: "English (UK)"), password: nil)
         #expect(first.credentialReference == second.credentialReference)
         #expect(vault.count == 1)
     }
@@ -69,12 +82,12 @@ struct OwnerDefaultsTests {
     func damagedDefaults() throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let vault = MemoryOwnerVault(), store = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
-        _ = try store.save(enabled: true, configuration: OwnerConfiguration(), password: Data("synthetic-password".utf8))
+        _ = try store.save(configuration: OwnerConfiguration(), password: Data("synthetic-password".utf8))
         let file = f.storage.directory.appendingPathComponent("guest-defaults.json")
         let changed = Data("{\"schemaVersion\":2}".utf8)
         try PrivateFiles.write(changed, name: file.lastPathComponent, in: f.storage.directory)
         #expect(throws: (any Error).self) { _ = try store.snapshot(for: UUID()) }
-        #expect(throws: (any Error).self) { _ = try store.save(enabled: true, configuration: OwnerConfiguration(), password: Data("replacement-password".utf8)) }
+        #expect(throws: (any Error).self) { _ = try store.save(configuration: OwnerConfiguration(), password: Data("replacement-password".utf8)) }
         #expect(vault.count == 1)
         let reopened = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
         #expect(throws: (any Error).self) { _ = try reopened.load() }
@@ -98,6 +111,37 @@ struct OwnerDefaultsTests {
 
 @Suite("Owner defaults at guest creation")
 struct OwnerDefaultsCreationTests {
+    @Test("legacy global off with saved inputs inherits for new guests while manual and existing guests stay unchanged")
+    func legacySavedInputsApply() async throws {
+        let f = try RegistryFixture(); defer { f.cleanup() }
+        let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
+        let existing = f.profile(name: "Existing manual"); try registry.save([existing])
+        let vault = MemoryOwnerVault(), reference = UUID()
+        try vault.save(Data("synthetic-password".utf8), reference: reference)
+        let legacy = OwnerDefaults(enabled: false, configuration: .init(username: "saved", timezone: "UTC", keyboardID: "English (UK)"), credentialReference: reference)
+        let bytes = try JSONEncoder().encode(legacy)
+        try PrivateFiles.write(bytes, name: "guest-defaults.json", in: f.storage.directory)
+        let defaults = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
+        #expect(try defaults.load() == legacy && defaults.load().isConfigured)
+        let runtime = FakeRuntime()
+        let manager = VMManager(runtime: runtime, profiles: [existing], applicationSupport: f.support,
+            hostMemoryMiB: 65536, logicalCPUs: 64, registry: registry, ownerDefaults: defaults)
+        let inherited = try await manager.create(name: "Inherited", memoryMiB: 4096, cpus: 4, clipboardEnabled: false, immersiveMode: false, sshEnabled: false)
+        let explicit = try await manager.create(name: "Explicit saved", memoryMiB: 4096, cpus: 4, clipboardEnabled: false, immersiveMode: false, sshEnabled: false, useOwnerDefaults: true)
+        let manual = try await manager.create(name: "Explicit manual", memoryMiB: 4096, cpus: 4, clipboardEnabled: false, immersiveMode: false, sshEnabled: false, useOwnerDefaults: false)
+        let rows = await manager.snapshots()
+        for id in [inherited, explicit] {
+            let profile = try #require(rows.first(where: { $0.id == id })?.profile)
+            #expect(profile.ownerSetup?.configuration == legacy.configuration)
+            #expect(profile.ownerSetup?.credentialReference == reference)
+            #expect(profile.ownerSetup?.defaultsRevision == legacy.revision)
+        }
+        #expect(rows.first(where: { $0.id == existing.id })?.profile == existing)
+        #expect(rows.first(where: { $0.id == manual })?.profile.ownerSetup == nil)
+        #expect(try PrivateFiles.read(f.storage.directory.appendingPathComponent("guest-defaults.json")) == bytes)
+        #expect(vault.count == 1 && runtime.startRequests.isEmpty && !PrivateFiles.exists(f.storage.vms))
+    }
+
     @Test("CLI can omit the saved personal key while retaining managed SSH and owner defaults")
     func publicKeyInheritance() async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
@@ -109,7 +153,7 @@ struct OwnerDefaultsCreationTests {
         }
         let savedKey = key(1), explicitKey = key(2)
         let vault = MemoryOwnerVault(), defaults = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
-        let saved = try defaults.save(enabled: true, configuration: .init(username: "owner"),
+        let saved = try defaults.save(configuration: .init(username: "owner"),
             password: Data("synthetic-password".utf8), sshPublicKey: savedKey)
         let defaultsFile = f.storage.directory.appendingPathComponent("guest-defaults.json")
         let defaultsBytes = try PrivateFiles.read(defaultsFile)
@@ -159,7 +203,7 @@ struct OwnerDefaultsCreationTests {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
         let vault = MemoryOwnerVault(), defaults = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
-        let saved = try defaults.save(enabled: true, configuration: .init(username: "saved", fullName: "Saved Name",
+        let saved = try defaults.save(configuration: .init(username: "saved", fullName: "Saved Name",
             email: "saved@example.invalid", hostnamePrefix: "saved", timezone: "UTC"), password: Data("synthetic-password".utf8))
         let file = f.storage.directory.appendingPathComponent("guest-defaults.json")
         let bytes = try PrivateFiles.read(file)
@@ -202,7 +246,7 @@ struct OwnerDefaultsCreationTests {
         #expect(await manager.snapshots().first?.profile == profile)
     }
 
-    @Test("unavailable, disabled, opted-out or unprotected defaults cannot silently discard overrides")
+    @Test("unavailable, unconfigured, opted-out or unprotected defaults cannot silently discard overrides")
     func rejectedOverrides() async throws {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
@@ -214,7 +258,7 @@ struct OwnerDefaultsCreationTests {
         let service = GuestCommandService(manager: manager, applicationSupport: f.support)
         var request = GuestCommandRequest(command: .create, config: .init(name: "Rejected", ssh: false, ownerOverrides: .init(username: "other")))
         #expect(!(await service.execute(request)).ok)
-        let saved = try defaults.save(enabled: true, configuration: .init(), password: Data("synthetic-password".utf8))
+        let saved = try defaults.save(configuration: .init(), password: Data("synthetic-password".utf8))
         request.config?.ownerOverrides = .init(username: "root")
         #expect(!(await service.execute(request)).ok)
         request.config?.ownerOverrides = .init(username: "other")
@@ -243,11 +287,11 @@ struct OwnerDefaultsCreationTests {
         let registry = try RegistryStore(applicationSupport: f.support); _ = try registry.load()
         let legacy = f.profile(name: "Existing"); try registry.save([legacy])
         let vault = MemoryOwnerVault(), defaults = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
-        _ = try defaults.save(enabled: true, configuration: OwnerConfiguration(username: "first"), password: Data("synthetic-password".utf8))
+        _ = try defaults.save(configuration: OwnerConfiguration(username: "first"), password: Data("synthetic-password".utf8))
         let manager = VMManager(runtime: FakeRuntime(), profiles: [legacy], applicationSupport: f.support, hostMemoryMiB: 32768, logicalCPUs: 8, registry: registry, ownerDefaults: defaults)
         let id = try await manager.create(name: "New", memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false, sshEnabled: false)
         _ = try await manager.create(name: "Manual", memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false, sshEnabled: false, useOwnerDefaults: false)
-        _ = try await manager.saveGuestDefaults(enabled: true, configuration: OwnerConfiguration(username: "second"), password: nil, sshPublicKey: nil)
+        _ = try await manager.saveGuestDefaults(configuration: OwnerConfiguration(username: "second"), password: nil, sshPublicKey: nil)
         _ = try await manager.create(name: "Later", memoryMiB: 4096, cpus: 4, clipboardEnabled: true, immersiveMode: false, sshEnabled: false)
         let rows = await manager.snapshots()
         #expect(rows[0].profile.ownerSetup == nil)

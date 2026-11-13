@@ -55,7 +55,7 @@ public final class OwnerDefaultsStore: @unchecked Sendable {
             } else if PrivateFiles.exists(file) { throw OwnerConfiguration.invalid("Guest Defaults appeared outside the manager. Reopen it before creating a guest.") }
             var snapshot = try value.snapshot(for: id)
             if let overrides {
-                guard let inherited = snapshot else { throw OwnerConfiguration.invalid("Owner overrides require enabled, saved Guest Defaults.") }
+                guard let inherited = snapshot else { throw OwnerConfiguration.invalid("Owner overrides require saved Guest Defaults.") }
                 let configuration = try overrides.applying(to: inherited.configuration)
                 snapshot = OwnerSetupOptions(defaultsRevision: inherited.defaultsRevision, configuration: configuration,
                     credentialReference: inherited.credentialReference,
@@ -77,7 +77,7 @@ public final class OwnerDefaultsStore: @unchecked Sendable {
         // Authentication may wait for the user. Hold no defaults lock while it does.
         return try vault.upgradeLegacyCredential(reference: reference)
     }
-    public func save(enabled: Bool, configuration: OwnerConfiguration, password: Data?, sshPublicKey: String? = nil) throws -> OwnerDefaults {
+    public func save(configuration: OwnerConfiguration, password: Data?, sshPublicKey: String? = nil) throws -> OwnerDefaults {
         try access.withLock {
             let before = try load()
             try configuration.validate()
@@ -88,9 +88,9 @@ public final class OwnerDefaultsStore: @unchecked Sendable {
             if let password { try OwnerConfiguration.validatePassword(password) }
             let publicKey = try sshPublicKey.map { try SSHPublicKey.canonical($0) }
             var reference = before.credentialReference
-            guard !enabled || password != nil || reference != nil else { throw OwnerConfiguration.invalid("Enter a password before enabling unattended setup.") }
+            guard password != nil || reference != nil else { throw OwnerConfiguration.invalid("Enter a password to save Guest Defaults for automatic account setup.") }
             if let password { let fresh = UUID(); try vault.save(password, reference: fresh); reference = fresh }
-            let value = OwnerDefaults(enabled: enabled, configuration: configuration, credentialReference: reference, sshPublicKey: publicKey)
+            let value = OwnerDefaults(enabled: true, configuration: configuration, credentialReference: reference, sshPublicKey: publicKey)
             try value.validate()
             let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(value)

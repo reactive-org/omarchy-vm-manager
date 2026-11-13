@@ -4,13 +4,17 @@ import Testing
 @testable import OmarchyVMManagerCore
 
 extension FactoryFixture {
-    mutating func compatibleLeanEvidence(mode: String = "valid") throws {
-        try leanEvidence(mode: mode)
+    mutating func compatibleLeanEvidence(mode: String = "valid", lean: VMOwnerSetupContract.Lean = VMOwnerSetupContract.leanE4fffc6) throws {
+        try leanEvidence(mode: mode, lean: lean)
         let package = "fixture.pkg.tar.zst"
         let bytes = Data("synthetic complete integration package; no guest executable".utf8)
         try bytes.write(to: source.appendingPathComponent(package))
         var policy = try JSONSerialization.jsonObject(with: Data(VMGuestIntegrationContract.reviewedJSON.utf8)) as! [String: Any]
-        policy["leanPackageSHA256"] = KitVerifier.sha256(bytes)
+        policy["leanContracts"] = (policy["leanContracts"] as! [[String: Any]]).map { entry in
+            var entry = entry
+            if entry["ownerSetupContractSHA256"] as? String == lean.digest { entry["leanPackageSHA256"] = KitVerifier.sha256(bytes) }
+            return entry
+        }
         policy["runtimePackageSHA256"] = lock.files[VMFactorySelection.packagePath]!
         integrationContract = try JSONDecoder().decode(VMGuestIntegrationContract.self, from: JSONSerialization.data(withJSONObject: policy))
         var files = manifest["files"] as! [String: String], provisioning = manifest["provisioning"] as! [String: String]
@@ -29,7 +33,12 @@ struct FactoryCompatibilityTests {
         let f = try FactoryFixture(); defer { f.cleanup() }
         let catalog = FactoryCatalog(applicationSupport: f.files.support, kit: f.kit.kit, lockData: try JSONEncoder().encode(f.lock), reviewed: [], integrationContract: .current)
         #expect(catalog.acceptsReceiptContract("9c430c34e68e720d0a0368983a1cd1bd58ccad6877a42c2d19c8777e0072dade"))
-        #expect(catalog.acceptsReceiptContract(catalog.integrationContractSHA256))
+        // The unchanged e4fffc6/43.1 pairing keeps its pre-set receipt digest.
+        #expect(catalog.integrationContractSHA256s.contains("c3cbd5eb1b061ada97f3951d91b3d21e1afeb508b8a367f6c308c0e87da56a55"))
+        // Each reviewed lean pairing, plus manual setup with the reviewed native-rendering package.
+        #expect(catalog.integrationContractSHA256s.count == VMGuestIntegrationContract.current.leanContracts.count + VMGuestIntegrationContract.current.manualContracts.count)
+        #expect(VMGuestIntegrationContract.current.manualContracts.count == 1)
+        for digest in catalog.integrationContractSHA256s { #expect(catalog.acceptsReceiptContract(digest)) }
         #expect(!catalog.acceptsReceiptContract(String(repeating: "f", count: 64)))
         var synthetic = try FactoryFixture(); defer { synthetic.cleanup() }
         try synthetic.compatibleLeanEvidence()
@@ -60,7 +69,8 @@ struct FactoryCompatibilityTests {
         let identity = try catalog.importBundle(f.source)
         let receiptData = try PrivateFiles.read(catalog.receiptURL(digest))
         let receipt = try JSONDecoder().decode(FactoryImportReceipt.self, from: receiptData)
-        #expect(receipt.schemaVersion == 2 && receipt.guestIntegrationContractSHA256 == catalog.integrationContractSHA256)
+        let reviewedLean = try #require(catalog.integrationContract.leanContract(ownerSetupContractSHA256: VMOwnerSetupContract.lean))
+        #expect(receipt.schemaVersion == 2 && receipt.guestIntegrationContractSHA256 == catalog.integrationContractSHA256(reviewedLean))
         let lockData = try JSONEncoder().encode(f.lock)
         _ = try KitVerifier.inspect(kit: f.kit.kit, lockData: lockData, expectedLockSHA256: KitVerifier.sha256(lockData), policy: .debugPOC, preflight: { nil })
         let helper = f.kit.kit.bundleURL.appendingPathComponent(TryOmarchyKit.helperPath)
@@ -168,6 +178,7 @@ struct FactoryCompatibilityTests {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let data = try Data(contentsOf: repository.appendingPathComponent("Config/GuestIntegrationCompatibility.json"))
         #expect(data == Data(VMGuestIntegrationContract.reviewedJSON.utf8))
-        #expect(VMGuestIntegrationContract.current.ownerSetupContractSHA256 == VMOwnerSetupContract.lean)
+        #expect(VMGuestIntegrationContract.current.leanContracts.map(\.ownerSetupContractSHA256) == VMOwnerSetupContract.leanContracts.map(\.digest))
+        #expect(VMGuestIntegrationContract.current.leanContracts.map(\.leanPackageVersion) == VMOwnerSetupContract.leanContracts.map(\.integrationVersion))
     }
 }

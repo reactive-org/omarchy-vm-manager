@@ -79,7 +79,7 @@ struct DevelopmentOwnerSecretTests {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let keychain = FixtureOwnerKeychain()
         let store = OwnerDefaultsStore(applicationSupport: f.support, vault: KeychainOwnerSecretStore(keychain: keychain, storage: .loginKeychain))
-        let defaults = try store.save(enabled: true, configuration: OwnerConfiguration(), password: secret)
+        let defaults = try store.save(configuration: OwnerConfiguration(), password: secret)
         let metadata = f.storage.directory.appendingPathComponent("guest-defaults.json")
         let before = try PrivateFiles.read(metadata)
         let snapshot = try #require(try store.snapshot(for: UUID()))
@@ -220,7 +220,7 @@ struct KeychainOwnerSecretTests {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let keychain = FixtureOwnerKeychain()
         let store = OwnerDefaultsStore(applicationSupport: f.support, vault: KeychainOwnerSecretStore(keychain: keychain))
-        _ = try store.save(enabled: true, configuration: OwnerConfiguration(), password: secret)
+        _ = try store.save(configuration: OwnerConfiguration(), password: secret)
         keychain.replies = [(errSecSuccess, nil), (errSecItemNotFound, nil)]
         #expect(try store.snapshot(for: UUID()) != nil)
         #expect(throws: VMFailure.self) { _ = try store.snapshot(for: UUID()) }
@@ -239,7 +239,7 @@ struct KeychainOwnerSecretTests {
         let keychain = FixtureOwnerKeychain()
         let vault = KeychainOwnerSecretStore(keychain: keychain)
         let store = OwnerDefaultsStore(applicationSupport: f.support, vault: vault)
-        let defaults = try store.save(enabled: true, configuration: OwnerConfiguration(), password: secret)
+        let defaults = try store.save(configuration: OwnerConfiguration(), password: secret)
         let reference = try #require(defaults.credentialReference)
         let original = try PrivateFiles.read(f.storage.directory.appendingPathComponent("guest-defaults.json"))
         keychain.replies = [(errSecInteractionNotAllowed, nil), (errSecInteractionNotAllowed, nil),
@@ -323,7 +323,7 @@ struct KeychainOwnerSecretTests {
         let f = try RegistryFixture(); defer { f.cleanup() }
         let keychain = FixtureOwnerKeychain()
         let store = OwnerDefaultsStore(applicationSupport: f.support, vault: KeychainOwnerSecretStore(keychain: keychain))
-        let defaults = try store.save(enabled: true, configuration: OwnerConfiguration(), password: secret)
+        let defaults = try store.save(configuration: OwnerConfiguration(), password: secret)
         let file = f.storage.directory.appendingPathComponent("guest-defaults.json")
         let original = try PrivateFiles.read(file)
         keychain.replies = [(errSecItemNotFound, nil), (errSecSuccess, secret as CFData)]

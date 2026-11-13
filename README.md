@@ -18,13 +18,13 @@ The native SwiftUI app requires macOS 15 or later. The current private debug bui
 
 Use **Omarchy VM Manager → Check for Updates…** to check published releases for your app's channel: stable downloads for stable, Dev prereleases for Dev. An available update offers **View Release** for manual download from GitHub. See [release identity and local-build behavior](docs/Prereleases.md#manual-update-checks).
 
-**[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [48-second MP4 tour](docs/media/quick-tour.mp4)
+**[Read the illustrated user guide](docs/README.md)** · [Getting started](docs/getting-started.md) · [CLI quick start](docs/cli-quickstart.md) · [Demo video](https://www.reactive.org/omarchy-vm)
 
 ## Build and check
 
 For side-by-side development while your existing work VMs keep running, use `make app-dev verify-dev`, then `make run-dev`. Dev has its own app identity, VMs, defaults, credentials, caches and CLI (`bin/omarchy-vm-dev`). Your existing app and data stay stable. See [Stable and Dev](docs/DevelopmentChannels.md) for paths, build commands and validation limits.
 
-Use Swift 6 and Python 3.10+ on Apple Silicon. Run `make prepare-source` before opening `Package.swift` in Xcode so the client SDK resolves to the reviewed runtime source:
+Use Swift 6.2+ (the pinned native terminal requires Swift tools 6.2) and Python 3.10+ on Apple Silicon. Run `make prepare-source` before opening `Package.swift` in Xcode so the client SDK resolves to the reviewed runtime source:
 
 ```sh
 git submodule update --init
@@ -44,11 +44,11 @@ The Python scripts refuse optimized execution (`PYTHONOPTIMIZE` or `python -O`) 
 
 ### GitHub CI
 
-The [build and no-VM workflow](.github/workflows/test.yml) runs on pushes and pull requests. On the `macos-15` runner it runs `make test`, explicitly compiles the SwiftUI app, CLI and storage helper with `make build`, regenerates the native icons, and runs `make test-upstream`. An `ubuntu-24.04` job runs the isolated container-based SSH checks with `make test-ssh`. OS labels are explicit to avoid automatic major-version migrations; checkout uses the Node 24 runtime.
+The [build and no-VM workflow](.github/workflows/test.yml) runs on pull requests and on pushes to `main` and `next`. Other branches are checked only once a pull request is open, so each PR commit runs the macOS job once. Changes limited to `docs/**`, `.claude/**`, `README.md`, `AGENTS.md` or `intent.md` skip the workflow entirely. On GitHub's `xcode-27` runner (the macOS 27 preview image with Xcode 27) it runs `make test`, the isolated Dev channel and optimized build-policy checks, explicitly compiles the SwiftUI app, CLI and storage helper with `make build`, regenerates the native icons, and runs `make test-upstream`. An `ubuntu-24.04` job runs the isolated container-based SSH checks with `make test-ssh`. OS labels are explicit to avoid automatic major-version migrations; checkout uses the Node 24 runtime.
 
 `make test` runs Swift test cases serially because several fixtures deliberately block synchronous runtime/progress callbacks. Running those cases together can exhaust a small runner's cooperative thread pool. Lifecycle and race tests still run concurrent tasks and independent sessions within each case. Resource-policy fixtures supply synthetic host budgets rather than relying on the runner's CPU/RAM.
 
-Successful pushes to `main` publish stable releases with automatic patch versions; `next` publishes the isolated Dev app with `dev.N` prerelease versions. Both wait for the exact commit's test jobs and use the existing CI-only signing/notarization gates. Tags are reserved automatically; manual tag pushes do not publish. See [branch releases](docs/BranchReleases.md) for versioning, source-kit/profile setup and retry limitations, and [release history](docs/Prereleases.md) for compatibility and validation evidence.
+Successful pushes to `main` publish stable releases with automatic patch versions; `next` publishes the isolated Dev app with `dev.N` prerelease versions. Both wait for the exact commit's test jobs and use the existing CI-only signing/notarization gates. Docs-only pushes skip CI and publish nothing. Tags are reserved automatically; manual tag pushes do not publish. See [branch releases](docs/BranchReleases.md) for versioning, source-kit/profile setup and retry limitations, and [release history](docs/Prereleases.md) for compatibility and validation evidence.
 
 CI downloads no factory image and starts no guest. Real guest, focus, sleep/wake and crash validation remain separate observed checks on a real Mac; GitHub's ARM macOS runners do not support nested virtualization. Standard GitHub-hosted macOS runners are [free for public repositories](https://docs.github.com/en/actions/reference/runners/github-hosted-runners); larger runners have separate billing.
 
@@ -156,9 +156,27 @@ receipt to recoverable Trash. The official factory is protected.
 
 The CLI opens the manager in the background when needed and shares its existing lifecycle owner. Replies are concise JSON, including state/config and an authenticated SSH endpoint plus guest IPs when ready. NAT guests can share a private IP; use the returned localhost SSH port and generated `ssh.command`. Configuration updates refuse running guests and apply next start; delete uses guarded recoverable Trash. Saved Guest Defaults apply to new guests unless disabled. See [the full CLI contract and validation](docs/CLI.md).
 
+## Developer setup in Dev
+
+Build with Swift 6.2+ and macOS 15+; the bundled terminal requires that toolchain.
+CI selects a compatible preinstalled Xcode without installing host tools.
+
+The Dev app can configure verified manager-owned Dev guests from bundled profiles
+or a local setup folder. New VM saves the selected setup with the profile; the
+Setup tab provides preview, explicit permissions, progress and the actual live
+terminal. Click inside the terminal to type; Follow output starts on. Existing
+Homebrew Ansible is required for apply, with missing tools shown under
+Provisioning tools. The app does not install host dependencies.
+
+Provisioning requires the signed app/helper's same-team admission as well as the
+reviewed plan and an authenticated guest session. Ad-hoc builds support offline
+preview and validation but do not satisfy operational-helper signing admission.
+Stable retains preview support with execution disabled. See [the CLI contract](docs/CLI.md)
+and [current implementation/acceptance status](docs/DevVMProvisioningPlan.md).
+
 ## Pause and resume
 
-The development build below pauses execution while retaining RAM. The clarified requirement is suspend-to-disk to release RAM; the current accelerated runtime blocks full VM state saving, and a fresh POC confirmed the official guest kernel has hibernation disabled. See [the suspend investigation](docs/Suspend.md). The development UI now detects the running guest’s kernel capability and basic hibernation prerequisites, with an explicitly opt-in experimental suspend/restore workflow. It remains disabled for the stock kernel; reliable restoration is unproven.
+The development build below pauses execution while retaining RAM. The clarified requirement is suspend-to-disk to release RAM; the current accelerated runtime blocks full VM state saving, and a fresh POC confirmed the official guest kernel has hibernation disabled. See [the suspend investigation](docs/Suspend.md). The Dev build detects the running guest’s kernel capability and basic hibernation prerequisites, with an explicitly opt-in experimental suspend/restore workflow. It remains disabled for the stock kernel; reliable restoration is unproven. The stable build hides the workflow and skips the capability check, keeping only recovery of an existing saved session.
 
 Use a running guest’s ellipsis menu → **Pause**. Its main button becomes **Resume**. The CLI supports `pause ID`, `resume ID` and `wait ID --for paused`. Both commands wait for a helper acknowledgement before reporting success.
 
@@ -173,6 +191,13 @@ Downloaded parts and the assembled compressed image are verified against pinned
 SHA-256 checksums. Every guest receives an independent writable disk.
 
 ### Custom factories
+
+Dev includes a native **Factory images → Build factory…** flow for the reviewed
+lean foundation, with Docker readiness, background progress and a live terminal.
+Choose **Stable** (the latest Omarchy release, the default) or **Edge** (Omarchy's
+development builds); a release whose setup programs aren't reviewed is refused.
+See [Build a lean factory in Dev](docs/FactoryBuilding.md) for requirements, CLI
+commands and the distinction between build verification and guest boot testing.
 
 Use **Import Factory** in the toolbar or **New VM** to select a prepared custom
 factory bundle. The manager verifies the bundle, copies it into its private

@@ -1,0 +1,891 @@
+{
+  "downloads": [
+    {
+      "name": "node-v26.13.0-linux-arm64.tar.gz",
+      "sha256": "439e9c438acdf6a6ffe47418da709153d66c4bed812e30a473faacb107dd2791",
+      "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-linux-arm64.tar.gz"
+    }
+  ],
+  "files": {
+    "profile/MANAGER-LICENSE": {
+      "mode": 420,
+      "sha256": "c9566f863169065bac7fd0846e075d9dcf9fec705136451fc137799016598785"
+    },
+    "profile/OMARCHY-LICENSE": {
+      "mode": 420,
+      "sha256": "717ba1949502290f8e47688ae2e323acd06c8ca47aec9f7596b15f678c1af4a2"
+    },
+    "profile/UPSTREAM-LICENSE": {
+      "mode": 420,
+      "sha256": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481"
+    },
+    "profile/base.packages": {
+      "mode": 420,
+      "sha256": "9f4cf3712433bd9d6be7f137c8f245921cdec2ce67fe46527f0abee9f7d6cbd3"
+    },
+    "profile/build-container.sh": {
+      "mode": 420,
+      "sha256": "bc0de1649b2695fd6f060bd1aba57799f2266136f034384c12edd75856a01d10"
+    },
+    "profile/check-provisioning.py": {
+      "mode": 420,
+      "sha256": "041f90a237381e64fe85919652a3cec0cd2d35dc8f59c21119f9fb90a9cd63de"
+    },
+    "profile/check-user.sh": {
+      "mode": 420,
+      "sha256": "52b2cdad6d2095806438c4b36f61040734d6cd6f7fbcb6b1bec37320d903d4d4"
+    },
+    "profile/compatibility.py": {
+      "mode": 420,
+      "sha256": "3e246db52fdad0e0a6f5ef25a14ff74c6555b2706ec42b8fbade122f630f85db"
+    },
+    "profile/excluded.packages": {
+      "mode": 420,
+      "sha256": "0988494374e61c531fedd44d75fe8ee2107195bfd19acd9611a939cef8de9fa8"
+    },
+    "profile/guest-integration-compatibility.json": {
+      "mode": 420,
+      "sha256": "dbc6763e0c12453797350ad644e5b1a82a1dd25f3348d0eae621dd6f5a63d40b"
+    },
+    "profile/inputs.lock.json": {
+      "mode": 420,
+      "sha256": "05e71b4565caf03000dc0a6ac7ff31957b44683ccab65e03bf9047252d79a4fd"
+    },
+    "profile/preferences/PKGBUILD": {
+      "mode": 420,
+      "sha256": "ac3b33acbc318fbeb3c99d79a028bbcd82635e502c0d5d0a0a5b681fc3ee5598"
+    },
+    "profile/preferences/files/usr/lib/dev-workstation/apply-theme.sh": {
+      "mode": 420,
+      "sha256": "18208f1afaf16f77e28230e17925f910f8cd108c470cf84e22ea5c41d37f663e"
+    },
+    "profile/preferences/files/usr/lib/dev-workstation/apply-workstation.sh": {
+      "mode": 493,
+      "sha256": "6b5dafc9d6efaeaf6518cd130501d8a803f2293641e9205a31fa2ab8007bbc8d"
+    },
+    "profile/preferences/files/usr/lib/dev-workstation/check-workstation.sh": {
+      "mode": 493,
+      "sha256": "47e2d4971d946d1280b858de1b5e1a14acc79e7d93d0ef25d5c000c1fc92cd86"
+    },
+    "profile/preferences/files/usr/lib/dev-workstation/first-login.sh": {
+      "mode": 420,
+      "sha256": "3e8078e0378bd67c7ce8a91101013c264f063baccf9743d1e6d4fc421da930c6"
+    },
+    "profile/preferences/files/usr/lib/dev-workstation/repair-try-omarchy-black-screen.sh": {
+      "mode": 493,
+      "sha256": "759048a84dd8051018eec70c5cdcbd502162576e308433b33ed34609932ae247"
+    },
+    "profile/preferences/files/usr/lib/systemd/user/dev-workstation-first-login.service": {
+      "mode": 420,
+      "sha256": "4194431bf4342f2add082875831877d8a6d25cfbddd73bc7238504a077f125df"
+    },
+    "profile/preferences/first-login.service": {
+      "mode": 420,
+      "sha256": "4194431bf4342f2add082875831877d8a6d25cfbddd73bc7238504a077f125df"
+    },
+    "profile/preferences/first-login.sh": {
+      "mode": 420,
+      "sha256": "3e8078e0378bd67c7ce8a91101013c264f063baccf9743d1e6d4fc421da930c6"
+    },
+    "profile/preferences/preferences.install": {
+      "mode": 420,
+      "sha256": "595ecfe1e7ffa005f4ce48772e167794647467034ad5649bb0e398927c99bcb9"
+    },
+    "profile/resolved-base.packages": {
+      "mode": 420,
+      "sha256": "9f4cf3712433bd9d6be7f137c8f245921cdec2ce67fe46527f0abee9f7d6cbd3"
+    },
+    "profile/reviewed-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst": {
+      "mode": 420,
+      "sha256": "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3"
+    },
+    "profile/try-guest-source.tar.gz": {
+      "mode": 420,
+      "sha256": "45aa19dd23e5ac768672034d51e09a39dd66c9cb8f45105be7f8d216351c3766"
+    },
+    "upstream/LICENSE": {
+      "mode": 420,
+      "sha256": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481"
+    },
+    "upstream/guest/.gitignore": {
+      "mode": 420,
+      "sha256": "2bb188acfce03cb7ccc83e1bfa6cab2c3331fa454f54b4a329e7c0766eeb91ea"
+    },
+    "upstream/guest/README.md": {
+      "mode": 420,
+      "sha256": "8b55579efd55683b202823913abdf549b6142821b6179ad08039b6f5040df9dc"
+    },
+    "upstream/guest/build.sh": {
+      "mode": 493,
+      "sha256": "c5b132f275948471e11c90304834ab79b871da4fa8465f7828103e4a9f43643d"
+    },
+    "upstream/guest/factory/Containerfile": {
+      "mode": 420,
+      "sha256": "be9a1377d1a73ca58944bdb102f7006af49f7cb7eb61446fa2e0e91ad2673034"
+    },
+    "upstream/guest/factory/README.md": {
+      "mode": 420,
+      "sha256": "2fbb67b7e57d710fd1cb522c8c9cb8e3d9eb6068375304637b1b0cd7b24dce26"
+    },
+    "upstream/guest/factory/build-container.sh": {
+      "mode": 493,
+      "sha256": "2d076c1ad5be8a36a010b6d61d9e25226c3045204932782a4a542eba36297dbe"
+    },
+    "upstream/guest/factory/build-image.sh": {
+      "mode": 493,
+      "sha256": "2bccd66e886a2702ce37b165fe13291f5e89356d40e2e8ba1e04b4a88e1fd01c"
+    },
+    "upstream/guest/keys/omarchy-revoked": {
+      "mode": 420,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "upstream/guest/keys/omarchy-trusted": {
+      "mode": 420,
+      "sha256": "ab0b688815444cffd48d15ca3597c77dbb364d59763c5784fca36691520f00fd"
+    },
+    "upstream/guest/keys/omarchy.gpg": {
+      "mode": 420,
+      "sha256": "15d6aac44df688165b2ea35fe0b23af239bbc66a6909c10a5c219e8d94b707de"
+    },
+    "upstream/guest/package/README.md": {
+      "mode": 420,
+      "sha256": "19f7578826d66e0ed54d4426ef1df723fd49a6bddae903d94a1459a8db0cc155"
+    },
+    "upstream/guest/package/build.sh": {
+      "mode": 493,
+      "sha256": "08191e26feb2d9e438d2706b6d0bd1f2bc9889ed4006b3055b6d2bfe8e6bcaa1"
+    },
+    "upstream/guest/package/native-rendering.py": {
+      "mode": 420,
+      "sha256": "dae493833abfb44925af84dc45521c7217c8326122122807799662b3ef9bf7b3"
+    },
+    "upstream/guest/package/tests/fixtures/owner-contracts/LICENSE": {
+      "mode": 420,
+      "sha256": "717ba1949502290f8e47688ae2e323acd06c8ca47aec9f7596b15f678c1af4a2"
+    },
+    "upstream/guest/package/tests/fixtures/owner-contracts/README.md": {
+      "mode": 420,
+      "sha256": "589a8b73a7fee8e5f8230e3a848c68b241a4ab05af55c8135708137b83aff124"
+    },
+    "upstream/guest/package/tests/fixtures/owner-contracts/lean.sh": {
+      "mode": 420,
+      "sha256": "06d070540b8b4601a5b9a02030b6addd4aefd9b38838e2f89e3da13d1ff5fb44"
+    },
+    "upstream/guest/package/tests/fixtures/owner-contracts/official.sh": {
+      "mode": 420,
+      "sha256": "388593495ac0bec8350ccff9955a33e9f0705412898e7f7fa708d63c56556473"
+    },
+    "upstream/guest/package/tests/test_managed_home.py": {
+      "mode": 420,
+      "sha256": "00c360baa0197ce03645a0ce30b2c1f935606a9437704a7d0b678a2cc5344723"
+    },
+    "upstream/guest/package/tests/test_managed_setup.py": {
+      "mode": 420,
+      "sha256": "f343d5e49752844d1f0274ad84b2c4866f8fe7c33c029374bfcbdc8998a2566d"
+    },
+    "upstream/guest/package/tests/test_managed_ssh.py": {
+      "mode": 420,
+      "sha256": "efcbd9028a1d2da3b51b52d32de5708d4ceb95c28094d978255b53dee14f5f7f"
+    },
+    "upstream/guest/package/tests/test_owner_report_timer.py": {
+      "mode": 420,
+      "sha256": "8c3adac16b78a46a7b76cfdd078816b2a04c52a83beb44b7deaf7f95113b0e32"
+    },
+    "upstream/guest/package/tests/test_package.py": {
+      "mode": 420,
+      "sha256": "3952221d050120a12ceb4bace580a36ddb47c908d7b49326bb71bb81602c12a7"
+    },
+    "upstream/guest/package/tests/test_upstream.py": {
+      "mode": 420,
+      "sha256": "ac4d6b9b37900a0c68af5c938d0b65275325c34c6f61340e79c40feb1031f86d"
+    },
+    "upstream/guest/package/tests/virgl-smoke.c": {
+      "mode": 420,
+      "sha256": "b6ab0835b1be9ed223393d0d18d15955d5572efea555be8313e7b676858b961e"
+    },
+    "upstream/guest/package/try-omarchy/LICENSE": {
+      "mode": 420,
+      "sha256": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481"
+    },
+    "upstream/guest/package/try-omarchy/PKGBUILD": {
+      "mode": 420,
+      "sha256": "56312f02d208ef2840823615c0746ded4034aa5fe0d94efc584bfabdc340b342"
+    },
+    "upstream/guest/package/try-omarchy/battery/Makefile": {
+      "mode": 420,
+      "sha256": "710a6269ca6dcad2b83608660a1f948347e34bd39ddac4ca614a2bd115ee43ae"
+    },
+    "upstream/guest/package/try-omarchy/battery/dkms.conf": {
+      "mode": 420,
+      "sha256": "629912d8290c869c437a2ca7aada8f5fe76214ce25a64b9f43a8af5e5866fdeb"
+    },
+    "upstream/guest/package/try-omarchy/battery/try-omarchy-battery.c": {
+      "mode": 420,
+      "sha256": "d49d9def313ddcd0ca7e1631bda9fb15089d8b938e05be46551ebb5fa264a793"
+    },
+    "upstream/guest/package/try-omarchy/files/etc/UPower/UPower.conf.d/90-try-omarchy.conf": {
+      "mode": 420,
+      "sha256": "7dc61a9a024c871a395b92537ab4b99611236ed1e1e549489d5326cd44d7524b"
+    },
+    "upstream/guest/package/try-omarchy/files/etc/chromium-flags.conf": {
+      "mode": 420,
+      "sha256": "ba25279c84a5976778bc5e1c967d606ed60af9f57b6899e158eb14211874fb4a"
+    },
+    "upstream/guest/package/try-omarchy/files/etc/limine-entry-tool.d/50-try-omarchy-console.conf": {
+      "mode": 420,
+      "sha256": "5e6c1796bb176cbf7e9e4df32cdc9a13e2dc27a4219b962cac3523550b075547"
+    },
+    "upstream/guest/package/try-omarchy/files/etc/limine-entry-tool.d/50-try-omarchy-cpu.conf": {
+      "mode": 420,
+      "sha256": "52b2baa40f6c756346c70f7d43390a1ab6f7ecb0fb5dc3ae2a22d5ea601a85ff"
+    },
+    "upstream/guest/package/try-omarchy/files/etc/profile.d/try-omarchy.sh": {
+      "mode": 420,
+      "sha256": "53b593636038b1d63612e0e0e9a38b6aca8dbc25e96d8eb579d7b0267a1ab26a"
+    },
+    "upstream/guest/package/try-omarchy/files/etc/sudoers.d/try-omarchy-timezone": {
+      "mode": 420,
+      "sha256": "3d00119b963ff775b73a323d5c9c90fe5c1ebfb7f628cc46d6536eb3f4fe1aac"
+    },
+    "upstream/guest/package/try-omarchy/files/etc/systemd/sleep.conf.d/omarchy-sleep-disabled.conf": {
+      "mode": 420,
+      "sha256": "077b8d432d68b77e81a16b95b4033d92eee666b90281924b14d598b7525dbf48"
+    },
+    "upstream/guest/package/try-omarchy/files/etc/xkb/symbols/macintosh_vndr/it": {
+      "mode": 420,
+      "sha256": "791bea19916331ef86b22a8ac52dbe63df7cb289abbcbedba098a9c8c1156d7c"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/omarchy-native-audio-bridge": {
+      "mode": 493,
+      "sha256": "023327dd0641531f2ae660387ec24bbeb4c7a0e5d582a87fd8136e26d66e118e"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/omarchy-native-battery-bridge": {
+      "mode": 493,
+      "sha256": "eb44fcfdb0df08b0ca285af7c9a41f2bc4ffc6c88ebdc6ccbc4de3c41752d924"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/omarchy-native-camera-bridge": {
+      "mode": 493,
+      "sha256": "f497e9438036ef534bebf6a817128213955f9e38d134ca3f7a43010cfcf90f63"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/omarchy-native-clipboard-bridge": {
+      "mode": 493,
+      "sha256": "9c78d07b366b7a37aa29ead82aeaf9e49765ce33946f1fa6cedd1189dfb06058"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/omarchy-native-display-sync": {
+      "mode": 493,
+      "sha256": "93d7b6d900aae76bf24379d58a6fd4f45f4dffa850b89a580d0c0bb504edca37"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/omarchy-native-mac-share": {
+      "mode": 493,
+      "sha256": "ddff33654d55378cecf09ef3a7d22b0cf6381b46caa737abc1c79fc7ce823e28"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/omarchy-native-settings": {
+      "mode": 493,
+      "sha256": "fa6777f5f67a497ad5cfe2620071a588f75aa33a84511a7e14d7bbb9c2053652"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-import-previous": {
+      "mode": 493,
+      "sha256": "5aecbc93628bb684171c4e67ad3b8a25401866723ff83ecc68cf00ac75f1425f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-input-init": {
+      "mode": 493,
+      "sha256": "067384b4972355ba14ccbb0c89ef981a6fea14bcaf408ebcb1ce463ead530a94"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-locale": {
+      "mode": 493,
+      "sha256": "a18c52fe8755ceaf2a36710561dff65979028644704df8bb3cc78f187efdfcf7"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-onepassword-touch-id": {
+      "mode": 493,
+      "sha256": "5d36ff16d0168c31ae54cc7a7ddd7c057300b877baf396a5b12420b809bc030e"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-timezone": {
+      "mode": 493,
+      "sha256": "5a8b62aa030fe2b6cc20a88bf0345c9683a854437f81c9765c320a14e3e9b9a7"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-timezone-menu": {
+      "mode": 493,
+      "sha256": "d9faa9d1969d338b9e85e7d8f7d198306e429be656e68124599ad2f8d74682a3"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-touch-id": {
+      "mode": 493,
+      "sha256": "42e0f17aa5f5ab012e94601a360997140de3097a89d9008de9201263bb1bac07"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-touch-id-control": {
+      "mode": 493,
+      "sha256": "bd16f6407406fa10b1a7085d1a411adf525092c7e8fc6e17accc69dcff0c53fa"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-touch-id-enroll": {
+      "mode": 493,
+      "sha256": "1c70e816f700affe6420e85ac3c89dfd8f5dceadb85fcf8714f5837558ff4fcc"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/bin/try-omarchy-touch-id-test": {
+      "mode": 493,
+      "sha256": "6c89dd3bee5613745919eb19aa995d2abbc00cb463070096b372b6e83638dcbd"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/environment.d/90-try-omarchy.conf": {
+      "mode": 420,
+      "sha256": "43c3fd8a441d5989542bf91c0bf212168dafc64d721d29c228f6d7d8719c5158"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/modprobe.d/90-try-omarchy-camera.conf": {
+      "mode": 420,
+      "sha256": "f720f9e019fc3e3ab21cc93999671727d4105c8a2f0360a73d8db77cce19a4f5"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/modules-load.d/90-try-omarchy-camera.conf": {
+      "mode": 420,
+      "sha256": "bb87430ef8c13d597c0ffb202d001b59bb865a2637fbf2c612e977a379b06270"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/modules-load.d/95-try-omarchy-battery.conf": {
+      "mode": 420,
+      "sha256": "64bcf7bda7dd2bd4df44da7547f26ff5390719ec0237cdaf2c6da6ea75e35040"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/logind.conf.d/90-try-omarchy-power-key.conf": {
+      "mode": 420,
+      "sha256": "dba89815d2499c6564e502b3e54e7fa0bf135a7b804a6beb48a0b8a47f2e5bfa"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system-preset/80-try-omarchy.preset": {
+      "mode": 420,
+      "sha256": "e07d8b6c3f3fc862c2624176467cfac6c4a81323a8b6bb3b673686041d9cbd27"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/console-getty.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/display-manager.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/getty@.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-native-battery-bridge.service": {
+      "mode": 420,
+      "sha256": "65065b587569fd749043bb79cdd5cfa771864886d31d12b21fee6a6faa65d14e"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-native-mac-share.service": {
+      "mode": 420,
+      "sha256": "a5e81d4a03733b6f543ba2a26af296a45aa78275ccf36740a8e4b6b0f18e1192"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-provision-owner.service.d/10-try-omarchy-native.conf": {
+      "mode": 420,
+      "sha256": "4d6c13a202652aada8651844fb60cd03677e8e212fe1cf8d5b4baf9b20fcbb03"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/omarchy-provision-owner.service.d/20-try-omarchy-managed-setup.conf": {
+      "mode": 420,
+      "sha256": "361c12c82e12276bc55b07c9c3510370973344562b046010b26bb0d4fbc6a2f2"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/rtkit-daemon.service.d/10-try-omarchy-no-canary.conf": {
+      "mode": 420,
+      "sha256": "7223fa10def2451bdbe7a4db37e0599f6959f6c57fabe8d35cbcbf699c0eda74"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/serial-getty@.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/sshd.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-clock-recovery.service": {
+      "mode": 420,
+      "sha256": "17fa9abb99f4aa90aa81c460460ab3c06ca61e0792c523b4da84224fb89ed626"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-clock-recovery.timer": {
+      "mode": 420,
+      "sha256": "5b10cd9dce5db8bd52fb463330e8eba86f8b68b38aadd0c7a8c79105abd79169"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-clock-refresh.service": {
+      "mode": 420,
+      "sha256": "2a2463035732334cdd2e9e087009d5e517061fffc05cc10ca372b8f2136545db"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-grow-root.service": {
+      "mode": 420,
+      "sha256": "ac7787319037662f903ce6aec2f52c0a9768e9aa2c268f899139f544933c32e1"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-guest-status.service": {
+      "mode": 420,
+      "sha256": "a1d8e96d16066905d40953ea351b2f0b386e001d7d6d43f12d50c998d0ab3807"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-home.service": {
+      "mode": 420,
+      "sha256": "4ace77432fc970831114c81fcb9e82786754238529b18271e6153be9d83a12b5"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-host-config.service": {
+      "mode": 420,
+      "sha256": "7936403ec38c024e4cf9f060ef334edcd961a414ce7b1e43c1cf31966ac85878"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-locale.service": {
+      "mode": 420,
+      "sha256": "114983bb87885e8d745e395525d049133e726c64e78540ed040b801fe0cbaa8f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.service": {
+      "mode": 420,
+      "sha256": "80c780176a7ac175ad29af32cb98389a34b5439fc63cc152511cf0fd7b735a8f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-setup.timer": {
+      "mode": 420,
+      "sha256": "10e548d4b48e32421df89074a91d2fb3b35197f19e7ed3f263788de0e43674b1"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service": {
+      "mode": 420,
+      "sha256": "95dc7bab03f25dd699a2c3aee1b262c4074cf683eefb8a6632ef5780cd7f35b3"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.service.d/60-try-omarchy-home.conf": {
+      "mode": 420,
+      "sha256": "c96c1d789644d0f55197445cd1b661591b94e0d10104137de7c8fe32307fa02f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-managed-ssh.timer": {
+      "mode": 420,
+      "sha256": "00ec9977523feff72cd595357f37557bb604c0e7afce6329ef98f788750c8f67"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-onepassword-touch-id@.service": {
+      "mode": 420,
+      "sha256": "b1270576c9747b10c79de768b956bd82bf42f7bed5e31d12a6d84a246c7476d5"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-package-install.service": {
+      "mode": 420,
+      "sha256": "c7d7bf745b094127d96d73879bba10b52aaac0e88b908ca9f87dde6bbe52c6b1"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-ssh-access.service": {
+      "mode": 420,
+      "sha256": "463e38e5370d1850efcfa4d6ba3398632c38408c570eb475868a4cfe9f267274"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/system/try-omarchy-timezone.service": {
+      "mode": 420,
+      "sha256": "9e692dc15ea39e0f5bc42931e74b40d09ee3646582412de4894bd85e03a5ca7a"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user-preset/80-try-omarchy.preset": {
+      "mode": 420,
+      "sha256": "4e4fa412af23b99d9722a4b800c9c87c85941d72ba72f4c08c0b90fbe3df9f59"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user/bt-agent.service.d/10-try-omarchy-guard.conf": {
+      "mode": 420,
+      "sha256": "745c2c8b49bde6ecda35a19416c754fa011621ba404a2e79867e627f91f76147"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user/omarchy-fcitx5.service.d/10-try-omarchy-guard.conf": {
+      "mode": 420,
+      "sha256": "e4e82a1838691bc2552378bfea7a0aab7e1857264d3f7bb9696d6c9eda98d39a"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user/omarchy-fcitx5.service.d/20-try-omarchy-jis.conf": {
+      "mode": 420,
+      "sha256": "fff66830d31a1bc7b974dffee8e3004802358aab99fd030a30d57cd7ec8ec117"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user/omarchy-native-audio-bridge.service": {
+      "mode": 420,
+      "sha256": "38a9bbd5e09bcc0e4aaaf263d696d3d662d2a882abf7e7d842a0c9989c6f73b2"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user/omarchy-native-camera-bridge.service": {
+      "mode": 420,
+      "sha256": "bf2da8f2ce1ef3c221c20557dd865df283b5727799df4db45e7b8d123112fae0"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user/omarchy-native-clipboard-bridge.service": {
+      "mode": 420,
+      "sha256": "623aa251b81b1e2b0831c1f9d54bfdc2ded15391017779d860ef6c7aa24c2f61"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user/omarchy-native-mac-share-link.service": {
+      "mode": 420,
+      "sha256": "a6b2f7691ee5eff6da41ce33b0e3056886ebd9c84a03245f26a7f5971974b20a"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/systemd/user/try-omarchy-session.service": {
+      "mode": 420,
+      "sha256": "e85225ce93cf127455264677619b85578e95ca230c6e97fdd8457e9d0d4653e9"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/tmpfiles.d/try-omarchy.conf": {
+      "mode": 420,
+      "sha256": "ef21d3b7bbc7760676a37a4d15160c7904af323ee51bfd3e00c7415c387fdf25"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/clock-refresh": {
+      "mode": 493,
+      "sha256": "bd62cda37fd8cd78cf885b6ee1d56b4fe858041cc77cd16e3ba2f11d56d4f5ad"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/ghostty-desktop-entry": {
+      "mode": 493,
+      "sha256": "186600872bd88ecc7365c885d305292fd424964945ec8af6b2a9badc65b5e213"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/grow-root": {
+      "mode": 493,
+      "sha256": "474d5160df60d50c48f98f852d67985d11056d2a8efc0bfd6564e0feb3f34605"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-clock-recover": {
+      "mode": 493,
+      "sha256": "144e5e04ddc3d76fcf94da61ca0121c8810012deded894165ee3faff8a5abfaa"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/guest-status": {
+      "mode": 493,
+      "sha256": "9f3b6d4606aaba44ba264801ac87761962a9b57e75ad822ea355996f33e1aa4a"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/host-config": {
+      "mode": 493,
+      "sha256": "03bb3b3937d3fb23c16f710e891ee4e9713fe075b809322758b8cd188bcb91ad"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/idle-defaults": {
+      "mode": 493,
+      "sha256": "0d009302cd28c9e2a359cd747c93a36f1956a5a5dbb675a96a2990fecb2c00a5"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-home": {
+      "mode": 493,
+      "sha256": "59484f399b5e440b7ffbfcd884831bd931b78f08fc3997e93a9df9509c0ff848"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-owner-setup": {
+      "mode": 493,
+      "sha256": "90ed00675e352130de10bf5c78cd5cc6b014f20839204e8be2913c4af757101b"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh": {
+      "mode": 493,
+      "sha256": "519ab528d0989a1f4e7ccd33f9f2dd99a2278ee8cf75698c44167a8765b14a37"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/managed-ssh-identity": {
+      "mode": 493,
+      "sha256": "147dd0cb71a84f169a117f3dc69d2a61b2835a66a07f5e2b2c6bd3ec561df9fc"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/menu-entries": {
+      "mode": 493,
+      "sha256": "77ae1b749821387de16cdd74de16cb882ccd575e1d5ccf6b2e26134c4a3a0b1a"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/native-authentication-broker": {
+      "mode": 493,
+      "sha256": "f3861bb96c5ca34ecaea3f51a9afa4ea24004f423235b593eda42770d85d9da1"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/notch-refresh": {
+      "mode": 493,
+      "sha256": "db5c529c23e59637090f6fa91d6e8339f22504799ff964e61bf8b8229c7cd2e6"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/onepassword-password-dialog": {
+      "mode": 493,
+      "sha256": "18b4cee4f5c9db46148dec688a8095dab2a300f56fc0eea2248648e28480886f"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/onepassword-touch-id-agent": {
+      "mode": 493,
+      "sha256": "d147e8f2ed263ac28c6e2851c434322528d9813c889d1c7f3eec12e67996a858"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/owner-setup": {
+      "mode": 493,
+      "sha256": "5b1ca7367152d7092c41b9c30cce4a66ee3aff75a290b4d07942d1283006e6b8"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/package-install": {
+      "mode": 493,
+      "sha256": "426330d61c8fdafc7a1b0ad9028a7844274ceb767191283ebc932a76a8a0ba98"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/setup-form-defaults": {
+      "mode": 493,
+      "sha256": "31a689b797ccc47af8240d590317f6e6dcd7ee3b95f22fbc403517a11087e19c"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/shims/timedatectl": {
+      "mode": 493,
+      "sha256": "0fe4b00c71179901c2204a456b8139359db9335fae5e681cf200bc2e39c13ae8"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/ssh-access": {
+      "mode": 493,
+      "sha256": "7118a0c2cdafc839126566104626fe4a6f8c648d49cfdfe2e2e2308dbe30b738"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/try-omarchy/user-setup": {
+      "mode": 493,
+      "sha256": "2128a9fb250e0e54f07a35eb8c338cd2e2ae8b7b51cebf14d4d631ada7933f7d"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/udev/rules.d/70-try-omarchy-audio.rules": {
+      "mode": 420,
+      "sha256": "a8f4f2b9708c1d89ad64fce6fe12a89994d0ea752ea3a7863ae4509128764a69"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/udev/rules.d/70-try-omarchy-authentication.rules": {
+      "mode": 420,
+      "sha256": "7033cd312f9da3ab389643b76f190fde4346744bdd284bf5b319349f7f10d5e8"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/udev/rules.d/70-try-omarchy-battery.rules": {
+      "mode": 420,
+      "sha256": "7e37bff1ffb71b3bc3ac8160f7b599f37a9605eb340aee3692c54a741e2e065b"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/udev/rules.d/70-try-omarchy-camera.rules": {
+      "mode": 420,
+      "sha256": "b7a4dd54ff9c5c73abb372d6c531eb42331d52e6885b8bdd1e6edb69d21ba423"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/udev/rules.d/70-try-omarchy-clipboard.rules": {
+      "mode": 420,
+      "sha256": "8c35eaa547be07386410bc5f5c91a44f7b2a714834e0ce1482e7a4babfca1d5b"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/udev/rules.d/70-try-omarchy-settings.rules": {
+      "mode": 420,
+      "sha256": "faf626fa345084890f39a02a20e110a8cf65ea0bc1b05289849f9a5e3a221912"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/lib/udev/rules.d/70-try-omarchy-timezone.rules": {
+      "mode": 420,
+      "sha256": "20317eb3b2c1215713577e881c8d26cd30fa6948bf87ae6f730a9b8023899f16"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/applications/try-omarchy-settings.desktop": {
+      "mode": 420,
+      "sha256": "5f8b9ccbbfe1f97f42ec3508d2ce9743b0c7451315d92c0059633c7048355418"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/fontconfig/conf.default/30-try-omarchy.conf": {
+      "mode": 420,
+      "sha256": "a5944fad671eeb9e928b50d5e03f2b597e8a50151412070af3d51cf4cb077306"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/libinput/90-try-omarchy.quirks": {
+      "mode": 420,
+      "sha256": "d6da102f0fadc969c415285b47016aef09a8a57a7587e44b0af7190e29c6f527"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/pipewire/pipewire.conf.d/90-try-omarchy-quantum.conf": {
+      "mode": 420,
+      "sha256": "32a56d8684b78269c3ee3fb8f8c249b58f0e2c809d669d99f5407ab1670d3eff"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/apple-keyboard-input.lua": {
+      "mode": 420,
+      "sha256": "a50bcfdf009490347cced5be3136c419e86236eef753df8c8542b07d512275c5"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/backgrounds/tokyo-night/try-omarchy-wallpaper.jpg": {
+      "mode": 420,
+      "sha256": "4fda2ceedab22b868c3cbfccb09a66243e91f93a94acb92816e47876cadd268e"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/hyprland.lua": {
+      "mode": 420,
+      "sha256": "e5e4e456c8be4a0ad40dc36b8fb8c1caee1dd1095a3b0214e861cd1f852a5f44"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/lean-owner-setup-contract-a948d8a.json": {
+      "mode": 420,
+      "sha256": "fb73e12e5ea4ad8c5bd4fbeee7b5d1d9029708342b6fa2f3a55c7ca9f14104c5"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/lean-owner-setup-contract.json": {
+      "mode": 420,
+      "sha256": "1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/owner-setup-contract.json": {
+      "mode": 420,
+      "sha256": "d381667f407b5f82cfb9f9c391eccf2898ba8a064bc6b2f082e28f959e76aef8"
+    },
+    "upstream/guest/package/try-omarchy/files/usr/share/try-omarchy/pinch-input.lua": {
+      "mode": 420,
+      "sha256": "27264291e048b9fb26d7443d1e41567314968694a32ed894f0b8f9ca1cf0930a"
+    },
+    "upstream/guest/package/try-omarchy/try-omarchy.install": {
+      "mode": 420,
+      "sha256": "67eddd13e2735651a3dce239c70d3b3dcf5cad59658f3606a575ca30c580e178"
+    },
+    "upstream/guest/tests/builder-image.sh": {
+      "mode": 493,
+      "sha256": "29d856ec9cf715d314c8428eaea803b486f3e9137b99c7b1e6ae4a22e469a492"
+    },
+    "upstream/guest/tests/desktop/container-expected": {
+      "mode": 420,
+      "sha256": "6600ae8bd63eed4a76e1094f07d421478bd682533313130be5b226efce2a295f"
+    },
+    "upstream/guest/tests/desktop/provision-seeded.sh": {
+      "mode": 493,
+      "sha256": "fe41aa46daa8fd13e323da0d91f16ba850c40a6d439fd3c7ce03f4f5e51f1b58"
+    },
+    "upstream/guest/tests/desktop/run.sh": {
+      "mode": 493,
+      "sha256": "212427d15aea8df64ed70a9cbb5c6466b13256ac9ea621c4d6d99888d554c4d5"
+    },
+    "upstream/guest/tests/desktop/session-checks.sh": {
+      "mode": 493,
+      "sha256": "f4610a013a5442bfe8d54b09caf0bccc36dd369399340557b9320590f1ad881a"
+    },
+    "upstream/guest/tests/desktop/system-checks.sh": {
+      "mode": 493,
+      "sha256": "623c624c5754f085894ba33f2325af1636b68b0a296f7220c4371e9672215bb7"
+    },
+    "upstream/guest/tests/fetch-upstream.sh": {
+      "mode": 493,
+      "sha256": "5de41bdbf0363e0de4e493b8a9b2391dc8e98ca2f2c2bd23b238c6106d26f673"
+    },
+    "upstream/guest/tests/package-check.sh": {
+      "mode": 493,
+      "sha256": "be8a8b0b43507e361ad9e4352c95e10091722968cb014393fa46f245a47ea1f4"
+    },
+    "upstream/guest/tests/package-install.sh": {
+      "mode": 493,
+      "sha256": "00bd7fedfcfdb9a9a06b3939fcb42e32f471c34c47f1fb58164e88f1c3dffd38"
+    },
+    "upstream/guest/vendor/omarchy-pkgs/pacstrap-docker": {
+      "mode": 493,
+      "sha256": "dc31490fa0c387a68ee860d18cca67b43831a45206f2d5e9cfaff103fba85055"
+    }
+  },
+  "format": 1,
+  "provenance": {
+    "format": 1,
+    "inputs": {
+      "omarchy/guest/apply-theme.sh": "18208f1afaf16f77e28230e17925f910f8cd108c470cf84e22ea5c41d37f663e",
+      "omarchy/guest/apply-workstation.sh": "6b5dafc9d6efaeaf6518cd130501d8a803f2293641e9205a31fa2ab8007bbc8d",
+      "omarchy/guest/check-workstation.sh": "47e2d4971d946d1280b858de1b5e1a14acc79e7d93d0ef25d5c000c1fc92cd86",
+      "omarchy/guest/repair-try-omarchy-black-screen.sh": "759048a84dd8051018eec70c5cdcbd502162576e308433b33ed34609932ae247",
+      "omarchy/image/MANAGER-LICENSE": "c9566f863169065bac7fd0846e075d9dcf9fec705136451fc137799016598785",
+      "omarchy/image/OMARCHY-LICENSE": "717ba1949502290f8e47688ae2e323acd06c8ca47aec9f7596b15f678c1af4a2",
+      "omarchy/image/UPSTREAM-LICENSE": "f8360abaaf0114fbb7403b682bc8d21304fcf8bacb0f351261cdf792d75ea481",
+      "omarchy/image/base.packages": "3a4496b9adcfe7e77ce0afbb9d36e60a9bdab9ef01b0898686cdf41c5fc53125",
+      "omarchy/image/build-container.sh": "bc0de1649b2695fd6f060bd1aba57799f2266136f034384c12edd75856a01d10",
+      "omarchy/image/check-provisioning.py": "041f90a237381e64fe85919652a3cec0cd2d35dc8f59c21119f9fb90a9cd63de",
+      "omarchy/image/check-user.sh": "52b2cdad6d2095806438c4b36f61040734d6cd6f7fbcb6b1bec37320d903d4d4",
+      "omarchy/image/compatibility.py": "3e246db52fdad0e0a6f5ef25a14ff74c6555b2706ec42b8fbade122f630f85db",
+      "omarchy/image/excluded.packages": "6744af32cfcb539d868d860627a59aaf48a95e63bb64c0f6bba648838fdec0db",
+      "omarchy/image/guest-integration-compatibility.json": "dbc6763e0c12453797350ad644e5b1a82a1dd25f3348d0eae621dd6f5a63d40b",
+      "omarchy/image/inputs.lock.json": "05e71b4565caf03000dc0a6ac7ff31957b44683ccab65e03bf9047252d79a4fd",
+      "omarchy/image/preferences/PKGBUILD": "ac3b33acbc318fbeb3c99d79a028bbcd82635e502c0d5d0a0a5b681fc3ee5598",
+      "omarchy/image/preferences/first-login.service": "4194431bf4342f2add082875831877d8a6d25cfbddd73bc7238504a077f125df",
+      "omarchy/image/preferences/first-login.sh": "3e8078e0378bd67c7ce8a91101013c264f063baccf9743d1e6d4fc421da930c6",
+      "omarchy/image/preferences/preferences.install": "595ecfe1e7ffa005f4ce48772e167794647467034ad5649bb0e398927c99bcb9",
+      "omarchy/image/reviewed-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst": "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3",
+      "omarchy/image/try-guest-source.tar.gz": "45aa19dd23e5ac768672034d51e09a39dd66c9cb8f45105be7f8d216351c3766",
+      "scripts/omarchy_image.py": "1ec9d81fc6374b1bda3a4a1f2236494e12c4165a4333e51d0061b22ddd645d73"
+    },
+    "integration_package": {
+      "archive": "reviewed-packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst",
+      "origin_build": "omarchy-vm-manager-native-rendering-48.1",
+      "origin_source_commit": "91e95a2b9d6a9399cb2fe51f8be3d3a45c085054",
+      "recipe_sha256": "0ad47e4ed75f10fcd28b8099d2f7f650fa4753818ce06113ba39c687ee9ef384",
+      "reused_reviewed_archive": true,
+      "sha256": "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3"
+    },
+    "package_profile": {
+      "excluded": [
+        "chromium",
+        "firefox",
+        "google-chrome",
+        "visual-studio-code-bin",
+        "code",
+        "docker",
+        "docker-buildx",
+        "docker-compose",
+        "qemu-user-static",
+        "qemu-user-static-binfmt",
+        "mise-bin",
+        "nodejs",
+        "npm",
+        "ruby",
+        "rust",
+        "go",
+        "dotnet-runtime",
+        "omarchy-nvim",
+        "neovim",
+        "nvim",
+        "ghostty",
+        "kitty",
+        "claude-desktop",
+        "claude-code",
+        "opencode",
+        "1password",
+        "1password-cli",
+        "libreoffice-fresh",
+        "obsidian",
+        "omawrite",
+        "hype",
+        "signed",
+        "pinta",
+        "moonlight-qt",
+        "cliamp",
+        "omacut",
+        "monologue",
+        "superwhisper-bin",
+        "aether",
+        "localsend",
+        "system-config-printer",
+        "cups-pk-helper",
+        "cups-filters",
+        "cups",
+        "bluez-tools",
+        "bluez-utils",
+        "bluez",
+        "bolt",
+        "brightnessctl",
+        "asdcontrol",
+        "ddcutil",
+        "power-profiles-daemon",
+        "omarchy-power-profiles-daemon"
+      ],
+      "name": "foundation",
+      "required": [
+        "base",
+        "base-devel",
+        "yay",
+        "linux-omarchy",
+        "linux-omarchy-headers",
+        "mkinitcpio",
+        "limine",
+        "limine-mkinitcpio-hook",
+        "limine-snapper-sync",
+        "snapper",
+        "btrfs-progs",
+        "dosfstools",
+        "efibootmgr",
+        "archlinuxarm-keyring",
+        "omarchy-keyring",
+        "kernel-modules-hook",
+        "networkmanager",
+        "openssh",
+        "ufw",
+        "polkit",
+        "mesa",
+        "mesa-utils",
+        "libdrm",
+        "libglvnd",
+        "hyprland",
+        "hyprland-guiutils",
+        "quickshell",
+        "uwsm",
+        "sddm",
+        "xdg-desktop-portal",
+        "xdg-desktop-portal-gtk",
+        "xdg-desktop-portal-hyprland",
+        "xdg-user-dirs",
+        "xdg-utils",
+        "xdg-terminal-exec",
+        "pipewire",
+        "pipewire-audio",
+        "pipewire-pulse",
+        "wireplumber",
+        "rtkit",
+        "alsa-utils",
+        "pamixer",
+        "gnome-keyring",
+        "libsecret",
+        "upower",
+        "foot",
+        "git",
+        "python",
+        "python-gobject",
+        "bash-completion",
+        "curl",
+        "ca-certificates",
+        "jq",
+        "gum",
+        "less",
+        "nano",
+        "plocate",
+        "herdr",
+        "udiskie",
+        "socat",
+        "imagemagick",
+        "inotify-tools",
+        "unzip",
+        "wl-clipboard",
+        "grim",
+        "slurp",
+        "wf-recorder",
+        "ffmpeg",
+        "fontconfig",
+        "noto-fonts",
+        "noto-fonts-cjk",
+        "noto-fonts-emoji",
+        "ttf-jetbrains-mono-nerd-basic",
+        "fcitx5",
+        "fcitx5-chewing",
+        "fcitx5-hangul",
+        "fcitx5-mozc",
+        "fcitx5-gtk",
+        "fcitx5-qt",
+        "qt6-base",
+        "qt6-declarative",
+        "qt6-multimedia",
+        "qt6-svg",
+        "qt6-wayland",
+        "qt6-imageformats",
+        "woff2-font-awesome",
+        "yaru-icon-theme",
+        "dkms",
+        "v4l2loopback-dkms"
+      ]
+    },
+    "size_gib": 20,
+    "try_commit": "91e95a2b9d6a9399cb2fe51f8be3d3a45c085054"
+  },
+  "templateSHA256": "af1f530187cd24e604af9b5c331c4737abff7f45c5d06ad25588f202e8c96ba5"
+}

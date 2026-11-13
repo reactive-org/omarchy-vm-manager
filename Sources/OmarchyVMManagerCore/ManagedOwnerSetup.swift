@@ -7,6 +7,7 @@ struct ManagedOwnerStorage: Sendable {
     var directory: URL { root.appendingPathComponent(".manager-setup") }
     var bootstrap: URL { directory.appendingPathComponent("bootstrap") }
     static let launchName = ".omarchy-managed-setup.json"
+    static let manualFactoryMessage = "This factory's Omarchy release hasn't been reviewed for automatic account setup. Turn off Guest Defaults and finish Omarchy's own account setup in the VM."
     struct Manifest: Codable, Equatable {
         let schemaVersion: Int
         let vmID: UUID
@@ -17,6 +18,13 @@ struct ManagedOwnerStorage: Sendable {
         let hostname: String
     }
     private struct Identity: Codable, Equatable { let vmID: UUID; let fingerprint: String }
+    /// A manual-owner-setup factory is never seeded, so a profile carrying
+    /// owner setup is refused at launch before any secret is read.
+    static func admit(_ profile: VMProfile, contract: String) throws {
+        guard profile.ownerSetup == nil || !VMOwnerSetupContract.isManual(contract) else {
+            throw VMFailure(code: "manual-owner-setup-factory", message: manualFactoryMessage + " This guest was not launched.")
+        }
+    }
     private struct Seed: Encodable { let password: String }
     func passwordForLaunch(_ profile: VMProfile, secrets: any OwnerSecretStoring) throws -> Data? {
         guard let setup = profile.ownerSetup, try !completed(profile) else { return nil }
@@ -33,6 +41,7 @@ struct ManagedOwnerStorage: Sendable {
     }
     func prepare(_ profile: VMProfile, sessionID: UUID, password: Data?, newRoot: Bool, contract: String = VMOwnerSetupContract.official) throws {
         guard let setup = profile.ownerSetup else { return }
+        guard !VMOwnerSetupContract.isManual(contract) else { throw FactoryCatalog.invalid(Self.manualFactoryMessage) }
         guard VMOwnerSetupContract.isSupported(contract) else { throw FactoryCatalog.invalid("Unknown owner setup contract.") }
         try setup.validate(for: profile.id)
         let expected = Identity(vmID: profile.id, fingerprint: try setup.fingerprint())

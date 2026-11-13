@@ -1,0 +1,194 @@
+diff --git a/Sources/DevVMProvisioningCore/FactoryDocker.swift b/Sources/DevVMProvisioningCore/FactoryDocker.swift
+index 2c8ccd9..b55a589 100644
+--- a/Sources/DevVMProvisioningCore/FactoryDocker.swift
++++ b/Sources/DevVMProvisioningCore/FactoryDocker.swift
+@@ -13,7 +13,7 @@ public struct FactoryDockerClient: Sendable {
+     let runner: any FactoryBuildProcessRunning
+     let home: URL
+     public init(executable: URL, home: URL, runner: any FactoryBuildProcessRunning) throws {
+-        self.executable = executable; pin = try .init(executable); self.home = home; self.runner = runner
++        self.executable = executable; pin = try .init(executable, purpose: .factoryHost); self.home = home; self.runner = runner
+     }
+     var environment: [String: String] { ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin", "HOME": home.path, "LC_ALL": "C", "DOCKER_CLI_HINTS": "false"] }
+     func command(_ arguments: [String], directory: URL, timeout: Int = 30, stream: Bool = false, output: @escaping @Sendable (Data) -> Void = { _ in }) async throws -> Data {
+diff --git a/Sources/DevVMProvisioningCore/FactoryHostProcess.swift b/Sources/DevVMProvisioningCore/FactoryHostProcess.swift
+index c0e5625..e998d27 100644
+--- a/Sources/DevVMProvisioningCore/FactoryHostProcess.swift
++++ b/Sources/DevVMProvisioningCore/FactoryHostProcess.swift
+@@ -51,7 +51,7 @@ public final class LocalFactoryBuildProcess: FactoryBuildProcessRunning, @unchec
+         guard (1...14400).contains(command.timeoutSeconds), command.arguments.count < 256,
+               values.reduce(0, { $0 + $1.utf8.count }) < 128 * 1024, values.allSatisfy({ !$0.contains("\0") }),
+               command.executable.isFileURL, command.directory.isFileURL, !cancellation.cancelled else { throw FactoryBuildFailure.cancelled }
+-        let executable = try ProvisioningExecutablePin(command.executable).verify()
++        let executable = try ProvisioningExecutablePin(command.executable, purpose: .factoryHost).verify()
+         let args = ([executable.path] + command.arguments).map { value in value.withCString { strdup($0) } } + [nil]
+         let env = command.environment.keys.sorted().map { key in (key + "=" + command.environment[key]!).withCString { strdup($0) } } + [nil]
+         defer { for p in args + env { free(p) } }
+diff --git a/Sources/DevVMProvisioningCore/ProvisioningProcess.swift b/Sources/DevVMProvisioningCore/ProvisioningProcess.swift
+index dab1f83..123233c 100644
+--- a/Sources/DevVMProvisioningCore/ProvisioningProcess.swift
++++ b/Sources/DevVMProvisioningCore/ProvisioningProcess.swift
+@@ -1,3 +1,4 @@
++import CryptoKit
+ import Darwin
+ import Foundation
+ 
+@@ -82,30 +83,44 @@ func fileStamp(_ url: URL) throws -> FileStamp {
+           s.st_uid == getuid() || s.st_uid == 0 else { throw SequencingFailure.dependencyChanged }
+     return FileStamp(s)
+ }
+-private func pinnedBytes(_ url: URL, stamp: FileStamp) throws -> Data {
++private func pinnedSHA256(_ url: URL, stamp: FileStamp) throws -> String {
+     let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+     guard fd >= 0 else { throw SequencingFailure.dependencyChanged }
+     defer { close(fd) }
+     var before = stat(), after = stat()
+     guard fstat(fd, &before) == 0, FileStamp(before) == stamp else { throw SequencingFailure.dependencyChanged }
+-    let data = try FileHandle(fileDescriptor: fd, closeOnDealloc: false).read(upToCount: 32 * 1024 * 1024 + 1) ?? Data()
+-    guard data.count == stamp.size, fstat(fd, &after) == 0, FileStamp(after) == stamp else { throw SequencingFailure.dependencyChanged }
+-    return data
++    let file = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
++    var remaining = stamp.size, hash = SHA256()
++    while remaining > 0 {
++        let data = try file.read(upToCount: Int(min(remaining, 1024 * 1024))) ?? Data()
++        guard !data.isEmpty else { throw SequencingFailure.dependencyChanged }
++        remaining -= off_t(data.count); hash.update(data: data)
++    }
++    guard (try file.read(upToCount: 1) ?? Data()).isEmpty,
++          fstat(fd, &after) == 0, FileStamp(after) == stamp else { throw SequencingFailure.dependencyChanged }
++    return hash.finalize().map { String(format: "%02x", $0) }.joined()
+ }
+ /// Captures an admitted executable without running a version/import probe.
+ /// Symlink entry and canonical target are rechecked before every invocation.
+ public struct ProvisioningExecutablePin: Sendable {
++    // Docker's macOS CLI exceeds 32 MiB. Only factory host commands opt into
++    // this larger, still bounded policy; guest provisioning keeps its limit.
++    enum Purpose { case provisioning, factoryHost }
+     let entry: URL, target: URL, stamp: FileStamp, sha256: String
+     public init(_ url: URL) throws {
++        try self.init(url, purpose: .provisioning)
++    }
++    init(_ url: URL, purpose: Purpose) throws {
+         try transportPath(url)
+         entry = url; target = url.resolvingSymlinksInPath()
+         stamp = try fileStamp(target)
+-        guard stamp.mode & 0o022 == 0, stamp.mode & 0o111 != 0, stamp.size <= 32 * 1024 * 1024 else { throw SequencingFailure.invalidRequest }
+-        sha256 = digest(try pinnedBytes(target, stamp: stamp))
++        let maximumBytes = (purpose == .factoryHost ? 128 : 32) * 1024 * 1024
++        guard stamp.mode & 0o022 == 0, stamp.mode & 0o111 != 0, stamp.size <= maximumBytes else { throw SequencingFailure.invalidRequest }
++        sha256 = try pinnedSHA256(target, stamp: stamp)
+     }
+     func verify() throws -> URL {
+         guard entry.resolvingSymlinksInPath() == target, try fileStamp(target) == stamp,
+-              digest(try pinnedBytes(target, stamp: stamp)) == sha256 else { throw SequencingFailure.dependencyChanged }
++              try pinnedSHA256(target, stamp: stamp) == sha256 else { throw SequencingFailure.dependencyChanged }
+         // Preserve launcher/argv[0] identity (Ansible commands may share a
+         // symlink target but dispatch differently). Pin the target, execute entry.
+         return entry
+diff --git a/Sources/DevVMProvisioningCore/Resources/engine-identity.json b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
+index 673653b..655a212 100644
+--- a/Sources/DevVMProvisioningCore/Resources/engine-identity.json
++++ b/Sources/DevVMProvisioningCore/Resources/engine-identity.json
+@@ -17,8 +17,8 @@
+     "Sources/DevVMProvisioningCore/CleanupCheckpoint.swift": "614d16980e78f279c27bad28cf0437c5fb3b6ae9cc77106496963760b21c17e8",
+     "Sources/DevVMProvisioningCore/FactoryBuild.swift": "21ccdfe275cc9e6604b1d919313e82e9b6fa9859707f65aa4e9881543a97fcea",
+     "Sources/DevVMProvisioningCore/FactoryBuildEngine.swift": "8a48529a78e2d89f515451f01b40fa7b858acff9a56831ae7f6800cb2fdd041e",
+-    "Sources/DevVMProvisioningCore/FactoryDocker.swift": "ea25a7628e180a941a049e960e5e4fcc9f233ef9db17c6e60b0d236be5b97c4e",
+-    "Sources/DevVMProvisioningCore/FactoryHostProcess.swift": "90f8a672a1c2ee1071068fa3ad7f6a6ae2e4a9a634befeabc34635be92f91f31",
++    "Sources/DevVMProvisioningCore/FactoryDocker.swift": "e35e0dea86a5df83e17cab9da5ada444a57ae9d364581e592959202c3d11c231",
++    "Sources/DevVMProvisioningCore/FactoryHostProcess.swift": "6320cf530e73292fd44024534fa85e6765eafdbbf33e7cc1c6e9d0be70f366d1",
+     "Sources/DevVMProvisioningCore/FactoryRecipePin.swift": "1532f6ce8da75cb3959a11708d685180db613ba77ccb85ad9b209a2181734bd5",
+     "Sources/DevVMProvisioningCore/FeatureContract.swift": "037bb4b8c8e700f0b8c30c00ce8945a06af61fb5fc4fcd6bd860b681440372ad",
+     "Sources/DevVMProvisioningCore/FeaturePlanner.swift": "5e7fab041c36b3afc4380fb4aeb32629f0840d34e85dcd96b7dc3fca94388501",
+@@ -30,7 +30,7 @@
+     "Sources/DevVMProvisioningCore/LocalProvisioningProcessRunner.swift": "613add4a5978c1ea26c8fcae1d9e33f15d3ab43f541e68c8f49e48b1df4feac1",
+     "Sources/DevVMProvisioningCore/NativeAuthorizationContract.swift": "666dfb614c00fc5ebe0a4f7e69089f1336ac6a95ad7639d4291a880c22e5c3cd",
+     "Sources/DevVMProvisioningCore/PlainData.swift": "71a28c2c8da37a9e44ee296c60976cbb2b98d3bc5eaa2eb3260c996ee73b5dd5",
+-    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "191d1812ee82b47e23fb18cb8059cb8ea2e6b71250477a595d25ceb20a1df37f",
++    "Sources/DevVMProvisioningCore/ProvisioningProcess.swift": "2b43a3a4661cd84db35ce3e05754ae75973bb3ccf2992211cc65f9f4a6c3dfee",
+     "Sources/DevVMProvisioningCore/ProvisioningSequencer.swift": "cacb41f99ca871da940a6d4d2e20fbebdc38e03567651cdf6865c8d5d966095d",
+     "Sources/DevVMProvisioningCore/ProvisioningTerminal.swift": "3824a14387ced38fc2774a23e71b7ec67b4d81115129c6653402d2a386d078ac",
+     "Sources/DevVMProvisioningCore/ProvisioningTransportReference.swift": "5867342ff27614b2f5310983c26b8e64e5df817f5f7f4f219074329ab290c3ee",
+diff --git a/tests/DevVMProvisioningCoreTests/FactoryBuildTests.swift b/tests/DevVMProvisioningCoreTests/FactoryBuildTests.swift
+index 869e51f..3023cdb 100644
+--- a/tests/DevVMProvisioningCoreTests/FactoryBuildTests.swift
++++ b/tests/DevVMProvisioningCoreTests/FactoryBuildTests.swift
+@@ -35,6 +35,78 @@ private struct FactoryFakeDownload: FactoryBuildDownloading {
+     func download(_ input: FactoryRecipe.Download, to destination: URL) async throws { try Data("fixture".utf8).write(to: destination); chmod(destination.path, 0o600) }
+ }
+ @Suite("Factory builder — fake Docker and disposable local files", .serialized) struct FactoryBuildTests {
++    private func executableFixture(in root: URL, size: Int, name: String = "docker-fixture") throws -> URL {
++        let url = root.appendingPathComponent(name)
++        // Sparse padding is synthetic data. Never invoke a real Docker binary.
++        try Data("#!/bin/sh\nprintf 'large fixture\\n'\nexit 0\n".utf8).write(to: url)
++        let file = try FileHandle(forWritingTo: url)
++        defer { try? file.close() }
++        try file.truncate(atOffset: UInt64(size))
++        guard chmod(url.path, 0o700) == 0 else { throw FactoryBuildFailure.invalidRequest }
++        return url
++    }
++    @Test(arguments: [33_554_432, 33_554_433, 43_052_752, 134_217_728, 134_217_729])
++    func dockerExecutableAdmissionHasItsOwnBoundedLimit(_ size: Int) async throws {
++        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-size-" + UUID().uuidString)
++        try factoryDirectory(root, create: true)
++        defer { try? FileManager.default.removeItem(at: root) }
++        let executable = try executableFixture(in: root, size: size)
++        let fake = FactoryFakeProcess(root: root, jobID: UUID())
++        if size > 32 * 1024 * 1024 {
++            #expect(throws: SequencingFailure.invalidRequest) { _ = try ProvisioningExecutablePin(executable) }
++        } else { _ = try ProvisioningExecutablePin(executable).verify() }
++        if size > 128 * 1024 * 1024 {
++            #expect(throws: SequencingFailure.invalidRequest) { _ = try FactoryDockerClient(executable: executable, home: root, runner: fake) }
++            #expect(await fake.commands.isEmpty)
++        } else {
++            let client = try FactoryDockerClient(executable: executable, home: root, runner: fake)
++            let admission = try await client.inspect()
++            try await client.revalidate(admission)
++            #expect(await fake.commands.count == 4)
++            #expect(client.pin.sha256 == digest(try Data(contentsOf: executable)))
++        }
++    }
++    @Test(arguments: [0, 1_048_583, 43_052_751])
++    func largeDockerExecutableMutationRefusesNextFakeCommand(_ offset: Int) async throws {
++        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-tamper-" + UUID().uuidString)
++        try factoryDirectory(root, create: true)
++        defer { try? FileManager.default.removeItem(at: root) }
++        let executable = try executableFixture(in: root, size: 43_052_752)
++        let fake = FactoryFakeProcess(root: root, jobID: UUID())
++        let client = try FactoryDockerClient(executable: executable, home: root, runner: fake)
++        let admission = try await client.inspect()
++        let file = try FileHandle(forWritingTo: executable)
++        try file.seek(toOffset: UInt64(offset)); try file.write(contentsOf: Data([88])); try file.close()
++        await #expect(throws: SequencingFailure.dependencyChanged) { try await client.revalidate(admission) }
++        #expect(await fake.commands.count == 3)
++    }
++    @Test func largeDockerStillRejectsUnsafePermissionsAndRetargetedSymlinks() async throws {
++        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-permissions-" + UUID().uuidString)
++        try factoryDirectory(root, create: true)
++        defer { try? FileManager.default.removeItem(at: root) }
++        let executable = try executableFixture(in: root, size: 43_052_752)
++        let fake = FactoryFakeProcess(root: root, jobID: UUID())
++        chmod(executable.path, 0o777)
++        #expect(throws: SequencingFailure.invalidRequest) { _ = try FactoryDockerClient(executable: executable, home: root, runner: fake) }
++        chmod(executable.path, 0o700)
++        let alias = root.appendingPathComponent("docker-alias")
++        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: executable)
++        let client = try FactoryDockerClient(executable: alias, home: root, runner: fake)
++        let admission = try await client.inspect()
++        let replacement = try executableFixture(in: root, size: 43_052_752, name: "replacement")
++        try FileManager.default.removeItem(at: alias)
++        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: replacement)
++        await #expect(throws: SequencingFailure.dependencyChanged) { try await client.revalidate(admission) }
++        #expect(await fake.commands.count == 3)
++    }
++    @Test func factoryHostRunnerUsesTheLargerPolicyForADisposableScript() async throws {
++        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-host-size-" + UUID().uuidString)
++        try factoryDirectory(root, create: true)
++        defer { try? FileManager.default.removeItem(at: root) }
++        let executable = try executableFixture(in: root, size: 43_052_752)
++        let result = try await LocalFactoryBuildProcess().run(.init(executable: executable, arguments: [], directory: root, environment: ["PATH": "/usr/bin:/bin"], timeoutSeconds: 5), output: { _ in })
++        #expect(result.status == 0 && result.output == Data("large fixture\n".utf8))
++    }
+     @Test(arguments: ["flat", "contents", "missing", "tampered"])
+     func recipeBundleLayoutsRetainExactPins(_ layout: String) throws {
+         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("factory-bundle-" + UUID().uuidString)

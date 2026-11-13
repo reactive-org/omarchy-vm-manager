@@ -96,7 +96,7 @@ struct SharedFolderTests {
         if variant != "legacy" { profile.sharedFolder = SharedFolderMapping(hostPath: "/missing/Shared", enabled: false) }
         let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(profile))
         let object: [String: Any] = [
-            "schemaVersion": variant == "legacy" ? 4 : variant == "future" ? 7 : 5,
+            "schemaVersion": variant == "legacy" ? 4 : variant == "future" ? RegistryStore.supportedSchemaVersions.upperBound + 1 : 5,
             "profiles": variant == "duplicate" ? [encoded, encoded] : [encoded],
             "pendingDeletions": variant == "unreviewed" ? [] : [profile.id.uuidString]
         ]

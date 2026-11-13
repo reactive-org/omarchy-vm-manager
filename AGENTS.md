@@ -2,7 +2,18 @@
 
 Read intent.md before changing architecture or policy. Preserve its VERIFIED, DESIGN DECISION, PRIVATE COUPLING and TO PROVE distinctions.
 
-- Use Swift 6 and macOS 15+, SwiftPM, and `make` for builds and tests.
+## Branch and PR defaults
+
+- Use `next` as the default development and integration branch. Fetch `origin/next` before starting new work, and create `codex/<task>` work branches from its latest commit unless the user explicitly specifies another base.
+- Target ordinary feature, fix, test and documentation PRs at `next`. Set the base explicitly when creating a PR, for example `gh pr create --base next`.
+- Reserve `main` for stable releases. Target or merge into `main` only when the user explicitly requests a stable release or promotion; normally promote reviewed changes with a `next` → `main` PR.
+- Use work branches and PRs rather than direct pushes to `next` or `main` by default. Successful pushes to `next` publish Dev prereleases; successful pushes to `main` publish stable patch releases. Docs-only changes (`docs/**`, `.claude/**`, `README.md`, `AGENTS.md`, `intent.md`) skip CI and publish nothing. Follow explicit user instructions for exceptions and preserve existing work when continuing a branch or PR.
+
+## Implementation and VM safety
+
+- Use Swift 6.2+ (Swift 6 language mode) and macOS 15+, SwiftPM, and `make` for builds and tests.
+- Use the isolated **Dev candidate** for development work and local UI testing: `make app-dev verify-dev`. It must use `DEVELOPMENT_CHANNEL`, bundle ID `dev.omarchy.vm-manager.dev`, Dev data/locks and the `omarchy-vm-dev` CLI. Leave the user's `main`/Stable manager, installed app and VMs untouched; never stop or replace Stable to test development changes. See [Stable and Dev](docs/DevelopmentChannels.md).
+- If local signing is required, use the ad-hoc Dev/debug path provided by `Scripts/build-app.sh --dev` (which wraps `Scripts/assemble_app.py` and defaults to `codesign --sign -`); `make app-dev` uses this path. A fresh `--output-directory` keeps test candidates separate. Use `--preserve-runtime-signatures` with an exact verified `--runtime-directory` when reusing the pinned runtime. Verify the resulting Dev app with `Scripts/verify-app.sh --bundle-only <Dev.app>`. This needs no signing credentials or Apple requests. Ad-hoc signing does not enable protected Touch ID storage or satisfy same-team operational provisioning-helper admission. Normal Dev build eligibility still requires verified Dev roots, reviewed permissions and authenticated helpers; Stable stays disabled. Never migrate a Stable disposable approval to Dev.
 - Own orchestration, never duplicate the upstream VM implementation.
 - Never launch, reset, delete, or modify a personal/default or existing user VM without explicit consent. Tests use manager-owned disposable UUID roots only.
 - Do not download a factory image or launch real QEMU guests without explicit approval for the two-VM POC. Phase 0/0A and their tests must start no VM.

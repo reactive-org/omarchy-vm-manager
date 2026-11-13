@@ -3,10 +3,28 @@ import Foundation
 
 public protocol SSHReadinessChecking: Sendable {
     func monitor(_ request: VMStartRequest, update: @escaping @Sendable (SSHReadiness) async -> Void) async
+    func monitorAuthenticated(_ request: VMStartRequest, update: @escaping @Sendable (SSHReadinessObservation) async -> Void) async
+}
+extension SSHReadinessChecking {
+    public func monitorAuthenticated(_ request: VMStartRequest, update: @escaping @Sendable (SSHReadinessObservation) async -> Void) async {
+        await monitor(request) { await update(.init(readiness: $0)) }
+    }
 }
 
 public struct ManagedSSHProbe: SSHReadinessChecking {
-    public init() {}
+    private let runIdentity: @Sendable ([String]) async throws -> SSHProbeProcess.Result
+    private let pause: @Sendable (Duration) async throws -> Void
+    public init() { runIdentity = Self.execute; pause = { try await Task.sleep(for: $0) } }
+    init(runIdentity: @escaping @Sendable ([String]) async throws -> SSHProbeProcess.Result,
+         pause: @escaping @Sendable (Duration) async throws -> Void) {
+        self.runIdentity = runIdentity; self.pause = pause
+    }
+    private static func execute(_ arguments: [String]) async throws -> SSHProbeProcess.Result {
+        let process = SSHProbeProcess()
+        return try await withTaskCancellationHandler {
+            try await Task.detached { try process.run(arguments: arguments) }.value
+        } onCancel: { process.cancel() }
+    }
     struct Status: Decodable {
         struct Report: Decodable { let managedSSH: Guest? }
         let receivedAt: Date
@@ -25,6 +43,10 @@ public struct ManagedSSHProbe: SSHReadinessChecking {
     struct Identity: Decodable { let vmID: UUID; let sessionToken: UUID; let user: String; let uid: Int }
 
     public func monitor(_ request: VMStartRequest, update: @escaping @Sendable (SSHReadiness) async -> Void) async {
+        await monitorAuthenticated(request) { await update($0.readiness) }
+    }
+    public func monitorAuthenticated(_ request: VMStartRequest, update observation: @escaping @Sendable (SSHReadinessObservation) async -> Void) async {
+        let update: @Sendable (SSHReadiness) async -> Void = { await observation(.init(readiness: $0)) }
         let storage = ManagedSSHStorage(root: request.storageRoot)
         let deadline = Date().addingTimeInterval(1800)
         var hasConnected = false
@@ -34,7 +56,7 @@ public struct ManagedSSHProbe: SSHReadinessChecking {
                 guard let report = try currentReport(request) else {
                     await update(.provisioning)
                     if !hasConnected, Date() > deadline { await update(.failed("SSH provisioning timed out. Complete guest setup and retry the SSH check.")); return }
-                    try await Task.sleep(for: .seconds(2)); continue
+                    try await pause(.seconds(2)); continue
                 }
                 guard report.state != "error" else {
                     var detail = ""
@@ -48,23 +70,21 @@ public struct ManagedSSHProbe: SSHReadinessChecking {
                 guard let user = report.owner, Self.validUser(user), report.state == "configured" else {
                     await update(.waitingForOwner)
                     if Date() > deadline { await update(.failed("Waiting for the guest’s normal owner-account setup. Retry SSH after setup finishes.")); return }
-                    try await Task.sleep(for: .seconds(2)); continue
+                    try await pause(.seconds(2)); continue
                 }
-                await update(.connecting)
-                let process = SSHProbeProcess()
-                let result = try await withTaskCancellationHandler {
-                    try await Task.detached { try process.run(arguments: storage.arguments(profile: request.profile, user: user)) }.value
-                } onCancel: { process.cancel() }
+                if !hasConnected { await update(.connecting) }
+                let challenge = try ProvisioningSSHIdentityChallenge(request: request, user: user)
+                let result = try await runIdentity(storage.arguments(profile: request.profile, user: user))
                 try Task.checkCancellation()
                 if result.hostKeyMismatch { await update(.failed("The guest SSH host key changed. Explicit recovery is required; it was not accepted.")); return }
-                if result.status == 0, let identity = try? JSONDecoder().decode(Identity.self, from: result.output),
-                   identity.vmID == request.profile.id, identity.sessionToken == request.sessionID, identity.user == user, identity.uid >= 1000, identity.uid < 60000 {
+                if let identity = try? challenge.complete(result) {
                     let command = try storage.command(profile: request.profile, user: user)
-                    hasConnected = true; await update(.ready(user: user, command: command))
-                    try await Task.sleep(for: .seconds(30))
+                    hasConnected = true; await observation(.init(readiness: .ready(user: user, command: command), identity: identity))
+                    try await pause(.seconds(30))
                 } else {
+                    await update(.connecting)
                     if !hasConnected, Date() > deadline { await update(.failed("SSH authentication could not be verified. The VM remains running; retry the SSH check after reviewing setup.")); return }
-                    try await Task.sleep(for: .seconds(3))
+                    try await pause(.seconds(3))
                 }
             } catch is CancellationError { return }
             catch {

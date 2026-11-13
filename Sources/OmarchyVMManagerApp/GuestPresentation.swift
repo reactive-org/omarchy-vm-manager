@@ -11,26 +11,36 @@ struct GuestArtwork: View {
         default: false
         }
     }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
-            if let url = Bundle.main.url(forResource: "OmarchyGuest", withExtension: "png"), let image = NSImage(contentsOf: url) {
-                Image(nsImage: image).resizable().interpolation(.high)
-            } else {
-                Image(systemName: "desktopcomputer").resizable().scaledToFit().padding(size * 0.2)
-            }
             if busy {
-                RoundedRectangle(cornerRadius: size * 0.185).fill(.black.opacity(0.55))
-                    .frame(width: size * 0.81, height: size * 0.81)
-                ProgressView().controlSize(size < 40 ? .mini : .regular)
-                    .environment(\.colorScheme, .dark)
+                // The same stacked frames and tracer as the loading screen, on the guest tile's ground.
+                ZStack {
+                    RoundedRectangle(cornerRadius: size * 0.185).fill(Theme.ground)
+                        .overlay(RoundedRectangle(cornerRadius: size * 0.185).strokeBorder(Theme.border))
+                        .frame(width: size * 0.81, height: size * 0.81)
+                    FrameMark(size: size * 0.62, tracer: Theme.green, loading: true)
+                }.transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 1.12)))
+            } else {
+                Group {
+                    if let image = AppArtwork.image("OmarchyGuest") {
+                        Image(nsImage: image).resizable().interpolation(.high)
+                    } else {
+                        Image(systemName: "desktopcomputer").resizable().scaledToFit().padding(size * 0.2)
+                    }
+                }.transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.8)))
             }
-        }.frame(width: size, height: size).accessibilityHidden(true)
+        }
+        // When work finishes the frames give way to the Omarchy logo.
+        .animation(.easeOut(duration: reduceMotion ? 0.2 : 0.45), value: busy)
+        .frame(width: size, height: size).accessibilityHidden(true)
     }
 }
 
 struct GuestProgressSlot: View {
     let state: VMState
-    private var detail: (text: String, percent: Int?)? {
+    fileprivate var detail: (text: String, percent: Int?)? {
         switch state {
         case .downloading(let phase, let percent), .starting(let phase, let percent):
             (phase.rawValue.replacingOccurrences(of: "-", with: " ").capitalized, percent)
@@ -49,7 +59,7 @@ struct GuestProgressSlot: View {
         VStack(alignment: .leading, spacing: 6) {
             if let detail {
                 let label = detail.text + (detail.percent.map { " · \($0)%" } ?? "")
-                Text(label).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).help(label)
+                Text(label).font(Theme.note).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).help(label)
                 if let percent = detail.percent {
                     ProgressView(value: Double(percent), total: 100).progressViewStyle(.linear).frame(height: 4)
                 } else { Color.clear.frame(height: 4) }
@@ -59,50 +69,98 @@ struct GuestProgressSlot: View {
     }
 }
 
-struct GuestLibraryRow<Controls: View>: View {
+/// The single status line shared by library rows and the guest header.
+struct GuestStatusLine: View {
     let snapshot: VMSnapshot
-    let open: () -> Void
-    @ViewBuilder var controls: Controls
+    private var active: Bool { snapshot.sessionID != nil }
+    private var progress: (text: String, percent: Int?)? { GuestProgressSlot(state: snapshot.state).detail }
+    private var status: (text: String, color: Color) {
+        if let suspension = snapshot.suspension { return (suspension.label, .orange) }
+        if let failure = snapshot.lastFailure { return (failure.message, .red) }
+        if let progress { return (progress.text + (progress.percent.map { " · \($0)%" } ?? ""), active ? Theme.green : .secondary) }
+        let label = snapshot.state.label + (snapshot.profile.isRetainedPOC ? " · Retained POC disk" : "")
+        return (label, active ? Theme.green : .secondary)
+    }
     var body: some View {
-        GroupedPanel {
-            HStack(spacing: 18) {
-                GuestArtwork(size: 52, state: snapshot.state)
-                VStack(alignment: .leading, spacing: 5) {
-                    Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(.title3.bold())
-                        .lineLimit(1).help(snapshot.profile.name)
-                    let disk = " · " + snapshot.profile.diskSummary
-                    let summary = "\(snapshot.state.label) · \(snapshot.profile.cpus) cores · \(snapshot.profile.memoryMiB / 1024) GiB memory" + disk
-                    Text(summary).font(.callout).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).help(summary)
-                    GuestProgressSlot(state: snapshot.state)
-                    Group {
-                        if let suspension = snapshot.suspension {
-                            Text(suspension.label).foregroundStyle(.orange).lineLimit(2)
-                        } else if let failure = snapshot.lastFailure {
-                            Text(failure.message).foregroundStyle(.red).lineLimit(2).help(failure.message)
-                        } else if snapshot.profile.isRetainedPOC {
-                            Label("Retained POC disk", systemImage: "internaldrive").foregroundStyle(.secondary)
-                        } else { Color.clear }
-                    }.font(.caption).frame(maxWidth: .infinity, alignment: .topLeading).frame(height: 28, alignment: .top)
-                }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 120, alignment: .top)
-                controls.frame(width: 148, height: 30, alignment: .trailing)
-            }.padding(20)
+        HStack(spacing: 7) {
+            GuestStatusMarker(active: active)
+            Text(status.text).monospacedDigit().foregroundStyle(status.color).lineLimit(1).help(status.text)
+            if let percent = progress?.percent {
+                ProgressView(value: Double(percent), total: 100).progressViewStyle(.linear).frame(width: 80)
+            }
         }
     }
 }
 
-struct GuestHomeHero: View {
+struct GuestLibraryRow<Controls: View>: View {
     let snapshot: VMSnapshot
+    let open: () -> Void
+    @ViewBuilder var controls: Controls
+    @State private var hovering = false
+    private var active: Bool { snapshot.sessionID != nil }
+    private var disk: String {
+        guard let system = snapshot.profile.diskGiB else { return "Factory" }
+        return snapshot.profile.homeDisk.map { "\(system)+\($0.sizeGiB) GiB" } ?? "\(system) GiB"
+    }
+    private func spec(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value).font(Theme.mono(13)).lineLimit(1).minimumScaleFactor(0.8)
+            Text(label).font(Theme.mono(11)).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine)
+    }
+    // The height never changes with state, so the list stays still as guests
+    // move through their lifecycle.
+    var body: some View {
+        HStack(spacing: 18) {
+            GuestArtwork(size: 44, state: snapshot.state)
+            VStack(alignment: .leading, spacing: 3) {
+                Button(snapshot.profile.name, action: open).buttonStyle(.plain).font(Theme.sans(15, weight: .medium))
+                    .lineLimit(1).help(snapshot.profile.name)
+                GuestStatusLine(snapshot: snapshot).font(Theme.note)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 10) {
+                spec("\(snapshot.profile.cpus)", "cores")
+                spec("\(snapshot.profile.memoryMiB / 1024) GiB", "memory")
+                spec(disk, "disk").help(snapshot.profile.diskSummary)
+            }.frame(width: 210)
+            controls.frame(width: 148, height: 30, alignment: .trailing)
+        }
+        .padding(.horizontal, 10).frame(height: 62)
+        .background(active ? Theme.green.opacity(0.07) : hovering ? Color.primary.opacity(0.05) : .clear, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
+        .overlay {
+            if active { RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(Theme.green) }
+        }
+        .overlay(alignment: .bottom) {
+            if !active { Rectangle().fill(Theme.border).frame(height: 1) }
+        }
+        .onHover { hovering = $0 }
+    }
+}
+
+/// Fixed height, so the page below stays put as the guest changes state.
+struct GuestHeaderPane<Controls: View>: View {
+    let snapshot: VMSnapshot
+    @ViewBuilder var controls: Controls
     var body: some View {
         GroupedPanel {
             HStack(spacing: 24) {
-                GuestArtwork(size: 104, state: snapshot.state)
+                GuestArtwork(size: 76, state: snapshot.state)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Omarchy").font(.system(size: 34, weight: .bold))
-                    Text(snapshot.suspension?.label ?? (snapshot.state == .stopped ? "Ready to launch" : snapshot.state.label)).font(.title3).foregroundStyle(.secondary).lineLimit(1)
-                    Text("Independent disk · Shared (NAT) network").foregroundStyle(.secondary).lineLimit(1)
-                    GuestProgressSlot(state: snapshot.state)
-                }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 148, alignment: .center)
-            }.padding(26)
+                    Text(snapshot.profile.name).font(Theme.sans(26, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.8).help(snapshot.profile.name)
+                    HStack(spacing: 4) {
+                        GuestStatusLine(snapshot: snapshot)
+                        Text(snapshot.state == .stopped && snapshot.suspension == nil ? "· Ready to launch · Independent disk · Shared (NAT) network" : "· Independent disk · Shared (NAT) network").foregroundStyle(.secondary).lineLimit(1)
+                    }.font(Theme.sans(13))
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                controls.frame(width: 148, height: 30, alignment: .trailing)
+            }
+            .padding(.horizontal, 24).frame(height: 120)
+            .background(alignment: .topTrailing) {
+                // Same language as the library header: lavender while idle, bright while running.
+                FrameMark(size: 170, frame: snapshot.sessionID != nil ? Theme.green.opacity(0.55) : Theme.quietFrame,
+                          tracer: snapshot.sessionID != nil ? Theme.tracer : Theme.lavender.opacity(0.7)).offset(x: -190, y: 6)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.paneRadius))
         }
     }
 }
@@ -110,11 +168,21 @@ struct GuestHomeHero: View {
 struct OmarchyAttribution: View {
     var body: some View {
         Text("Omarchy is a pending trademark of the [Omacom Foundation](https://omarchy.org/foundation/).")
-            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            .font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// The features compiled into this channel. Previews may substitute a fixed set.
+private struct FeatureFlagsKey: EnvironmentKey { static let defaultValue = FeatureFlags.current }
+extension EnvironmentValues {
+    var featureFlags: FeatureFlags {
+        get { self[FeatureFlagsKey.self] }
+        set { self[FeatureFlagsKey.self] = newValue }
     }
 }
 
 struct GuestControls: View {
+    @Environment(\.featureFlags) private var features
     let snapshot: VMSnapshot
     var launchEnabled = true
     let start: () -> Void
@@ -129,27 +197,29 @@ struct GuestControls: View {
             Group {
                 if snapshot.sessionID == nil && snapshot.suspension != nil {
                     Button { restoreSuspension() } label: { Text("Restore…").frame(width: 96) }
-                        .buttonStyle(.borderedProminent).disabled(!launchEnabled || !snapshot.canRestoreExperimentalSuspension)
+                        .buttonStyle(.primaryAction).disabled(!launchEnabled || !snapshot.canRestoreExperimentalSuspension)
                 } else if snapshot.state.canStart {
                     Button { start() } label: { Label("Launch", systemImage: "play.fill").frame(width: 96) }
-                        .buttonStyle(.borderedProminent).disabled(!launchEnabled || snapshot.suspensionMetadataUnsafe)
+                        .buttonStyle(.primaryAction).disabled(!launchEnabled || snapshot.suspensionMetadataUnsafe)
                 } else if snapshot.state == .paused {
                     Button { resume() } label: { Label("Resume", systemImage: "play.fill").frame(width: 96) }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.primaryAction)
                 } else if snapshot.sessionID != nil {
-                    Button { stop() } label: { Text("Shut Down").frame(width: 96) }
+                    Button { stop() } label: { Text("Shut down").frame(width: 96) }
                         .disabled(snapshot.state == .stopping)
-                } else { Text("Please wait…").font(.callout).foregroundStyle(.secondary) }
+                } else { Text("Please wait…").font(Theme.sans(13)).foregroundStyle(.secondary) }
             }.frame(width: 116, height: 30)
             Menu {
                 if snapshot.state == .running {
                     Button("Pause", systemImage: "pause.fill") { pause() }.disabled(snapshot.suspension != nil)
-                    Button("Suspend to Disk (Experimental)…", systemImage: "moon.zzz") { suspendToDisk() }
-                        .disabled(!snapshot.canAttemptExperimentalSuspend)
+                    if features.experimentalSuspendToDisk {
+                        Button("Suspend to disk (experimental)…", systemImage: "moon.zzz") { suspendToDisk() }
+                            .disabled(!snapshot.canAttemptExperimentalSuspend)
+                    }
                 }
-                if snapshot.state == .paused { Button("Shut Down") { stop() } }
+                if snapshot.state == .paused { Button("Shut down") { stop() } }
                 Divider()
-                Button("Force Stop…", role: .destructive) { forceStop() }
+                Button("Force stop…", role: .destructive) { forceStop() }
             } label: { Image(systemName: "ellipsis") }
                 .menuStyle(.borderlessButton).frame(width: 24)
                 .opacity(snapshot.sessionID == nil ? 0 : 1).disabled(snapshot.sessionID == nil)
@@ -179,19 +249,20 @@ struct ExperimentalPowerReview: Identifiable {
     }
     var button: String {
         switch action {
-        case .suspend: "Opt In and Attempt Suspension"
-        case .restore: "Attempt Restore / Recovery"
-        case .acceptColdBoot: "Confirm Guest Image Cleared"
+        case .suspend: "Opt in and attempt suspension"
+        case .restore: "Attempt restore / recovery"
+        case .acceptColdBoot: "Confirm guest image cleared"
         }
     }
 }
 
 struct GuestHibernationPanel: View {
+    @Environment(\.featureFlags) private var features
     let snapshot: VMSnapshot
     let review: (ExperimentalPowerReview.Action) -> Void
     var recheck: () -> Void = {}
     private var detail: String {
-        if snapshot.profile.homeDisk != nil { return "Experimental hibernation is unavailable for separate-home guests until both disks can be protected and restored together." }
+        if snapshot.profile.homeDisk != nil { return "Hibernation needs both disks protected and restored together, which isn’t supported yet." }
         if snapshot.experimentalPowerBusy && snapshot.suspension == nil { return "Rechecking guest prerequisites and preparing the experimental attempt…" }
         if snapshot.suspensionMetadataUnsafe { return "Saved-session metadata needs manual recovery. Ordinary launch, configuration and deletion are blocked." }
         if snapshot.suspension?.restoreAttempted == true && snapshot.sessionID == nil { return "An earlier restore was unresolved. Another boot is blocked because it could reuse stale memory after filesystem changes. Manual recovery is required." }
@@ -203,30 +274,30 @@ struct GuestHibernationPanel: View {
         return "Waiting for a verified guest capability check over managed SSH."
     }
     var body: some View {
-        GroupedPanel {
+        GroupedPanel(dashed: true) {
             HStack(spacing: 16) {
                 ZStack {
-                    Image(systemName: "moon.zzz").font(.title2).foregroundStyle(.indigo)
+                    Image(systemName: "moon.zzz").font(.title2).foregroundStyle(Theme.lavender)
                         .opacity(snapshot.experimentalPowerBusy ? 0.25 : 1)
                     if snapshot.experimentalPowerBusy { ProgressView().controlSize(.small) }
                 }.frame(width: 34)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Suspend to Disk · Experimental").font(.headline)
-                    Text(snapshot.profile.homeDisk != nil ? "Separate home disk" : snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(.callout).lineLimit(1)
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3).help(detail)
+                    Text("Suspend to disk · Experimental").font(Theme.sans(14, weight: .medium))
+                    Text(snapshot.profile.homeDisk != nil ? "Unavailable with a separate home disk" : snapshot.hibernation.map { $0.label + " · " + $0.kernel } ?? (snapshot.suspension == nil ? "Capability not yet verified" : "Saved-session protection active")).font(Theme.sans(13)).lineLimit(1)
+                    Text(detail).font(Theme.note).foregroundStyle(.secondary).lineLimit(3).help(detail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Group {
                 if snapshot.suspension?.stage == .coldBootDetected && snapshot.state == .running {
-                    Button("Accept Cold Boot…") { review(.acceptColdBoot) }
+                    Button("Accept cold boot…") { review(.acceptColdBoot) }
                 } else if snapshot.suspension != nil && snapshot.sessionID == nil {
                     Button("Restore / Recover…") { review(.restore) }.disabled(!snapshot.canRestoreExperimentalSuspension)
                 } else if snapshot.suspension?.restoreAttempted == true && snapshot.suspension?.stage == .recoveryRequired && snapshot.state == .running {
-                    Button("Recheck Recovery") { recheck() }
-                } else {
+                    Button("Recheck recovery") { recheck() }
+                } else if features.experimentalSuspendToDisk {
                     Button("Suspend…") { review(.suspend) }.disabled(!snapshot.canAttemptExperimentalSuspend)
                 }
                 }.frame(width: 180, height: 30, alignment: .trailing)
-            }.padding(20).frame(height: 144)
+            }.padding(.horizontal, 20).frame(height: 120)
         }
     }
 }

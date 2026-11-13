@@ -1,0 +1,158 @@
+[
+  {
+    "name": "json-primitives",
+    "format": "json",
+    "source": "{\"s\":\"yes\",\"i\":42,\"f\":1.25,\"b\":true,\"n\":null,\"a\":[],\"o\":{}}",
+    "expected": {
+      "s": "yes",
+      "i": 42,
+      "f": 1.25,
+      "b": true,
+      "n": null,
+      "a": [],
+      "o": {}
+    },
+    "valid": true
+  },
+  {
+    "name": "yaml-primitives",
+    "format": "yaml",
+    "source": "s: text\ni: 42\nf: 1.25\nb: true\nn: null\na: []\no: {}",
+    "expected": {
+      "s": "text",
+      "i": 42,
+      "f": 1.25,
+      "b": true,
+      "n": null,
+      "a": [],
+      "o": {}
+    },
+    "valid": true
+  },
+  {
+    "name": "yaml-boolean-compatibility",
+    "format": "yaml",
+    "source": "[yes, NO, on, Off, true, FALSE]",
+    "expected": [
+      true,
+      false,
+      true,
+      false,
+      true,
+      false
+    ],
+    "valid": true
+  },
+  {
+    "name": "quoted-ambiguous-strings",
+    "format": "yaml",
+    "source": "['yes', '0644', '2026-01-01', '.nan', '1e3']",
+    "expected": [
+      "yes",
+      "0644",
+      "2026-01-01",
+      ".nan",
+      "1e3"
+    ],
+    "valid": true
+  },
+  {
+    "name": "block-string",
+    "format": "yaml",
+    "source": "script: |\n  &anchor *alias !tag\n",
+    "expected": {
+      "script": "&anchor *alias !tag\n"
+    },
+    "valid": true
+  },
+  {
+    "name": "unicode-and-comment",
+    "format": "yaml",
+    "source": "label: café 🚀 # example\n",
+    "expected": {
+      "label": "café 🚀"
+    },
+    "valid": true
+  },
+  {
+    "name": "folded-string",
+    "format": "yaml",
+    "source": "text: >-\n  hello\n  world\n",
+    "expected": {
+      "text": "hello world"
+    },
+    "valid": true
+  },
+  {
+    "name": "quoted-key",
+    "format": "yaml",
+    "source": "'yes': value",
+    "expected": {
+      "yes": "value"
+    },
+    "valid": true
+  },
+  {
+    "name": "json-escaped-key",
+    "format": "json",
+    "source": "{\"\\u0061\":\"x\\nline\"}",
+    "expected": {
+      "a": "x\nline"
+    },
+    "valid": true
+  },
+  {
+    "name": "duplicate",
+    "format": "yaml",
+    "source": "x: 1\nx: 2",
+    "valid": false
+  },
+  {
+    "name": "nested-duplicate",
+    "format": "yaml",
+    "source": "x: {a: 1, a: 2}",
+    "valid": false
+  },
+  {
+    "name": "nonstring-key",
+    "format": "yaml",
+    "source": "1: value",
+    "valid": false
+  },
+  {
+    "name": "alias",
+    "format": "yaml",
+    "source": "x: *missing",
+    "valid": false
+  },
+  {
+    "name": "anchor",
+    "format": "yaml",
+    "source": "x: &anchor 1",
+    "valid": false
+  },
+  {
+    "name": "tag",
+    "format": "yaml",
+    "source": "x: !!str 1",
+    "valid": false
+  },
+  {
+    "name": "template",
+    "format": "yaml",
+    "source": "x: \"{{ secret }}\"",
+    "valid": false
+  },
+  {
+    "name": "nonfinite",
+    "format": "yaml",
+    "source": "x: .inf",
+    "valid": false
+  },
+  {
+    "name": "multidoc",
+    "format": "yaml",
+    "source": "---\nx: 1\n---\ny: 2",
+    "valid": false
+  }
+]

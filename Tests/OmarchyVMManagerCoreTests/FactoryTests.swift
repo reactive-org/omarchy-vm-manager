@@ -21,7 +21,7 @@ struct FactoryFixture {
             try Data(path.utf8).write(to: target)
         }
         let contractProvenance: [String: Any] = ["version": 1, "reportVersion": 1, "sourceCommit": kit.lock.patchCommit,
-            "contracts": ["official": VMOwnerSetupContract.official, "lean-e4fffc6": VMOwnerSetupContract.lean]]
+            "contracts": VMOwnerSetupContract.provenanceContracts]
         try JSONSerialization.data(withJSONObject: contractProvenance, options: .sortedKeys).write(to: kit.kit.bundleURL.appendingPathComponent(VMOwnerSetupContract.provenancePath))
         var provenance = kit.lock
         provenance.customFactoryVersion = 1; provenance.managedSSHVersion = 1; provenance.managedSetupVersion = 1
@@ -74,7 +74,7 @@ struct FactoryTests {
         try files.storage.validate(restored)
         let marker = try JSONDecoder().decode(FactoryIdentity.self, from: PrivateFiles.read(files.storage.root(for: restored).appendingPathComponent(".omarchy-factory.json")))
         #expect(marker == legacy && restored.factory == legacy)
-        #expect(legacy.displayName == "Offical Try Omarchy")
+        #expect(legacy.displayName == "Official Try Omarchy")
         try FactoryIdentity.official.validate()
         let altered = FactoryIdentity(kind: .official, name: legacy.name, manifestSHA256: String(repeating: "a", count: 64), diskSHA256: legacy.diskSHA256)
         #expect(throws: VMFailure.self) { try altered.validate() }

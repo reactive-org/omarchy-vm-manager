@@ -1,0 +1,19 @@
+{
+  "checks": 82,
+  "generated_images": 16,
+  "hover_tooltip_tested": false,
+  "inspected_new_appearance_images": 4,
+  "native_file_dialog_tested": false,
+  "physical_input_tested": false,
+  "retained": {
+    "new-vm-appearance-dark.png": "05e07305ae4b007f49221672817bd46d8f566cfb6345c85ac6f41f72a97a0da1",
+    "new-vm-appearance-light.png": "a61c85c7209e202e70399b38c746d24495e350f4563c7f826525e76bb15fcfdc",
+    "new-vm-proposal.json": "6fab13133beef450baa99a6ee3d4e77e445786d8f502ed706ac53f493ff09a5d",
+    "report.json": "75a665b600f457ef9cfb8ff8c81135285d909f3a33eabc319b3de2fced75c803",
+    "setup-appearance-dark.png": "eedf5b7afbeab3575b716407072f8fdf40020311ef42ca9aa9fdad6154555b4d",
+    "setup-appearance-light.png": "9d13ba460349b77cc2c474b8c2459b7367b1c8858ebe3d32c164cb25ea68e375"
+  },
+  "schema": 1,
+  "source": "Isolated offscreen fake-service acceptance; synthetic theme/layout data, no network or guest operation",
+  "temporary_full_gallery": "/private/tmp/omarchy-screen-acceptance-334_xuvf/result"
+}

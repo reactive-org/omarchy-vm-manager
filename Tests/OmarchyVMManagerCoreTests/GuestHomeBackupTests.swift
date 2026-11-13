@@ -1,4 +1,5 @@
 import Darwin
+@testable import DevVMProvisioningCore
 import Foundation
 import Testing
 @testable import OmarchyVMManagerCore
@@ -9,7 +10,7 @@ private actor BackupWorker: GuestHomeBackingUp {
     var completion: CheckedContinuation<Int64, any Error>?
     func started() -> Bool { completion != nil }
     func finish(fail: Bool = false) {
-        if fail { completion?.resume(throwing: SSHGuestHomeBackup.failure()) }
+        if fail { completion?.resume(throwing: SSHGuestHomeBackup.failure(stage: "publish", errno: 22)) }
         else { completion?.resume(returning: 1234) }
         completion = nil
     }
@@ -85,8 +86,19 @@ struct GuestHomeBackupTests {
         await manager.receiveSSH(.ready(user: "owner", command: "fixture"), vmID: p.id, sessionID: session)
         #expect(await eventually { await manager.snapshots()[0].canBackUpHome })
         await #expect(throws: VMFailure.self) { try await manager.beginHomeBackup(p.id, confirmed: false) }
+        let coordinator = UUID()
+        try await manager.installProvisioningCoordinator(coordinator, blocked: [p.id])
+        await #expect(throws: VMFailure.self) { try await manager.beginHomeBackup(p.id, confirmed: true) }
+        await manager.clearUnstartedProvisioningHold(vmID: p.id)
         try await manager.beginHomeBackup(p.id, confirmed: true)
         #expect(await eventually { await worker.started() })
+        let target = try GuestBinding(vmID: p.id, sessionID: session, owner: "owner", ownerUID: 1000, hostKeyDigest: String(repeating: "a", count: 64))
+        await #expect(throws: ProvisioningJobFailure.self) {
+            _ = try await manager.reserveProvisioning(owner: coordinator, jobID: UUID(), target: target, cancel: { _ in })
+        }
+        await #expect(throws: ProvisioningJobFailure.self) {
+            _ = try await manager.reserveProvisioningPreparation(owner: coordinator, jobID: UUID(), target: target, cancel: {})
+        }
         #expect(await manager.snapshots()[0].homeBackup.isBusy)
         #expect(await manager.activeSessionCount == 1)
         #expect(await manager.allocatedMemoryMiB == 4096)
@@ -111,6 +123,10 @@ struct GuestHomeBackupTests {
                 #expect(bytes == 1234 && url.lastPathComponent == "home.tgz")
                 #expect(url.deletingLastPathComponent().lastPathComponent.hasPrefix("home-backup-"))
             } else { Issue.record("Expected completed backup") }
+        } else if variant == "failure" {
+            if case .failed(_, let message) = result { #expect(message.contains("could not be verified (publish).")) }
+            else { Issue.record("Expected failed backup") }
+            #expect(await manager.eventLog().contains { $0.text == "Home backup did not complete (stage=publish errno=22)" })
         } else { if case .failed = result {} else { Issue.record("Late/failed backup reported success") } }
         if variant != "exit" {
             #expect(await manager.activeSessionCount == 1)
@@ -153,5 +169,36 @@ struct GuestHomeBackupTests {
             try HomeBackupSSHProcess().run(arguments: ["-c", "printf '%05000d' 0"], executable: URL(fileURLWithPath: "/bin/sh"))
         }
         #expect(try HomeBackupSSHProcess().run(arguments: ["-c", "printf '{}'"], executable: URL(fileURLWithPath: "/bin/sh")) == Data("{}".utf8))
+    }
+
+    @Test("a nonzero guest exit reports only its fixed stage and errno", arguments: [
+        ("printf '{\"failure\":\"publish\",\"errno\":22}'; exit 1", "stage=publish errno=22"),
+        ("printf '{\"failure\":\"sync\"}'; exit 1", "stage=sync"),
+        ("exit 255", ""),
+        ("printf '{\"failure\":\"/home/owner/private\"}'; exit 1", ""),
+    ])
+    func stagedExit(_ script: String, _ diagnostics: String) {
+        do {
+            _ = try HomeBackupSSHProcess().run(arguments: ["-c", script], executable: URL(fileURLWithPath: "/bin/sh"))
+            Issue.record("A nonzero exit succeeded")
+        } catch let failure as VMFailure {
+            #expect(failure.code == "home-backup-failed" && failure.diagnostics == diagnostics)
+            #expect(failure.message == SSHGuestHomeBackup.failure(stage: diagnostics.isEmpty ? nil : String(diagnostics.split(separator: " ")[0].dropFirst(6))).message)
+            #expect(!failure.message.contains("private"))
+        } catch { Issue.record("Unexpected error \(error)") }
+    }
+
+    @Test("failure reports accept only allowlisted stages and bounded errno", arguments: [
+        ("{\"failure\":\"prerequisites\"}", "prerequisites", nil), ("{\"failure\":\"archive\"}", "archive", nil),
+        ("{\"failure\":\"verification\"}", "verification", nil), ("{\"failure\":\"publish\",\"errno\":22}", "publish", 22),
+        ("{\"failure\":\"sync\",\"errno\":5}", "sync", 5), ("{\"failure\":\"unknown\"}", nil, nil),
+        ("{\"failure\":\"publish\",\"errno\":0}", nil, nil), ("{\"failure\":\"publish\",\"errno\":4096}", nil, nil),
+        ("{\"failure\":\"publish\",\"errno\":\"22\"}", nil, nil), ("{\"failure\":7}", nil, nil),
+        ("{}", nil, nil), ("not json", nil, nil),
+    ] as [(String, String?, Int32?)])
+    func failureReports(_ json: String, _ stage: String?, _ code: Int32?) {
+        let report = SSHGuestHomeBackup.failureReport(Data(json.utf8))
+        #expect(report?.stage == stage && report?.errno == code)
+        #expect(SSHGuestHomeBackup.failureReport(Data(("{\"failure\":\"publish\",\"pad\":\"" + String(repeating: "x", count: 4096) + "\"}").utf8)) == nil)
     }
 }

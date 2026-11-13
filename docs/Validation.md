@@ -373,3 +373,210 @@ See [the full live record and limits](SharedFolders.md#authorized-live-validatio
 
 
 **VERIFIED — final sharing handoff:** installed build 23 passes installed-path bundle verification and 65 seconds of periodic health observation, ending Running / SSH ready / Mounted. Both exact disposable files were removed after inode/hash checks and their absence confirmed through the guest. Unrelated shared-folder files were preserved. The original Dev VM remains running with writable `~/Shared → /mnt/mac`, unchanged disk/profile/key/pin identity and the independent read-only SSH share. Final receipts: `.build/shared-folder-validation/{result,final-monitor,cleanup,final-build-graphics,final-post-cleanup-mount}.json`.
+
+## Manager redesign — 5 November 2026
+
+**DESIGN DECISION:** the manager window uses a dark, tiling-style theme with square status markers and monospaced spec rows. It is pinned to dark; light values remain only so offscreen appearance checks stay legible. New VM and Configure VM are one summary sheet whose sections open in place and stay mounted while closed, so edits survive. Library rows are 62 points high and guest headers 120 points high in every state, replacing the earlier 160-point cards and 200-point heroes. Wording and rules are unchanged except the new Home empty state, which adds links to Guest Defaults, Runtime and Permissions.
+
+**VERIFIED — fake/local:** `make test` passes 523 Swift tests in 69 suites, 333 script tests and 130 offscreen UI checks with 39 rendered screens, using synthetic services only. `make app-dev verify-dev` builds and verifies the ad-hoc Dev bundle without launching it.
+
+**TO PROVE:** the redesign has not been observed in a real window. `make layout-preview` needs its own kit artifact, so the new fixed row and header heights have not been measured across lifecycle states. Sidebar selection, keyboard focus, Reduce Motion and VoiceOver also need checking in the running app.
+
+Follow-up on 6 November 2026: the sidebar's custom rows drew 52 pt below their click targets because the scroll view applied the toolbar inset twice; it now ignores the top safe area and pads by the measured inset. Clicking Permissions and a guest row, and pressing Down, selected the expected rows in the real Dev window. The startup loading screen uses the frame mark (render `loading-dark.png`, 40 PNGs). Type now follows the prototype: Inter 4.1 and JetBrains Mono 2.304 are bundled unchanged in `Contents/Resources/Fonts` under the SIL OFL 1.1, registered per process, and checked byte-for-byte by `make verify-dev`; `make test`, `make app-dev verify-dev` and `codesign --verify --deep --strict` passed, and the real window showed both typefaces. Not checked: VoiceOver, Reduce Motion, Full Keyboard Access, light appearance.
+
+## First-run tracker — 6 November 2026
+
+**DESIGN DECISION — user request:** creating a guest with developer setup should read as one flow. The New VM sheet adds **Create and Launch**; plain **Create** still saves without starting anything. Clicking Create and Launch is the user's explicit request to start that one new guest, and it uses the same launch gate as the Launch button. The guest's Home page shows a first-run tracker (Created, Starting, First boot, Connecting, Approve, Installing, Ready) built only from observed guest state, SSH readiness, workflow stage and job state; no step is inferred from time, and UUID order is never treated as history order. Approval stays on the Setup page, because its review carries the exact admin, Docker and custom-task consents; the tracker's Review Setup… button opens it. While an admitted job runs, Home shows a second live-terminal viewer of the same job. Closing it detaches only that viewer. A completion line appears only when a run is observed finishing while the manager is open, and nothing about it is persisted. Launching from a guest's other pages no longer forces Home.
+
+**VERIFIED — fake/local:** `make test` passes, with 151 offscreen UI checks and 43 rendered screens (including `first-run-connecting`, `first-run-approve` and `first-run-installing`), using synthetic snapshots and services only. No VM was launched.
+
+**USER AUTHORIZATION / VERIFIED — disposable Dev demo, 6 November 2026:** at the user's request, the worktree's ad-hoc Dev build created one new guest, "First Run Demo", from the official factory with the bundled Developer profile and the Terminal + browser layout example, using Create and Launch. The user approved turning on the setup review's admin-access consent for this guest only. Create and Launch started the guest and opened its Home page. The tracker then moved by itself through Starting, First boot and Connecting to Approve, with Review Setup… opening the saved plan on the Setup tab. The review asked only for admin access; Docker and custom-task consent were not required. After Apply, the workflow failed within seconds with `childFailed` and no job record. This matches the documented ad-hoc limit: same-team helper admission refuses ad-hoc builds. Home then showed the amber failure state with Open Setup. The guest was shut down normally, no process for it remained, and its root was moved to Trash with the guarded delete at the user's request. The two running stable work VMs and the other Dev guests were not touched.
+
+**TO PROVE:** installation itself, the Home terminal attached to a real job and the completion line need a same-team signed Dev build. "Setup failed." gives no reason, because the service records helper refusal and other failures under the same `childFailed` category.
+
+## Local ad-hoc Dev setup — 7 November 2026
+
+**DESIGN DECISION — user direction:** a real demo showed that local ad-hoc Dev builds could reach the setup review but never run setup, because helper admission required a same-team signature. Helper signing is now chosen at compile time. Stable and signed Dev prereleases keep `sameApplicationTeam`. Local Dev builds use `sameApplicationTeamOrLocalAdHoc`, which also admits an app and helper that are both ad-hoc. Mixed or cross-team pairs stay refused, and the product launcher names its policy explicitly.
+
+**VERIFIED — fake/local:** a pure decision table covers seven signature pairs under all three policies. `compiledProvisioningHelperSigningPolicy` passes in stable release, stable signed-prerelease and Dev signed-prerelease builds (all strict) and in the local Dev test build. Run against the rebuilt worktree Dev bundle, the real Security-framework check admits the ad-hoc pair under the product policy and still refuses it under `sameApplicationTeam`.
+
+**TO PROVE:** a real setup run in an ad-hoc Dev build needs a separately authorized disposable guest.
+
+## Approve at creation — 7 November 2026
+
+**DESIGN DECISION — user direction:** for a new guest created with setup and managed SSH, **Create, Launch & Set Up** replaces the Setup-tab approval for one automatic first apply (see `intent.md`). The sheet's setup note is the disclosure: the exact plan, this VM's first launch, temporary admin access. Once the guest is SSH-ready, the manager prepares the normal review and submits it only if it matches the creation receipt's preview, plan and input digests, this VM and the first session seen after launch, with no Docker root access or custom-task trust. Any mismatch blocks with a reason, and the tracker turns amber with Review Setup…. The approval is held in memory only, used once and never replayed. A manager restart before setup starts falls back to the manual review. Guests that use these steps show no Approve step and note that you approved at creation.
+
+**VERIFIED — fake/local:** seven new offscreen checks cover the armed tracker without an Approve step, refusal of wider permissions (Docker and task trust) with fallback to review, an admin-only submission with exact consent (grant on, Docker off, no task trust), single use across repeated refreshes, binding to the first session, and no arming without setup and SSH. Two new renders: `first-run-auto-connecting` and `first-run-auto-blocked`.
+
+**TO PROVE:** automatic apply on a real disposable guest. Setups that need Docker (Web, Project managed) or custom tasks still stop for the Setup-tab review by design, and the Docker restart is not automated.
+
+## First-run failure presentation — 7 November 2026
+
+**USER DIRECTION / DESIGN DECISION:** when a first-run setup fails, Home keeps the terminal output it watched, labelled "Setup output", with a Dismiss button. The output lives only in that view: a restart or rebuilt page starts empty, and an ended run is never reattached or replayed. The tracker's failure note now comes from the job's recorded categories (for example, `adapterFailed` reads "a task failed inside the guest"; helper refusal, manager restart, guest lifecycle and tool changes have their own notes) and never from terminal text.
+
+**VERIFIED — fake/local:** two new offscreen checks cover the category-based note and the ended terminal entry, with a new `first-run-failed` render showing a rebuilt page with no stale output panel. A real failed run on "Testing 123" (Developer, approved at creation) was caused by the upstream dev-vm playbook (`git-lfs 3.8.0-1` missing from the mirror) and confirmed read-only from the guest's package log.
+
+**TO PROVE:** retained output and Dismiss with a real failing job in the running app.
+
+## Saved setup output — 7 November 2026
+
+**DESIGN DECISION — user direction:** see `intent.md`. The coordinator attaches a view-only recorder after the helper registers and before activation, so it sees output from the first byte. Reads come in short bursts with pauses, back off on a busy reply, and never claim input. The recorder drains for up to two seconds before the helper is released, and an aborted job is marked. The file is `<VM root>/.manager-setup/last-run.log` (0700/0600), replaced by an apply job and appended by a check job. It keeps the first 1 MiB plus a rolling 2 MiB tail with an omission marker, and marks output gaps and omitted interactive sections. It is written only into an existing VM root and never named in the job journal. The Setup tab shows it read-only (with Reveal in Finder) when no run is live, and never reattaches an ended job.
+
+**VERIFIED — fake/local:** six new core tests cover apply-replaces and check-appends with private modes, never creating a missing root, the head/tail bound with its omission marker, refusing links and shared files, and a scripted recorder (busy back-off, gap marker, interactive section omitted, final drain and detach, abort marker). Three new offscreen checks and the `setup-saved-log` render cover the Setup tab showing a saved log without reattaching.
+
+**TO PROVE:** a real run's recording, recording alongside Home, Setup and CLI viewers with input taken, and the drain timing before helper release.
+
+## Desktop layout picker, defaults and page headers — 7 November 2026
+
+**DESIGN DECISION — user direction:** see `intent.md`. New VM and the Setup tab show the card picker (layout first, then a theme row with Omarchy default, GitHub, Random and Most starred). Guest defaults gains a desktop pane with its own save. Manager pages (Guest defaults, Factory images, Permissions, Runtime, Provisioning tools) use the guest header's language: a symbol tile and the frame mark, bright green while any guest runs and lavender otherwise. The loading screen, busy guest tiles and the first-run tracker use the cycling loading mark.
+
+**VERIFIED — fake/local:** three core tests cover the desktop defaults store (missing file, round trip and clearing, refusing an invalid selection). Offscreen checks cover the default Omarchy default card, bundled cards without the setup-folder card, Omarchy default adding no layout, the local setup-folder card and an example card reaching the frozen source; the loading-mark filmstrip render samples both laps.
+
+**TO PROVE:** hover and arrow scrolling with a real pointer, a saved desktop default seeding a real New VM, and multi-workspace examples once dev-vm provides them.
+
+## Approve at creation finishes setup; home card — 7 November 2026
+
+**DESIGN DECISION — user direction:** see `intent.md`. Create, launch & set up now also covers the restart and configuration check of the workflow it started; the tracker shows them as progress under a new Restart step. Without that approval, the Restart step is amber with "Review restart…", keeps the ended output and says the full output is saved on the Setup tab. Home-disk items move into one **home** card on the guest's Home tab (storage, backup with its state, and Replace system for a separate home disk); the resources disk line shows the system disk, and the suspend card reads "Unavailable with a separate home disk".
+
+**VERIFIED — fake/local:** offscreen checks cover the restart shown as progress, restart and check each submitted once with an acknowledged consent bound to the approved plan, recovery never submitted automatically, and a manual restart-required run reading as Restart rather than Installing.
+
+**VERIFIED — real Dev guest, 7 November 2026:** the automatic restart ran unattended on a Lean Omarchy guest. It then waited at `waitingForRebind`, because the check was only started at `readyForCheck`, which preparing the check produces. Fixed: the check now starts from `waitingForRebind` once the restarted session is the workflow's new session and its SSH is ready (offscreen check `auto-setup-check-waits-for-new-session-ssh`).
+
+**TO PROVE:** a real Create, launch & set up run completing through restart and check unattended, and the restart's session handoff timing on a real guest.
+
+## Setup moves to Home — 7 November 2026
+
+**DESIGN DECISION — user direction:** the guest's Setup tab is removed. A **setup** card on Home (shown once the first-run tracker is done) summarises the configured software and desktop and the last run, and offers the one action that matters: Set up…, Review…, Review recovery…, View output or Change setup…. **Change setup** opens a sheet with the same selection, frozen review, separate consents (admin access, Docker root access, task trust after inspection) and reviewed restart, check and recovery actions as before. **View output** opens a sheet with the live terminal or the saved last-run log, cancel and job details. Both sheets reuse the former tab's view in a mode, so review and consent behaviour is unchanged; the acceptance harness drives both modes together because it cannot capture sheets. (Superseded on 9 November 2026: Change setup is now its own sheet; see below.)
+
+**VERIFIED — fake/local:** six offscreen checks cover the card's states (none, configured, running with progress, manual restart needing review, approved restart as progress, cleanup recovery, failed and succeeded); renders of the card and both sheets; all earlier setup checks still pass against the shared view.
+
+**TO PROVE:** the sheets on a real guest, including typing into the terminal from View output during authorization.
+
+## Change setup rebuilt like New VM — 9 November 2026
+
+**FIX:** "Review this run…" prepared a run (a workflow row at `readyForReview`) and the sheet then replaced its approval controls with "This setup is running". The review lived only in the sheet, so closing it stranded the guest: the run couldn't be approved or seen again, the service stayed busy for every other plan, and Run setup again stayed disabled. Seen on a real Dev guest on 9 November 2026.
+
+**DESIGN DECISION — user direction:** Change setup is its own sheet in New VM's shape. It has a four-step strip (Approve · Install · Restart · Check) and one sentence for the current state, `layout` and `customise` started from the last plan's choices, the separate consents, and one button: Run setup again, Apply changes or Start & set up. One approval covers the run's restart and check (see intent.md). A pending run is listed by `latestSetup` and shown again with Approve & run and Discard this run. View output keeps the terminal, cancel and job details.
+
+**VERIFIED — fake/local:** Core tests cover a pending run found again with the same review after the sheet closes, other plans refused while it waits and allowed after Discard, and a creation plan that never ran being retried (`ProvisioningRetryTests`). The offscreen harness (202 checks, 49 images, before Run the check only) covers:
+- the button label following the choices;
+- each consent still being separate, with custom tasks stopping at Approve & run;
+- the approval following its own run through the restart;
+- a pending run surviving reopen and Discard unblocking it;
+- the interrupted-after-restart wording;
+- Start & set up binding to the guest's first session even when earlier finished runs exist;
+- Don't set up stopping a run that is still being prepared;
+- a guest without managed SSH being explained, not silently ignored.
+
+**TO PROVE:** on a real Dev guest, Apply changes running through restart and check unattended, Start & set up from a stopped guest, and closing and reopening the sheet with a run waiting for approval. Run setup again was VERIFIED on `adfadf` on 9 November 2026 (see Run the check only below).
+
+## Run the check only — 9 November 2026
+
+**DESIGN DECISION — user direction:** a run interrupted after its restart, but before its configuration check, can finish with that check alone. The check is a new workflow built from the run's own frozen inputs, in check mode, against the current session, with no custom tasks and no admin grant (see intent.md). Change setup offers **Run the check only** beside **Run setup again** for such a run.
+
+**VERIFIED — fake/local:** `ProvisioningRetryTests` cover:
+- an interrupted-after-restart run finishing as `checked` through one new check-mode job;
+- a repeated request observing the same check;
+- the check becoming the latest plan;
+- a run interrupted before its restart being refused.
+
+The offscreen harness (210 checks, 51 images) covers:
+- the offer;
+- the "Checking" wording on the sheet and the card;
+- no apply being submitted;
+- approving closing the sheet;
+- Home's run panel with its steps and actions, including Restart & check for an unfollowed restart;
+- a guest still in its first run keeping the tracker.
+
+**VERIFIED — real Dev guest, 9 November 2026 (user-authorized, `adfadf`):** the guest's 8 November run was `interrupted` after its restart. Change setup showed "Applied, but the final check didn't run" with the guest's real choices (Developer, Terminal + browser) and offered **Run the check only**. One click closed the sheet, and Home's tracker showed the check in progress. The check-only workflow finished as `checked`, with no cleanup hold and no sudo prompt. Both check-mode plays reported `failed=0`, the saved log ended `[setup checked]`, and Home then showed "Setup complete" with the card's last run **Finished**.
+
+Three issues found and fixed before merge:
+- the check's own preparation row briefly appeared in the sheet as a pending approval;
+- the first-run tracker showed no live terminal for a check-only run;
+- the tracker said "Earlier setup runs did not finish" instead of naming the missed check.
+
+The offscreen check `check-only-never-pending` covers the first; the rebuilt app with all three fixes is not yet re-run on a real guest.
+
+**VERIFIED — real Dev guest, 9 November 2026 (user-run, `adfadf`, build `45f0f09`):** the user chose **Change setup…** then **Run setup again**, and reported that it works well. The new run (`BCD3666F`) went through install, restart and the configuration check unattended on the one approval, and finished `succeeded` with no cleanup hold. Its saved log shows `[setup restartRequired]` then `[setup checked]`.
+
+**VERIFIED — real Dev guest, 9 November 2026 (user-run, `adfadf`, build `45f0f09`):**
+- **Apply changes:** adding Python and Project managed showed **Apply changes**, asked for Docker without sudo, closed the sheet and was followed on Home. The run (`D4BF47BD`) then **failed inside the guest**. dev-vm's `toolchain` feature refused with "Omarchy's native Bash mise activation is missing". That's a guest/dev-vm issue, not the manager, and it's being investigated separately.
+- **A run waiting for approval:** **Don't set up** while a Run setup again run was preparing left it waiting (`433C098D`). The card then offered **Review…**, which opened the sheet's approval view with Approve & run and Discard this run. **Discard this run** cancelled it (`cancelled`, no hold) and returned the sheet to **Run setup again**.
+
+**FIX:** the strip said "Install · didn't run" for that failed run, and the note gave no cause. A failed step now reads "failed", and the note gives the recorded reason, for example "a task failed inside the guest" (offscreen check `failed-run-names-failed-step-and-cause`).
+
+**TO PROVE:** Start & set up from a stopped guest, and an Apply changes run that completes once the toolchain issue is resolved.
+
+## Official image source shown while it downloads — 7 November 2026
+
+**DESIGN DECISION — user direction:** make it clear the factory image is the official one and where it comes from. While a guest's official image downloads or is verified, its Home tab shows a factory image card: phase and progress, the GitHub repository and release (`github.com/omacom/try-omarchy`, release tag), the file and its parts, that each part and the image are checked against SHA-256 checksums pinned in the app, and the Omarchy version, kernel and build date. The Factory images page shows the same source on the Try Omarchy card. Everything comes from the kit's `guest/download.json` and `guest/factory.json`, accepted only when both match the runtime lock's digests and every part is an HTTPS download from the omacom/try-omarchy GitHub releases; otherwise nothing is shown.
+
+**VERIFIED — fake/local:** three core tests (pinned release read; manifests that don't match the lock refused; parts from another host or owner refused); two offscreen checks and a guest render mid-download; the factory screens render the source on the Try Omarchy card.
+
+**TO PROVE:** the card during a real first-launch download, including the waiting, paused and reconnecting phases.
+
+
+## User documentation media refresh — 8 November 2026
+
+With the user's approval to drive only the Dev manager window (`dev.omarchy.vm-manager.dev`), captured the twelve user-guide screenshots from the running Dev build, **0.11.3 (187)**, through Computer Use. The captures cover the library, an unsaved New VM example, a stopped guest's Home, Virtual machine, Network, Startup, SSH and Spaces tabs, the Configure and Import factory forms, Permissions and Runtime. All five Dev guests were observed stopped before and after capture. The New VM, Configure and Import factory forms were opened, captured and cancelled; the guest count was unchanged afterwards. No guest lifecycle, saved configuration, default-save, permission-grant, bundle import or factory-download action was taken, and the Stable app and its VMs were not touched. The manager was returned to its library view.
+
+The capture tool saves scaled JPEGs, so full-window captures are 1,260 × 952 at their native saved width and were not upscaled. The window was taller than at the previous capture, so these images are taller than the earlier 1,280 × 891. Form captures were scaled to their earlier widths (1,040 and 1,000). The SSH image is cropped to 1,260 × 400 pixels, above the personal public-key fingerprint row, after a zoomed check of the boundary. The configuration image keeps its access section closed rather than cropping, because that section shows the generated guest hostname. The New VM image drops a 14-pixel strip of the window behind the form. Small areas of desktop show at the rounded window corners. The MP4 tour and captions were not rebuilt and still show 0.9.3 (16). The twelve screenshots total 522,362 bytes; with the unchanged 747,929-byte MP4 the media is 1,270,291 bytes, below the 2 MB budget.
+
+**VERIFIED — real Dev window:** every raw capture and every converted WebP was visually reviewed for credentials, key fingerprints, hostnames, personal identifiers, stray windows and the intended screen. `manifest.json` dimensions, byte counts, WebP and source SHA-256 hashes and crops match the files. Guide alt text and wording that no longer matched the UI were updated, all media links resolve with exact case, and `git diff --check` passes. No Swift or runtime code changed, so builds and tests were not rerun.
+
+**TO PROVE:** the screenshots show stopped guests only; running-guest controls, the guest desktop and setup progress are not illustrated.
+
+## Factory images screenshots — 8 November 2026
+
+With the user's approval to drive only the Dev manager window (`dev.omarchy.vm-manager.dev`), captured two new user-guide screenshots through Computer Use from the factory-channels branch build, **0.11.0 (27)**: the **Factory images** library (`factory-library.webp`, 1,260 × 952) and the **Build lean factory** sheet (`factory-build.webp`, 900 × 963). The library shows the official card and the user's two lean factories, Stable (Omarchy 4.5.0, used by the guest **stable**, trash button unavailable) and Edge. The sheet was opened from **Build factory…** with Stable selected, captured after its read-only Docker readiness check, and cancelled; no build started. All six Dev guests were stopped before and after, no factory was moved to Trash or built, and the Stable app was not touched. The library capture drops a 2-pixel strip of desktop at its right edge; the sheet capture drops slivers of the window behind it and is scaled from 1,058 to 900 wide. The Example VM screenshots still show the earlier factory label in the New VM form; they were not retaken. At the user's request the MP4 tour and its WebVTT captions were removed, and the guides now link to the hosted [demo video](https://www.reactive.org/omarchy-vm). The 23 screenshots total 1,177,250 bytes, below the 2 MB budget.
+
+**VERIFIED — real Dev window:** both raw captures and converted WebPs were reviewed for credentials, key fingerprints, hostnames, personal identifiers, stray windows and the intended screen; the manifest's dimensions, byte counts, hashes and crops match the files.
+
+## Getting started walkthrough with Example VM — 8 November 2026
+
+With the user's explicit approval, created and launched one new Dev guest, **Example VM**, to illustrate the full New VM flow in the rewritten [Getting started](getting-started.md) guide. It used the Lean Omarchy custom factory, the Four terminals layout, the Developer setup profile and the default resources and access settings (4 cores, 4 GiB, 64 GiB system and home disks, clipboard and SSH on, automatic account). Ten screenshots cover the form's name and factory, layout, customise, resources and access sections; first run at Starting, Needs you and Installing; the ready Home page; and the guest's four-terminal desktop. The user answered Omarchy's passwordless sudo prompt and dismissed two welcome notifications; no other guest input was given. Example VM was then shut down from the manager: it showed **Stopped**, its guest process was confirmed exited, and the VM was kept at the user's request. The five existing Dev guests stayed stopped and unchanged, and the Stable app and its guests were not touched.
+
+An earlier attempt on the official Try Omarchy image downloaded and verified the 3.17 GB factory, then failed during setup, because updating Omarchy fails on that image. The user deleted that VM. Its **Needs you** capture is reused because that screen shows no factory; the other captures from that attempt were discarded. The old `new-vm.webp` image was removed because the walkthrough replaces it, and the stopped-guest Home and Virtual machine images moved to [Manage your guests](managing-guests.md).
+
+**VERIFIED — real Dev window and guest:** the New VM flow with a layout example turns on developer setup and offers **Create, launch & set up**. Creation records approval for the setup run. First run progresses through Created, Starting, First boot, Connecting, Installing, Restart and Ready on the lean custom factory. The sidebar shows **Needs you** at Omarchy's sudo prompt. The ready Home page reports Developer, Four terminals and **Succeeded**, and the guest desktop shows four terminals. All 21 screenshots and their sources match `manifest.json`; the combined media is 1,819,641 bytes, below the 2 MB budget. Each image was reviewed for credentials, key fingerprints, hostnames and personal identifiers.
+
+**TO PROVE:** developer setup on the official image remains broken until the Omarchy update step succeeds there. The Factory images library card layout looked broken during capture (the official card collapsed against the left edge); this is noted for a fix and is not shown in the guide.
+
+## Home backup publication fallback — 11 November 2026
+
+[#36](https://github.com/reactive-org/omarchy-vm-manager/issues/36): a real Dev guest's home backup stopped at publication on the native 9p share. The guest now falls back from `renameat2(RENAME_NOREPLACE)` to a no-replace link and unlink when rename flags are refused, and failures name their fixed step and errno. See [Home backup](HomeBackup.md) and `intent.md`.
+
+**VERIFIED — no VM:** `python3 -m unittest discover -s Tests/ScriptTests -p test_guest_home_backup.py -v` passes 14 tests. `make test` passes 631 Swift tests in 83 suites and 345 Python script tests; `make build` and `git diff --check` pass. No guest, installed app or Dev app bundle was touched.
+
+**VERIFIED — user-run probe, Dev guest native 9p share:**
+- `renameat2(RENAME_NOREPLACE)` returned `EINVAL`, which confirms the cause.
+- `linkat` succeeded, and linking onto an existing name gave `EEXIST`.
+- Unlinking the original while it was open left one link (`st_nlink` 1).
+- A directory `fsync` succeeded.
+- The probe used only a private folder, which it removed.
+
+**VERIFIED — end-to-end, Dev build of this branch:** the user's **Back up home…** on the same guest showed Verified. The host folder (mode 0700) holds only `home.tgz` (mode 0600, one link), and `gzip -t` and `tar -tzf` pass on it.
+
+## User documentation media refresh for 0.11.3 — 14 November 2026
+
+With the user's approval to drive only the Dev manager window (`dev.omarchy.vm-manager.dev`), recaptured 21 of the 23 user-guide screenshots through Computer Use. The build was a local Dev build of `next` at `9991a69` plus the title-bar fix from #45, reporting **0.11.0 (27)**. #44 had changed the title bar and the factory version labels, so every full-window image was retaken from that build. The five existing Dev guests were stopped before and after capture. The Configure form was opened and cancelled. The Build lean factory and Import factory sheets were not retaken, because their contents are unchanged. No saved defaults, permissions or other guests were changed, and the Stable app and its guests were not touched.
+
+With the user's explicit approval, a new **Example VM** was created from the **Lean Omarchy - stable** custom factory (Omarchy 4.5.0), with the Four terminals layout, the Developer profile and the default resources, access and 60-minute sudo settings. It was launched through first run. The user answered Omarchy's sudo prompt and its password request after the **Needs you** capture, and dismissed three of the four welcome notifications before the desktop capture. Example VM was then shut down from the manager: it showed **Stopped** and its guest window process was confirmed exited. At the user's request it was moved to the Mac Trash through the app's confirmed delete.
+
+An earlier attempt on 12 November used the 8 November Lean Omarchy - edge factory and failed. The install play finished with `failed=0` and reported `restartRequired`. The configuration check then started without a guest restart and ended `[setup failed]` with result `childFailed`. That VM was later deleted by the user, and none of its captures are published.
+
+**VERIFIED — real Dev window and guest:**
+- First run on the Stable 4.5.0 lean factory progressed through Created, Starting, First boot, Connecting, Installing, Restart and Ready.
+- The sidebar showed **Needs you** at Omarchy's 60-minute sudo prompt.
+- The guest restarted before its configuration check, and the setup card reports Developer, Four terminals and **Succeeded**.
+- The title bar shows the Home, Import factory and New VM buttons at the trailing edge.
+- Edge factories read "Omarchy development build r7844" and "manual account setup".
+- Every raw capture and converted WebP was reviewed for credentials, key fingerprints, hostnames, personal identifiers, stray windows and the intended screen.
+- The SSH image is cropped above the personal key fingerprint. The configuration image is cropped to its sheet.
+- `manifest.json` dimensions, byte counts, hashes and crops match the files. The 23 screenshots total 1,190,234 bytes, below the 2 MB budget.
+- Guide alt text and wording that no longer matched the UI were updated: factory labels, the sudo password step, the Installing and desktop images, and the toolbar buttons.
+
+**TO PROVE:**
+- Whether the 12 November restart and check failure is specific to the edge factory or to that older build.
+- Setup on a manual-account-setup factory.
+- The edge factory's layout on a real guest.

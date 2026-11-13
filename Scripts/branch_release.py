@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from urllib.parse import urlencode
 
 from kit_artifacts import ROOT, digest
 from keychain_profile import profile_pin
@@ -29,8 +30,16 @@ def command(*args, optional=False):
     return result.stdout.strip()
 
 
-def api(path, optional=False):
-    value = command('gh', 'api', f'repos/{REPOSITORY}/{path}', optional=optional)
+def api(path, optional=False, method=None, payload=None):
+    arguments = ['gh', 'api', f'repos/{REPOSITORY}/{path}']
+    if method is not None:
+        arguments += ['--method', method]
+    if payload is None:
+        value = command(*arguments, optional=optional)
+    else:
+        with tempfile.NamedTemporaryFile(mode='w', prefix='release-request-', suffix='.json') as request:
+            json.dump(payload, request); request.flush()
+            value = command(*arguments, '--input', request.name, optional=optional)
     return json.loads(value) if value is not None else None
 
 
@@ -167,7 +176,9 @@ def asset_files(folder):
 
 
 def upload_missing(tag, release, folder, expected):
+    identifier = release_identifier(release)
     existing = {asset['name']: asset for asset in release['assets']}
+    assert len(existing) == len(release['assets']), 'duplicate existing assets preserved'
     assert not (set(existing) - set(expected)), 'unexpected existing release assets preserved'
     for name, sha in expected.items():
         if name in existing:
@@ -176,35 +187,69 @@ def upload_missing(tag, release, folder, expected):
                 assert recorded == 'sha256:' + sha, 'existing asset differs; use retained original artifacts, never overwrite'
             else:
                 with tempfile.TemporaryDirectory(prefix='release-asset-check-') as scratch:
-                    command('gh', 'release', 'download', tag, '--repo', REPOSITORY, '--pattern', name, '--dir', scratch)
-                    assert digest(Path(scratch) / name) == sha, 'existing asset differs; original preserved'
+                    destination = Path(scratch) / name
+                    asset_id = release_identifier(existing[name])
+                    with destination.open('wb') as output:
+                        subprocess.run(['gh', 'api', f'repos/{REPOSITORY}/releases/assets/{asset_id}',
+                                        '-H', 'Accept: application/octet-stream'], stdout=output, check=True)
+                    assert digest(destination) == sha, 'existing asset differs; original preserved'
         else:
-            command('gh', 'release', 'upload', tag, folder / name, '--repo', REPOSITORY)
+            endpoint = f'https://uploads.github.com/repos/{REPOSITORY}/releases/{identifier}/assets?'
+            command('gh', 'api', endpoint + urlencode({'name': name}), '--method', 'POST',
+                    '-H', 'Content-Type: application/octet-stream', '--input', folder / name)
+
+
+def release_identifier(value):
+    identifier = value.get('id')
+    assert type(identifier) is int and identifier > 0, 'missing or invalid GitHub object ID'
+    return identifier
+
+
+def verify_release_identity(value, tag, prerelease, identifier=None):
+    actual = release_identifier(value)
+    assert identifier is None or actual == identifier, 'release ID changed; existing release preserved'
+    assert value['tag_name'] == tag and value['prerelease'] is prerelease, 'release identity differs'
+    assert type(value['draft']) is bool, 'invalid draft state'
+    return actual
+
+
+def verify_uploaded_assets(value, expected):
+    assert len(value['assets']) == len(expected), 'published release is incomplete'
+    assert {asset['name'] for asset in value['assets']} == set(expected), 'published release is incomplete'
+    for asset in value['assets']:
+        assert asset.get('digest') == 'sha256:' + expected[asset['name']], 'uploaded asset digest differs'
 
 
 def publish_files(tag, folder, notes, prerelease, latest=False, target=None):
     context()
+    assert not (prerelease and latest), 'a prerelease must never become Latest'
     expected = asset_files(folder)
     release = release_for_tag(tag)
     if release is None:
-        command('gh', 'release', 'create', tag, '--repo', REPOSITORY, '--draft', '--latest=false',
-                '--prerelease' if prerelease else '--prerelease=false', '--title', tag,
-                '--notes-file', notes, *(['--target', target] if target else ['--verify-tag']))
-        release = release_for_tag(tag)
-        assert release is not None, 'created draft was not found; existing release preserved'
-    assert release['tag_name'] == tag and release['prerelease'] == prerelease
+        if target is None:
+            assert api('git/ref/tags/' + tag)['ref'] == 'refs/tags/' + tag, 'reserved tag is missing'
+        payload = dict(tag_name=tag, name=tag, body=notes.read_text(), draft=True,
+                       prerelease=prerelease, make_latest='false')
+        if target is not None:
+            payload['target_commitish'] = target
+        # Use the creation response. A newly created draft may not yet appear
+        # in the by-tag endpoint or authenticated paginated listing.
+        release = api('releases', method='POST', payload=payload)
+        assert release['draft'] is True, 'created release was not a draft'
+    identifier = verify_release_identity(release, tag, prerelease)
     if not release['draft']:
-        assert {asset['name'] for asset in release['assets']} == set(expected), 'published release is incomplete'
-        for asset in release['assets']:
-            assert asset.get('digest') == 'sha256:' + expected[asset['name']], 'published bytes differ; immutable release preserved'
+        verify_uploaded_assets(release, expected)
         return
     upload_missing(tag, release, folder, expected)
-    completed = release_for_tag(tag)
-    assert {asset['name'] for asset in completed['assets']} == set(expected)
-    for asset in completed['assets']:
-        assert asset.get('digest') == 'sha256:' + expected[asset['name']], 'uploaded asset digest differs'
-    command('gh', 'release', 'edit', tag, '--repo', REPOSITORY, '--draft=false',
-            '--prerelease' if prerelease else '--prerelease=false', '--latest' if latest else '--latest=false')
+    completed = api(f'releases/{identifier}')
+    verify_release_identity(completed, tag, prerelease, identifier)
+    verify_uploaded_assets(completed, expected)
+    if completed['draft']:
+        published = api(f'releases/{identifier}', method='PATCH',
+                        payload=dict(draft=False, prerelease=prerelease, make_latest='true' if latest else 'false'))
+        verify_release_identity(published, tag, prerelease, identifier)
+        assert published['draft'] is False, 'release is still a draft'
+        verify_uploaded_assets(published, expected)
 
 
 def publish_runtime(lock, lock_path, folder, source_bytes):

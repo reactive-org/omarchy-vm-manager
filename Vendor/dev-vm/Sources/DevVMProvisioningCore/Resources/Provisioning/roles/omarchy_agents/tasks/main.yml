@@ -1,0 +1,12 @@
+---
+- name: Ensure selected agents configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'agents'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ {'tools': omarchy_agents} | to_json }}"
+  register: omarchy_agents_result
+  changed_when: (omarchy_agents_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report agents actions
+  ansible.builtin.debug:
+    var: omarchy_agents_result.stdout

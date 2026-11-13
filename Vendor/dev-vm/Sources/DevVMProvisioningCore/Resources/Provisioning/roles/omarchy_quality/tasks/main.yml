@@ -1,0 +1,12 @@
+---
+- name: Ensure selected quality configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'quality'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ omarchy_quality | to_json }}"
+  register: omarchy_quality_result
+  changed_when: (omarchy_quality_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report quality actions
+  ansible.builtin.debug:
+    var: omarchy_quality_result.stdout

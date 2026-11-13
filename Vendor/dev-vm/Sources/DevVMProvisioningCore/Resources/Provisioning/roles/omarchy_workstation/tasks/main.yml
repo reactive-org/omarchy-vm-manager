@@ -1,0 +1,12 @@
+---
+- name: Ensure selected workstation configuration through native Omarchy tools
+  ansible.builtin.command:
+    argv: "{{ ['python3', omarchy_payload.path ~ '/apply-features.py', '--feature', 'workstation'] + (['--check'] if ansible_check_mode else []) }}"
+    stdin: "{{ {'shell': omarchy_shell, 'oh_my_zsh': omarchy_oh_my_zsh, 'oh_my_zsh_plugins': omarchy_oh_my_zsh_plugins, 'oh_my_zsh_update_mode': omarchy_oh_my_zsh_update_mode, 'starship': omarchy_starship, 'starship_config': omarchy_starship_config, 'font_size': omarchy_foot_font_size | string, 'idle_mode': omarchy_idle_mode, 'theme': omarchy_theme, 'layout': (omarchy_payload.path ~ '/selected-layout.lua') if omarchy_layout_file else '', 'remove_layout': omarchy_remove_layout} | to_json }}"
+  register: omarchy_workstation_result
+  changed_when: (omarchy_workstation_result.stdout | from_json).changed | bool
+  check_mode: false
+
+- name: Report workstation actions
+  ansible.builtin.debug:
+    var: omarchy_workstation_result.stdout

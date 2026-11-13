@@ -17,6 +17,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
     public var ownerSetup: OwnerSetupOptions? = nil
     public var factory: FactoryIdentity? = nil
     public var sharedFolder: SharedFolderMapping? = nil
+    public var developerSetup: ProvisioningSelectionReceipt? = nil
 
     public var isRetainedPOC: Bool { POCProfiles.ids.contains(id) }
     public var diskSummary: String {
@@ -38,7 +39,7 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, memoryMiB, cpus, diskGiB, clipboardEnabled, createdAt, immersiveMode
-        case settingsFingerprint, ssh, ownerSetup, factory, sharedFolder, homeDisk, guestTouchIDEnabled
+        case settingsFingerprint, ssh, ownerSetup, factory, sharedFolder, homeDisk, guestTouchIDEnabled, developerSetup
     }
 
     public init(from decoder: any Decoder) throws {
@@ -58,6 +59,8 @@ public struct VMProfile: Identifiable, Equatable, Codable, Sendable {
         ownerSetup = try values.decodeIfPresent(OwnerSetupOptions.self, forKey: .ownerSetup)
         factory = try values.decodeIfPresent(FactoryIdentity.self, forKey: .factory)
         sharedFolder = try values.decodeIfPresent(SharedFolderMapping.self, forKey: .sharedFolder)
+        developerSetup = try values.decodeIfPresent(ProvisioningSelectionReceipt.self, forKey: .developerSetup)
+        try developerSetup?.validate(vmID: id)
     }
 }
 

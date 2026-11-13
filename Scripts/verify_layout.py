@@ -11,6 +11,7 @@ from kit_artifacts import ROOT
 from build_patched_kit import inventory
 from bundle_layout import core_resource_directory
 from keychain_profile import verify_keychain_profile
+import provisioning_package
 
 parser = argparse.ArgumentParser()
 parser.add_argument("app", type=Path)
@@ -18,15 +19,21 @@ parser.add_argument("--runtime-lock", type=Path, default=ROOT / "Config/TryOmarc
 args = parser.parse_args()
 app = args.app
 contents = app / "Contents"
+provisioning_package.verify(contents)
 info = plistlib.loads((contents / "Info.plist").read_bytes())
 assert info["CFBundleExecutable"] == "OmarchyVMManager"
 resources = core_resource_directory(contents / "Resources/OmarchyVMManager_OmarchyVMManagerCore.bundle")
 contract = resources / "OwnerSetupContract.json"
 assert contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/OwnerSetupContract.json").read_bytes()
 assert json.loads(contract.read_bytes())["schemaVersion"] == 1
-lean_contract = contract.with_name("LeanOwnerSetupContract.json")
-assert lean_contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/LeanOwnerSetupContract.json").read_bytes()
-assert json.loads(lean_contract.read_bytes())["keyboards"] == json.loads(contract.read_bytes())["keyboards"]
+official_keyboards = json.loads(contract.read_bytes())["keyboards"]
+for lean_name in ("LeanOwnerSetupContract.json", "LeanOwnerSetupContract-a948d8a.json"):
+    lean_contract = contract.with_name(lean_name)
+    assert lean_contract.read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources" / lean_name).read_bytes()
+    # Every reviewed contract offers the manager's keyboard IDs; console keymaps
+    # may differ by Omarchy release (4.5 moved three layouts to latin1 maps).
+    assert [k["id"] for k in json.loads(lean_contract.read_bytes())["keyboards"]] == [k["id"] for k in official_keyboards]
+assert json.loads(contract.with_name("LeanOwnerSetupContract.json").read_bytes())["keyboards"] == official_keyboards
 assert (resources / "ReviewedFactories.json").read_bytes() == (ROOT / "Sources/OmarchyVMManagerCore/Resources/ReviewedFactories.json").read_bytes()
 channel = info.get("OmarchyAppChannel", "stable")
 assert channel in ("stable", "development"), "unknown app channel"
@@ -43,6 +50,10 @@ for stem in ("OmarchyVMManager", "OmarchyGuest"):
         source_stem = "OmarchyVMManagerDev" if development and stem == "OmarchyVMManager" else stem
         assert (contents / "Resources" / name).read_bytes() == (ROOT / "App/Assets" / (source_stem + "." + extension)).read_bytes()
     assert (contents / "Resources" / (stem + ".icns")).read_bytes().startswith(b"icns")
+fonts = sorted(path.name for path in (ROOT / "App/Fonts").iterdir())
+assert sorted(path.name for path in (contents / "Resources/Fonts").iterdir()) == fonts, "bundled fonts differ"
+for name in fonts:
+    assert (contents / "Resources/Fonts" / name).read_bytes() == (ROOT / "App/Fonts" / name).read_bytes()
 assert not (contents / "Library/LaunchDaemons").exists(), "NAT-only app must not register networking"
 assert (contents / "Resources/TryOmarchy-THIRD_PARTY_NOTICES.md").is_file()
 cli_name = "omarchy-vm-dev" if development else "omarchy-vm"

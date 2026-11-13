@@ -18,8 +18,30 @@ public struct SSHGuestHomeBackup: GuestHomeBackingUp {
     static func destination(_ share: SharedFolderMapping, operationID: UUID) -> URL {
         URL(fileURLWithPath: share.hostPath).appendingPathComponent(directoryName(operationID)).appendingPathComponent("home.tgz")
     }
-    static func failure() -> VMFailure {
-        VMFailure(code: "home-backup-failed", message: "The home backup could not be verified. Check free space, guest file access and the shared mount. Close apps that change files and retry. Any home.tgz.partial in this backup’s folder is incomplete; a lost connection can also leave an unconfirmed home.tgz. Existing backups were preserved.")
+    /// Fixed guest supervisor steps. Only these names (and a numeric errno)
+    /// are accepted from the guest's failure report; never names or stderr.
+    static let failureStages: Set<String> = ["prerequisites", "archive", "verification", "publish", "sync"]
+    static func failure(stage: String? = nil, errno code: Int32? = nil) -> VMFailure {
+        let stage = stage.flatMap { failureStages.contains($0) ? $0 : nil }
+        let label = stage.map { " (\($0))" } ?? ""
+        let diagnostics = stage.map { "stage=\($0)" + (code.map { " errno=\($0)" } ?? "") } ?? ""
+        return VMFailure(code: "home-backup-failed", message: "The home backup could not be verified\(label). Check free space, guest file access and the shared mount. Close apps that change files and retry. Any home.tgz.partial in this backup’s folder is incomplete; a lost connection can also leave an unconfirmed home.tgz. Existing backups were preserved.", diagnostics: diagnostics)
+    }
+    /// Decodes the guest's bounded `{"failure": stage, "errno": n}` report.
+    /// Unknown stages, extra types or out-of-range numbers give no detail.
+    static func failureReport(_ data: Data) -> (stage: String, errno: Int32?)? {
+        struct Report: Decodable { let failure: String; let errno: Int? }
+        guard data.count <= 4096, let report = try? JSONDecoder().decode(Report.self, from: data),
+              failureStages.contains(report.failure) else { return nil }
+        if let code = report.errno {
+            guard (1...4095).contains(code) else { return nil }
+            return (report.failure, Int32(code))
+        }
+        return (report.failure, nil)
+    }
+    static func failure(report data: Data) -> VMFailure {
+        guard let report = failureReport(data) else { return failure() }
+        return failure(stage: report.stage, errno: report.errno)
     }
     public func backup(_ request: VMStartRequest, user: String, operationID: UUID) async throws -> Int64 {
         guard let share = request.profile.sharedFolder, share.enabled, request.profile.ssh != nil,
@@ -116,7 +138,9 @@ final class HomeBackupSSHProcess: @unchecked Sendable {
         let data = try output.fileHandleForReading.read(upToCount: 4097) ?? Data()
         guard data.count <= 4096 else { cancel(); throw SSHGuestHomeBackup.failure() }
         process.waitUntilExit()
-        guard !lock.withLock({ cancelled }), process.terminationStatus == 0 else { throw SSHGuestHomeBackup.failure() }
+        guard !lock.withLock({ cancelled }) else { throw SSHGuestHomeBackup.failure() }
+        // A nonzero exit may carry the supervisor's fixed stage/errno report.
+        guard process.terminationStatus == 0 else { throw SSHGuestHomeBackup.failure(report: data) }
         return data
     }
 }

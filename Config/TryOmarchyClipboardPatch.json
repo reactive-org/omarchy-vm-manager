@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-05T00:00:00+00:00",
+  "authorDate": "2026-11-12T00:00:00+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-05T00:00:00+00:00",
-  "subject": "Isolate stable and development manager caches and authentication keys",
-  "commit": "d6dd3dbe860f55302a66be884113e647e42b0eba",
-  "patchSHA256": "2baa0c70ab412f7f1a0f9937e91973877eeff4099c28b180e37eb73eb0eb2aea"
+  "committerDate": "2026-11-12T00:00:00+00:00",
+  "subject": "Admit manual owner setup factories for unreviewed Omarchy releases",
+  "commit": "af7044bed5273990e58c0291721255311ba946eb",
+  "patchSHA256": "207444e37a7d7e54ec8d8d13f10207d0f683014c8fda2aef8f504d6973279184"
 }

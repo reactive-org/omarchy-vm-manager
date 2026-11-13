@@ -19,4 +19,5 @@ else
 fi
 "$root/Vendor/try-omarchy/macos/verify-macos-compatibility.sh" "$app"
 "$app/Contents/MacOS/OmarchyVMManager" "$diagnostics"
+"$app/Contents/MacOS/OmarchyVMProvisioningHelper" --verify-package-json
 python3 "$root/Scripts/verify_layout.py" "$app" --runtime-lock "$runtime_lock"

@@ -1,0 +1,101 @@
+---
+- name: Publish the external setup task context
+  ansible.builtin.set_fact:
+    workstation_user: "{{ ansible_facts['user_id'] }}"
+    workstation_group: "{{ ansible_facts['user_gid'] }}"
+    workstation_home: "{{ ansible_facts['user_dir'] }}"
+    workstation_architecture: "{{ ansible_facts['architecture'] }}"
+    workstation_setup_dir: "{{ omarchy_setup_dir }}"
+    workstation_vars: "{{ omarchy_setup_vars }}"
+  tags: [always]
+
+- name: Deploy explicitly selected dotfiles
+  when: omarchy_setup_files | length > 0
+  tags: [dotfiles]
+  block:
+    - name: Create a temporary dotfile payload
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: dev-omarchy-dotfiles.
+      register: omarchy_dotfiles_payload
+      check_mode: false
+      changed_when: false
+
+    - name: Stage the dotfile helper
+      ansible.builtin.copy:
+        src: "{{ role_path }}/../../omarchy/guest/apply-dotfiles.py"
+        dest: "{{ omarchy_dotfiles_payload.path }}/apply-dotfiles.py"
+        mode: "0600"
+      check_mode: false
+      changed_when: false
+
+    - name: Stage only declared dotfiles
+      ansible.builtin.copy:
+        src: "{{ item.source }}"
+        dest: "{{ omarchy_dotfiles_payload.path }}/{{ index }}"
+        mode: "0600"
+      loop: "{{ omarchy_setup_files }}"
+      loop_control:
+        index_var: index
+        label: "{{ item.target }}"
+      check_mode: false
+      changed_when: false
+
+    - name: Resolve staged dotfile paths
+      ansible.builtin.set_fact:
+        omarchy_staged_dotfiles: "{{ (omarchy_staged_dotfiles | default([])) + [item | combine({'source': omarchy_dotfiles_payload.path ~ '/' ~ index})] }}"
+      loop: "{{ omarchy_setup_files }}"
+      loop_control:
+        index_var: index
+        label: "{{ item.target }}"
+
+    - name: Apply dotfiles with ownership and conflict checks
+      ansible.builtin.command:
+        argv: "{{ ['python3', omarchy_dotfiles_payload.path ~ '/apply-dotfiles.py'] + (['--check'] if ansible_check_mode else []) }}"
+        stdin: "{{ {'home': workstation_home, 'id': omarchy_setup_id, 'files': omarchy_staged_dotfiles, 'conflict': omarchy_setup_conflict} | to_json }}"
+      register: omarchy_dotfiles_result
+      check_mode: false
+      changed_when:
+        - omarchy_dotfiles_result.rc == 0
+        - (omarchy_dotfiles_result.stdout | from_json).changed | bool
+
+    - name: Report dotfile actions and backup paths
+      ansible.builtin.debug:
+        var: omarchy_dotfiles_result.stdout
+
+  always:
+    - name: Remove the temporary dotfile payload
+      ansible.builtin.file:
+        path: "{{ omarchy_dotfiles_payload.path }}"
+        state: absent
+      when: omarchy_dotfiles_payload.path is defined
+      check_mode: false
+      changed_when: false
+
+- name: Apply explicitly trusted external tasks
+  ansible.builtin.include_tasks:
+    file: "{{ omarchy_setup_task.file }}"
+    apply:
+      tags: "{{ omarchy_setup_task.tag }}"
+  loop: "{{ omarchy_setup_tasks }}"
+  loop_control:
+    loop_var: omarchy_setup_task
+    label: "{{ omarchy_setup_task.name }}"
+  when: "'all' in ansible_run_tags or omarchy_setup_task.tag in ansible_run_tags"
+  tags: [always]
+
+- name: Record the applied external input inventory
+  when: not ansible_check_mode
+  tags: [setup-record]
+  block:
+    - name: Create setup provenance directory
+      ansible.builtin.file:
+        path: "{{ workstation_home }}/.local/state/dev-vm/setups"
+        state: directory
+        mode: "0700"
+
+    - name: Record setup input hashes
+      ansible.builtin.copy:
+        content: "{{ omarchy_setup_record | to_nice_json }}\n"
+        dest: "{{ workstation_home }}/.local/state/dev-vm/setups/{{ omarchy_setup_id }}.json"
+        mode: "0600"

@@ -1,0 +1,29 @@
+# Optional desktop applications; macOS owns day-to-day activity.
+libreoffice-fresh
+obsidian
+omawrite
+hype
+signed
+pinta
+moonlight-qt
+cliamp
+omacut
+monologue
+superwhisper-bin
+aether
+localsend
+# Printing UI and server, in dependency order. Keep shared client libraries.
+system-config-printer
+cups-pk-helper
+cups-filters
+cups
+# Physical hardware and power-profile controls, unnecessary in this VM.
+bluez-tools
+bluez-utils
+bluez
+bolt
+brightnessctl
+asdcontrol
+ddcutil
+power-profiles-daemon
+omarchy-power-profiles-daemon

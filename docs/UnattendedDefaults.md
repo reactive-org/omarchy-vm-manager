@@ -4,6 +4,38 @@ Status: implemented and verified through an approved fresh first boot, saved own
 
 **Subsequent credential-policy change — 1 November 2026:** [Touch ID support](TouchID.md) is prepared for a future provisioned build, with one native authorization flow per new guest's first setup and Mac password fallback. The profile will be supplied later. The login-Keychain and native UI results below describe the historical implementation, not verification of this new biometric flow. Existing saved entries are preserved; upgrading them is an explicit future user action.
 
+## Saved values apply automatically — 5 November 2026
+
+**DESIGN DECISION — user correction:** Guest Defaults describe the account values
+to apply. Remove the separate global “Set up new guests automatically” checkbox.
+Saving valid account details requires a new or retained password reference and
+makes them the default for future VM creation. New VM shows the saved account and
+keyboard, with **Set up account manually** as an explicit per-VM opt-out. No saved
+password means manual setup, explained in the form. CLI `--owner-defaults off`
+retains the same per-VM opt-out.
+
+**COMPATIBILITY:** retain schema-1's `enabled` field for file compatibility, but
+base new-guest inheritance on valid saved configuration and a credential reference.
+Thus previously saved values with `enabled: false` apply on the next new creation
+without resaving, reading a password or rewriting the defaults file. Saving from
+the new form writes compatible metadata with `enabled: true`. Damaged metadata and
+unavailable credentials still fail; no fallback silently creates a manual guest.
+Existing profiles retain their immutable snapshots. Home-disk reuse keeps the
+original account. Stable/Dev stores, credential policy and factory contracts stay
+separate and unchanged.
+
+**VERIFIED — fake/local checks:** 75 focused core tests in nine suites cover legacy
+saved inputs, new save/password validation, explicit/manual/default inheritance,
+credential-policy mocks, existing profiles and channel isolation, plus provisioning
+regressions. Native offscreen acceptance passes 130 checks and 27 screenshots,
+including default selection despite the old off flag, factory changes, forwarding
+and manual opt-out. These checks use synthetic credentials/services only, with no
+real Keychain access, running-manager interaction, SSH/Ansible or VM launch.
+
+**TO PROVE:** first boot of a new guest created with these changed UI/default
+semantics. The earlier native results below remain historical evidence, not a
+claim that this build was exercised on a real guest.
+
 ## Evidence and scope
 
 **VERIFIED — official documentation:** [Omarchy unattended installs](https://omarchy.org/manual/unattended-installs/) describes the ISO installer's `cidata` drive with configuration/credential files and optional SSH/Tailscale inputs. The manager uses Try Omarchy's already-installed factory image, not that ISO installer. Attaching an ISO seed alone would not skip this image's owner wizard.

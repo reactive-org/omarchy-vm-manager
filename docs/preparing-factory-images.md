@@ -19,8 +19,8 @@ and ARM64 Omarchy with UEFI/Limine boot.
 
 Use an existing Omarchy VM Manager checkout and matching built app/CLI, plus a
 [dev-vm checkout](https://github.com/reactive-org/dev-vm). The lean path below
-uses guest integration contract 1, runtime package **0.1.0-43**, lean package
-**0.1.0-43.1** and the `lean-e4fffc6` owner-setup contract. The supported complete
+uses guest integration contract 1, runtime package **0.1.0-48**, lean package
+**0.1.0-48.1** and the `lean-a948d8a` owner-setup contract. The supported complete
 archive identities are listed in [Factory compatibility](FactoryCompatibility.md).
 Factory compatibility is independent of source commit equality; current runtime
 execution still requires its complete pinned inventory and signatures.
@@ -69,7 +69,7 @@ clipboard and SSH integration to the manager and its pinned guest package.
 Keep application/runtime updates under Omarchy and mise.
 
 Keep the factory free of regular users, hostnames, passwords, tokens, SSH keys
-and personal configuration. Supply per-guest identity through **Guest Defaults**
+and personal configuration. Supply per-guest identity through **Guest defaults**
 or the normal owner wizard. The builder seals machine identity and defers owner
 creation to first boot; exporting an already configured personal VM is not this
 workflow.
@@ -97,8 +97,8 @@ integration_commit=$(git -C "$integration_source" rev-parse HEAD)
 Keep this generated source clean. Record its resolved commit as build provenance.
 This source retains the stock v1.3.0 factory builder and adds the
 reviewed managed owner/SSH integration. The dev-vm builder produces the matched
-hardware-policy package **0.1.0-43.1**, which the runtime preserves as newer than
-its bundled 43 package. A stock-source build or older lean artifact is not a
+hardware-policy package **0.1.0-48.1**, the same native-rendering package the
+runtime offers lean guests. A stock-source build or older lean artifact is not a
 substitute for this managed lean path. A freshly built archive may differ in
 package metadata even with identical integration code; it must undergo explicit
 package review and support before preparation. Reuse an existing supported disk
@@ -123,6 +123,10 @@ make build-omarchy-image \
   OMARCHY_IMAGE_TRY_SOURCE="$integration_source" \
   OMARCHY_IMAGE_TRY_COMMIT="$integration_commit" OMARCHY_IMAGE_SIZE_GIB=20
 ```
+
+Add `OMARCHY_IMAGE_CHANNEL=edge` to build Omarchy's development line instead of
+the latest Stable release. Both take the channel's current signed packages and
+stop before creating a disk if the release's setup programs aren't reviewed.
 
 The check builds the guest packages and resolves dependencies without creating
 a disk. The full build repeats those checks, builds a sparse UEFI/Btrfs image,
@@ -149,18 +153,18 @@ symlinks, special files and undeclared payloads:
 artifact='/absolute/path/to/successful-artifact'
 bundle="${artifact}.Manager.factory"
 mkdir "$bundle"
-cp "$artifact/factory.json" "$artifact/omarchy-workstation-aarch64-edge.img.zst" \
+cp "$artifact/factory.json" "$artifact/omarchy-workstation-aarch64-stable.img.zst" \
   "$artifact/compatibility.json" "$artifact/image-build.json" \
   "$artifact/source-compatibility.json" "$artifact/provisioning-check.json" \
   "$artifact/user-provisioning-check.json" \
-  "$artifact/packages/try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst" "$bundle/"
+  "$artifact/packages/try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst" "$bundle/"
 
 cd "$manager"
 python3 Scripts/prepare_factory_bundle.py "$bundle" \
-  --name 'Custom lean Omarchy' --owner-contract lean-e4fffc6 \
+  --name 'Custom lean Omarchy' --owner-contract lean-a948d8a \
   --compatibility compatibility.json --image-build image-build.json \
-  --integration-package try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst \
-  --provisioning try-omarchy-0.1.0-43.1-aarch64.pkg.tar.zst \
+  --integration-package try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst \
+  --provisioning try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst \
   --provisioning compatibility.json --provisioning image-build.json \
   --provisioning source-compatibility.json --provisioning provisioning-check.json \
   --provisioning user-provisioning-check.json
@@ -182,10 +186,10 @@ that the evidence produced the disk.
 
 ## Import and select
 
-![The current Import Factory form explaining bundle verification, before any bundle is chosen](media/import-factory.webp)
+![The Import factory form explaining bundle verification, before any bundle is chosen](media/import-factory.webp)
 
 Open the matching manager app. An older running manager does not gain new
-contracts from a newer CLI. In the app, choose **Import Factory**, select the
+contracts from a newer CLI. In the app, choose **Import factory…** in the toolbar or on the **Factory images** page, select the
 prepared directory and wait for verification. Then select the imported image
 in **New VM → Factory image**. Importing from New VM selects it automatically.
 
@@ -198,7 +202,7 @@ cli='/absolute/path/to/Omarchy VM Manager.app/Contents/MacOS/omarchy-vm'
 ```
 
 Copy the imported entry's exact `manifestSHA256` into the following command.
-Save **Guest Defaults** first for automatic owner setup:
+Save **Guest defaults** first for automatic owner setup:
 
 ```sh
 "$cli" create custom-factory-test --factory MANIFEST_SHA256 \

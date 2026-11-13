@@ -8,7 +8,7 @@ public struct FactoryIdentity: Codable, Equatable, Sendable {
     public let name: String
     public let manifestSHA256: String
     public let diskSHA256: String
-    public static let official = FactoryIdentity(kind: .official, name: "Offical Try Omarchy", manifestSHA256: "1c202c4d9c4087b87d40138d812835a765ff736ff7cf1b9dc233b4fa8945a8cf", diskSHA256: "f587d246981b14f1b0537d75ac1be03219368ac78aaefdb98b8e75a8f9a890c3")
+    public static let official = FactoryIdentity(kind: .official, name: "Official Try Omarchy", manifestSHA256: "1c202c4d9c4087b87d40138d812835a765ff736ff7cf1b9dc233b4fa8945a8cf", diskSHA256: "f587d246981b14f1b0537d75ac1be03219368ac78aaefdb98b8e75a8f9a890c3")
     public var displayName: String { kind == .official ? Self.official.name : name }
     public var selector: String { kind == .official ? "official" : manifestSHA256 }
     public func validate() throws {
@@ -28,6 +28,53 @@ public struct FactoryCatalogIssue: Codable, Equatable, Sendable {
 public struct FactoryCatalogListing: Sendable {
     public let factories: [FactoryIdentity]
     public let issues: [FactoryCatalogIssue]
+    /// Descriptive image metadata by selector, for telling factories apart.
+    public let details: [String: FactoryDetails]
+    /// Selectors of verified factories whose Omarchy owner programs haven't been
+    /// reviewed: Omarchy's own first-run setup creates the account. Launch and
+    /// creation enforce this independently of the listing.
+    public let manualOwnerSetup: Set<String>
+    public init(factories: [FactoryIdentity], issues: [FactoryCatalogIssue], details: [String: FactoryDetails] = [:], manualOwnerSetup: Set<String> = []) {
+        self.factories = factories; self.issues = issues; self.details = details; self.manualOwnerSetup = manualOwnerSetup
+    }
+}
+
+/// What a factory image contains, read from its verified factory.json. Display
+/// only: admission never depends on these fields, and each may be absent.
+public struct FactoryDetails: Equatable, Sendable {
+    public let omarchy: String?
+    public let channel: String?
+    public let built: Date?
+    public init(omarchy: String?, channel: String?, built: Date?) { self.omarchy = omarchy; self.channel = channel; self.built = built }
+    /// "4.5.0" for a release, "4.0.0.r7481" for a development build.
+    public var omarchyVersion: String? {
+        guard var value = omarchy, !value.isEmpty else { return nil }
+        if let dash = value.firstIndex(of: "-") { value = String(value[..<dash]) }
+        if let range = value.range(of: #"\.g[0-9a-f]+$"#, options: .regularExpression) { value.removeSubrange(range) }
+        return value
+    }
+    /// "Omarchy 4.5.0" for a release. An edge package keeps a fixed 4.0.0 base
+    /// before its commit count (4.0.0.r7617.g…), which reads as an old release,
+    /// so it becomes "Omarchy development build r7617".
+    public var omarchyLabel: String? { omarchy.flatMap(Self.omarchyLabel) }
+    public static func omarchyLabel(_ package: String) -> String? {
+        var value = package
+        if let dash = value.firstIndex(of: "-") { value = String(value[..<dash]) }
+        guard !value.isEmpty else { return nil }
+        if let match = value.firstMatch(of: #/^[0-9][0-9.]*\.r([0-9]+)(\.g[0-9a-f]+)?$/#) {
+            return "Omarchy development build r" + String(match.1)
+        }
+        if let range = value.range(of: #"\.g[0-9a-f]+$"#, options: .regularExpression) { value.removeSubrange(range) }
+        return "Omarchy " + value
+    }
+    public var channelLabel: String? {
+        switch channel { case "stable": "Stable"; case "edge": "Edge"; case "rc": "RC"; default: nil }
+    }
+    static func decode(_ data: Data) -> FactoryDetails? {
+        struct Image: Decodable { let omarchy: String?; let channel: String?; let built: String? }
+        guard let image = try? JSONDecoder().decode(Image.self, from: data) else { return nil }
+        return FactoryDetails(omarchy: image.omarchy, channel: image.channel, built: image.built.flatMap { ISO8601DateFormatter().date(from: $0) })
+    }
 }
 
 public enum FactoryImportProgress: String, Sendable {
@@ -115,10 +162,13 @@ public struct FactoryCatalog: Sendable {
         }
         let receipt = FactoryImportReceipt(schemaVersion: manifest.format == 2 ? 2 : 1, factory: factory,
                                            runtimeLockSHA256: KitVerifier.sha256(lockData), importedAt: Date(),
-                                           guestIntegrationContractSHA256: manifest.format == 2 ? integrationContractSHA256 : nil)
+                                           guestIntegrationContractSHA256: manifest.format == 2 ? try receiptContractSHA256(for: manifest) : nil)
         try PrivateFiles.write(JSONEncoder().encode(receipt), name: receiptURL(factory.manifestSHA256).lastPathComponent, in: receipts, exclusively: true)
     }
-    var integrationContractSHA256: String {
+    /// The receipt identity of one reviewed lean pairing. It hashes the same
+    /// schema-1 field set as before the contract set existed, so the unchanged
+    /// e4fffc6/43.1 entry keeps its digest and existing receipts stay valid.
+    func integrationContractSHA256(_ lean: VMGuestIntegrationContract.LeanContract) -> String {
         struct GuestContract: Encodable {
             let schemaVersion: Int
             let contractVersion: Int
@@ -128,23 +178,31 @@ public struct FactoryCatalog: Sendable {
             let ownerSetupContractSHA256: String
         }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        let guest = GuestContract(schemaVersion: integrationContract.schemaVersion, contractVersion: integrationContract.contractVersion,
-            capabilities: integrationContract.capabilities, leanPackageVersion: integrationContract.leanPackageVersion,
-            leanPackageSHA256: integrationContract.leanPackageSHA256, ownerSetupContractSHA256: integrationContract.ownerSetupContractSHA256)
+        let guest = GuestContract(schemaVersion: 1, contractVersion: integrationContract.contractVersion,
+            capabilities: integrationContract.capabilities, leanPackageVersion: lean.leanPackageVersion,
+            leanPackageSHA256: lean.leanPackageSHA256, ownerSetupContractSHA256: lean.ownerSetupContractSHA256)
         return KitVerifier.sha256(try! encoder.encode(guest))
     }
+    var integrationContractSHA256s: Set<String> { Set((integrationContract.leanContracts + integrationContract.manualContracts).map(integrationContractSHA256)) }
+    func receiptContractSHA256(for manifest: VMFactoryManifest) throws -> String {
+        guard let evidence = manifest.guestIntegration,
+              let lean = integrationContract.leanContract(ownerSetupContractSHA256: manifest.ownerSetupContractSHA256, packageSHA256: evidence.packageSHA256) else {
+            throw Self.invalid("The factory uses an unsupported guest integration contract.")
+        }
+        return integrationContractSHA256(lean)
+    }
     func acceptsReceiptContract(_ digest: String) -> Bool {
-        if digest == integrationContractSHA256 { return true }
+        if integrationContractSHA256s.contains(digest) { return true }
         // Explicit review of the unchanged image/owner contract permits its
         // former runtime-bound receipt without changing the saved bytes.
-        return integrationContractSHA256 == "c3cbd5eb1b061ada97f3951d91b3d21e1afeb508b8a367f6c308c0e87da56a55" &&
+        return integrationContractSHA256s.contains("c3cbd5eb1b061ada97f3951d91b3d21e1afeb508b8a367f6c308c0e87da56a55") &&
             digest == "9c430c34e68e720d0a0368983a1cd1bd58ccad6877a42c2d19c8777e0072dade"
     }
     static func invalid(_ message: String) -> VMFailure { VMFailure(code: "factory-verification-failed", message: message) }
 
     func verify(_ url: URL, digest: String) throws -> FactoryIdentity {
         let receipt = try receipt(for: digest)
-        guard reviewed.contains(digest) || receipt != nil else { throw Self.invalid("Import this prepared factory through Import Factory before selecting it.") }
+        guard reviewed.contains(digest) || receipt != nil else { throw Self.invalid("Import this prepared factory through Import factory before selecting it.") }
         let identity = try verifyCandidate(url, digest: digest)
         if let receipt {
             guard receipt.factory == identity else { throw Self.invalid("The imported factory differs from its saved identity.") }
@@ -167,7 +225,7 @@ public struct FactoryCatalog: Sendable {
         catch let error as VMFactoryCompatibilityError { throw Self.invalid(error.localizedDescription) }
         catch { throw Self.invalid("The factory payload checksum, image metadata or legacy runtime inventory failed verification. Preserve this bundle and prepare a separate one with supported evidence.") }
         try Task.checkCancellation()
-        guard VMOwnerSetupContract.isSupported(manifest.ownerSetupContractSHA256) else {
+        guard VMOwnerSetupContract.isSupported(manifest.ownerSetupContractSHA256) || VMOwnerSetupContract.isManual(manifest.ownerSetupContractSHA256) else {
             throw Self.invalid("Unsupported owner provisioning contract.")
         }
         if manifest.format == 1 {
@@ -177,7 +235,7 @@ public struct FactoryCatalog: Sendable {
             guard lock.factoryCompatibilityVersion == 1 else { throw Self.invalid("The runtime lacks reviewed factory compatibility support. Build and verify the updated runtime kit first.") }
             guard lock.files[VMFactorySelection.packagePath] == integrationContract.runtimePackageSHA256 else { throw Self.invalid("Runtime guest integration package checksum is not supported by the reviewed compatibility contract.") }
         }
-        guard manifest.ownerSetupContractSHA256 != VMOwnerSetupContract.lean || lock.ownerSetupContractsVersion == 1 else { throw Self.invalid("The runtime lacks reviewed lean owner contract support.") }
+        guard !VMOwnerSetupContract.isLeanFactory(manifest.ownerSetupContractSHA256) || lock.ownerSetupContractsVersion == 1 else { throw Self.invalid("The runtime lacks reviewed lean owner contract support.") }
         let image = try Self.decodeImage(VMFactorySelection.readMetadata(url.appendingPathComponent("factory.json")), expectedSHA256: manifest.files["factory.json"])
         return FactoryIdentity(kind: .custom, name: manifest.name, manifestSHA256: digest, diskSHA256: image.disk.sha256)
     }
@@ -267,15 +325,20 @@ public struct FactoryCatalog: Sendable {
         let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         var factories: [FactoryIdentity] = [.official]
         var issues: [FactoryCatalogIssue] = []
+        var details: [String: FactoryDetails] = [:]
+        var manual: Set<String> = []
         for digest in names.filter({ VMFactorySelection.isDigest($0) }).sorted() {
             do {
                 try PrivateFiles.directory(root(digest))
-                factories.append(try verify(root(digest), digest: digest))
+                let identity = try verify(root(digest), digest: digest)
+                if try requiresManualOwnerSetup(identity) { manual.insert(digest) }
+                factories.append(identity)
+                details[digest] = (try? VMFactorySelection.readMetadata(root(digest).appendingPathComponent("factory.json"))).flatMap(FactoryDetails.decode)
             } catch {
                 issues.append(FactoryCatalogIssue(selector: digest, message: (error as? VMFailure)?.message ?? "This imported factory or its import record is malformed and cannot be selected. Prepare a separate supported bundle for explicit import."))
             }
         }
-        return FactoryCatalogListing(factories: factories, issues: issues)
+        return FactoryCatalogListing(factories: factories, issues: issues, details: details, manualOwnerSetup: manual)
     }
     public func identities() throws -> [FactoryIdentity] { try listing().factories }
     public func identity(for selector: String) throws -> FactoryIdentity {
@@ -303,6 +366,13 @@ public struct FactoryCatalog: Sendable {
         let manifest = try JSONDecoder().decode(VMFactoryManifest.self, from: data)
         try manifest.validate()
         return manifest.ownerSetupContractSHA256
+    }
+
+    /// True for a factory built from Omarchy owner programs that haven't been
+    /// reviewed. Such a guest is never seeded: Omarchy's own first-run setup
+    /// creates the account.
+    public func requiresManualOwnerSetup(_ identity: FactoryIdentity?) throws -> Bool {
+        VMOwnerSetupContract.isManual(try ownerSetupContract(for: identity))
     }
 
     public func selection(for identity: FactoryIdentity?) throws -> VMFactorySelection? {

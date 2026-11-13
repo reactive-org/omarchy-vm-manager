@@ -6,7 +6,7 @@ Run commands from the repository root using `./bin/omarchy-vm`. The app bundle a
 
 ## Create without launching
 
-Enable and save automatic setup in **Guest Defaults** first. Its saved password must be available in the build's selected Keychain storage; see [Touch ID setup and build requirements](TouchID.md). The examples below are commands for future use: executing `create` saves a profile. Without `--start`, it creates no guest disk and launches no VM.
+Enable and save automatic setup in **Guest defaults** first. Its saved password must be available in the build's selected Keychain storage; see [Touch ID setup and build requirements](TouchID.md). The examples below are commands for future use: executing `create` saves a profile. Without `--start`, it creates no guest disk and launches no VM.
 
 ```sh
 ./bin/omarchy-vm create Development --memory 4GiB --cpus 4 --disk 64GiB
@@ -26,7 +26,7 @@ Use these creation-only flags to change one VM's setup without editing Guest Def
   --inherit-default-public-key off
 ```
 
-This also creates only a stopped profile. Omitted owner fields and the saved password are inherited. `--inherit-default-public-key off` suppresses the saved personal SSH key; managed SSH remains enabled with its separate per-VM key. Omit `--public-key` as well to enroll only that manager key. The JSON equivalent is top-level `"inheritDefaultPublicKey": false`. The hostname retains its unique UUID suffix. To omit the inherited full name or email, pass `--full-name ""` or `--email ""`. Owner-field overrides require enabled, saved Guest Defaults, cannot be combined with `--owner-defaults off`, and cannot be applied to an existing VM with `update`. The key-inheritance setting is also creation-only; unlike owner-field overrides, it can be used with manual setup. Passwords are never accepted as CLI arguments or JSON fields.
+This also creates only a stopped profile. Omitted owner fields and the saved password are inherited. `--inherit-default-public-key off` suppresses the saved personal SSH key; managed SSH remains enabled with its separate per-VM key. Omit `--public-key` as well to enroll only that manager key. The JSON equivalent is top-level `"inheritDefaultPublicKey": false`. The hostname retains its unique UUID suffix. To omit the inherited full name or email, pass `--full-name ""` or `--email ""`. Owner-field overrides require saved Guest Defaults, cannot be combined with `--owner-defaults off`, and cannot be applied to an existing VM with `update`. The key-inheritance setting is also creation-only; unlike owner-field overrides, it can be used with manual setup. Passwords are never accepted as CLI arguments or JSON fields.
 
 You can also put owner fields under `ownerOverrides` in a configuration file. Explicit flags replace individual fields while retaining other file values; see the [flag/JSON mapping and examples](CLI.md#per-vm-owner-overrides).
 

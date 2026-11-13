@@ -28,7 +28,7 @@ Intermittent graphics startup failure remains under investigation. Save work if 
 
 If managed SSH is ready, it can remain usable even when the graphical desktop is unhealthy. Do not reset or delete the disk to troubleshoot this symptom.
 
-The **Runtime** page shows host preflight and the known graphics issue. **Check Again** refreshes the runtime checks; **Build provenance** identifies the pinned helper source.
+The **Runtime** page shows host preflight and the known graphics issue. **Check again** refreshes the runtime checks; **Build provenance** identifies the pinned helper source.
 
 ![The Runtime page with a passed host preflight and the known graphics startup issue](media/runtime.webp)
 
@@ -36,7 +36,7 @@ The **Runtime** page shows host preflight and the known graphics issue. **Check 
 
 **Running** and SSH readiness are separate. First boot can still be installing integrations or creating the owner account. With manual owner setup selected, finish the normal wizard in the guest. With saved defaults, allow automatic setup to finish.
 
-Inspect the guest's **SSH** tab, or use `./bin/omarchy-vm get "Guest Name"`. For a stopped guest, **Available on next launch** is expected. Use **Copy SSH Command** after verification; the generated connection checks the guest's host identity on every connection.
+Inspect the guest's **SSH** tab, or use `./bin/omarchy-vm get "Guest Name"`. For a stopped guest, **Available on next launch** is expected. Use **Copy SSH command** after verification; the generated connection checks the guest's host identity on every connection.
 
 A CLI wait timeout leaves the guest running. Use `wait` to continue observing it. See the [CLI quick start](cli-quickstart.md).
 
@@ -50,7 +50,7 @@ Read the guest's error and **Session activity** before retrying. If files or set
 
 Use a matching updated manager and CLI. A newer CLI connected to an older running manager gets an unsupported configuration error; rebuilding the CLI alone does not update that manager. The local 0.9.4 (17) app and CLI include the flags and pass installation checks; real creation/boot with overrides remains untested.
 
-For `invalid-owner-defaults`, check that Guest Defaults is enabled and saved, the username is not reserved, and the timezone and keyboard use supported values. Overrides require saved defaults even when all six owner fields are supplied: the password still comes from the saved credential. `--owner-defaults off` cannot be combined with overrides. Use `""` only to clear optional full name/email; JSON `null` is rejected.
+For `invalid-owner-defaults`, check that Guest Defaults contains saved account details and a password, the username is not reserved, and the timezone and keyboard use supported values. Overrides require saved defaults even when all six owner fields are supplied: the password still comes from the saved credential. `--owner-defaults off` cannot be combined with overrides. Use `""` only to clear optional full name/email; JSON `null` is rejected.
 
 For `creation-only`, supply overrides to `create`, not `update`. Owner setup is fixed when the profile is created. For `invalid-config`, check the [flag/JSON mapping](CLI.md#per-vm-owner-overrides); `--keyboard` maps to `keyboardID` inside `ownerOverrides`. Unknown keys and password/credential fields are refused.
 

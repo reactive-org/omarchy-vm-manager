@@ -19,7 +19,8 @@ run = guest / 'run'; identity = guest / 'identity'; provisioning = guest / 'prov
 for directory in (run, identity, provisioning): directory.mkdir(mode=0o700, parents=True, exist_ok=True)
 share = root / '.manager-setup/bootstrap'
 resources = source / 'guest/package/try-omarchy/files/usr/share/try-omarchy'
-contracts = {m.OFFICIAL: (resources / 'owner-setup-contract.json', 'official'), m.LEAN: (resources / 'lean-owner-setup-contract.json', 'lean-e4fffc6')}
+contracts = {m.OFFICIAL: (resources / 'owner-setup-contract.json', 'official'), m.LEAN: (resources / 'lean-owner-setup-contract.json', 'lean-e4fffc6'),
+             m.LEAN_A948D8A: (resources / 'lean-owner-setup-contract-a948d8a.json', 'lean-a948d8a')}
 with ExitStack() as stack:
     for name, value in dict(RUN=run, IDENTITY=identity/'identity.json', PENDING=provisioning/'pending', SHARE=share, CMDLINE=guest/'cmdline', BOOT_ID=guest/'boot-id', CONTRACTS=contracts).items(): stack.enter_context(patch.object(m, name, value))
     stack.enter_context(patch.object(m, 'directory', side_effect=lambda path: path.mkdir(mode=0o700, parents=True, exist_ok=True)))

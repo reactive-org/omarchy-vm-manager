@@ -20,7 +20,7 @@ final class UpdateCheckController: ObservableObject {
                 case .available(let release):
                     alert.messageText = "An update is available"
                     alert.informativeText = "You have \(tag ?? "unknown") installed. \(release.tag) is available. Open its GitHub release page to read the notes and download the app."
-                    alert.addButton(withTitle: "View Release")
+                    alert.addButton(withTitle: "View release")
                     alert.addButton(withTitle: "Later")
                     releaseURL = release.url
                 case .upToDate:

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import uuid
 from upstream_source import ROOT, prepare
+from provisioning_package import prepare as prepare_provisioning
 
 
 def update_factory_review_pin(root=ROOT):
@@ -24,6 +25,7 @@ def update_factory_review_pin(root=ROOT):
 
 
 def main():
+    prepare_provisioning()
     update_factory_review_pin()
     source = prepare()
     link = ROOT / '.build/runtime-source'

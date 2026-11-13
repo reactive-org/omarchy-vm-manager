@@ -2,7 +2,7 @@
 
 The requested behavior is: preserve guest applications/session, save memory to disk, terminate the VM process so host RAM is released, and restore the session later. A paused process keeps its memory and does not satisfy this requirement. The in-memory [Pause/Resume implementation](PauseResume.md) remains separate from disk suspension.
 
-**Latest result:** a separate hibernation-enabled kernel builds and boots, and original-kernel recovery is verified. Both full hibernation attempts stalled and cold-booted on relaunch. The retained POC is stopped with the original kernel selected by default. Reliable suspend-to-disk remains unproven; see the kernel experiment and opt-in development workflow below.
+**Latest result:** a separate hibernation-enabled kernel builds and boots, and original-kernel recovery is verified. Both full hibernation attempts stalled and cold-booted on relaunch. The retained POC is stopped with the original kernel selected by default. Reliable suspend-to-disk remains unproven; see the kernel experiment and opt-in development workflow below. The workflow is now available only in the Dev build; stable hides it except for recovering an existing saved session (see [Dev-only feature flag](#dev-only-feature-flag--8-november-2026)).
 
 ## Confirmed blocker in the current runtime
 
@@ -110,3 +110,13 @@ The JSON CLI adds `hibernation`, `experimentalSuspendAvailable`, `experimentalRe
 **VERIFIED — automated checks:** core and app build; the current no-VM suite passes 115 Swift tests and nine artifact script tests. These tests exercise opt-in/prerequisite refusal, resource retention, durable guards across reopening, protected edits/ordinary starts, simulated successful restore, cold-boot acknowledgement with explicit administrator-cleanup attestation, timeout/quit/host-sleep event behavior, changed disk/settings/runtime/firmware rejection, malformed/newly appeared metadata and stale asynchronous replies. Disposable localhost-only OpenSSH containers exercise the actual production inspection and marker transport with synthetic keys, plus host-key and cross-guest credential rejection. No power operation is sent to these containers. Those checks do not constitute successful real-guest hibernation, graphics acceptance or real transition sleep/wake coverage. No existing guest or disk was modified to implement this workflow.
 
 The isolated lifecycle layout gallery includes synthetic stock-kernel, missing-setup, ready and unknown capability presentations. `make layout-preview` builds it separately; it accesses no VM registry or network and its experimental buttons perform no guest action. Current UI code compiles; a real macOS visual acceptance run of this new panel has not been performed.
+
+## Dev-only feature flag — 8 November 2026
+
+The experimental workflow is compiled per channel, like the rest of the [Stable and Dev split](DevelopmentChannels.md). No preference or environment variable changes it.
+
+- **Dev** keeps everything above: the capability check after managed SSH is ready, the **Suspend to Disk · Experimental** panel and the ellipsis-menu **Suspend to disk (experimental)…** item.
+- **Stable** hides the panel and menu item, skips the guest capability check over SSH, and refuses a suspension attempt before any guest command or saved-session record. The shared-folder check then starts without waiting for it.
+- **Recovery is never hidden.** A guest that already has a saved session, or damaged saved-session metadata, still shows the panel with **Restore / Recover…**, **Recheck recovery** or **Accept cold boot…**, and its main action stays **Restore…**. Disk protection, restore checks and cold-boot acknowledgement are unchanged in both channels.
+
+The layout preview gallery is built from the stable channel and turns the flag on, so it still shows every synthetic capability state.

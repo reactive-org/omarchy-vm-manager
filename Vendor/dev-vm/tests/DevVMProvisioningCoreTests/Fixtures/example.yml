@@ -1,0 +1,42 @@
+# Copy this entire directory into your own repository; paths resolve from its root.
+---
+schema_version: 1
+id: example
+vm:
+  factory: official
+  cpus: 8
+  memory_gib: 20
+  disk_gib: 64
+  packages: [pkg:claude-desktop, pkg:chromium]
+setup:
+  profiles: [project-managed]
+  features:
+    enable: [agents, credentials]
+  options:
+    workstation:
+      oh_my_zsh_plugins: [git, docker, docker-compose]
+      layout: layouts/coding.lua
+    toolchain:
+      prerequisites: [ruby]
+    keyring:
+      seahorse: true
+    agents:
+      tools:
+        claude: ""
+dotfiles:
+  - source: dotfiles/git/config
+    target: ~/.config/git/dev-vm-preferences.conf
+    mode: "0644"
+  - source: dotfiles/nvim/lua/personal.lua
+    target: ~/.config/nvim/lua/personal.lua
+tasks:
+  - name: projects
+    file: tasks/projects.yml
+  - name: editor
+    file: tasks/editor.yml
+  - name: git
+    file: tasks/git.yml
+# Only these additional assets are available to templates/includes/custom tasks.
+assets: [templates]
+vars:
+  projects_directory: Development/Projects

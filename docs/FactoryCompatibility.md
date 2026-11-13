@@ -1,5 +1,16 @@
 # Reviewed guest integration compatibility
 
+**DESIGN DECISION — 12 November 2026: manual owner setup.** A lean factory built from Omarchy owner programs that match no reviewed contract names the manual marker `ce4c684e1a576eec068653a400451b6d70bb477275c73e4d7f25452a4d726553`, the SHA-256 of `omarchy-vm-manager/manual-owner-setup/v1`, instead of a contract. It pairs only with the reviewed `0.1.0-48.1` package, and its `compatibility.json` must carry the builder's `"owner_setup": "manual"` verdict. Reviewed lean evidence must not carry that verdict. The marker is never a supported seed contract, so such a guest always uses Omarchy's own first-run setup. Manual receipts hash that pairing in the same way. Existing pairings and receipts are unchanged. See `intent.md`, "Flexible Omarchy review".
+
+**DESIGN DECISION — 8 November 2026: reviewed lean contract set.** The policy is schema 2. Its `leanContracts` list pairs each reviewed lean owner contract with the integration package its factory images carry:
+
+| Contract | Owner contract SHA-256 | Image package |
+| --- | --- | --- |
+| `lean-e4fffc6` | `1347cb16b831eb2c3a67344a5bbb68c9da776a55221ecab5ba90ce385078d310` | `0.1.0-43.1` `9fc986521b67cfa9e891fd826453553f1e2e4a319e6edb1302c760f1e22a2211` |
+| `lean-a948d8a` (Omarchy 4.5.0; edge from `9044b7e`) | `fb73e12e5ea4ad8c5bd4fbeee7b5d1d9029708342b6fa2f3a55c7ca9f14104c5` | `0.1.0-48.1` `876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3` |
+
+The runtime supplies guest integration `0.1.0-48` (`5c09250244da58caff58fe25af359fa76277c5d441cbdd0331f523dd9b429b65`) and native-rendering `48.1`. A factory names one contract by digest; its evidence must match that contract's programs and image package, and crossed pairings are refused. Receipts hash the matched pairing over the schema-1 field set, so existing `lean-e4fffc6` receipts keep `c3cbd5eb1b061ada97f3951d91b3d21e1afeb508b8a367f6c308c0e87da56a55`. The sections below describe contract 1 and the earlier single-contract policy as recorded on their dates.
+
 **DESIGN DECISION — 3 November 2026:** lean factory admission uses guest integration contract 1, independently of the manager repository revision and private runtime source commit. Source commits remain mandatory, syntactically validated provenance. `image-build.json` must still agree with the descriptor's recorded image source. It does not have to equal the current kit source.
 
 ## What is reviewed
