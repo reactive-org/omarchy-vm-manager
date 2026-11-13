@@ -129,6 +129,8 @@ struct OmarchyVMManagerApp: App {
         }
         .defaultSize(width: 1120, height: 780)
         .windowResizability(.contentMinSize)
+        // ManagerView draws the name in its home button, so hide the system title.
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(after: .appInfo) {
                 Button(updateChecker.isChecking ? "Checking for Updates…" : "Check for Updates…") {

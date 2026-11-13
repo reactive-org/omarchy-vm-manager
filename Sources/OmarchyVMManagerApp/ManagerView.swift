@@ -131,31 +131,41 @@ struct ManagerView: View {
                     }
                 }.padding(Theme.gap).frame(maxWidth: 1050, alignment: .leading).frame(maxWidth: .infinity)
             }.id(detailPresentation).environment(\.guestsRunning, model.snapshots.contains { $0.sessionID != nil }).font(Theme.body).background(Theme.ground).buttonStyle(.quietAction).toggleStyle(SpecSwitchToggleStyle())
+            // Scoped to the detail column so the actions sit at its trailing edge.
+            .toolbar {
+                // The app icon and name stand in for the window title; clicking
+                // either returns to the overview.
+                ToolbarItem(placement: .navigation) {
+                    Button { destination = .library } label: {
+                        HStack(spacing: 8) {
+                            ManagerArtwork(size: 22)
+                            Text(AppChannel.current.displayName).font(.title3.weight(.semibold)).lineLimit(1)
+                        }.contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help("Show all virtual machines").accessibilityLabel("All virtual machines")
+                }
+                // Without the system title there's no flexible space before the
+                // actions, so they'd sit next to the name instead of at the trailing edge.
+                // The guard only satisfies the macOS 15 deployment target.
+                if #available(macOS 26.0, *) { ToolbarSpacer(.flexible, placement: .primaryAction) }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { destination = .library } label: { Label("Home", systemImage: "house") }
+                        .help("Home: all virtual machines")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { importingFactory = true } label: { Label("Import factory", systemImage: "square.and.arrow.down") }
+                        .help("Import a factory image")
+                        .disabled(model.registryError != nil || model.shuttingDown || model.checking || model.diagnostics == nil || model.factoryImportInProgress)
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { editor = EditorSelection(profile: nil) } label: { Label("New VM", systemImage: "plus") }
+                        .help("New virtual machine (⌘N)")
+                        .disabled(model.registryError != nil || model.shuttingDown)
+                        .keyboardShortcut("n", modifiers: .command)
+                }
+            }
         }
         .navigationTitle(AppChannel.current.displayName)
-        .toolbar(removing: .title)
-        .toolbar {
-            // The app icon and name stand in for the window title; clicking
-            // either returns to the overview.
-            ToolbarItem(placement: .navigation) {
-                Button { destination = .library } label: {
-                    HStack(spacing: 8) {
-                        ManagerArtwork(size: 22)
-                        Text(AppChannel.current.displayName).font(.title3.weight(.semibold)).lineLimit(1)
-                    }.contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).help("Show all virtual machines").accessibilityLabel("All virtual machines")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button { importingFactory = true } label: { Label("Import factory", systemImage: "square.and.arrow.down") }
-                    .disabled(model.registryError != nil || model.shuttingDown || model.checking || model.diagnostics == nil || model.factoryImportInProgress)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button { editor = EditorSelection(profile: nil) } label: { Label("New VM", systemImage: "plus") }
-                    .disabled(model.registryError != nil || model.shuttingDown)
-                    .keyboardShortcut("n", modifiers: .command)
-            }
-        }
         .onChange(of: destination) { page = .home }
         // Only explicit clicks route here (badge, notification); activation alone never does.
         .onChange(of: model.attentionRoute) { _, route in
