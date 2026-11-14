@@ -4826,15 +4826,48 @@ turn-on and Omarchy default keeping setup on. **TO PROVE:** physical interaction
 - `make test` passes 647 Swift tests in 85 suites, 351 script tests, the provisioning bundle check and 210 setup-screen checks (synthetic services only). `make test-dev` passes the same 647 Swift tests under `DEVELOPMENT_CHANNEL`. `make app-dev verify-dev` passes (`app-layout: PASS`; NAT-only, no factory image). `make test-upstream` passes on the final pinned commit `5f81e77d3a03`, including `run-mode.test`, `run-qemu-gpu.test` and the guest package suites.
 - In a throwaway, network-less Arch builder container with the 0.1.0-49 archive installed (`pacman -U -dd`), `visudo -c` accepts the rules. A wheel user runs `sudo -n /usr/bin/try-omarchy-reclaim` without a password and receives the helper's own report (`trim-root`, expected because the container's overlayfs has no FITRIM). sudo refuses the helper with an argument, any other command, and a non-wheel user.
 
-**TO PROVE:** on a real disposable Dev guest:
-- an in-guest trim lowers the host allocation of both disk files;
-- whether btrfs already uses `discard=async` with discard now honoured (`/proc/mounts`, `lsblk -D`);
+**USER AUTHORIZATION / VERIFIED — real disposable Dev guest, 14 November 2026:** the user approved testing on a disposable Dev guest, quitting the other worktree's idle Dev app, and using saved Guest Defaults for owner setup.
+
+**Setup:**
+- This branch's Dev app (kit `ba2a08cf…`) created guest `E776A87E-2DBF-47E2-B2B6-8EBB045AFA72`.
+- Lean Omarchy stable factory; separate 64 GiB system and home disks; 4 GiB RAM, 4 CPUs.
+- No personal SSH key, sharing, clipboard or Touch ID.
+- It launched to SSH-ready with no Keychain prompt.
+
+**In the guest:**
+- `try-omarchy 0.1.0-49.1` was installed at first launch, and the helper is present.
+- Both virtio disks advertise discard (granularity 512 B, maximum 2 GiB).
+- The kernel (7.3.0) mounts the btrfs root and `@home` with `discard=async` by default. The ext4 home disk has no discard option, and `fstrim.timer` is disabled.
+
+**Host allocation (st_blocks):**
+
+| Step | System disk | Home disk |
+|---|---|---|
+| Before | 5,211 MiB | 1,551 MiB |
+| After writing 3 GiB (root) and 2 GiB (home) of `/dev/urandom` with fsync | 8,206 MiB | 3,599 MiB |
+| Immediately after deleting both files and syncing | 8,208 MiB | 3,599 MiB |
+| About 2.5 minutes later | 5,139 MiB | 3,599 MiB |
+| After `omarchy-vm-dev reclaim` | 5,056 MiB | 1,551 MiB |
+
+- **btrfs on its own:** async discard returned the system disk's space without any action, below the starting level. Every guest launched with this kit therefore trims its btrfs root continuously.
+- **Reclaim space:** the CLI took 0.91 s. It reported `filesystems: ["root", "home"]` and allocation falling by 2,219,536,384 bytes (from 9,181,949,952 to 6,962,413,568), and the home disk returned to its baseline.
+- **Repeat:** a second reclaim was harmless, reporting 0 bytes.
+- **sudo:** in the real guest, `sudo -n /usr/bin/try-omarchy-reclaim --extra` is refused.
+
+**Cleanup:**
+- `stop --wait --timeout 180` returned stopped and inactive.
+- No test process remains, and neither disk file has open handles.
+- Stable's two work guests kept running throughout.
+- The user declined screen access, so the panel's native appearance was not observed.
+- With the user's approval, the Dev CLI's guarded `delete` then moved only that stopped guest's root to Trash. The root is absent, and the other five Dev guests are unchanged. The Trash was not emptied.
+
+**TO PROVE:** remaining:
 - the first reclaim recovers the backlog freed while discards were dropped;
-- existing guests install 0.1.0-49 at their next launch;
+- an existing 48 guest upgrading to 0.1.0-49 at its next launch (only a fresh guest was observed);
 - interaction with the factory reset snapshot and cloned home disks;
 - no measurable write-performance regression after reclaim;
 - the panel's native appearance.
 
-No VM was launched, contacted or modified.
+The no-VM checks launched, contacted or modified no VM; only the disposable guest above was used, and no other guest was touched.
 
 **VERIFIED — published 14 November 2026:** the exact kit is the [digest-named CI dependency prerelease](https://github.com/reactive-org/omarchy-vm-manager/releases/tag/runtime-kit-ba2a08cf4745639c406a0ec2a9e01071e35a6a1074113632a5a10bfd4757eaac). Its assets are `TryOmarchyKit.zip`, its checksum, the manifest and `SourceRuntime.lock.json`. The assets were uploaded to a draft, and their server SHA-256 digests matched the local files before publication. The release is not marked Latest; Latest remains `v0.11.2`. Anonymous downloads match all four files. `Scripts/fetch_runtime_kit.py`, run in a scratch copy of the repository, downloaded the archive and verified its inventory, manifest and signatures. It contains no factory image, VM disk or user data.
