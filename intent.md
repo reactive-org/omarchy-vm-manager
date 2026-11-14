@@ -4861,13 +4861,43 @@ turn-on and Omarchy default keeping setup on. **TO PROVE:** physical interaction
 - The user declined screen access, so the panel's native appearance was not observed.
 - With the user's approval, the Dev CLI's guarded `delete` then moved only that stopped guest's root to Trash. The root is absent, and the other five Dev guests are unchanged. The Trash was not emptied.
 
-**TO PROVE:** remaining:
-- the first reclaim recovers the backlog freed while discards were dropped;
-- an existing 48 guest upgrading to 0.1.0-49 at its next launch (only a fresh guest was observed);
-- interaction with the factory reset snapshot and cloned home disks;
-- no measurable write-performance regression after reclaim;
-- the panel's native appearance.
+**VERIFIED — upgrade, backlog, UI, write speed and cloned home, 14 November 2026:** continuing the user-approved disposable testing. The user granted background screen access to the Dev manager only.
 
-The no-VM checks launched, contacted or modified no VM; only the disposable guest above was used, and no other guest was touched.
+**Upgrade and backlog — guest A (`92B9AB4B-3169-4915-ADCF-D704AABB5DCD`):**
+- Created and launched in the title-fix worktree's Dev build, whose old kit has guest package 48 and no `discard=unmap`. It installed `try-omarchy 0.1.0-48.1`, with no helper.
+- The kernel still mounted btrfs `discard=async`. Writing 3 GiB of `/dev/urandom` to the root and 2 GiB to home, deleting both files and waiting 2.5 minutes returned nothing: 8,199 MiB system and 3,599 MiB home stayed allocated.
+- After a clean stop, this branch's Dev app relaunched A. `try-omarchy-package-install.service` upgraded it to 0.1.0-49.1 during boot, and the helper appeared.
+- The backlog survived the relaunch (8,207 / 3,599 MiB). btrfs async discard does not revisit space freed earlier.
+
+**UI:**
+- The **space** panel renders between the suspend and home panels, with **Ready** and the limits note.
+- Pressing **Reclaim space** showed **Reclaiming…** with a spinner and the button disabled, then **Reclaimed 5.39 GB** and the remaining usage. The resources section's "used" figure updated from 12.4 GB to 7.01 GB.
+- The host disks fell to 5,108 MiB (system) and 1,551 MiB (home), recovering the whole backlog.
+
+**Write speed:** on A's ext4 home disk, three rounds of 2 GiB `/dev/zero` writes with fsync:
+
+| Round | Into freshly punched holes | Next write (blocks still allocated) |
+|---|---|---|
+| 1 | 3.2 GB/s | 2.8 GB/s |
+| 2 | 3.4 GB/s | 3.4 GB/s |
+| 3 | 3.3 GB/s | 3.1 GB/s |
+
+There was no measurable regression. ext4 need not reuse the same blocks, so the second column is not guaranteed to be allocated host blocks. A later reclaim returned 4.16 GB.
+
+**Cloned home — guest B (`9C6BCDA4-ACA7-4004-A334-A4530765B70D`):**
+- Created with `--reuse-home-from` A while A was stopped. A's home disk was fingerprinted first: SHA-256 `74d42e11…`, inode, 3,176,712 blocks and mtime.
+- B installed 0.1.0-49.1. Writing 2 GiB to home, deleting it and reclaiming returned 2,295,091,200 bytes; B's home disk fell from 3,600 to 1,551 MiB.
+- A's home disk was unchanged: identical SHA-256, inode, blocks and mtime. Trimming a clone releases only its own blocks.
+
+**Cleanup:**
+- Both guests stopped cleanly, with no processes or open disk handles.
+- With the user's approval, both roots were moved to Trash through the Dev CLI's guarded `delete` (clone first). The Trash was not emptied.
+- The title-fix Dev app was restored at the user's request.
+- Stable's two work guests kept running and the five existing Dev guests were untouched.
+
+**TO PROVE:** remaining:
+- Space held by the factory reset (`@factory`) or other btrfs snapshots. Observing it needs root in the guest, which the owner account has only with a password.
+
+The no-VM checks launched, contacted or modified no VM; only the three disposable guests above were used, and no other guest was touched.
 
 **VERIFIED — published 14 November 2026:** the exact kit is the [digest-named CI dependency prerelease](https://github.com/reactive-org/omarchy-vm-manager/releases/tag/runtime-kit-ba2a08cf4745639c406a0ec2a9e01071e35a6a1074113632a5a10bfd4757eaac). Its assets are `TryOmarchyKit.zip`, its checksum, the manifest and `SourceRuntime.lock.json`. The assets were uploaded to a draft, and their server SHA-256 digests matched the local files before publication. The release is not marked Latest; Latest remains `v0.11.2`. Anonymous downloads match all four files. `Scripts/fetch_runtime_kit.py`, run in a scratch copy of the repository, downloaded the archive and verified its inventory, manifest and signatures. It contains no factory image, VM disk or user data.
