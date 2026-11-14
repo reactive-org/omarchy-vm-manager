@@ -6,7 +6,7 @@
 
 Select a guest in the sidebar to open its **Home** page. It shows the guest's resources, its developer setup, experimental suspend to disk, reclaimable space and its home disk, with **Launch** or **Shut down** at the top. The tabs beside **Home** cover the virtual machine, networking, startup, SSH and Spaces. The suspend panel doesn't establish that a guest can hibernate; see [suspend requirements and limitations](Suspend.md).
 
-![The stopped guest Home page with Launch, resources, setup, experimental suspend to disk and home disk sections](media/guest-home.webp)
+![The stopped guest Home page with Launch, resources, setup, experimental suspend to disk, space and home disk sections](media/guest-home.webp)
 
 ## Back up a guest home
 
