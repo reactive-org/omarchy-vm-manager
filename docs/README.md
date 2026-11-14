@@ -32,6 +32,7 @@ The screenshots in these guides are real captures of the running manager and tot
 | Remove a guest | Move its stopped guest folder to macOS Trash |
 | Choose a factory | Official image or a verified compatible custom bundle, selected when creating a guest |
 | Reuse downloads | Shared verified factory-image cache in Downloads |
+| Reclaim disk space | [Reclaim space](ReclaimSpace.md) trims a running guest so space freed inside it returns to macOS |
 
 The local 0.9.4 (17) update adds [CLI owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm) for a new guest without changing Guest Defaults. Its app and CLI pass installation/bundle checks; creation and real boot with overrides remain untested.
 

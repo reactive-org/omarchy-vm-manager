@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-48-aarch64.pkg.tar.zst'
+PACKAGE = 'Contents/Resources/guest-packages/try-omarchy-0.1.0-49-aarch64.pkg.tar.zst'
 
 
 def read_regular(path, maximum=None):

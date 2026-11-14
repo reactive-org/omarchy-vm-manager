@@ -438,6 +438,15 @@ final class AppModel: ObservableObject {
         await update()
     }
     func cancelHomeBackup(_ id: UUID) async { await manager.cancelHomeBackup(id); await update() }
+    func reclaimSpace(_ id: UUID) async {
+        do { _ = try await manager.reclaimSpace(id) }
+        catch {
+            // A started request reports its outcome in the space panel; only a
+            // refusal before it started needs an alert.
+            if case .failed? = await manager.snapshots().first(where: { $0.id == id })?.reclaim {} else { actionError = error.localizedDescription }
+        }
+        storageRefreshed = .distantPast; await update()
+    }
     func stop(_ id: UUID) async { await manager.shutDown(id); await update() }
     func forceStop(_ id: UUID) async {
         do { try await manager.forceStop(id, confirmed: true) } catch { actionError = error.localizedDescription }

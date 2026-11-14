@@ -4803,3 +4803,101 @@ turn-on and Omarchy default keeping setup on. **TO PROVE:** physical interaction
 **VERIFIED — no-VM checks:** `make test` passes 619 Swift tests in 82 suites, 340 script tests, the provisioning bundle check and 212 setup-screen checks (56 PNGs, synthetic services only); `make test-dev` passes the same 619 Swift tests under `DEVELOPMENT_CHANNEL`. Both runs build the app target first. New tests prove each channel's default, that the compiled flags follow the compiled channel, the recovery visibility rule, that a disabled manager makes no capability check, preparation or hibernate request and writes no saved-session record, and that a saved session written with the flag on still restores and releases protection after reopening with it off, with no new capability check. `git diff --check` passes. No app bundle was rebuilt or installed, and no VM, guest, disk, credential or permission was used or changed.
 
 **TO PROVE:** native appearance of the stable and Dev guest Home pages and menus; real-guest behaviour is unchanged from the earlier TO PROVE entries.
+
+## Reclaim space — 14 November 2026
+
+**USER REQUEST / DESIGN DECISION:** issue [#47](https://github.com/reactive-org/omarchy-vm-manager/issues/47). Sparse guest disks grew but never shrank, because QEMU's default `discard=ignore` silently dropped every guest TRIM. No upstream record or issue chose that default. Add an on-demand **Reclaim space** action (Home → space, and `omarchy-vm reclaim ID`). It trims a running guest's own filesystems over managed SSH and reports the guest folder's allocation before and after, using the same clone-aware figure shown as **used**. It is on-demand only; a weekly timer is a possible follow-up. The user chose a `%wheel NOPASSWD` sudoers rule for one fixed, argument-less helper over the issue's polkit rule. That copies the existing `try-omarchy-timezone` rule and keeps the guest package free of polkit rules. The manager never opens, truncates or punches a disk file itself. Reclaim holds the guest like a home backup: provisioning, launch, edits, deletion, suspension and home backup are refused while it runs. Pause, shutdown and exit cancel the host's request. The owner cannot signal root `sudo`, so a trim already running may finish inside the guest; that is harmless, and the host never reports it as complete. Failures never release the session, handle or reservations; those wait for the matching `.exited`. A disconnected CLI caller does not cancel a trim already under way.
+
+**PRIVATE COUPLING:**
+- The regenerated patch (`5f81e77d3a03`, subject "Pass guest TRIM to sparse disks and add the reclaim helper") adds `discard=unmap` to the root and home `-drive` lines. It does not add `detect-zeroes`, which has no macOS hole-punch path in QEMU's `file-posix.c`. The read-only previous disk is unchanged.
+- The guest package is bumped to 0.1.0-49 (native-rendering 49.1). It adds `/usr/bin/try-omarchy-reclaim`, which trims `/` and also `/home` when that is the home disk by device match, and `/etc/sudoers.d/try-omarchy-reclaim` (`/usr/bin/try-omarchy-reclaim ""`). Existing guests receive it at their next launch through `package-install`.
+- The runtime lock records `discardVersion: 1`. `RuntimeProvenance` rejects other values, and the runtime exposes it as `guestTrimVersion`. An older lock decodes as nil, so the action stays unavailable and is never inferred from protocol 1.
+- `GuestIntegrationCompatibility.runtimePackageSHA256`, the patch's `runtimeLeanPackageSHA256`, `ReviewedGuestPackageSource` and the Touch ID runtime package pin move to the 49 archives.
+- Lean contracts and the manual integration version stay at the 48.1 image package that factory builders carry. Manual contracts therefore no longer equal the runtime's lean package; the runtime upgrades such guests at launch.
+
+**VERIFIED — source and host only:**
+- Pinned QEMU `c3d48b7d` (11.1.1) `file-posix.c` implements `discard=unmap` on macOS raw files with `fcntl(F_PUNCHHOLE)`. It aligns discards to `f_bsize`, silently skips rejected unaligned edges and disables discard on `ENODEV`. virtio-blk advertises discard by default.
+- A host-only `F_PUNCHHOLE` probe on this Mac's APFS Data volume returned freed space to the volume. On an APFS clone it reduced only the clone's allocation and left the source's checksum unchanged. Unaligned punches failed with `EINVAL`, and punched ranges read back as zeroes with the logical size unchanged. No QEMU or guest was involved.
+
+**VERIFIED — no-VM checks:**
+- `make patched-kit` with the reviewed 49 packages passes the upstream suite (566 Swift tests in 113 suites), the kit build and `kit-check`. Kit SHA-256 `ba2a08cf4745639c406a0ec2a9e01071e35a6a1074113632a5a10bfd4757eaac` contains both drive options.
+- The guest package suite (`make test-guest` on the patched source) covers the sudoers rule, no-argument and privilege refusal, target selection and fixed failure stages. The launcher dry-run test asserts the root drive.
+- Manager tests cover admission, busy/exclusion with home backup, provisioning holds, shutdown/exit cancellation, late results, the unsupported runtime and guest, report/stage allowlists, the CLI reply and the shipped guest program, including cancellation when root `sudo` cannot be signalled.
+- `make test` passes 647 Swift tests in 85 suites, 351 script tests, the provisioning bundle check and 210 setup-screen checks (synthetic services only). `make test-dev` passes the same 647 Swift tests under `DEVELOPMENT_CHANNEL`. `make app-dev verify-dev` passes (`app-layout: PASS`; NAT-only, no factory image). `make test-upstream` passes on the final pinned commit `5f81e77d3a03`, including `run-mode.test`, `run-qemu-gpu.test` and the guest package suites.
+- In a throwaway, network-less Arch builder container with the 0.1.0-49 archive installed (`pacman -U -dd`), `visudo -c` accepts the rules. A wheel user runs `sudo -n /usr/bin/try-omarchy-reclaim` without a password and receives the helper's own report (`trim-root`, expected because the container's overlayfs has no FITRIM). sudo refuses the helper with an argument, any other command, and a non-wheel user.
+
+**USER AUTHORIZATION / VERIFIED — real disposable Dev guest, 14 November 2026:** the user approved testing on a disposable Dev guest, quitting the other worktree's idle Dev app, and using saved Guest Defaults for owner setup.
+
+**Setup:**
+- This branch's Dev app (kit `ba2a08cf…`) created guest `E776A87E-2DBF-47E2-B2B6-8EBB045AFA72`.
+- Lean Omarchy stable factory; separate 64 GiB system and home disks; 4 GiB RAM, 4 CPUs.
+- No personal SSH key, sharing, clipboard or Touch ID.
+- It launched to SSH-ready with no Keychain prompt.
+
+**In the guest:**
+- `try-omarchy 0.1.0-49.1` was installed at first launch, and the helper is present.
+- Both virtio disks advertise discard (granularity 512 B, maximum 2 GiB).
+- The kernel (7.3.0) mounts the btrfs root and `@home` with `discard=async` by default. The ext4 home disk has no discard option, and `fstrim.timer` is disabled.
+
+**Host allocation (st_blocks):**
+
+| Step | System disk | Home disk |
+|---|---|---|
+| Before | 5,211 MiB | 1,551 MiB |
+| After writing 3 GiB (root) and 2 GiB (home) of `/dev/urandom` with fsync | 8,206 MiB | 3,599 MiB |
+| Immediately after deleting both files and syncing | 8,208 MiB | 3,599 MiB |
+| About 2.5 minutes later | 5,139 MiB | 3,599 MiB |
+| After `omarchy-vm-dev reclaim` | 5,056 MiB | 1,551 MiB |
+
+- **btrfs on its own:** async discard returned the system disk's space without any action, below the starting level. Every guest launched with this kit therefore trims its btrfs root continuously.
+- **Reclaim space:** the CLI took 0.91 s. It reported `filesystems: ["root", "home"]` and allocation falling by 2,219,536,384 bytes (from 9,181,949,952 to 6,962,413,568), and the home disk returned to its baseline.
+- **Repeat:** a second reclaim was harmless, reporting 0 bytes.
+- **sudo:** in the real guest, `sudo -n /usr/bin/try-omarchy-reclaim --extra` is refused.
+
+**Cleanup:**
+- `stop --wait --timeout 180` returned stopped and inactive.
+- No test process remains, and neither disk file has open handles.
+- Stable's two work guests kept running throughout.
+- The user declined screen access, so the panel's native appearance was not observed.
+- With the user's approval, the Dev CLI's guarded `delete` then moved only that stopped guest's root to Trash. The root is absent, and the other five Dev guests are unchanged. The Trash was not emptied.
+
+**VERIFIED — upgrade, backlog, UI, write speed and cloned home, 14 November 2026:** continuing the user-approved disposable testing. The user granted background screen access to the Dev manager only.
+
+**Upgrade and backlog — guest A (`92B9AB4B-3169-4915-ADCF-D704AABB5DCD`):**
+- Created and launched in the title-fix worktree's Dev build, whose old kit has guest package 48 and no `discard=unmap`. It installed `try-omarchy 0.1.0-48.1`, with no helper.
+- The kernel still mounted btrfs `discard=async`. Writing 3 GiB of `/dev/urandom` to the root and 2 GiB to home, deleting both files and waiting 2.5 minutes returned nothing: 8,199 MiB system and 3,599 MiB home stayed allocated.
+- After a clean stop, this branch's Dev app relaunched A. `try-omarchy-package-install.service` upgraded it to 0.1.0-49.1 during boot, and the helper appeared.
+- The backlog survived the relaunch (8,207 / 3,599 MiB). btrfs async discard does not revisit space freed earlier.
+
+**UI:**
+- The **space** panel renders between the suspend and home panels, with **Ready** and the limits note.
+- Pressing **Reclaim space** showed **Reclaiming…** with a spinner and the button disabled, then **Reclaimed 5.39 GB** and the remaining usage. The resources section's "used" figure updated from 12.4 GB to 7.01 GB.
+- The host disks fell to 5,108 MiB (system) and 1,551 MiB (home), recovering the whole backlog.
+
+**Write speed:** on A's ext4 home disk, three rounds of 2 GiB `/dev/zero` writes with fsync:
+
+| Round | Into freshly punched holes | Next write (blocks still allocated) |
+|---|---|---|
+| 1 | 3.2 GB/s | 2.8 GB/s |
+| 2 | 3.4 GB/s | 3.4 GB/s |
+| 3 | 3.3 GB/s | 3.1 GB/s |
+
+There was no measurable regression. ext4 need not reuse the same blocks, so the second column is not guaranteed to be allocated host blocks. A later reclaim returned 4.16 GB.
+
+**Cloned home — guest B (`9C6BCDA4-ACA7-4004-A334-A4530765B70D`):**
+- Created with `--reuse-home-from` A while A was stopped. A's home disk was fingerprinted first: SHA-256 `74d42e11…`, inode, 3,176,712 blocks and mtime.
+- B installed 0.1.0-49.1. Writing 2 GiB to home, deleting it and reclaiming returned 2,295,091,200 bytes; B's home disk fell from 3,600 to 1,551 MiB.
+- A's home disk was unchanged: identical SHA-256, inode, blocks and mtime. Trimming a clone releases only its own blocks.
+
+**Cleanup:**
+- Both guests stopped cleanly, with no processes or open disk handles.
+- With the user's approval, both roots were moved to Trash through the Dev CLI's guarded `delete` (clone first). The Trash was not emptied.
+- The title-fix Dev app was restored at the user's request.
+- Stable's two work guests kept running and the five existing Dev guests were untouched.
+
+**TO PROVE:** remaining:
+- Space held by the factory reset (`@factory`) or other btrfs snapshots. Observing it needs root in the guest, which the owner account has only with a password.
+
+The no-VM checks launched, contacted or modified no VM; only the three disposable guests above were used, and no other guest was touched.
+
+**VERIFIED — published 14 November 2026:** the exact kit is the [digest-named CI dependency prerelease](https://github.com/reactive-org/omarchy-vm-manager/releases/tag/runtime-kit-ba2a08cf4745639c406a0ec2a9e01071e35a6a1074113632a5a10bfd4757eaac). Its assets are `TryOmarchyKit.zip`, its checksum, the manifest and `SourceRuntime.lock.json`. The assets were uploaded to a draft, and their server SHA-256 digests matched the local files before publication. The release is not marked Latest; Latest remains `v0.11.2`. Anonymous downloads match all four files. `Scripts/fetch_runtime_kit.py`, run in a scratch copy of the repository, downloaded the archive and verified its inventory, manifest and signatures. It contains no factory image, VM disk or user data.

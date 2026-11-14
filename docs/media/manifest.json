@@ -15,10 +15,11 @@
     {
       "file": "guest-home.webp",
       "title": "Guest Home",
-      "dimensions": "1261x952",
-      "bytes": 66216,
-      "sha256": "1874c080557972de0b0d8ee870e096b918690c7729412e2594d708757e330780",
-      "sourceSHA256": "55c63d37505f0cf0f1435ef408b33ad000f464ec2ac0d292f531a95d00d97837"
+      "dimensions": "1259x952",
+      "bytes": 64354,
+      "sha256": "ddae7202c660bcf53898cb8090576f1d0316c8c1eda4568472a89aa9da177528",
+      "sourceSHA256": "d6cfec9181ac8fed6972b9a2a425c249770e594e9add922d5dd51bb9f6a6cd69",
+      "source": "reclaim-space Dev build (PR #48), 14 November 2026: adds the space panel"
     },
     {
       "file": "resources.webp",
@@ -196,6 +197,6 @@
       "appVersion": "0.11.0 (27)"
     }
   ],
-  "screenshotsBytes": 1190234,
+  "screenshotsBytes": 1188372,
   "demoVideo": "https://www.reactive.org/omarchy-vm"
 }

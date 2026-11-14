@@ -62,6 +62,20 @@ class ManagedHomeGuardTests(unittest.TestCase):
         self.assertIn('ConditionPathExists=!/etc/initrd-release', launcher)
         self.assertIn('display-manager.service getty@.service serial-getty@.service console-getty.service sshd.service try-omarchy-managed-ssh.service', launcher)
 
+    def test_writable_disks_pass_guest_trim_through(self):
+        runtime = SOURCE.resolve().parent
+        while not (runtime / 'macos/run-qemu-gpu.sh').exists():
+            if runtime.parent == runtime: self.fail('runtime checkout missing')
+            runtime = runtime.parent
+        drives = [line.strip() for line in (runtime / 'macos/run-qemu-gpu.sh').read_text().splitlines()
+                  if line.strip().startswith('-drive "if=none,')]
+        by_id = {line.split('id=', 1)[1].split(',', 1)[0]: line for line in drives}
+        for disk in ('omarchy-root', 'omarchy-home'):
+            self.assertIn('format=raw,media=disk,discard=unmap,cache=writeback', by_id[disk])
+        # The read-only previous disk never discards; zero detection is not a macOS hole punch.
+        self.assertNotIn('discard=', by_id['omarchy-previous'])
+        self.assertFalse(any('detect-zeroes' in line for line in drives))
+
     def test_home_handoff_supports_a_shared_run_parent(self):
         source = SOURCE.read_text()
         self.assertNotIn("'--move'", source)

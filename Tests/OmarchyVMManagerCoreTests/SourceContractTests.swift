@@ -73,4 +73,5 @@ func matchingExecutionSDK() throws {
     let lock = try JSONDecoder().decode(RuntimeProvenance.self, from: Data(contentsOf: repository.appendingPathComponent("Config/TryOmarchyRuntime.lock.json")))
     #expect(lock.manualPauseVersion == 1)
     #expect(lock.launchIntentVersion == 1)
+    #expect(lock.discardVersion == 1)
 }

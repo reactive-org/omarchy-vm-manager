@@ -24,6 +24,13 @@ public protocol VMRuntime: Sendable {
     func preflight() -> VMRunError?
     func start(_ request: VMStartRequest,
                onEvent: @escaping @Sendable (VMRuntimeEvent) -> Void) throws -> any VMRuntimeHandle
+    var guestTrimVersion: Int? { get }
+}
+
+extension VMRuntime {
+    /// The verified kit's guest TRIM pass-through capability (`discardVersion`),
+    /// or nil when this runtime does not prove it. Never inferred from protocol 1.
+    public var guestTrimVersion: Int? { nil }
 }
 
 public protocol VMRuntimeHandle: AnyObject, Sendable {
@@ -55,6 +62,12 @@ public struct TryOmarchyRuntime: VMRuntime {
         pocAdmission = nil
         testForeground = foreground
     }
+    /// Decoded from the same pinned lock that admits every launch.
+    public var guestTrimVersion: Int? {
+        guard let pocAdmission else { return nil }
+        return (try? JSONDecoder().decode(RuntimeProvenance.self, from: pocAdmission.lockData))?.discardVersion
+    }
+
     public init(approvedPOCKit: TryOmarchyKit, lockData: Data, applicationSupport: URL) {
         kit = approvedPOCKit
         protocolTestMode = false
