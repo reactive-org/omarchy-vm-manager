@@ -6,6 +6,24 @@ This project is based heavily on the work of the [Try Omarchy team](https://gith
 
 See [third-party notices](THIRD_PARTY_NOTICES.md) for component licenses, upstream attribution and distribution obligations.
 
+## Core features
+
+- **Multiple guests:** run separate Omarchy VMs side by side on Apple Silicon, each with its own storage and settings.
+- **Factory images:** use the official checksum-verified Try Omarchy image (Omarchy edge). You can also build or import lean images on Omarchy stable (the latest release, and the default) or edge (development builds).
+- **Hands-off setup:** save your owner defaults once, and new guests set themselves up with a desktop and SSH.
+- **Developer setup:** optional [dev-vm](https://github.com/reactive-org/dev-vm) Ansible provisioning, with a live setup terminal to provision guests just the way you like them.
+- **Flexible disks:** separate system and home disks that can grow. **Replace System** keeps your home data, and **Reclaim space** gives freed guest space back to macOS.
+- **Managed SSH:** each guest gets its own pinned, authenticated localhost SSH port.
+- **Mac integration:** clipboard sharing that only works for the guest in focus, a [shared folder](docs/SharedFolders.md), [Touch ID for sudo](docs/GuestTouchID.md), Spaces and Super shortcuts.
+- **Home backup:** export a guest's home folder to your Mac as a `.tgz`.
+- **Safe deletion:** stopped guests go to the macOS Trash instead of being erased.
+- **JSON CLI:** [`omarchy-vm`](docs/cli-quickstart.md) for scripting the full VM lifecycle.
+- **Stable and Dev channels:** a separate [Dev app and CLI](docs/DevelopmentChannels.md) run alongside Stable without touching your work VMs.
+
+**Requirements:** an Apple Silicon Mac running macOS 15 or later.
+
+**Not there yet:** USB and camera passthrough, snapshots and importing existing VMs.
+
 ## Why use it?
 
 - **Multiple concurrent Omarchy guests.** Run one guest per project, one per client, or separate environments for experiments and AI agents. Each guest has independent storage and configuration.
