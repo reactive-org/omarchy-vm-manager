@@ -95,8 +95,9 @@ public struct SSHGuestHomeBackup: GuestHomeBackingUp {
     }
 }
 
-/// Long-running SSH differs from the eight-second health probe: an open stdin
-/// is the cancellation lease. No raw stderr or guest file listing is retained.
+/// Long-running SSH (home backup, Reclaim space) differs from the eight-second
+/// health probe: an open stdin is the cancellation lease. No raw stderr or guest
+/// file listing is retained.
 final class HomeBackupSSHProcess: @unchecked Sendable {
     private let lock = NSLock()
     private var child: Process?
@@ -114,7 +115,10 @@ final class HomeBackupSSHProcess: @unchecked Sendable {
             }
         }
     }
-    func run(arguments: [String], executable: URL = URL(fileURLWithPath: "/usr/bin/ssh"), timeout: TimeInterval = 86_400) throws -> Data {
+    /// `failure` maps an unconfirmed result (nil) or a nonzero exit's bounded
+    /// report to the operation's fixed failure. Home backup is the default.
+    func run(arguments: [String], executable: URL = URL(fileURLWithPath: "/usr/bin/ssh"), timeout: TimeInterval = 86_400,
+             failure: (Data?) -> VMFailure = { $0.map(SSHGuestHomeBackup.failure(report:)) ?? SSHGuestHomeBackup.failure() }) throws -> Data {
         let process = Process(), control = Pipe(), output = Pipe()
         process.executableURL = executable; process.arguments = arguments
         process.environment = ["PATH": "/usr/bin:/bin", "LC_ALL": "C"]
@@ -136,11 +140,11 @@ final class HomeBackupSSHProcess: @unchecked Sendable {
             lock.withLock { child = nil }
         }
         let data = try output.fileHandleForReading.read(upToCount: 4097) ?? Data()
-        guard data.count <= 4096 else { cancel(); throw SSHGuestHomeBackup.failure() }
+        guard data.count <= 4096 else { cancel(); throw failure(nil) }
         process.waitUntilExit()
-        guard !lock.withLock({ cancelled }) else { throw SSHGuestHomeBackup.failure() }
+        guard !lock.withLock({ cancelled }) else { throw failure(nil) }
         // A nonzero exit may carry the supervisor's fixed stage/errno report.
-        guard process.terminationStatus == 0 else { throw SSHGuestHomeBackup.failure(report: data) }
+        guard process.terminationStatus == 0 else { throw failure(data) }
         return data
     }
 }

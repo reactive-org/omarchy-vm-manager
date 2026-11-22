@@ -44,7 +44,7 @@ public struct GuestConfigurationPatch: Codable, Equatable, Sendable {
     }
 }
 
-public enum GuestCommand: String, Codable, Sendable { case list, get, create, update, delete, start, stop, restart, pause, resume, wait, factories
+public enum GuestCommand: String, Codable, Sendable { case list, get, create, update, delete, start, stop, restart, pause, resume, wait, factories, reclaim
     case importFactory = "factory-import"
     case deleteFactory = "factory-delete"
     case factoryBuild = "factory-build" }
@@ -193,6 +193,8 @@ public struct GuestCommandResponse: Codable, Sendable {
     public var deletedFactory: FactoryIdentity?
     public var error: GuestCommandFailure?
     public var factoryBuild: FactoryBuildReply?
+    /// Reclaim space: allocation before and after, and the trimmed filesystems.
+    public var reclaim: GuestReclaimResult?
     public init(requestID: UUID, ok: Bool, guest: GuestCommandRecord? = nil, guests: [GuestCommandRecord]? = nil, error: GuestCommandFailure? = nil, factories: [FactoryIdentity]? = nil, factoryIssues: [FactoryCatalogIssue]? = nil, deletedFactory: FactoryIdentity? = nil) {
         self.requestID = requestID; self.ok = ok; self.guest = guest; self.guests = guests; self.error = error; self.factories = factories; self.factoryIssues = factoryIssues; self.deletedFactory = deletedFactory
     }
@@ -210,7 +212,7 @@ public actor GuestCommandService {
         self.manager = manager; support = applicationSupport; self.connections = connections; self.factoryBuilds = factoryBuilds
     }
     public func execute(_ request: GuestCommandRequest) async -> GuestCommandResponse {
-        var target: UUID?
+        var target: UUID?, reclaimed: GuestReclaimResult?
         do {
             try Task.checkCancellation()
             try request.validate()
@@ -266,6 +268,7 @@ public actor GuestCommandService {
                     cachedConnections[target!] = nil
                     try await manager.resume(target!, timeout: .seconds(min(10, request.timeoutSeconds)))
                 case .start: try await manager.start(target!, launchIntent: .background)
+                case .reclaim: reclaimed = try await manager.reclaimSpace(target!)
                 case .stop:
                     if request.force { try await manager.forceStop(target!, confirmed: true) }
                     else { await manager.shutDown(target!) }
@@ -279,7 +282,9 @@ public actor GuestCommandService {
             if let condition = request.waitFor { try await wait(target!, condition: condition, deadline: deadline) }
             if request.details || request.waitFor == .ssh { try await refreshConnection(target!) }
             let snapshot = try await snapshot(target!)
-            return GuestCommandResponse(requestID: request.requestID, ok: true, guest: record(snapshot))
+            var response = GuestCommandResponse(requestID: request.requestID, ok: true, guest: record(snapshot))
+            response.reclaim = reclaimed
+            return response
         } catch {
             let failure = error as? VMFailure ?? (error as? FactoryBuildFailure).map { commandFailure("factory-build-" + $0.rawValue, $0.explanation) } ?? commandFailure("command-failed", "The command could not finish.")
             let current: GuestCommandRecord?

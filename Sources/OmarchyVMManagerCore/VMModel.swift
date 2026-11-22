@@ -136,27 +136,36 @@ public struct VMSnapshot: Identifiable, Equatable, Sendable {
     public var suspensionMetadataUnsafe = false
     public var experimentalPowerBusy = false
     public var homeBackup: GuestHomeBackupState = .idle
+    public var reclaim: GuestReclaimState = .idle
+    /// The verified runtime passes guest TRIM through (`discardVersion` 1).
+    public var guestTrimSupported = false
     public var canBackUpHome: Bool {
-        guard !homeBackup.isBusy, !experimentalPowerBusy, sessionID != nil, state == .running,
+        guard !homeBackup.isBusy, !reclaim.isBusy, !experimentalPowerBusy, sessionID != nil, state == .running,
               suspension == nil, !suspensionMetadataUnsafe, profile.sharedFolder?.enabled == true,
               sharedFolderReadiness == .mounted else { return false }
+        if case .ready = sshReadiness { return true }; return false
+    }
+    /// Reclaim space trims a running guest's own filesystems over managed SSH.
+    public var canReclaimSpace: Bool {
+        guard guestTrimSupported, profile.ssh != nil, !reclaim.isBusy, !homeBackup.isBusy, !experimentalPowerBusy,
+              sessionID != nil, state == .running, suspension == nil, !suspensionMetadataUnsafe else { return false }
         if case .ready = sshReadiness { return true }; return false
     }
     public var canRestoreExperimentalSuspension: Bool {
         profile.homeDisk == nil && sessionID == nil && suspension != nil && suspension?.restoreAttempted == false && !suspensionMetadataUnsafe
     }
     public var canAttemptExperimentalSuspend: Bool {
-        guard profile.homeDisk == nil, !homeBackup.isBusy, !experimentalPowerBusy, sessionID != nil, state == .running, suspension == nil, !suspensionMetadataUnsafe, hibernation?.canAttempt == true else { return false }
+        guard profile.homeDisk == nil, !homeBackup.isBusy, !reclaim.isBusy, !experimentalPowerBusy, sessionID != nil, state == .running, suspension == nil, !suspensionMetadataUnsafe, hibernation?.canAttempt == true else { return false }
         if case .ready = sshReadiness { return true }; return false
     }
 
     public init(profile: VMProfile, state: VMState, sessionID: UUID? = nil, lastFailure: VMFailure? = nil,
-                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual, sharedFolderReadiness: SharedFolderReadiness = .disabled, hibernation: GuestHibernationCapability? = nil, suspension: ExperimentalSuspension? = nil, suspensionMetadataUnsafe: Bool = false, experimentalPowerBusy: Bool = false, homeBackup: GuestHomeBackupState = .idle) {
+                notice: String? = nil, sshReadiness: SSHReadiness = .disabled, ownerSetupReadiness: OwnerSetupReadiness = .manual, sharedFolderReadiness: SharedFolderReadiness = .disabled, hibernation: GuestHibernationCapability? = nil, suspension: ExperimentalSuspension? = nil, suspensionMetadataUnsafe: Bool = false, experimentalPowerBusy: Bool = false, homeBackup: GuestHomeBackupState = .idle, reclaim: GuestReclaimState = .idle, guestTrimSupported: Bool = false) {
         self.profile = profile; self.state = state; self.sessionID = sessionID
         self.lastFailure = lastFailure; self.notice = notice
         self.sshReadiness = sshReadiness; self.ownerSetupReadiness = ownerSetupReadiness
         self.sharedFolderReadiness = sharedFolderReadiness
-        self.homeBackup = homeBackup
+        self.homeBackup = homeBackup; self.reclaim = reclaim; self.guestTrimSupported = guestTrimSupported
         self.hibernation = hibernation; self.suspension = suspension; self.suspensionMetadataUnsafe = suspensionMetadataUnsafe; self.experimentalPowerBusy = experimentalPowerBusy
     }
 }

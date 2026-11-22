@@ -51,6 +51,17 @@ public actor VMManager {
     }
     private var homeBackupOperations: [UUID: HomeBackupOperation] = [:]
     private var homeBackupStates: [UUID: GuestHomeBackupState] = [:]
+    private let reclaim: (any GuestSpaceReclaiming)?
+    private struct ReclaimOperation {
+        let id: UUID
+        let task: Task<GuestReclaimResult, any Error>
+    }
+    private var reclaimOperations: [UUID: ReclaimOperation] = [:]
+    private var reclaimStates: [UUID: GuestReclaimState] = [:]
+    /// Decoded once: the bundled runtime's lock cannot change while the app runs.
+    private let guestTrimSupported: Bool
+    /// A home backup or Reclaim space request holds the guest like a transaction.
+    private func guestOperationActive(_ id: UUID) -> Bool { homeBackupOperations[id] != nil || reclaimOperations[id] != nil }
     private var sharingStates: [UUID: SharedFolderReadiness] = [:]
     private var powerCapabilities: [UUID: GuestHibernationCapability] = [:]
     private var suspensions: [UUID: ExperimentalSuspension] = [:]
@@ -109,7 +120,7 @@ public actor VMManager {
                 hostMemoryMiB: Int = Int(ProcessInfo.processInfo.physicalMemory / 1_048_576),
                 logicalCPUs: Int = ProcessInfo.processInfo.processorCount,
                 registry: RegistryStore? = nil, trashService: (any VMTrashService)? = nil,
-                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService(), sharingProbe: (any SharedFolderChecking)? = nil, homeBackup: (any GuestHomeBackingUp)? = nil,
+                sshProbe: (any SSHReadinessChecking)? = nil, portProbe: any HostPortProbing = LoopbackPortProbe(), ownerDefaults: OwnerDefaultsStore? = nil, hibernation: (any GuestHibernating)? = nil, factoryTrashService: any FactoryTrashService = SystemFactoryTrashService(), sharingProbe: (any SharedFolderChecking)? = nil, homeBackup: (any GuestHomeBackingUp)? = nil, reclaim: (any GuestSpaceReclaiming)? = nil,
                 features: FeatureFlags = .init(experimentalSuspendToDisk: true)) {
         self.factoryTrashService = factoryTrashService
         self.runtime = runtime
@@ -124,6 +135,8 @@ public actor VMManager {
         self.features = features
         self.sharingProbe = sharingProbe
         self.homeBackup = homeBackup
+        self.reclaim = reclaim
+        guestTrimSupported = runtime.guestTrimVersion == 1
         self.sshProbe = sshProbe; self.portProbe = portProbe; self.ownerDefaults = ownerDefaults
         for profile in profiles {
             do { suspensions[profile.id] = try ExperimentalSuspendStore(root: ManagerStorage(applicationSupport: applicationSupport).root(for: profile)).load(vmID: profile.id) }
@@ -145,7 +158,7 @@ public actor VMManager {
             try storage.withLock(profile) { try ManagedOwnerStorage(root: storage.root(for: profile)).clearSeed() }
         }
         return VMManager(runtime: runtime, profiles: profiles, applicationSupport: applicationSupport,
-                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation(), sharingProbe: SSHSharedFolderProbe(), homeBackup: SSHGuestHomeBackup(),
+                         enforcePOCPolicy: true, registry: registry, trashService: trashService, sshProbe: ManagedSSHProbe(), ownerDefaults: OwnerDefaultsStore(applicationSupport: applicationSupport), hibernation: SSHGuestHibernation(), sharingProbe: SSHSharedFolderProbe(), homeBackup: SSHGuestHomeBackup(), reclaim: SSHGuestReclaim(),
                          features: .current)
     }
 
@@ -509,7 +522,7 @@ public actor VMManager {
         if let profile = profiles.first(where: { $0.id == id }) {
             try ManagerStorage(applicationSupport: applicationSupport).requireNoSavedSession(profile)
         }
-        guard !quitting, sessions[id] == nil, homeBackupOperations[id] == nil, !storageTransactions.contains(id),
+        guard !quitting, sessions[id] == nil, !guestOperationActive(id), !storageTransactions.contains(id),
               (states[id] ?? .stopped).canStart else {
             throw VMFailure(code: "vm-not-editable", message: "Stop the VM before changing or deleting it.")
         }
@@ -527,7 +540,8 @@ public actor VMManager {
             VMSnapshot(profile: $0, state: states[$0.id] ?? .stopped,
                        sessionID: sessions[$0.id]?.id, lastFailure: failures[$0.id], notice: authenticationNotice($0.id) ?? notices[$0.id],
                        sshReadiness: sshStates[$0.id] ?? ($0.ssh == nil ? .disabled : .stopped),
-                       ownerSetupReadiness: ownerReadiness($0), sharedFolderReadiness: sharingReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false, homeBackup: homeBackupStates[$0.id] ?? .idle)
+                       ownerSetupReadiness: ownerReadiness($0), sharedFolderReadiness: sharingReadiness($0), hibernation: powerCapabilities[$0.id], suspension: suspensions[$0.id], suspensionMetadataUnsafe: unsafeSuspensions.contains($0.id), experimentalPowerBusy: sessions[$0.id]?.powerBusy ?? false, homeBackup: homeBackupStates[$0.id] ?? .idle,
+                       reclaim: reclaimStates[$0.id] ?? .idle, guestTrimSupported: guestTrimSupported)
         }
     }
 
@@ -545,7 +559,7 @@ public actor VMManager {
     }
 
     public var activeSessionCount: Int { sessions.count }
-    public var isIdle: Bool { sessions.isEmpty && homeBackupOperations.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil && factoryDeletionOperation == nil && (provisioningReservation == nil || provisioningReservation?.abandonedForShutdown == true) }
+    public var isIdle: Bool { sessions.isEmpty && homeBackupOperations.isEmpty && reclaimOperations.isEmpty && storageTransactions.isEmpty && factoryImportOperation == nil && factoryDeletionOperation == nil && (provisioningReservation == nil || provisioningReservation?.abandonedForShutdown == true) }
     public var allocatedMemoryMiB: Int {
         profiles.filter { sessions[$0.id] != nil }.reduce(0) { $0 + $1.memoryMiB }
     }
@@ -560,7 +574,7 @@ public actor VMManager {
         }
         try registry?.checkRevision()
         guard !interruptedDeletions.contains(vmID) else { throw VMFailure(code: "interrupted-deletion", message: "Review the interrupted deletion before launching. Missing storage will not be recreated.") }
-        guard !quitting, homeBackupOperations[vmID] == nil, !storageTransactions.contains(vmID) else { throw VMFailure(code: "transaction-busy", message: "A backup, storage transaction or application shutdown is in progress.") }
+        guard !quitting, !guestOperationActive(vmID), !storageTransactions.contains(vmID) else { throw VMFailure(code: "transaction-busy", message: "A backup, Reclaim space request, storage transaction or application shutdown is in progress.") }
         guard let profile = profiles.first(where: { $0.id == vmID }) else {
             throw VMFailure(code: "unknown-vm", message: "The VM profile does not exist.")
         }
@@ -709,7 +723,7 @@ public actor VMManager {
         guard confirmed else { throw VMFailure(code: "backup-confirmation-required", message: "Confirm exporting the guest home, including hidden files and credentials, to the host share.") }
         try requireNoProvisioning(id)
         guard !quitting, let homeBackup, let session = sessions[id], !session.shutdownRequested, !session.forceRequested,
-              homeBackupOperations[id] == nil, let snapshot = snapshots().first(where: { $0.id == id }), snapshot.canBackUpHome,
+              !guestOperationActive(id), let snapshot = snapshots().first(where: { $0.id == id }), snapshot.canBackUpHome,
               let share = snapshot.profile.sharedFolder, case .ready(let user, _) = sshStates[id] else {
             throw VMFailure(code: "backup-not-ready", message: "Home backup requires a running guest, authenticated managed SSH and a verified read-write host folder. Enable sharing while stopped, launch normally and wait for Mounted.")
         }
@@ -758,6 +772,71 @@ public actor VMManager {
             let detail = operation.task.isCancelled || failure.diagnostics.isEmpty ? "" : " (\(failure.diagnostics))"
             record("Home backup did not complete" + detail, vmID: id, sessionID: sessionID)
         }
+    }
+
+    /// Reclaim space: trims the running guest's own filesystems through its
+    /// fixed argument-less helper, then measures the root's allocation again.
+    /// Awaits the result for the CLI. A caller that goes away (CLI disconnect)
+    /// does not cancel the trim; pausing, shutdown and exit do. Failures never
+    /// release the session, its handle or its reservations.
+    public func reclaimSpace(_ id: UUID) async throws -> GuestReclaimResult {
+        try requireNoProvisioning(id)
+        guard guestTrimSupported else {
+            throw VMFailure(code: "reclaim-unsupported-runtime", message: "This runtime doesn't pass guest TRIM through to its disks, so unused space can't be reclaimed.")
+        }
+        guard !guestOperationActive(id) else {
+            throw VMFailure(code: "reclaim-busy", message: "A home backup or Reclaim space request is already running for this guest.")
+        }
+        guard !quitting, let reclaim, let session = sessions[id], !session.shutdownRequested, !session.forceRequested,
+              let snapshot = snapshots().first(where: { $0.id == id }), snapshot.canReclaimSpace,
+              case .ready(let user, _) = sshStates[id] else {
+            throw VMFailure(code: "reclaim-not-ready", message: "Reclaim space requires a running guest with authenticated managed SSH. Wait for SSH to be ready and try again.")
+        }
+        try registry?.checkRevision()
+        let operationID = UUID(), root = session.root
+        let request = VMStartRequest(profile: snapshot.profile, storageRoot: root, sessionID: session.id)
+        reclaimStates[id] = .working
+        record("Reclaim space requested", vmID: id, sessionID: session.id)
+        let task = Task.detached { () async throws -> GuestReclaimResult in
+            let before = Self.allocatedBytes(root)
+            let filesystems = try await reclaim.reclaim(request, user: user, operationID: operationID)
+            try Task.checkCancellation()
+            return GuestReclaimResult(beforeBytes: before, afterBytes: Self.allocatedBytes(root), filesystems: filesystems)
+        }
+        reclaimOperations[id] = ReclaimOperation(id: operationID, task: task)
+        let result = await task.result
+        return try finishReclaim(id, sessionID: session.id, operationID: operationID, result: result)
+    }
+
+    /// The same clone-aware allocation the app shows as "used". Read-only; the
+    /// running guest's lock is never taken.
+    nonisolated static func allocatedBytes(_ root: URL) -> Int64 {
+        TryOmarchyStorage.allocatedBytes(at: root)
+    }
+
+    private func cancelReclaim(_ id: UUID) {
+        reclaimOperations[id]?.task.cancel()
+    }
+
+    private func finishReclaim(_ id: UUID, sessionID: UUID, operationID: UUID, result: Result<GuestReclaimResult, any Error>) throws -> GuestReclaimResult {
+        guard let operation = reclaimOperations[id], operation.id == operationID else { throw SSHGuestReclaim.failure() }
+        reclaimOperations[id] = nil
+        if case .success(let value) = result, !operation.task.isCancelled {
+            reclaimStates[id] = .completed(value)
+            record("Reclaim space finished: allocation fell by \(value.reclaimedBytes) bytes", vmID: id, sessionID: sessionID)
+            return value
+        }
+        var failure = SSHGuestReclaim.failure()
+        if operation.task.isCancelled {
+            failure = VMFailure(code: "reclaim-interrupted", message: "Reclaim space stopped because the guest paused, shut down or exited. No data was lost; try again while it runs.")
+        } else if case .failure(let error) = result, let reported = error as? VMFailure,
+                  ["reclaim-failed", "reclaim-unsupported-guest"].contains(reported.code) {
+            failure = reported
+        }
+        reclaimStates[id] = .failed(failure.message)
+        let detail = failure.diagnostics.isEmpty ? "" : " (\(failure.diagnostics))"
+        record("Reclaim space did not complete" + detail, vmID: id, sessionID: sessionID)
+        throw failure
     }
 
     private func sharingReadiness(_ profile: VMProfile) -> SharedFolderReadiness {
@@ -852,6 +931,7 @@ public actor VMManager {
 
     private func suspendReadiness(_ id: UUID) {
         cancelHomeBackup(id)
+        cancelReclaim(id)
         sessions[id]?.sharingTask?.cancel(); sessions[id]?.sharingTask = nil
         sharingStates[id] = .unverified
         sessions[id]?.powerProbeTask?.cancel(); sessions[id]?.powerProbeTask = nil
@@ -996,6 +1076,7 @@ public actor VMManager {
             }
             invalidateProvisioning(vmID)
             cancelHomeBackup(vmID)
+            cancelReclaim(vmID)
             cancelExecutionChange(vmID, code: "guest-exited")
             session.sshTask?.cancel()
             session.sharingTask?.cancel()
@@ -1113,7 +1194,7 @@ extension VMManager {
         try requireProvisioningExecutionAdmission(target.vmID, root: sessions[target.vmID]?.root)
         guard !quitting, let session = sessions[target.vmID], session.id == target.sessionID,
               !session.shutdownRequested, !session.forceRequested, !session.powerBusy, session.executionCommand == nil,
-              homeBackupOperations[target.vmID] == nil, !storageTransactions.contains(target.vmID) else { throw ProvisioningJobFailure.targetChanged }
+              !guestOperationActive(target.vmID), !storageTransactions.contains(target.vmID) else { throw ProvisioningJobFailure.targetChanged }
         switch states[target.vmID] { case .running, .validating, .starting, .downloading: break; default: throw ProvisioningJobFailure.targetChanged }
         switch sshStates[target.vmID] {
         case .ready(let owner, _): guard owner == target.owner else { throw ProvisioningJobFailure.targetChanged }; return states[target.vmID] == .running ? .ready : .waiting
@@ -1141,7 +1222,7 @@ extension VMManager {
     func requireProvisioningHoldReleasable(_ vmID: UUID) throws {
         guard !quitting, !provisioningUnknownRisk, profiles.contains(where: { $0.id == vmID }),
               provisioningReservation?.lease.vmID != vmID, provisioningPreparation?.lease.target.vmID != vmID,
-              provisioningRestart?.lease.target.vmID != vmID, homeBackupOperations[vmID] == nil, !storageTransactions.contains(vmID)
+              provisioningRestart?.lease.target.vmID != vmID, !guestOperationActive(vmID), !storageTransactions.contains(vmID)
         else { throw ProvisioningJobFailure.busy }
         guard sessions[vmID] == nil, (states[vmID] ?? .stopped).canStart else { throw ProvisioningJobFailure.targetChanged }
     }
@@ -1230,7 +1311,7 @@ extension VMManager {
         guard recovery || !provisioningBlocks.contains(target.vmID) else { throw ProvisioningJobFailure.cleanupRequired }
         guard let session = sessions[target.vmID], session.id == target.sessionID, states[target.vmID] == .running,
               !session.shutdownRequested, !session.forceRequested, !session.powerBusy, session.executionCommand == nil,
-              homeBackupOperations[target.vmID] == nil, !storageTransactions.contains(target.vmID), case .ready(let user, _) = sshStates[target.vmID], user == target.owner
+              !guestOperationActive(target.vmID), !storageTransactions.contains(target.vmID), case .ready(let user, _) = sshStates[target.vmID], user == target.owner
         else { throw ProvisioningJobFailure.targetChanged }
         if let pending = provisioningPreparation {
             guard pending.owner == owner, pending.lease.jobID == jobID, pending.lease.target == target else { throw ProvisioningJobFailure.busy }
@@ -1249,7 +1330,7 @@ extension VMManager {
         guard let reservation = provisioningReservation, reservation.lease == lease, reservation.valid,
               let session = sessions[lease.vmID], session.id == lease.sessionID, states[lease.vmID] == .running,
               !session.shutdownRequested, !session.forceRequested, !session.powerBusy, session.executionCommand == nil,
-              homeBackupOperations[lease.vmID] == nil, !storageTransactions.contains(lease.vmID),
+              !guestOperationActive(lease.vmID), !storageTransactions.contains(lease.vmID),
               case .ready(let owner, _) = sshStates[lease.vmID], owner == reservation.owner,
               cleanup || (!quitting && !reservation.shutdownPending) else { throw ProvisioningJobFailure.targetChanged }
     }
@@ -1320,7 +1401,7 @@ extension VMManager {
         guard profiles.first(where: { $0.id == id })?.homeDisk == nil else { throw HomeDisk.failure("Experimental hibernation is unavailable for separate-home guests until both disks have a verified restore contract.") }
         guard confirmed else { throw VMFailure(code: "experimental-opt-in-required", message: "Confirm the experimental suspension risks before attempting it.") }
         guard let hibernation, let session = sessions[id], states[id] == .running, !session.shutdownRequested, !session.forceRequested,
-              !session.powerBusy, homeBackupOperations[id] == nil, suspensions[id] == nil, !unsafeSuspensions.contains(id),
+              !session.powerBusy, !guestOperationActive(id), suspensions[id] == nil, !unsafeSuspensions.contains(id),
               let profile = profiles.first(where: { $0.id == id }), case .ready(let user, _) = sshStates[id] else {
             throw VMFailure(code: "suspend-not-ready", message: "Experimental suspension requires a running guest and authenticated managed SSH.")
         }

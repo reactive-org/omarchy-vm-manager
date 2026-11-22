@@ -140,6 +140,12 @@ A pause keeps the process, RAM, disk lock and localhost port. Active edit/delete
 
 If an execution acknowledgement is lost, the reply fails with `execution-timeout` and the guest stays active with `state: "execution-unknown"`. The command is not repeated automatically. Another Pause/Resume is refused until the late acknowledgement arrives; stop remains available. A disconnected CLI does not undo a command already sent.
 
+## Reclaim space
+
+`reclaim ID` trims a running guest's own filesystems so space freed inside it returns to macOS, and waits for the result. It needs authenticated managed SSH and a runtime that records guest TRIM pass-through (`discardVersion` 1). It takes no options. A successful reply adds `reclaim: {beforeBytes, afterBytes, reclaimedBytes, filesystems}`; allocation is the guest folder's clone-aware figure, and `filesystems` is `["root"]` or `["root", "home"]`.
+
+Errors are `reclaim-not-ready`, `reclaim-busy` (a home backup or another reclaim is running), `reclaim-unsupported-runtime`, `reclaim-unsupported-guest` (restart the guest so it installs guest integration 0.1.0-49), `reclaim-failed` (fixed stage only) and `reclaim-interrupted`. A failure never stops the guest. Closing the CLI or a reply timeout doesn't cancel a trim already under way; the app shows its outcome. Pausing or stopping the guest ends the request, though the guest may finish a trim it had started. See [Reclaim space](ReclaimSpace.md).
+
 ## Local control and deletion
 
 The manager keeps the registry lock and all runtime clients. The CLI uses a bounded, versioned JSON protocol on an owned mode-0600 Unix socket inside a mode-0700 directory under `/private/tmp`; both peers check the local UID. The socket directory includes a digest of the fixed application-support location and UID. No TCP command listener, authentication bypass or arbitrary storage-root override is exposed.

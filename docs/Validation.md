@@ -580,3 +580,13 @@ An earlier attempt on 12 November used the 8 November Lean Omarchy - edge factor
 - Whether the 12 November restart and check failure is specific to the edge factory or to that older build.
 - Setup on a manual-account-setup factory.
 - The edge factory's layout on a real guest.
+
+## Guest Home screenshot with Reclaim space — 14 November 2026
+
+With the user's approval, the title-fix worktree's Dev app was quit and the Reclaim space branch's Dev build (PR #48, reporting **0.11.0 (27)**) was opened. That build was used only to retake `guest-home.webp`, and only the Dev manager window (`dev.omarchy.vm-manager.dev`) was driven. The stopped **Rails web dev** guest's Home page was selected and scrolled to the top. The user brought the window to the front and moved it to the built-in Retina display, so the capture is focused and at 2×. Nothing was opened, saved or launched. All five Dev guests were stopped before and after. The title-fix Dev app was then restored, and the Stable app and its guests were not touched.
+
+**VERIFIED — real Dev window:**
+- The Home page shows the new **space** panel between experimental suspend to disk and home. For a stopped guest it reads **Ready when running**, with the **Reclaim space** button disabled.
+- The raw capture is a 1,259 × 952 JPEG of exactly the window; only desktop at the rounded corners is visible. The output is the native 1,259 width, not upscaled to the earlier 1,261.
+- The raw capture and WebP were reviewed for credentials, fingerprints, hostnames, personal identifiers, stray windows and the intended screen.
+- `manifest.json` and the media README match the file. The 23 screenshots total 1,188,372 bytes. The `managing-guests.md` alt text now names the space section.

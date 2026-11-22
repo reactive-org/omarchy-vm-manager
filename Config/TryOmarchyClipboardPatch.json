@@ -1,11 +1,11 @@
 {
   "authorName": "Omarchy VM Manager",
   "authorEmail": "build@localhost",
-  "authorDate": "2026-11-12T00:00:00+00:00",
+  "authorDate": "2026-11-14T00:00:00+00:00",
   "committerName": "Omarchy VM Manager",
   "committerEmail": "build@localhost",
-  "committerDate": "2026-11-12T00:00:00+00:00",
-  "subject": "Admit manual owner setup factories for unreviewed Omarchy releases",
-  "commit": "af7044bed5273990e58c0291721255311ba946eb",
-  "patchSHA256": "207444e37a7d7e54ec8d8d13f10207d0f683014c8fda2aef8f504d6973279184"
+  "committerDate": "2026-11-14T00:00:00+00:00",
+  "subject": "Pass guest TRIM to sparse disks and add the reclaim helper",
+  "commit": "5f81e77d3a03e83a2614f0b7555cffd7e593c948",
+  "patchSHA256": "e17c2850fdc7a231239db03603400884e6b60de01077905aacec44dff35f8314"
 }

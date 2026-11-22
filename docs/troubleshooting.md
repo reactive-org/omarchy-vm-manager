@@ -40,6 +40,10 @@ Inspect the guest's **SSH** tab, or use `./bin/omarchy-vm get "Guest Name"`. For
 
 A CLI wait timeout leaves the guest running. Use `wait` to continue observing it. See the [CLI quick start](cli-quickstart.md).
 
+## A guest's disk files don't shrink after deleting files
+
+Sparse disk files grow as the guest writes and keep their size when guest files are deleted. With the guest running and SSH ready, choose **Home → space → Reclaim space** (or `./bin/omarchy-vm reclaim "Guest Name"`). If little comes back, the space may still be held by a guest snapshot (including the factory reset snapshot), shared with the factory image or a copied home disk, or kept by Time Machine local snapshots on the Mac. `reclaim-unsupported-guest` means the guest hasn't installed guest integration 0.1.0-49 yet; restart it and try again. See [Reclaim space](ReclaimSpace.md).
+
 ## Launch, Configure or Delete is unavailable
 
 Configuration and deletion require a stopped guest without an unresolved saved session. Retained POC profiles keep their original configuration but can use the normal confirmed Trash flow. Launch also requires compatible verified runtime files, host resources, free disk space and a free managed SSH port.

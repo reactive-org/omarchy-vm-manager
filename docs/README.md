@@ -32,6 +32,7 @@ The screenshots in these guides are real captures of the running manager and tot
 | Remove a guest | Move its stopped guest folder to macOS Trash |
 | Choose a factory | Official image or a verified compatible custom bundle, selected when creating a guest |
 | Reuse downloads | Shared verified factory-image cache in Downloads |
+| Reclaim disk space | [Reclaim space](ReclaimSpace.md) trims a running guest so space freed inside it returns to macOS |
 
 The local 0.9.4 (17) update adds [CLI owner overrides](cli-quickstart.md#override-owner-settings-for-one-vm) for a new guest without changing Guest Defaults. Its app and CLI pass installation/bundle checks; creation and real boot with overrides remain untested.
 
@@ -40,6 +41,10 @@ USB, camera, the optional authentication bridges, general port-forward editing, 
 ## Further reference
 
 [CLI reference](CLI.md) · [Factory images](../README.md#factory-images) · [Factory image cache](FactoryCache.md) · [Guest Defaults details](UnattendedDefaults.md) · [Managed SSH](ManagedSSH.md) · [Validation record](Validation.md)
+
+## For contributors
+
+[Implementation intent](../intent.md) is the source of truth for the manager's architecture and policy. Read it before changing either, and do not deviate from its user authorizations and design decisions. Preserve its VERIFIED, DESIGN DECISION, PRIVATE COUPLING and TO PROVE distinctions.
 
 This is a project of [reactive.org enterprises](https://www.reactive.org/). Omarchy is a pending trademark of the [Omacom Foundation](https://omarchy.org/foundation/).
 
@@ -377,3 +382,15 @@ review; signing/key/Apple/guest authority remains separate.
 the separately approved attended run passes signing, static verification and ZIP
 roundtrip, preserving prior artifacts and pins. The app is ready for user testing;
 installation, notarization and guest acceptance are not performed.
+
+<!-- doc-catalogue -->
+- `intent.md` — constitution — binding — Implementation intent: dated user authorizations and design decisions, with VERIFIED, DESIGN DECISION, PRIVATE COUPLING and TO PROVE records; read before changing architecture or policy
+- `docs/DevelopmentChannels.md` — guide — informative — Stable and Dev: building and running the isolated Dev app alongside the existing app, which keeps its work VMs running; separate identities, data, CLI and SSH ranges per channel
+- `docs/FactoryCompatibility.md` — policy — informative — Factory compatibility: reviewed guest package identities, supported protocols, migration, and when an image rebuild is necessary
+- `docs/CustomFactories.md` — policy — informative — Reviewed custom factories: prepared-bundle review, import, creation-time selection and validation limits
+- `docs/SharedFolders.md` — policy — informative — Native host-folder sharing: opt-in configuration, runtime limitations, factory prerequisites and approval-gated existing-VM validation
+- `docs/GuestTouchID.md` — policy — informative — Guest Touch ID for sudo: default-off settings, isolation policy and separately approved native validation
+- `docs/CLI.md` — reference — informative — CLI reference for the guest command line: build and run, create/inspect/pause/stop/reconfigure commands, disk flags, and per-channel CLIs
+- `docs/DevVMProvisioningPlan.md` — plan — informative — Shared Swift dev-vm provisioning implementation plan: Homebrew Ansible, shared Swift planning and transport, UI/CLI/live terminal plan, with per-milestone records
+- `docs/ProvisioningTools.md` — reference — informative — Provisioning tools: schema 2 reports, Homebrew pair checks, feature gates and validation limits; readiness does not enable execution
+<!-- /doc-catalogue -->

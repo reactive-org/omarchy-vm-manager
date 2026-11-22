@@ -19,7 +19,7 @@ and ARM64 Omarchy with UEFI/Limine boot.
 
 Use an existing Omarchy VM Manager checkout and matching built app/CLI, plus a
 [dev-vm checkout](https://github.com/reactive-org/dev-vm). The lean path below
-uses guest integration contract 1, runtime package **0.1.0-48**, lean package
+uses guest integration contract 1, runtime package **0.1.0-49**, lean image package
 **0.1.0-48.1** and the `lean-a948d8a` owner-setup contract. The supported complete
 archive identities are listed in [Factory compatibility](FactoryCompatibility.md).
 Factory compatibility is independent of source commit equality; current runtime
@@ -97,8 +97,8 @@ integration_commit=$(git -C "$integration_source" rev-parse HEAD)
 Keep this generated source clean. Record its resolved commit as build provenance.
 This source retains the stock v1.3.0 factory builder and adds the
 reviewed managed owner/SSH integration. The dev-vm builder produces the matched
-hardware-policy package **0.1.0-48.1**, the same native-rendering package the
-runtime offers lean guests. A stock-source build or older lean artifact is not a
+hardware-policy package **0.1.0-48.1**, the reviewed native-rendering image
+package. The runtime upgrades lean guests to its own 0.1.0-49.1 at launch. A stock-source build or older lean artifact is not a
 substitute for this managed lean path. A freshly built archive may differ in
 package metadata even with identical integration code; it must undergo explicit
 package review and support before preparation. Reuse an existing supported disk

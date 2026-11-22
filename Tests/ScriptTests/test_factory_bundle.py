@@ -189,7 +189,7 @@ class GuestPackageReuseTests(unittest.TestCase):
                 package = bundle / module.PACKAGE
                 package.parent.mkdir(parents=True)
                 package.write_bytes(b'synthetic guest package archive')
-                native = package.with_name('try-omarchy-0.1.0-48.1-aarch64.pkg.tar.zst')
+                native = package.with_name('try-omarchy-0.1.0-49.1-aarch64.pkg.tar.zst')
                 native.write_bytes(b'synthetic native-rendering package archive')
                 lock = {'files': build_patched_kit.inventory(bundle), 'patchCommit': 'e' * 40}
                 if case == 'inventory': package.write_bytes(b'changed archive')

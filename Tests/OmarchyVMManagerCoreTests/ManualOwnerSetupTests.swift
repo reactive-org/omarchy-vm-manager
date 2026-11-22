@@ -36,7 +36,10 @@ struct ManualOwnerSetupTests {
         // Only the reviewed native-rendering package pairs with manual setup.
         let pairings = VMGuestIntegrationContract.current.manualContracts
         #expect(pairings.map(\.leanPackageVersion) == ["0.1.0-48.1"])
-        #expect(pairings.first?.leanPackageSHA256 == VMGuestIntegrationContract.runtimeLeanPackageSHA256)
+        // Factory builders carry the reviewed 48.1 archive; the runtime's own
+        // native-rendering package (49.1) is newer and upgrades the guest at launch.
+        #expect(pairings.first?.leanPackageSHA256 == "876e05d829c3dbbb57991140c61563caeca990035a2ad01b9afb3b26d06bb5d3")
+        #expect(VMGuestIntegrationContract.runtimeLeanPackageSHA256 != pairings.first?.leanPackageSHA256)
     }
 
     @Test("a manual factory imports, lists and verifies, and never yields a seedable contract")

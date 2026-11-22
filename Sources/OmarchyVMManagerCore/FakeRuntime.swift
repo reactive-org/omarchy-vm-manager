@@ -32,10 +32,13 @@ public final class FakeRuntime: VMRuntime, @unchecked Sendable {
     private var requests: [VMStartRequest] = []
     private let startFailure: VMRunError?
     private let initialEvents: [VMRuntimeEvent]
-    public init(startFailure: VMRunError? = nil, initialEvents: [VMRuntimeEvent] = []) {
+    private let trimVersion: Int?
+    public init(startFailure: VMRunError? = nil, initialEvents: [VMRuntimeEvent] = [], guestTrimVersion: Int? = nil) {
         self.startFailure = startFailure
         self.initialEvents = initialEvents
+        trimVersion = guestTrimVersion
     }
+    public var guestTrimVersion: Int? { trimVersion }
     public func preflight() -> VMRunError? { nil }
     public var startedHandles: [FakeRuntimeHandle] { lock.withLock { handles } }
     public var startRequests: [VMStartRequest] { lock.withLock { requests } }

@@ -11,6 +11,9 @@ private struct CLIConnection: GuestConnectionChecking {
         VerifiedGuestConnection(vmID: request.profile.id, sessionID: wrongSession ? UUID() : request.sessionID, user: user, addresses: ["10.0.2.15"])
     }
 }
+private struct CLIReclaim: GuestSpaceReclaiming {
+    func reclaim(_ request: VMStartRequest, user: String, operationID: UUID) async throws -> [String] { ["root"] }
+}
 private struct CommandFixture {
     let files: RegistryFixture
     let runtime: FakeRuntime
@@ -245,6 +248,37 @@ struct GuestCommandTests {
         #expect(running.guest?.network.addressesVerified == false)
         handle.emit(.exited(status: 0))
         #expect(await eventually { await f.manager.activeSessionCount == 0 })
+    }
+    @Test("reclaim trims a running guest, returns measured bytes and refuses unready guests with stable codes")
+    func reclaim() async throws {
+        let files = try RegistryFixture(); defer { files.cleanup() }
+        let runtime = FakeRuntime(guestTrimVersion: 1)
+        let registry = try RegistryStore(applicationSupport: files.support); _ = try registry.load()
+        let manager = VMManager(runtime: runtime, profiles: [], applicationSupport: files.support,
+                                hostMemoryMiB: 65536, logicalCPUs: 64, registry: registry, portProbe: CLIAvailablePort(), reclaim: CLIReclaim())
+        let service = GuestCommandService(manager: manager, applicationSupport: files.support, connections: CLIConnection())
+        let created = await service.execute(GuestCommandRequest(command: .create, config: GuestConfigurationPatch(name: "Reclaim fixture")))
+        let id = try #require(created.guest?.id), selector = id.uuidString
+        #expect(try GuestCLIInvocation.parse(["reclaim", selector]).request?.command == .reclaim)
+        #expect(throws: (any Error).self) { try GuestCLIInvocation.parse(["reclaim", selector, "--wait"]).request?.validate() }
+        #expect(throws: (any Error).self) { try GuestCLIInvocation.parse(["reclaim"]).request?.validate() }
+        let stopped = await service.execute(GuestCommandRequest(command: .reclaim, selector: selector))
+        #expect(!stopped.ok && stopped.error?.code == "reclaim-not-ready" && stopped.reclaim == nil)
+        _ = await service.execute(GuestCommandRequest(command: .start, selector: selector))
+        let handle = try #require(runtime.startedHandles.first)
+        handle.emit(.ready)
+        #expect(await eventually { await manager.snapshots()[0].state == .running })
+        let session = try #require(await manager.snapshots()[0].sessionID)
+        await manager.receiveSSH(.ready(user: "owner", command: "synthetic"), vmID: id, sessionID: session)
+        let result = await service.execute(GuestCommandRequest(command: .reclaim, selector: selector))
+        #expect(result.ok && result.guest?.state == "running")
+        let reclaimed = try #require(result.reclaim)
+        #expect(reclaimed.filesystems == ["root"] && reclaimed.reclaimedBytes == max(0, reclaimed.beforeBytes - reclaimed.afterBytes))
+        let json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(result)) as? [String: Any])
+        let reply = try #require(json["reclaim"] as? [String: Any])
+        #expect(Set(reply.keys) == ["beforeBytes", "afterBytes", "reclaimedBytes", "filesystems"])
+        handle.emit(.exited(status: 0))
+        #expect(await eventually { await manager.activeSessionCount == 0 })
     }
     @Test("wait timeout returns the active guest without shutting it down")
     func timeout() async throws {
