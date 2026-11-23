@@ -39,7 +39,7 @@ The trash button on a custom card moves that factory to the Trash, so you can re
 
 Edge factories show **Omarchy development build** and a number instead of a release version. A card marked **manual account setup** carries an Omarchy release that hasn't been reviewed for automatic account setup: guests from it skip Guest defaults and use Omarchy's own first-run account form.
 
-Developer setup updates Omarchy before installing your selections, and that update currently fails on the official image. For a guest with developer setup, use a lean factory: build one with **Build factory…** (see [Build a lean factory in Dev](FactoryBuilding.md)) or import a prepared one with **Import factory…** (see [Prepare a factory image](preparing-factory-images.md)). When a factory is ready, **Use for new VM** opens the New VM form with that factory selected.
+Developer setup updates Omarchy before installing your selections, and that update currently fails on the official image. For a guest with developer setup, use a lean factory: build one with **Build factory…** (see [Build a lean factory](FactoryBuilding.md)) or import a prepared one with **Import factory…** (see [Prepare a factory image](preparing-factory-images.md)). When a factory is ready, **Use for new VM** opens the New VM form with that factory selected.
 
 ## Create Example VM
 

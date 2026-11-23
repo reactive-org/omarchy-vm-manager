@@ -29,7 +29,7 @@ struct FactoryImagesView: View {
                 HStack(spacing: 8) {
                     Button("Import factory…", systemImage: "square.and.arrow.down") { importing = true }.disabled(model.factoryImportInProgress)
                     Button("Build factory…", systemImage: "hammer") { builder.showingBuild = true }
-                        .disabled(!builder.service.enabled || builder.jobs.contains { $0.active || $0.cleanupRequired } || model.registryError != nil)
+                        .disabled(builder.jobs.contains { $0.active || $0.cleanupRequired } || model.registryError != nil)
                         .accessibilityIdentifier("factory.build")
                 }
             }
@@ -65,7 +65,6 @@ struct FactoryImagesView: View {
                 }
                 .modifier(FactoryGridGeometry(cardFrames: cardFramesBinding, gridWidth: gridWidthBinding))
                 Text("Each VM has its own disk and account. Building a factory does not change existing VMs.").font(.callout).foregroundStyle(.secondary)
-                if !builder.service.enabled { Text("Factory building is available in Dev.").font(.callout).foregroundStyle(.secondary) }
                 if !builder.jobs.isEmpty {
                     let busy = builder.submitting || builder.jobs.contains { $0.active }
                     let finished = builder.jobs.filter(\.removable).map(\.id)
@@ -139,7 +138,7 @@ struct FactoryImagesView: View {
                     // room for its words.
                     let frames = cardFrames.values
                     let fits = !frames.isEmpty && frames.allSatisfy { $0.minX >= -0.5 && $0.maxX <= gridWidth + 0.5 }
-                    return ["stage": builder.current?.stage.rawValue ?? "none", "enabled": String(builder.service.enabled), "buildingSheet": String(builder.showingBuild), "follow": String(builder.terminal.follow),
+                    return ["stage": builder.current?.stage.rawValue ?? "none", "buildingSheet": String(builder.showingBuild), "follow": String(builder.terminal.follow),
                             "showingJob": String(showJob && builder.current != nil), "cards": String(frames.count), "cardsFit": String(fits), "minCardWidth": String(Int(frames.map(\.width).min() ?? 0))]
                 })
             } }

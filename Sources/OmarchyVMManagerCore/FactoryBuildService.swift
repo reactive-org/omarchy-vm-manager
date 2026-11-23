@@ -34,7 +34,6 @@ public struct FactoryBuildJob: Codable, Sendable, Identifiable {
     }
 }
 public protocol FactoryBuildControlling: Sendable {
-    var enabled: Bool { get }
     func jobs() async throws -> [FactoryBuildJob]
     func review(name: String, sizeGiB: Int, channel: FactoryChannel) async throws -> FactoryBuildReview
     func start(reviewID: UUID) async throws -> FactoryBuildJob
@@ -61,7 +60,6 @@ public protocol FactoryBuildEnvironment: Sendable {
 /// terminal output, commands, credentials or replayable build authorization.
 public actor FactoryBuildService: FactoryBuildControlling {
     private struct Record: Codable { var format = 1; var job: FactoryBuildJob; let admission: FactoryDockerAdmission }
-    public nonisolated let enabled: Bool
     private let root: URL
     private let environment: any FactoryBuildEnvironment
     private let trash: any FactoryTrashService
@@ -77,18 +75,16 @@ public actor FactoryBuildService: FactoryBuildControlling {
     private var reviewGeneration = UUID()
     private var lockFD: Int32 = -1
     public init(applicationSupport: URL, environment: any FactoryBuildEnvironment, trash: any FactoryTrashService = SystemFactoryTrashService()) {
-        enabled = AppChannel.current == .development
         root = ManagerStorage(applicationSupport: applicationSupport).directory.appendingPathComponent("FactoryBuilds")
         self.environment = environment; self.trash = trash
     }
     init(fixtureRoot: URL, environment: any FactoryBuildEnvironment, trash: any FactoryTrashService = SystemFactoryTrashService()) {
-        enabled = true; root = fixtureRoot; self.environment = environment; self.trash = trash
+        root = fixtureRoot; self.environment = environment; self.trash = trash
     }
     deinit { if lockFD >= 0 { close(lockFD) } }
     private var jobsRoot: URL { root.appendingPathComponent("Jobs") }
     private var journal: URL { root.appendingPathComponent("Records") }
     private func load(refresh: Bool = false) throws {
-        guard enabled else { throw VMFailure(code: "factory-build-disabled", message: "Factory building is available in Dev.") }
         if loaded && !refresh { return }
         try PrivateFiles.directory(root, create: true); try PrivateFiles.directory(jobsRoot, create: true); try PrivateFiles.directory(journal, create: true)
         let names = try FileManager.default.contentsOfDirectory(atPath: journal.path)
@@ -268,7 +264,6 @@ public actor FactoryBuildService: FactoryBuildControlling {
         task?.cancel(); await task?.value
         for probe in probes { _ = try? await probe.value }
         if recovering { await withCheckedContinuation { shutdownWaiters.append($0) } }
-        guard enabled else { return true }
         do {
             try load(); try acquireLock()
             defer { releaseLock() }

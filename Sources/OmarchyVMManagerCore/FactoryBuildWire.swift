@@ -13,7 +13,7 @@ public extension FactoryBuildFailure {
         case .insufficientSpace: "More free space is needed on the build volume."
         case .busy: "Another build is active, or cleanup needs to be verified."
         case .cleanupRequired: "Build cleanup has not been confirmed. Verify this job’s owned resources before building again."
-        case .inputsChanged: "The reviewed build inputs changed. Use a complete verified Dev app."
+        case .inputsChanged: "The reviewed build inputs changed. Use a complete verified app."
         case .invalidRequest: "The build selection or command is invalid. Check the name, size and review identifier."
         case .downloadFailed: "A reviewed download failed its accessibility, size or checksum checks. No factory was added."
         case .commandFailed, .invalidArtifact: "The build could not finish. Its output was preserved; inspect the live terminal and build details."
@@ -51,7 +51,6 @@ public struct FactoryBuildReply: Codable, Sendable {
 }
 extension FactoryBuildControlling {
     func execute(_ request: FactoryBuildRequest) async throws -> FactoryBuildReply {
-        guard enabled else { throw commandFailure("factory-build-disabled", "Factory building is available in Dev.") }
         try request.validate()
         var reply = FactoryBuildReply()
         switch request.operation {
