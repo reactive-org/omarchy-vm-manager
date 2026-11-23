@@ -1,4 +1,4 @@
-# Build a lean factory in Dev
+# Build a lean factory
 
 The **Factory images** sidebar page builds a reusable lean Omarchy foundation
 with **Build factory…**. **Build…** beside the factory row in New VM opens the same
@@ -43,9 +43,11 @@ download and package caches are kept to speed up later builds.
 
 ## Readiness and the build action
 
-Factory building is compiled into the Dev channel. Stable can continue importing
-compatible bundles but cannot start a build. There is no environment or command
-flag to override that gate.
+Both the Stable and Dev apps can build factories. Each keeps its own build jobs,
+lock, download cache and package cache in its own data folder. Each build job's
+Docker container and volume are named after the job, and they and its image carry
+a label with the job's ID, so one app's cleanup never touches the other's build. The two apps can build at the same time on one
+Docker engine; they share only its capacity.
 
 The Mac needs Apple Silicon and an already installed Docker CLI with a running
 ARM64 Linux engine exposed through a local Unix socket. Readiness checks install
@@ -72,7 +74,7 @@ Linux recipe continues using its own Bash/Python/package tools inside Docker.
 Arch repositories remain live: this is source/provenance binding, not a promise
 of byte-identical rebuilds.
 
-The build continues while navigating elsewhere in Dev. Its native 120 × 30
+The build continues while navigating elsewhere in the app. Its native 120 × 30
 terminal follows output by default and displays bounded live process output.
 It is noninteractive: this fixed image recipe takes no account passwords or
 terminal input. Job history stores typed metadata, not terminal output. History
@@ -112,8 +114,9 @@ original reviewed guest package remains distinct from the host runtime pin.
 
 ## CLI
 
-Use the CLI inside the matching Dev app bundle while that app is open. These
-commands do not open an installed app automatically:
+Use the CLI inside the matching app bundle while that app is open: `omarchy-vm`
+for Stable, `omarchy-vm-dev` for Dev. These commands do not open an installed app
+automatically:
 
 ```sh
 omarchy-vm factory-build plan --name 'Lean development' --size-gib 20 --channel stable

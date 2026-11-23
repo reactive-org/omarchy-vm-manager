@@ -420,9 +420,9 @@ wrong receipts and changed engines are refused. Recovery restores no old consent
 or execution capability. Validation passes 71 focused fake/local tests and 130
 offscreen UI checks; the ordinary execution gate remains disabled.
 
-## Factory build jobs (Dev)
+## Factory build jobs
 
-`factory-build plan/start/status/logs/cancel/cleanup` uses the matching open Dev
-app and its shared factory service. See the [factory build CLI](FactoryBuilding.md#cli)
+`factory-build plan/start/status/logs/cancel/cleanup` uses the matching open
+Stable or Dev app and its shared factory service. See the [factory build CLI](FactoryBuilding.md#cli)
 for syntax, explicit build authorization, output following and cleanup limits.
 No command creates or starts a guest.

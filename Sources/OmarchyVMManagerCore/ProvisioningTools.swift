@@ -121,7 +121,7 @@ public struct ProvisioningToolReport: Codable, Equatable, Sendable {
             let planning = capability == .jsonPlanning || capability == .yamlPlanning
             let enabled = !deferred && !factory && blockers.isEmpty && (planning || ProvisioningProductExecution.enabled)
             let reason: String
-            if factory { reason = "Use Factory images in Dev for separate Docker, ARM64 engine, runtime and storage readiness checks. No tools are installed automatically." }
+            if factory { reason = "Use Factory images for separate Docker, ARM64 engine, runtime and storage readiness checks. No tools are installed automatically." }
             else if deferred { reason = "Deferred; dependencies are not probed." }
             else if !blockers.isEmpty { reason = "Required tools are missing, incompatible or unverified." }
             else if planning { reason = "Offline planning is available without external tools or guest access." }

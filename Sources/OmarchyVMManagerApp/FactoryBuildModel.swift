@@ -39,7 +39,6 @@ import OmarchyVMManagerCore
         } catch { self.review = nil; self.error = Self.message(error) }
     }
     func observe() async {
-        guard service.enabled else { return }
         while !Task.isCancelled {
             do {
                 jobs = try await service.jobs()

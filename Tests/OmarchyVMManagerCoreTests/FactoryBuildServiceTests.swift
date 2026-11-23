@@ -315,11 +315,18 @@ private actor RecordingFactoryQuit { var done = false; func complete() { done = 
         await #expect(throws: FactoryBuildFailure.self) { try await service.remove(held.id) }
         #expect(await trash.moved.count == 1)
     }
-    @Test func compiledStableGateCannotBeChangedByAnEnvironmentOrWireField() async throws {
+    /// Stable and Dev both build factories, each inside its own channel's
+    /// storage. A review is never a build.
+    @Test func factoryBuildingIsAvailableInEveryChannel() async throws {
         let f = try FactoryServiceFixture()
+        let storage = ManagerStorage(applicationSupport: f.root)
+        try PrivateFiles.directory(storage.directory, create: true)
         let service = FactoryBuildService(applicationSupport: f.root, environment: f.environment)
-        #expect(service.enabled == (AppChannel.current == .development))
-        if !service.enabled { await #expect(throws: Error.self) { _ = try await service.review() } }
+        _ = try await service.review()
+        #expect(try await service.jobs().isEmpty)
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: storage.directory.appendingPathComponent("FactoryBuilds/Jobs").path, isDirectory: &isDirectory) && isDirectory.boolValue)
+        #expect(storage.directory.lastPathComponent == AppChannel.current.displayName)
         #expect(await f.environment.builds == 0)
     }
 }

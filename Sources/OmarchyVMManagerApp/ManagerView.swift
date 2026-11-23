@@ -760,7 +760,7 @@ struct VMEditor: View {
                         .disabled(saving || model.factoryImportInProgress || model.checking || model.diagnostics == nil)
                     Button("Build…") { buildingFactory = true }
                         .fixedSize().help("Build a lean factory image").accessibilityLabel("Build lean factory")
-                        .disabled(saving || !model.factoryBuilder.service.enabled || model.registryError != nil)
+                        .disabled(saving || model.registryError != nil)
                         .accessibilityIdentifier("newvm.buildFactory")
                 }
                 if let notice = model.factorySelectionNotice { SpecNote(notice).padding(.bottom, 8) }

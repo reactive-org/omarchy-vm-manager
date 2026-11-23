@@ -1,5 +1,43 @@
 # Omarchy VM Manager — implementation intent
 
+## Factory building in Stable — 23 November 2026
+
+**USER AUTHORIZATION:** the user asked to enable factory building in the Stable
+app. This supersedes "Stable remains gated" in the 6 November native-builder
+decision below; that dated entry is kept as written.
+
+**DESIGN DECISION — one service, every channel:** remove the compiled channel
+gate (`FactoryBuildService.enabled` and the `factory-build-disabled` refusals)
+rather than leave a flag that is always true. Stable and Dev run the same
+reviewed recipe, embedded runtime check, Docker readiness and explicit Build
+action. Nothing else changes: Build still authorizes the reviewed downloads and
+one owned privileged container, readiness still installs nothing, and imports
+still pass the independent format-2 catalog. The provisioning-tools
+`imageBuilding` capability stays off; it only points to Factory images.
+
+**VERIFIED — channel isolation by construction (code reading):** each app's
+jobs, journal, `build.lock`, `Downloads` and `Packages` caches live under its own
+`ManagerStorage` channel directory. Docker containers and volumes are named
+after the job UUID, and they and the build image carry the label
+`dev.omarchy.factory-build=<job UUID>`. Cleanup and
+recovery select only that job's label, so neither app can remove the other's
+build resources. The Stable bundle carries the same compiled recipe and runtime
+lock as Dev; `assemble_app.py` differs only in identity and icons.
+
+**VERIFIED — fake/local, 23 November 2026:** `make test` passes 647 Swift tests in
+85 suites and 352 script tests; `make test-dev` passes the same 647 Swift tests;
+`make test-build-policies` passes in optimized Stable, signed-prerelease Stable and
+signed-prerelease Dev, including `factoryBuildingIsAvailableInEveryChannel`, which
+replaces the old compiled-gate test; `make test-factory-screens` passes 46 checks
+with fake services only.
+
+**TO PROVE:** a real build, import and New VM handoff in an installed Stable app;
+concurrent Stable and Dev builds on one Docker engine; and every factory item
+still open below (real cancellation and recovery, owner setup, managed SSH and
+hardware rendering on an Omarchy 4.5 guest, the intermittent graphics-startup
+issue). This change ran no real build, Docker command, download, signing, app
+install or VM, and left the installed Stable app untouched.
+
 ## Flexible Omarchy review: behaviour checks and manual owner setup — 12 November 2026
 
 **USER AUTHORIZATION:** on 12 November 2026 the user approved options A, C and D

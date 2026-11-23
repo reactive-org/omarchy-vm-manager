@@ -9,7 +9,6 @@ import SwiftUI
 /// No process runner, Docker client, downloader, catalog or real runtime exists
 /// in this fixture. Replies are synthetic metadata, not execution capabilities.
 @MainActor private final class FactoryScreenService: FactoryBuildControlling {
-    nonisolated let enabled = true
     var rows: [FactoryBuildJob] = []
     var blocked = false
     var starts = 0, cancellations = 0, recoveries = 0
